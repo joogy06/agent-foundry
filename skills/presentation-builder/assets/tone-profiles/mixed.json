@@ -1,0 +1,11 @@
+{
+  "name": "mixed",
+  "formality": "medium",
+  "jargon_level": "low",
+  "data_density": "layered_with_appendix",
+  "slide_count_max": 20,
+  "font_size_min": 24,
+  "preferred_flows": ["what-so-what-now-what", "before-during-after", "problem-solution-benefits"],
+  "title_style": "action_title_preferred",
+  "visual_style": "accessible_clean"
+}

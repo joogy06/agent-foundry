@@ -1,0 +1,21 @@
+# git-cli-bridge integrity lock
+# -----------------------------
+# Pinned npm package integrity hashes for the bridge workflow npm install steps.
+# Format: <pkg>@<version> <sha512-integrity>
+# One line per package. Comments start with #.
+#
+# Bob cannot fetch real hashes from the public npm registry in this sandbox at
+# skill-creation time, so these lines use PLACEHOLDER hashes. The user MUST
+# replace them with real integrity values during first-boot Step 2 by running:
+#
+#   scripts/bump-bridge-deps.sh --gemini 0.36.0 --copilot 1.0.21
+#
+# which queries `npm view <pkg>@<ver> dist.integrity` locally and rewrites this
+# file with actual sha512 hashes. Until that step runs, the integrity check in
+# workflows/scripts/verify-integrity.sh will fail-closed with error_code:
+# integrity_mismatch, and NO CLI will run.
+#
+# SEC-8 (pinned exact versions + integrity).
+
+@google/gemini-cli@0.36.0 sha512-PLACEHOLDER-REPLACE-DURING-FIRST-BOOT-BUMP
+@github/copilot@1.0.21 sha512-PLACEHOLDER-REPLACE-DURING-FIRST-BOOT-BUMP

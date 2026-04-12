@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "_doc": "Example publish-config.json. Copy to ~/.claude/publish-config.json and customise. See https://github.com/YOURNAME/REPONAME/blob/main/skills/publish-to-github/SKILL.md for details. Keys starting with underscore are documentation hints — the script ignores them. JSON arrays cannot have inline comments, so docs live in adjacent _* keys.",
+
+  "source": {
+    "_doc": "Where to copy from. Defaults: root='~/.claude', subdirs=['skills', 'agents'].",
+    "root": "~/.claude",
+    "subdirs": ["skills", "agents"]
+  },
+
+  "_exclusions_doc": "Directory paths (relative to source.root) to exclude entirely from the staging copy. Use this for skills you never want to publish.",
+  "exclusions": [
+    "skills/example-private-skill",
+    "skills/_meta"
+  ],
+
+  "_scrubs_doc": "Find/replace rules per file. Each scrub targets one file (relative to source.root) and lists the find/replace pairs to apply. Ordering: longest find string is applied first to prevent shorter prefixes from corrupting longer matches.",
+  "scrubs": [
+    {
+      "file": "skills/example-skill/SKILL.md",
+      "replacements": [
+        { "find": "MyCompanyName", "replace": "ExampleCompany" },
+        { "find": "/home/myuser/secret", "replace": "/path/to/secret" }
+      ]
+    }
+  ],
+
+  "_forbidden_patterns_doc": "Strings the verifier greps for AFTER scrubbing. Any match in the staging dir = a leak the scrubs missed. Treat as a final safety net.",
+  "forbidden_patterns": [
+    "MyCompanyName",
+    "/home/myuser",
+    "internal.mycompany.com"
+  ],
+
+  "_bundle_files_doc": "External files (README, docs, etc.) to copy into the staging dir alongside skills/ and agents/. source can be a file or a directory. Directory sources skip hidden (.*) and underscore-prefixed (_*) files — use a per-file bundle entry for individual hidden files. Sources that resolve outside ~/ trigger a warning (footgun check).",
+  "bundle_files": [
+    {
+      "source": "~/projects/my-skills-repo/REPO_README.md",
+      "dest": "README.md"
+    },
+    {
+      "source": "~/projects/my-skills-repo/docs/dependencies",
+      "dest": "docs/dependencies"
+    }
+  ],
+
+  "_extended_scan_ignore_doc": "Suppress known false positives from --extended-scan. Each entry: { 'file' OR 'file_pattern' (fnmatch glob, relative to staging root), 'categories' (list of category names from EXTENDED_SCAN_PATTERNS in publish_prep.py, or the string '*' for all). Common false positives: skills that document credential-shaped example strings, networking skills with public DNS IPs (1.1.1.1, 8.8.8.8), .local TLDs in mDNS docs. Available categories: anthropic-api-key, openai-api-key, stripe-live, github-pat-classic, github-pat-fine, slack-bot, slack-user, google-api-key, aws-access-key, rsa-private-key, openssh-private, ec-private-key, pgp-private-key, jwt-token, bearer-literal, aws-secret, db-conn-string, gcp-service-account, real-email, internal-tld, public-ipv4, phone-e164, large-file, dangling-symlink.",
+  "extended_scan_ignore": [
+    {
+      "file_pattern": "skills/example-with-mongo-conn-strings/**",
+      "categories": ["db-conn-string"]
+    },
+    {
+      "file_pattern": "skills/networking-*/**",
+      "categories": ["public-ipv4", "internal-tld"]
+    },
+    {
+      "file": "skills/some-skill/examples.md",
+      "categories": "*"
+    }
+  ],
+
+  "_gitignore_doc": "Set to a custom .gitignore string, or omit/null for the default. Config exclusions are auto-appended to whatever gitignore is generated.",
+  "gitignore": null
+}

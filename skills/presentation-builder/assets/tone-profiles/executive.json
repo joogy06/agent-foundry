@@ -1,0 +1,11 @@
+{
+  "name": "executive",
+  "formality": "high",
+  "jargon_level": "low",
+  "data_density": "headline_metrics_only",
+  "slide_count_max": 12,
+  "font_size_min": 24,
+  "preferred_flows": ["minto-scr", "bluf", "status-risks-next", "pyramid-principle"],
+  "title_style": "action_title_mandatory",
+  "visual_style": "clean_minimal"
+}

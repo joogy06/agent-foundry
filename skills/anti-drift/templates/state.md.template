@@ -1,0 +1,49 @@
+# Session state — {{PROJECT_NAME}}
+
+> Externalized session state for anti-drift. Updated by the agent at checkpoints.
+> Source of truth — re-read this file at decision points instead of recalling from context.
+
+**Last updated**: {{TIMESTAMP}}
+
+## Current task
+
+{{ONE_SENTENCE_SUMMARY}}
+
+## Original task brief
+
+> Verbatim from the user's message OR the design doc. Do not paraphrase.
+
+{{ORIGINAL_BRIEF}}
+
+## Completed sub-tasks
+
+- [x] {{COMPLETED_1}} — evidence: {{EVIDENCE_1}}
+- [x] {{COMPLETED_2}} — evidence: {{EVIDENCE_2}}
+
+## In progress
+
+- [ ] {{IN_PROGRESS_1}}
+
+## Pending
+
+- [ ] {{PENDING_1}}
+- [ ] {{PENDING_2}}
+
+## Active constraints
+
+> From hard-rules-checklist.md, scoped to this task. Re-read at every decision point.
+
+- {{CONSTRAINT_1}}
+- {{CONSTRAINT_2}}
+
+## Failed approaches (do not retry)
+
+- {{FAILED_APPROACH_1}}: failed because {{REASON_1}}
+
+## Next planned action
+
+{{NEXT_ACTION}}
+
+## Drift symptoms noticed
+
+- (none) OR list them with timestamps

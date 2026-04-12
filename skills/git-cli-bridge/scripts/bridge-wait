@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# bridge-wait — poll a request to terminal state.
+#
+# Usage: bridge wait <req-id> [--timeout SEC] [--poll SEC]
+#
+# Exit codes:
+#   0  succeeded
+#   4  failed / error.md present
+#   5  timeout
+#   6  canary_detected
+#   7  rate_limited
+#   1  other
+
+set -euo pipefail
+
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
+. "$BRIDGE_SELF_DIR/bridge-env.sh"
+
+REQ_ID=""
+TIMEOUT=900
+POLL=5
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --poll)    POLL="$2";    shift 2 ;;
+    -h|--help) sed -n '2,12p' "$0" >&2; exit 0 ;;
+    -*) bridge_err "unknown flag: $1"; exit 1 ;;
+    *)  REQ_ID="$1"; shift ;;
+  esac
+done
+
+if [ -z "$REQ_ID" ]; then
+  bridge_err "usage: bridge wait <req-id>"
+  exit 1
+fi
+
+bridge_require git jq || exit 1
+
+SESSION_ID="$(bridge_current_session)" || {
+  bridge_err "no current session"
+  exit 1
+}
+REPO_URL="$(bridge_repo_url)" || { bridge_err "no bridge repo configured"; exit 1; }
+OWNER_REPO="$(printf '%s' "$REPO_URL" | sed -E -e 's#^git@github.com:##' -e 's#^https?://github.com/##' -e 's#\.git$##')"
+WORKSPACE="$BRIDGE_LOCAL_WORKSPACE/$(basename "$OWNER_REPO")"
+cd "$WORKSPACE"
+
+BRANCH="session/$SESSION_ID"
+REQ_DIR="requests/$REQ_ID"
+
+START="$(date +%s)"
+bridge_info "waiting for $REQ_ID (timeout ${TIMEOUT}s)"
+
+while true; do
+  # fetch latest state from the session branch
+  git fetch -q origin "$BRANCH" 2>/dev/null || true
+  git checkout -q "$BRANCH" 2>/dev/null || true
+  git reset -q --hard "origin/$BRANCH" 2>/dev/null || true
+
+  # error.md takes precedence (mutex rule)
+  if [ -f "$REQ_DIR/error.md" ]; then
+    err_code="$(awk '/^error_code:/ {print $2; exit}' "$REQ_DIR/error.md" | tr -d '"')"
+    bridge_warn "request failed: error_code=$err_code"
+    case "$err_code" in
+      canary_detected) exit 6 ;;
+      rate_limited)    exit 7 ;;
+      tool_timeout)    exit 5 ;;
+      *)               exit 4 ;;
+    esac
+  fi
+
+  if [ -f "$REQ_DIR/status.json" ]; then
+    state="$(jq -r '.state // "unknown"' "$REQ_DIR/status.json" 2>/dev/null || echo unknown)"
+    case "$state" in
+      succeeded)
+        bridge_info "request $REQ_ID succeeded"
+        exit 0
+        ;;
+      failed|error)      exit 4 ;;
+      timeout)           exit 5 ;;
+      canary_detected)   exit 6 ;;
+      rate_limited)      exit 7 ;;
+      cancelled|schema_invalid) exit 4 ;;
+      running)
+        # heartbeat staleness check (warn only, do not terminate)
+        hb="$(jq -r '.heartbeat_at // ""' "$REQ_DIR/status.json")"
+        if [ -n "$hb" ]; then
+          hb_epoch="$(date -d "$hb" +%s 2>/dev/null || echo 0)"
+          now_epoch="$(date +%s)"
+          if [ "$hb_epoch" -gt 0 ] && [ $((now_epoch - hb_epoch)) -gt 90 ]; then
+            bridge_warn "heartbeat stale (>90s): runner may have crashed"
+          fi
+        fi
+        ;;
+      queued) ;;
+      *) bridge_warn "unknown state: $state" ;;
+    esac
+  fi
+
+  now="$(date +%s)"
+  if [ $((now - START)) -ge "$TIMEOUT" ]; then
+    bridge_err "timeout after ${TIMEOUT}s"
+    exit 5
+  fi
+  sleep "$POLL"
+done

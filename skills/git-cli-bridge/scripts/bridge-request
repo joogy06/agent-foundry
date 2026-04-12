@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# bridge-request — submit a request on the current session.
+#
+# Usage:
+#   bridge request --tool gemini|copilot --kind review|research|prompt \
+#     [--model NAME] [--context PATH]... [--max-runtime SEC] [--max-tokens-out N] \
+#     [--wait] [--timeout SEC] [--caller NAME] [--caller-task-id ID] "prompt body"
+#
+# Behavior:
+#   1. Rate-limit check (10/60s per session) -> exit 7 on violation.
+#   2. Context size caps: 1 MB per file, 10 MB total -> exit 3 on violation.
+#   3. Generate REQUEST_ID = req-<YYYYMMDD>-<HHMMSS>-<hex8>.
+#   4. Write request.md with full frontmatter + prompt body.
+#   5. Write initial status.json at state "queued".
+#   6. Commit and push.
+#   7. If --wait: exec bridge-wait <req-id>.
+
+set -euo pipefail
+
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
+. "$BRIDGE_SELF_DIR/bridge-env.sh"
+
+# -------- defaults --------
+TOOL=""
+KIND=""
+MODEL="auto"
+CONTEXT_PATHS=()
+MAX_RUNTIME=300
+MAX_TOKENS_OUT=4000
+WAIT_FOR=0
+TIMEOUT=900
+CALLER="${BRIDGE_CALLER:-manual}"
+CALLER_VERSION="${BRIDGE_CALLER_VERSION:-0.0.0}"
+CALLER_TASK_ID="${BRIDGE_CALLER_TASK_ID:-}"
+PROMPT_BODY=""
+
+# -------- arg parsing --------
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tool)            TOOL="$2"; shift 2 ;;
+    --kind)            KIND="$2"; shift 2 ;;
+    --model)           MODEL="$2"; shift 2 ;;
+    --context)         CONTEXT_PATHS+=("$2"); shift 2 ;;
+    --max-runtime)     MAX_RUNTIME="$2"; shift 2 ;;
+    --max-tokens-out)  MAX_TOKENS_OUT="$2"; shift 2 ;;
+    --wait)            WAIT_FOR=1; shift ;;
+    --timeout)         TIMEOUT="$2"; shift 2 ;;
+    --caller)          CALLER="$2"; shift 2 ;;
+    --caller-version)  CALLER_VERSION="$2"; shift 2 ;;
+    --caller-task-id)  CALLER_TASK_ID="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '2,15p' "$0" >&2
+      exit 0
+      ;;
+    --) shift; PROMPT_BODY="${PROMPT_BODY}${PROMPT_BODY:+ }$*"; break ;;
+    -*) bridge_err "unknown flag: $1"; exit 1 ;;
+    *)  PROMPT_BODY="${PROMPT_BODY}${PROMPT_BODY:+ }$1"; shift ;;
+  esac
+done
+
+# -------- validation --------
+case "$TOOL" in
+  gemini|copilot) ;;
+  *) bridge_err "--tool must be gemini or copilot"; exit 1 ;;
+esac
+case "$KIND" in
+  review|research|prompt) ;;
+  *) bridge_err "--kind must be review, research, or prompt"; exit 1 ;;
+esac
+if [ -z "$PROMPT_BODY" ]; then
+  bridge_err "prompt body is required"
+  exit 1
+fi
+if ! [[ "$MAX_RUNTIME" =~ ^[0-9]+$ ]] || [ "$MAX_RUNTIME" -lt 30 ] || [ "$MAX_RUNTIME" -gt 600 ]; then
+  bridge_err "--max-runtime must be 30..600"
+  exit 1
+fi
+
+bridge_require git openssl jq || exit 1
+
+# -------- resolve current session --------
+SESSION_ID="$(bridge_current_session || true)"
+if [ -z "$SESSION_ID" ]; then
+  bridge_err "no current session. Run 'bridge init' first."
+  exit 1
+fi
+
+# -------- rate limiter --------
+bridge_rate_limit_check "$SESSION_ID" || exit 7
+
+# -------- resolve workspace --------
+REPO_URL="$(bridge_repo_url || true)"
+if [ -z "$REPO_URL" ]; then
+  bridge_err "git config --global bridge.repo is unset"
+  exit 1
+fi
+OWNER_REPO="$(printf '%s' "$REPO_URL" | sed -E -e 's#^git@github.com:##' -e 's#^https?://github.com/##' -e 's#\.git$##')"
+WORKSPACE="$BRIDGE_LOCAL_WORKSPACE/$(basename "$OWNER_REPO")"
+if [ ! -d "$WORKSPACE/.git" ]; then
+  bridge_err "local workspace $WORKSPACE missing. Run 'bridge init' first."
+  exit 1
+fi
+cd "$WORKSPACE"
+
+# Ensure we are on the session branch.
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+EXPECTED_BRANCH="session/$SESSION_ID"
+if [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]; then
+  git fetch -q origin "$EXPECTED_BRANCH" || true
+  git checkout -q "$EXPECTED_BRANCH" || {
+    bridge_err "cannot switch to $EXPECTED_BRANCH"
+    exit 1
+  }
+fi
+
+# -------- context size validation (M24) --------
+total_bytes=0
+for ctx in "${CONTEXT_PATHS[@]:-}"; do
+  [ -z "$ctx" ] && continue
+  if [ ! -f "$ctx" ]; then
+    bridge_err "context path not found: $ctx"
+    exit 3
+  fi
+  sz="$(stat -c %s "$ctx" 2>/dev/null || stat -f %z "$ctx" 2>/dev/null || echo 0)"
+  if [ "$sz" -gt 1048576 ]; then
+    bridge_err "context file exceeds 1MB: $ctx ($sz bytes)"
+    exit 3
+  fi
+  total_bytes=$((total_bytes + sz))
+done
+if [ "$total_bytes" -gt 10485760 ]; then
+  bridge_err "total context exceeds 10MB ($total_bytes bytes)"
+  exit 3
+fi
+
+# -------- generate request id --------
+REQUEST_ID="req-$(date -u +%Y%m%d-%H%M%S)-$(openssl rand -hex 4)"
+REQ_DIR="requests/$REQUEST_ID"
+mkdir -p "$REQ_DIR/context" "$REQ_DIR/logs"
+
+# -------- copy context files --------
+for ctx in "${CONTEXT_PATHS[@]:-}"; do
+  [ -z "$ctx" ] && continue
+  cp "$ctx" "$REQ_DIR/context/$(basename "$ctx")"
+done
+
+# -------- build context_paths list for request.md --------
+CTX_YAML=""
+if [ -n "${CONTEXT_PATHS[*]:-}" ]; then
+  CTX_YAML="context_paths:"
+  for ctx in "${CONTEXT_PATHS[@]}"; do
+    CTX_YAML="$CTX_YAML"$'\n'"  - context/$(basename "$ctx")"
+  done
+fi
+
+# -------- write request.md --------
+NOW="$(date -u +%FT%T.%3NZ)"
+cat > "$REQ_DIR/request.md" <<EOF
+---
+schema_version: 1
+request_id: $REQUEST_ID
+session_id: $SESSION_ID
+created_at: "$NOW"
+
+kind: $KIND
+tool: $TOOL
+model: $MODEL
+
+max_runtime_sec: $MAX_RUNTIME
+max_tokens_out: $MAX_TOKENS_OUT
+
+$CTX_YAML
+
+caller:
+  name: $CALLER
+  version: "$CALLER_VERSION"
+  task_id: ${CALLER_TASK_ID:-none}
+  hostname: $(hostname -s 2>/dev/null || echo unknown)
+  parent_session: $(bridge_session_tag)
+
+flags:
+  allow_web_grounding: true
+  return_citations: true
+  return_format: markdown
+  inline_log_tail: false
+---
+
+$PROMPT_BODY
+EOF
+
+# -------- write initial status.json --------
+jq -n \
+  --arg sv "1" \
+  --arg rid "$REQUEST_ID" \
+  --arg sid "$SESSION_ID" \
+  --arg now "$NOW" \
+  '{
+    schema_version: ($sv | tonumber),
+    request_id: $rid,
+    session_id: $sid,
+    state: "queued",
+    state_history: [{state: "queued", at: $now}],
+    started_at: null,
+    heartbeat_at: null,
+    finished_at: null,
+    workflow_run_id: null,
+    workflow_run_url: null,
+    runner_id: null,
+    attempt: 1,
+    error_code: null,
+    error_message: null,
+    progress: {phase: "queued", detail: "awaiting workflow pickup"}
+  }' > "$REQ_DIR/status.json"
+
+# -------- commit and push --------
+git add "$REQ_DIR"
+git -c user.email="bridge-client@local" -c user.name="bridge-client" \
+  commit -q -m "bridge: request $REQUEST_ID"
+git push -q origin "$EXPECTED_BRANCH"
+
+printf '%s\n' "$REQUEST_ID"
+
+# -------- optional wait --------
+if [ "$WAIT_FOR" -eq 1 ]; then
+  exec "$BRIDGE_SELF_DIR/bridge-wait" "$REQUEST_ID" --timeout "$TIMEOUT"
+fi

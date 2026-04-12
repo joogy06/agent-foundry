@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# bridge-cleanup — prune stale sessions (local + remote).
+# Usage: bridge cleanup [--dry-run] [--older DAYS] [--local-only] [--remote-only] [--hashes]
+set -euo pipefail
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
+. "$BRIDGE_SELF_DIR/bridge-env.sh"
+
+DRY_RUN=0
+OLDER_DAYS=7
+LOCAL_ONLY=0
+REMOTE_ONLY=0
+PRUNE_HASHES=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run)     DRY_RUN=1; shift ;;
+    --older)       OLDER_DAYS="$2"; shift 2 ;;
+    --local-only)  LOCAL_ONLY=1; shift ;;
+    --remote-only) REMOTE_ONLY=1; shift ;;
+    --hashes)      PRUNE_HASHES=1; shift ;;
+    -h|--help)     sed -n '2,4p' "$0" >&2; exit 0 ;;
+    *) bridge_err "unknown: $1"; exit 1 ;;
+  esac
+done
+
+bridge_require git jq || exit 1
+REPO_URL="$(bridge_repo_url)" || { bridge_err "no bridge repo configured"; exit 1; }
+OWNER_REPO="$(printf '%s' "$REPO_URL" | sed -E -e 's#^git@github.com:##' -e 's#^https?://github.com/##' -e 's#\.git$##')"
+WORKSPACE="$BRIDGE_LOCAL_WORKSPACE/$(basename "$OWNER_REPO")"
+[ -d "$WORKSPACE/.git" ] || { bridge_err "no workspace at $WORKSPACE"; exit 1; }
+cd "$WORKSPACE"
+
+git fetch -q --prune origin '+refs/heads/session/*:refs/remotes/origin/session/*' 2>/dev/null || true
+
+NOW_EPOCH="$(date +%s)"
+CUTOFF=$((NOW_EPOCH - OLDER_DAYS * 86400))
+
+bridge_info "scanning for stale session branches (older than ${OLDER_DAYS}d)"
+stale_count=0
+while IFS=$' ' read -r ct ref; do
+  [ -z "${ref:-}" ] && continue
+  if [ "$ct" -ge "$CUTOFF" ]; then
+    continue
+  fi
+  branch="${ref#refs/remotes/origin/}"
+  # Running-state guard: skip if any status.json says running.
+  skip=0
+  while IFS= read -r f; do
+    if git show "origin/$branch:$f" 2>/dev/null | jq -e '.state == "running"' >/dev/null 2>&1; then
+      skip=1
+      break
+    fi
+  done < <(git ls-tree -r --name-only "origin/$branch" -- requests/ 2>/dev/null | grep '/status\.json$' || true)
+  if [ "$skip" -eq 1 ]; then
+    bridge_warn "skip $branch (running request present)"
+    continue
+  fi
+  stale_count=$((stale_count + 1))
+  sid="${branch#session/}"
+  tag="archive/session/${sid}-$(date -u -d "@$ct" +%Y%m%d 2>/dev/null || date -u -r "$ct" +%Y%m%d 2>/dev/null || echo unknown)"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf 'DRY-RUN: would archive+delete %s (ct=%s)\n' "$branch" "$ct"
+    continue
+  fi
+  if [ "$LOCAL_ONLY" -eq 0 ]; then
+    git tag -f "$tag" "origin/$branch" 2>/dev/null || true
+    git push -q origin "$tag" 2>/dev/null || true
+    git push -q origin --delete "$branch" 2>/dev/null || true
+    bridge_info "deleted remote branch: $branch"
+  fi
+  if [ "$REMOTE_ONLY" -eq 0 ]; then
+    git branch -D "$branch" 2>/dev/null || true
+  fi
+done < <(git for-each-ref --format='%(committerdate:unix) %(refname)' refs/remotes/origin/session/* 2>/dev/null || true)
+
+bridge_info "stale sessions processed: $stale_count"
+
+if [ "$PRUNE_HASHES" -eq 1 ]; then
+  HASH_DIR="$BRIDGE_CACHE_DIR/response-hashes"
+  if [ -d "$HASH_DIR" ]; then
+    find "$HASH_DIR" -type f -mtime "+$OLDER_DAYS" -print -delete 2>/dev/null || true
+  fi
+fi

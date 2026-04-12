@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# bridge — dispatcher front-end for git-cli-bridge client scripts.
+# Usage: bridge <subcommand> [args...]
+set -euo pipefail
+
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+
+usage() {
+  cat <<'USAGE'
+bridge — git-cli-bridge client
+
+Usage: bridge <subcommand> [args...]
+
+Subcommands:
+  init                              Create a new session (orphan branch) on the bridge repo
+  request [flags] "prompt"          Submit a request (see: bridge request --help)
+  wait <req-id>                     Poll a request to terminal state
+  result <req-id> [--verbose]       Display the response body (sanitized)
+  status [--all] [--json]           Show session/request state
+  logs <req-id>                     Tail workflow logs for a request
+  close [--force]                   Archive and delete the current session branch
+  cleanup [--dry-run] [--older N]   Prune stale sessions
+
+Utility:
+  --help, help                       Show this help
+  --version                          Show client version
+
+Environment:
+  AI_BRIDGE_MODE=1                   Force bridge mode (used by routing)
+  AI_BRIDGE_DISABLE=1                Force local mode (overrides AI_BRIDGE_MODE)
+  FORGE_SESSION_ID                   Session tag for cache isolation
+
+See also:
+  ~/.claude/skills/git-cli-bridge/SKILL.md
+  ~/.claude/skills/git-cli-bridge/references/client-scripts.md
+USAGE
+}
+
+case "${1:-}" in
+  ""|-h|--help|help)
+    usage
+    exit 0
+    ;;
+  --version)
+    # shellcheck disable=SC1091
+    . "$BRIDGE_SELF_DIR/bridge-env.sh"
+    printf '%s\n' "$BRIDGE_CLIENT_VERSION"
+    exit 0
+    ;;
+  init|request|wait|result|status|logs|close|cleanup)
+    sub="$1"
+    shift
+    script="$BRIDGE_SELF_DIR/bridge-$sub"
+    if [ ! -x "$script" ]; then
+      printf 'bridge: subcommand script not found or not executable: %s\n' "$script" >&2
+      exit 1
+    fi
+    exec "$script" "$@"
+    ;;
+  *)
+    printf 'bridge: unknown subcommand: %s\n' "$1" >&2
+    printf 'run `bridge --help` for usage\n' >&2
+    exit 1
+    ;;
+esac

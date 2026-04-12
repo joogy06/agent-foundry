@@ -1,0 +1,125 @@
+# Dockerfile.ai-dev — GCP Workstation custom image with the AI CLI stack
+#
+# Bakes Node 22 LTS, the three AI CLIs, supporting tooling, libsecret, and chrony
+# into the code-oss base image. Ready to `docker build`.
+#
+# Build:
+#   PROJECT=my-project REGION=us-central1
+#   IMAGE=$REGION-docker.pkg.dev/$PROJECT/ai-dev/ai-dev:latest
+#   docker build -t $IMAGE -f scripts/Dockerfile.ai-dev .
+#
+# Push:
+#   gcloud auth configure-docker $REGION-docker.pkg.dev
+#   docker push $IMAGE
+#
+# Use in a workstations config:
+#   gcloud workstations configs create ai-dev-config \
+#     --container-custom-image=$IMAGE \
+#     --cluster=... --region=...
+
+FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/code-oss:latest
+
+# Build args (override on `docker build --build-arg ...`)
+ARG NODE_VERSION=22
+ARG NPM_GLOBAL_PREFIX=/home/user/.npm-global
+
+# 1. OS packages — slow-changing, do early so cache survives later layers
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libsecret-1-0 \
+      libsecret-tools \
+      chrony \
+      curl \
+      ca-certificates \
+      gnupg \
+      git \
+      jq \
+      unzip \
+      vim \
+      tmux \
+      python3 \
+      python3-pip \
+      python3-venv \
+      pipx \
+      build-essential \
+ && rm -rf /var/lib/apt/lists/*
+
+# 2. chrony — start at boot. The base image runs systemd; if not, see references/gotchas-and-fixes.md
+RUN systemctl enable chrony || true
+
+# 3. Node.js 22 LTS via NodeSource (separate layer for cache reuse)
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/* \
+ && node --version \
+ && npm --version
+
+# 4. GitHub CLI (separate from AI CLIs because slower-changing)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# 5. Configure npm to use a user-writable global prefix (so AI CLIs can self-update)
+ENV NPM_CONFIG_PREFIX=${NPM_GLOBAL_PREFIX}
+ENV PATH=${NPM_GLOBAL_PREFIX}/bin:${PATH}
+RUN mkdir -p "${NPM_GLOBAL_PREFIX}" \
+ && chown -R user:user "${NPM_GLOBAL_PREFIX}"
+
+# 6. AI CLIs — fastest-changing layer, last among installs
+RUN npm install -g \
+      @anthropic-ai/claude-code \
+      @google/gemini-cli \
+      @github/copilot \
+ && claude --version \
+ && gemini --version \
+ && copilot --version
+
+# 7. Python tools via pipx (per-tool venvs, persists in $HOME/.local)
+USER user
+RUN pipx ensurepath \
+ && pipx install ruff \
+ && pipx install black \
+ && pipx install poetry || true
+
+# 8. Default env for AI CLIs — uses Vertex via metadata server, no key file
+RUN sudo tee -a /etc/skel/.bashrc <<'EOF'
+# AI dev env (added by ai-dev image)
+export CLAUDE_CODE_USE_VERTEX=1
+export GOOGLE_GENAI_USE_VERTEXAI=1
+# These should come from the workstation env or `gcloud config set`
+# export GOOGLE_CLOUD_PROJECT=...
+# export GOOGLE_CLOUD_LOCATION=us-central1
+# export ANTHROPIC_VERTEX_PROJECT_ID=...
+# export ANTHROPIC_VERTEX_REGION=us-central1
+
+# Helper: fetch a secret from Secret Manager at use-time
+secret() {
+  gcloud secrets versions access latest --secret="$1" 2>/dev/null
+}
+
+# Suppress noisy npm update notifications
+export NO_UPDATE_NOTIFIER=1
+EOF
+
+# 9. Set the working directory to $HOME (persists)
+WORKDIR /home/user
+
+# 10. Default to interactive bash; the base image supplies its own ENTRYPOINT for the IDE
+CMD ["/bin/bash"]
+
+# Verification (run manually after build):
+#   docker run --rm $IMAGE bash -c '
+#     claude --version &&
+#     gemini --version &&
+#     copilot --version &&
+#     gh --version &&
+#     node --version &&
+#     python3 --version &&
+#     test -f /usr/lib/x86_64-linux-gnu/libsecret-1.so.0 && echo libsecret OK &&
+#     command -v chronyd && echo chrony OK
+#   '

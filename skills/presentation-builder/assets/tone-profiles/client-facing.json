@@ -1,0 +1,11 @@
+{
+  "name": "client-facing",
+  "formality": "high",
+  "jargon_level": "low",
+  "data_density": "value_focused",
+  "slide_count_max": 15,
+  "font_size_min": 28,
+  "preferred_flows": ["aida", "hook-problem-solution-proof-cta", "problem-solution-benefits"],
+  "title_style": "benefit_oriented",
+  "visual_style": "polished_branded"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "corporate-blue",
+  "primary": "#1B365D",
+  "secondary": "#4A90D9",
+  "accent": "#E07020",
+  "background": "#FFFFFF",
+  "text": "#333333",
+  "text-light": "#FFFFFF",
+  "success": "#2D8B46",
+  "warning": "#D4A017",
+  "danger": "#C0392B",
+  "neutral": "#95A5A6"
+}

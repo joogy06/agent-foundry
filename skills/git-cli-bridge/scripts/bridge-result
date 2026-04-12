@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# bridge-result — display the response body for a request, sanitized.
+#
+# Usage: bridge result <req-id> [--verbose] [--raw]
+#
+# - Prefers error.md over response.md if both exist (mutex rule).
+# - Sanitizes: ANSI strip + non-printable strip + UTF-8 validate.
+# - Caches SHA256 of the sanitized body; warns on mismatch.
+#
+# HARD RULE: this script NEVER evals, sources, or pipes content to any shell.
+
+set -euo pipefail
+
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
+. "$BRIDGE_SELF_DIR/bridge-env.sh"
+
+VERBOSE=0
+RAW=0
+REQ_ID=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --verbose) VERBOSE=1; shift ;;
+    --raw)     RAW=1;     shift ;;
+    -h|--help) sed -n '2,13p' "$0" >&2; exit 0 ;;
+    -*) bridge_err "unknown flag: $1"; exit 1 ;;
+    *)  REQ_ID="$1"; shift ;;
+  esac
+done
+
+[ -n "$REQ_ID" ] || { bridge_err "usage: bridge result <req-id>"; exit 1; }
+
+SESSION_ID="$(bridge_current_session)" || { bridge_err "no current session"; exit 1; }
+REPO_URL="$(bridge_repo_url)" || { bridge_err "no bridge repo configured"; exit 1; }
+OWNER_REPO="$(printf '%s' "$REPO_URL" | sed -E -e 's#^git@github.com:##' -e 's#^https?://github.com/##' -e 's#\.git$##')"
+WORKSPACE="$BRIDGE_LOCAL_WORKSPACE/$(basename "$OWNER_REPO")"
+cd "$WORKSPACE"
+
+REQ_DIR="requests/$REQ_ID"
+BRANCH="session/$SESSION_ID"
+
+# Fetch latest if the files are not present locally.
+if [ ! -f "$REQ_DIR/response.md" ] && [ ! -f "$REQ_DIR/error.md" ]; then
+  git fetch -q origin "$BRANCH" || true
+  git reset -q --hard "origin/$BRANCH" || true
+fi
+
+# Prefer error.md on mutex rule.
+SOURCE_FILE=""
+if [ -f "$REQ_DIR/error.md" ] && [ -f "$REQ_DIR/response.md" ]; then
+  bridge_warn "both error.md and response.md present; preferring error.md"
+  SOURCE_FILE="$REQ_DIR/error.md"
+elif [ -f "$REQ_DIR/error.md" ]; then
+  SOURCE_FILE="$REQ_DIR/error.md"
+elif [ -f "$REQ_DIR/response.md" ]; then
+  SOURCE_FILE="$REQ_DIR/response.md"
+else
+  bridge_err "no response.md or error.md found for $REQ_ID"
+  exit 1
+fi
+
+# Extract everything after the first closing --- of YAML frontmatter.
+# The body begins on the line after the second "---" line (assuming file starts with "---").
+body_tmp="$(mktemp)"
+trap 'rm -f "$body_tmp"' EXIT
+awk '
+  BEGIN { in_fm = 0; body = 0 }
+  /^---$/ {
+    if (in_fm == 0) { in_fm = 1; next }
+    else if (in_fm == 1) { in_fm = 2; body = 1; next }
+  }
+  body == 1 { print }
+' "$SOURCE_FILE" > "$body_tmp"
+
+# Print remediation banner from error.md if applicable.
+if [ "$(basename "$SOURCE_FILE")" = "error.md" ]; then
+  remediation="$(awk '
+    /^remediation: \|/ { in_r = 1; next }
+    in_r == 1 && /^[a-zA-Z_]+:/ { in_r = 0 }
+    in_r == 1 { sub(/^  /, ""); print }
+  ' "$SOURCE_FILE")"
+  if [ -n "$remediation" ]; then
+    printf '=== REMEDIATION ===\n%s\n=== END ===\n\n' "$remediation" >&2
+  fi
+fi
+
+# Frontmatter dump in verbose mode.
+if [ "$VERBOSE" -eq 1 ]; then
+  printf '=== FRONTMATTER ===\n' >&2
+  awk '/^---$/ { n++; if (n == 2) exit } n == 1 { print }' "$SOURCE_FILE" >&2
+  printf '=== BODY ===\n' >&2
+fi
+
+if [ "$RAW" -eq 1 ]; then
+  if [ -t 1 ] && [ "${BRIDGE_I_UNDERSTAND_RAW:-}" != "1" ]; then
+    bridge_err "--raw output requires BRIDGE_I_UNDERSTAND_RAW=1 when stdout is a terminal"
+    exit 1
+  fi
+  cat "$body_tmp"
+else
+  # Sanitize: ANSI strip, control-char strip, UTF-8 validate.
+  # Every step is a pure data transform; none execute content.
+  sanitized_tmp="$(mktemp)"
+  trap 'rm -f "$body_tmp" "$sanitized_tmp"' EXIT
+  sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' "$body_tmp" \
+    | tr -d '\000-\010\013\014\016-\037\177' \
+    | iconv -f UTF-8 -t UTF-8 -c > "$sanitized_tmp"
+
+  # Hash cache check (M14).
+  HASH_DIR="$BRIDGE_CACHE_DIR/response-hashes"
+  mkdir -p "$HASH_DIR" 2>/dev/null || true
+  HASH_FILE="$HASH_DIR/${SESSION_ID}-${REQ_ID}.sha256"
+  cur_hash="$(sha256sum "$sanitized_tmp" | awk '{print $1}')"
+  if [ -f "$HASH_FILE" ]; then
+    old_hash="$(cat "$HASH_FILE")"
+    if [ "$cur_hash" != "$old_hash" ]; then
+      bridge_warn "response hash changed since first read; possible history rewrite"
+    fi
+  else
+    printf '%s\n' "$cur_hash" > "$HASH_FILE"
+  fi
+
+  cat "$sanitized_tmp"
+fi

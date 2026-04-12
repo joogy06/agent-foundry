@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a1f2e; --border: #2a2f3e;
+    --text: #e6e6e6; --muted: #888; --accent: #5b9bd5; --letter: #ffd166;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2rem; font-family: -apple-system, system-ui, sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.5; }
+  .frame { max-width: 1200px; margin: 0 auto; }
+  h2 { font-size: 1.8rem; margin: 0 0 0.5rem; }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; }
+  .options { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .option { flex: 1 1 300px; background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.5rem; display: flex; gap: 1rem; }
+  .letter { font-size: 2rem; font-weight: bold; color: var(--letter); width: 2.5rem;
+            flex-shrink: 0; }
+  .content h3 { margin: 0 0 0.5rem; color: var(--accent); }
+  .content p { margin: 0; color: var(--text); }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
+            color: var(--muted); font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <h2>{{TITLE}}</h2>
+  <p class="subtitle">{{SUBTITLE}}</p>
+  <div class="options">
+    {{OPTIONS}}
+  </div>
+  <div class="footer">
+    Visual companion · respond in terminal with your choice or feedback
+  </div>
+</div>
+</body>
+</html>

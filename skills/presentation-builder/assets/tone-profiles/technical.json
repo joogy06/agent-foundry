@@ -1,0 +1,11 @@
+{
+  "name": "technical",
+  "formality": "medium",
+  "jargon_level": "high",
+  "data_density": "detailed_with_diagrams",
+  "slide_count_max": 20,
+  "font_size_min": 18,
+  "preferred_flows": ["adr-presentation", "rfc-design-review", "what-so-what-now-what"],
+  "title_style": "topic_or_action",
+  "visual_style": "diagram_heavy"
+}

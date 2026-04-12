@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# bridge-status — show the current session's requests (or --all sessions).
+# Usage: bridge status [--all] [--json]
+
+set -euo pipefail
+BRIDGE_SELF_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
+. "$BRIDGE_SELF_DIR/bridge-env.sh"
+
+ALL=0
+JSON=0
+for arg in "$@"; do
+  case "$arg" in
+    --all)  ALL=1 ;;
+    --json) JSON=1 ;;
+    -h|--help) sed -n '2,4p' "$0" >&2; exit 0 ;;
+    *) bridge_err "unknown: $arg"; exit 1 ;;
+  esac
+done
+
+bridge_require git jq || exit 1
+
+REPO_URL="$(bridge_repo_url)" || { bridge_err "no bridge repo configured"; exit 1; }
+OWNER_REPO="$(printf '%s' "$REPO_URL" | sed -E -e 's#^git@github.com:##' -e 's#^https?://github.com/##' -e 's#\.git$##')"
+WORKSPACE="$BRIDGE_LOCAL_WORKSPACE/$(basename "$OWNER_REPO")"
+cd "$WORKSPACE"
+git fetch -q origin '+refs/heads/session/*:refs/remotes/origin/session/*' 2>/dev/null || true
+
+list_session_requests() {
+  local branch="$1" sid
+  sid="${branch#session/}"
+  local reqs
+  reqs="$(git ls-tree --name-only "origin/$branch" -- requests/ 2>/dev/null | grep '^requests/' || true)"
+  if [ "$JSON" -eq 1 ]; then
+    printf '{"session_id":"%s","requests":[' "$sid"
+    local first=1
+    for rd in $reqs; do
+      rid="${rd#requests/}"
+      state="$(git show "origin/$branch:$rd/status.json" 2>/dev/null | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
+      [ "$first" -eq 0 ] && printf ','
+      printf '{"request_id":"%s","state":"%s"}' "$rid" "$state"
+      first=0
+    done
+    printf ']}\n'
+  else
+    printf 'session: %s\n' "$sid"
+    for rd in $reqs; do
+      rid="${rd#requests/}"
+      state="$(git show "origin/$branch:$rd/status.json" 2>/dev/null | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
+      printf '  %s  %s\n' "$rid" "$state"
+    done
+  fi
+}
+
+if [ "$ALL" -eq 1 ]; then
+  [ "$JSON" -eq 1 ] && printf '{"sessions":['
+  first=1
+  for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/session/* 2>/dev/null | sed 's#^origin/##'); do
+    [ "$first" -eq 0 ] && [ "$JSON" -eq 1 ] && printf ','
+    list_session_requests "$b"
+    first=0
+  done
+  [ "$JSON" -eq 1 ] && printf ']}\n'
+else
+  SID="$(bridge_current_session 2>/dev/null || true)"
+  [ -z "$SID" ] && { bridge_err "no current session"; exit 1; }
+  list_session_requests "session/$SID"
+fi

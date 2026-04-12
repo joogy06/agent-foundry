@@ -1,0 +1,88 @@
+# v1 semantic type registry — 18 types
+#
+# Source of truth: ~/.claude/skills/_meta/gates.py V1_SEMANTIC_TYPES
+# DO NOT hand-edit. If you need a new type, add it to
+# .contract/semantic-types.yaml in the project (project-local override)
+# OR cut a new skill revision and update gates.py's V1_SEMANTIC_TYPES and this
+# file together. Drift between these two MUST be caught by the parity test.
+#
+# Spec reference: section 7.3.1.
+#
+# Each entry maps a semantic type name to:
+#   strategy  — the Faker/Mimesis key the fixture generator invokes
+#   validator — a regex or named validator the round-trip test runs
+#
+# Round-trip requirement (spec section 20 criterion 4): for each type the
+# fixture generator must produce ≥3 distinct samples that each validate
+# against the declared validator AND round-trip through a standard library
+# where applicable.
+
+schema_version: "1.0.0"
+
+semantic_types:
+
+  # --- Identity (3) ---
+  user_id:
+    strategy: faker.uuid4
+    validator: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  session_token:
+    strategy: hex_random_32
+    validator: "^sess_[a-f0-9]{32}$"
+  api_key:
+    strategy: hex_random_40
+    validator: "^key_[a-f0-9]{40}$"
+
+  # --- Contact (4) ---
+  email:
+    strategy: faker.email
+    validator: email_rfc5322
+  phone_e164:
+    strategy: faker.phone_number_e164
+    validator: "^\\+[1-9]\\d{1,14}$"
+  address_line:
+    strategy: faker.street_address
+    validator: nonempty_str
+  country_iso2:
+    strategy: faker.country_code
+    validator: "^[A-Z]{2}$"
+
+  # --- Personal (4) ---
+  full_name:
+    strategy: faker.name
+    validator: nonempty_str
+  first_name:
+    strategy: faker.first_name
+    validator: nonempty_str
+  last_name:
+    strategy: faker.last_name
+    validator: nonempty_str
+  date_of_birth:
+    strategy: faker.date_of_birth
+    validator: iso_8601_date
+
+  # --- Temporal (3) ---
+  iso_8601_datetime:
+    strategy: faker.iso8601
+    validator: iso_8601_datetime_re
+  iso_8601_date:
+    strategy: faker.date
+    validator: iso_8601_date_re
+  unix_timestamp:
+    strategy: faker.unix_time
+    validator: positive_int
+
+  # --- Financial (3) ---
+  currency_amount:
+    strategy: faker.pydecimal_positive_2dp
+    validator: decimal_2dp
+  currency_iso4217:
+    strategy: faker.currency_code
+    validator: "^[A-Z]{3}$"
+  iban:
+    strategy: faker.iban
+    validator: iban_checksum
+
+  # --- Web (1) ---
+  url_http:
+    strategy: faker.url
+    validator: "^https?://"

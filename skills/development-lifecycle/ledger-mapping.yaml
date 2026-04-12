@@ -1,0 +1,86 @@
+# SDLC phase → integration ledger state mapping
+#
+# Machine-readable contract between the development-lifecycle skill's SDLC
+# phases and the contract-driven pipeline's integration ledger stages.
+#
+# Authoritative precedence: on conflict, the ledger wins. Tools that consult
+# both the SDLC state and the ledger state MUST defer to the ledger.
+#
+# Spec reference: section 14.3.
+#
+# Backwards compatibility: WPs without a contract map continue to run the
+# traditional SDLC (Phase 3 as a single TEST gate). This mapping applies
+# ONLY to WPs whose component is tracked in progress/contract-map.yaml.
+
+schema_version: "1.0.0"
+
+phase_to_ledger:
+  PLAN:
+    required_ledger_min: null          # pre-component; no ledger row yet
+    advances_to: null
+
+  IMPLEMENT:
+    required_ledger_min: PLANNED
+    advances_to: null                  # IMPLEMENT is the work between PLANNED and SCAFFOLDED
+
+  TEST_3a_SCAFFOLD:
+    required_ledger_min: PLANNED
+    advances_to: SCAFFOLDED
+    skill: sample-data-scaffolding
+    runner: null                       # skill emits manifest only
+
+  TEST_3b_UNIT:
+    required_ledger_min: SCAFFOLDED
+    advances_to: UNIT_TESTED
+    skill: null                        # unit tests exist from IMPLEMENT
+    runner: trusted_runner             # bob executes, produces audit bundle
+
+  TEST_3c_INTEGRATION:
+    required_ledger_min: UNIT_TESTED
+    advances_to: INTEGRATED
+    skill: integration-flow-testing    # generates test files
+    runner: trusted_runner             # bob executes, produces audit bundle
+
+  TEST_3d_FLOW:
+    required_ledger_min: INTEGRATED
+    advances_to: VERIFIED
+    skill: integration-flow-testing    # already invoked at 3c; same test files drive flow tests
+    runner: trusted_runner
+    audit: audit_spawn                 # cold Claude + Codex, required
+
+  SECURE:
+    required_ledger_min: VERIFIED
+    advances_to: null                  # security review does not itself advance the ledger
+
+  DOCUMENT:
+    required_ledger_min: VERIFIED
+    advances_to: DOCUMENTED
+    wiki_filing: conditional           # filed to wiki only if project is wiki-bound
+
+  REVIEW:
+    required_ledger_min: DOCUMENTED
+    advances_to: null
+
+  DONE:
+    required_ledger_min: DOCUMENTED
+    advances_to: null
+
+conflict_resolution: "ledger_wins"
+
+backwards_compatible: true
+
+ledger_stages_in_order:
+  - PLANNED
+  - SCAFFOLDED
+  - UNIT_TESTED
+  - INTEGRATED
+  - VERIFIED
+  - DOCUMENTED
+  # BLOCKED / PAUSED / ROLLBACK are not forward stages; they are sidelined states
+
+terminal_states:
+  forward:
+    - DOCUMENTED
+  sideline:
+    - BLOCKED
+    - AUDIT_UNAVAILABLE
