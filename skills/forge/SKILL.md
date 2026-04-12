@@ -65,12 +65,14 @@ You MUST create a task for each item and complete in order:
 
 If `came_from_founder` is absent or false, proceed with normal forge flow. Forge NEVER reads `.founder/venture-brief.yaml` at session start -- only on explicit handoff.
 4. **Assess complexity** — determine design exploration team size needed
-4b. **Check Codex + Gemini availability — sandbox-aware** — Compute `MODE=$(bash ~/.claude/skills/git-cli-bridge/scripts/bridge-mode-detect.sh)` first and cache it for the session (forge re-uses this value for every downstream Gemini/Copilot call). Branch on MODE:
+4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
-   - **MODE=local**: use the existing behavior — `/codex:setup` or `CODEX_AVAILABLE=$(codex --version 2>/dev/null && echo yes || echo no)` for Codex; `mcp__gemini-cli__ping()` for Gemini MCP. Note gaps, continue.
-   - **MODE=bridge**: verify `bridge init` has been run in this session. If not, halt and tell the user to run `bridge init <bridge-repo>` first. With the bridge initialized, treat Gemini and Copilot as AVAILABLE via bridge transport (latency budget ~90s per call instead of ~2-5s). Codex is unchanged — it runs locally inside the sandbox.
+   - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
+   - **capabilities.gemini_analyst = true**: Gemini available, use `mcp__gemini-cli__ask-gemini`.
+   - **capabilities.bridge_fallback = true**: bridge mode active — route Gemini/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
+   - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
-   Cache the MODE + both availability flags for the rest of the session — do not re-check on every use. If Codex is unavailable, note the gap explicitly but continue with what's available. See `git-cli-bridge` skill.
+   The manifest is cached for the session — do not re-probe on every use. If Codex/Gemini unavailable, note the gap explicitly but continue with what's available. See `env-adoption` skill for full schema and `git-cli-bridge` skill for bridge protocol.
 5. **Skill gap check** — identify skills needed, check if they exist (see Skill Gap Detection)
 5b. **Hard rules checkpoint** — read `~/.claude/skills/_meta/hard-rules-checklist.md` DESIGN PHASE + CROSS-MODEL sections. Verify: Codex parallel for MEDIUM/COMPLEX? Performance expectations asked? Gap detection done?
 6. **Phase 1: Design Exploration** — spawn design exploration team OR do single-agent exploration

@@ -3,17 +3,9 @@ name: founder
 description: >
   Use when the user asks about starting a venture, generating business ideas, validating an idea,
   building a business model, going to market, running a sprint, or any pre-execution founder /
-  innovator / inventor / entrepreneur question. Parent skill for the founder-* family: ideation
-  (Phase 1), validation (Phase 2), business-model (Phase 2), sprint (Phase 2), gtm (Phase 3).
-  Thin router + intake + venture state owner + hard-rules enforcer. Routes to `founder-ideation`
-  for idea generation, `founder-validation` for experiment design and evidence capture,
-  `founder-business-model` for unit economics and pricing, `founder-sprint` for stage-gated
-  progression. Hands off to `forge` for execution (via sprint Handoff stage or direct),
-  `presentation-builder` for pitch decks, `content-writer` + `conversion-psychology` for landing
-  copy, `seo-*` for organic distribution. REFUSES legal / tax / valuation / cap table /
-  LLM-generated TAM questions. Trigger on: business idea, founder, entrepreneur, innovator,
-  inventor, startup, venture, pre-seed, seed, market discovery, niche, pain point, validation,
-  MVP, pitch, "should I build X", "what should I build", "unit economics", "what should I charge",
+  innovator / inventor / entrepreneur intent. Trigger on: business idea, founder, entrepreneur,
+  startup, venture, pre-seed, seed, market discovery, niche, pain point, validation, MVP, pitch,
+  "should I build X", "what should I build", "unit economics", "what should I charge",
   "run a sprint", "what stage am I at".
 ---
 

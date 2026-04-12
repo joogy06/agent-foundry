@@ -1,0 +1,34 @@
+# Private / local-only content — never publish
+**/*.before-*
+**/*.bak
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Config-driven exclusions
+skills/entrepreneur-webstore/
+skills/_meta/
+skills/forge/superpowers-tracked.md/

@@ -8,7 +8,7 @@ description: Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Gemini C
 Delegate tasks to **Codex CLI (GPT-5.4)** and **Gemini CLI (Gemini 3)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
 
 <HARD-RULE>
-Always check Codex availability before delegating. The subscription may be inactive. Run `codex --version` first — if it fails, fall back to Claude Code agents.
+Always check Codex availability before delegating. Read `tools.codex.installed` from `~/.claude/state/inventory.json` (written by `env-adoption` skill). If the inventory is missing, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check --inventory-only --silent` first. If `tools.codex.installed` is false, fall back to Claude Code agents.
 </HARD-RULE>
 
 <HARD-RULE>

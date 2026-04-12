@@ -12,7 +12,7 @@ description: Use when [triggering conditions only]
 ```
 
 - `name`: lowercase, hyphens only, no special chars. Prefer verb-first (e.g., `deploying-containers` not `container-deployment`)
-- `description`: max 500 chars, max 1024 total frontmatter
+- `description`: **max 1024 characters** (hard limit enforced by Claude Code — skills with longer descriptions are silently skipped at load time). Aim for under 500 chars. Total frontmatter block must also stay under 1024 chars.
 - Description MUST start with "Use when..."
 - Third person (injected into system prompt context)
 
