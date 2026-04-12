@@ -321,8 +321,7 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 
 ## License
 
-<!-- TODO: pick a license -->
-_License — to be added._
+[MIT](LICENSE)
 
 ---
 
