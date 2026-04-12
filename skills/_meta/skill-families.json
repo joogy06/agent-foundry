@@ -1,0 +1,110 @@
+{
+  "presentation-builder": [
+    "presentation-narrative",
+    "presentation-datavis",
+    "presentation-diagrams",
+    "presentation-styling",
+    "presentation-renderer"
+  ],
+  "career-coach": [
+    "career-assessment",
+    "career-planning",
+    "career-storytelling",
+    "career-positioning",
+    "career-leadership",
+    "career-transition"
+  ],
+  "project-documentation": [
+    "architecture-templates",
+    "cascade-rules",
+    "flow-diagrams",
+    "context-detection"
+  ],
+  "performance": [
+    "profiling",
+    "load-testing",
+    "database"
+  ],
+  "docker-fundamentals": [
+    "docker-networking",
+    "docker-storage",
+    "docker-security",
+    "docker-cicd",
+    "docker-compose-patterns"
+  ],
+  "ubuntu-server-admin": [
+    "ubuntu-web-servers",
+    "ubuntu-databases",
+    "ubuntu-docker-host",
+    "ubuntu-file-storage",
+    "ubuntu-network-infra",
+    "ubuntu-monitoring",
+    "ubuntu-ollama-nvidia"
+  ],
+  "rhel-server-admin": [
+    "rhel-web-servers",
+    "rhel-databases",
+    "rhel-docker-host",
+    "rhel-file-storage",
+    "rhel-network-infra",
+    "rhel-monitoring",
+    "rhel-ollama-nvidia"
+  ],
+  "seo-keyword-strategist": [
+    "seo-structure-architect",
+    "seo-meta-optimizer",
+    "seo-serp-optimizer",
+    "seo-content-strategist",
+    "seo-authority-builder",
+    "seo-data-analyst"
+  ],
+  "windows-powershell": [
+    "windows-ps-server-admin",
+    "windows-ps-security",
+    "windows-cmd",
+    "windows-sso",
+    "windows-ad-admin"
+  ],
+  "python-flask-developer": [
+    "python-auth-security",
+    "python-parallelism",
+    "python-data-engineer",
+    "python-enterprise-connectors"
+  ],
+  "confluence-rest-api": [
+    "confluence-documentation",
+    "confluence-content-creator"
+  ],
+  "trading-strategy-backtester": [
+    "trading-risk-management",
+    "crypto-exchange-integration",
+    "financial-sentiment-analysis",
+    "market-data-engineering",
+    "trader-psychology-analysis",
+    "geopolitical-market-impact",
+    "social-trading-signals",
+    "day-trading-patterns"
+  ],
+  "wiki": [
+    "ingest",
+    "query",
+    "lint",
+    "schema",
+    "templates/research",
+    "templates/project",
+    "templates/personal",
+    "templates/business",
+    "templates/reading",
+    "templates/general"
+  ],
+  "obsidian": [
+    "vault-setup",
+    "plugins",
+    "dataview",
+    "frontmatter",
+    "wikilinks",
+    "graph-view",
+    "css-themes",
+    "uri-schemes"
+  ]
+}

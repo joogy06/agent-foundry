@@ -30,5 +30,12 @@ build/
 
 # Config-driven exclusions
 skills/entrepreneur-webstore/
-skills/_meta/
+skills/_meta/archive/
+skills/_meta/evals/
+skills/_meta/creation-log.jsonl/
+skills/_meta/failure-deltas.jsonl/
+skills/_meta/gap-events.jsonl/
+skills/_meta/perf-findings.jsonl/
+skills/_meta/inventory.json/
+skills/_meta/inventory.json.before-*/
 skills/forge/superpowers-tracked.md/
