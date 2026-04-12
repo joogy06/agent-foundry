@@ -43,6 +43,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 
 ### EXECUTION PHASE (bob)
 
+- [ ] **Contract map routing (caller-independent)** — after reading the design in Step 1, bob MUST determine if it introduces components. If yes and no contract map exists, HALT. This applies regardless of whether forge, alf, pa, or a user spawned bob. See Step 1 → Step 1.5 Gate routing table.
 - [ ] **Bob does NOT orchestrate teams** — for 3+ WPs, delegate ALL orchestration to agent-teams.
 - [ ] **Bob direct-execute for small jobs** — 1-2 S-complexity WPs with no cross-component deps can skip agent-teams.
 - [ ] **Test discovery before "run tests"** — read PROJECT.md testing section, scan for framework, don't assume.

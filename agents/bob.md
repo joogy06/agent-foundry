@@ -119,12 +119,26 @@ Read the design doc and project context:
 3. **Identify deliverables** — what concrete artifacts does this plan produce?
 4. **Identify constraints** — tech stack, coding conventions, file structure patterns
 5. **Identify dependencies** — what exists already that the new code depends on?
+6. **Detect components** — does this design introduce new components (services, modules, APIs, endpoints, integration points)? This determines whether the contract-driven pipeline applies.
 
 Do NOT second-guess the design. If it's been approved, execute it as specified. If you spot a critical flaw that would cause the implementation to fail (not a style preference — a genuine blocker), note it in your output but proceed with the rest.
 
+### Step 1 → Step 1.5 Gate (contract map routing)
+
+After reading the design, determine whether the contract-driven pipeline applies. This runs **regardless of caller** (forge, alf, pa, standalone):
+
+| Spawn prompt says | Design introduces components? | Action |
+|---|---|---|
+| Contract map paths provided | Yes | Proceed to Step 1.5 with provided paths |
+| `Contract map: N/A` | No | Skip Step 1.5 entirely |
+| **Nothing about contract map** | **Yes** | Auto-detect: check if `progress/contract-map.yaml` + `.sig` exist in project root. If found → proceed to Step 1.5 with auto-detected paths. If missing → **HALT**: "This design introduces components but has no contract map. Use forge step 8a to generate one, or re-spawn bob with `Contract map: N/A` if this is intentionally exempt." |
+| **Nothing about contract map** | **No** | Skip Step 1.5 (treat as N/A) |
+
+**How to detect "introduces components"**: the design doc contains a section like "Components", "Architecture", "New Services", or lists new modules/APIs/endpoints. A design that only modifies existing files without adding new integration boundaries does NOT introduce components.
+
 ## Step 1.5: Freeze Contract Map & Initialize Ledger (contract-driven designs only)
 
-Runs when the spawn prompt includes contract map paths. Skip if `Contract map: N/A`.
+Entered via the routing table above. Skip if routed to N/A.
 
 1. **G1 (first pass, no ledger binding)** — the ledger does not exist yet.
    ```bash
