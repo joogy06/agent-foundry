@@ -152,6 +152,7 @@ do_check() {
   else
     # Probe all tools
     local claude_j codex_j gemini_j copilot_j gh_j git_j docker_j python3_j bridge_j
+    local jq_j yq_j openssl_j
     claude_j=$(detect_tool claude)
     codex_j=$(detect_tool codex)
     gemini_j=$(detect_tool gemini)
@@ -160,6 +161,9 @@ do_check() {
     git_j=$(detect_tool git)
     docker_j=$(detect_tool docker)
     python3_j=$(detect_tool python3)
+    jq_j=$(detect_tool jq)
+    yq_j=$(detect_tool yq)
+    openssl_j=$(detect_tool openssl "version")
     bridge_j=$(detect_bridge)
 
     # Build inventory JSON
@@ -173,6 +177,9 @@ do_check() {
       --argjson git "$git_j" \
       --argjson docker "$docker_j" \
       --argjson python3 "$python3_j" \
+      --argjson jq_tool "$jq_j" \
+      --argjson yq "$yq_j" \
+      --argjson openssl "$openssl_j" \
       --argjson bridge "$bridge_j" \
       --arg last_probed "$(now_iso)" \
       '{
@@ -187,6 +194,9 @@ do_check() {
           git: $git,
           docker: $docker,
           python3: $python3,
+          jq: $jq_tool,
+          yq: $yq,
+          openssl: $openssl,
           bridge: $bridge
         }
       }')
@@ -258,7 +268,12 @@ do_check() {
     docker_installed=$(printf '%s' "$inv_data" | jq -r '.tools.docker.installed')
     bridge_installed=$(printf '%s' "$inv_data" | jq -r '.tools.bridge.installed')
 
-    local triple_model=false codex_challenger=false gemini_analyst=false bridge_fallback=false container_workflows=false
+    local jq_installed yq_installed openssl_installed
+    jq_installed=$(printf '%s' "$inv_data" | jq -r '.tools.jq.installed')
+    yq_installed=$(printf '%s' "$inv_data" | jq -r '.tools.yq.installed')
+    openssl_installed=$(printf '%s' "$inv_data" | jq -r '.tools.openssl.installed')
+
+    local triple_model=false codex_challenger=false gemini_analyst=false bridge_fallback=false container_workflows=false contract_pipeline=false
     if [ "$codex_installed" = "true" ] && [ "$gemini_mcp" = "true" ]; then
       triple_model=true
     fi
@@ -266,6 +281,10 @@ do_check() {
     [ "$gemini_mcp" = "true" ] && gemini_analyst=true
     [ "$bridge_mode" = "bridge" ] && bridge_fallback=true
     [ "$docker_installed" = "true" ] && container_workflows=true
+    # Contract pipeline needs: jq + yq + openssl + python3 (for gates.py/claims.py/audit_spawn.py)
+    if [ "$jq_installed" = "true" ] && [ "$yq_installed" = "true" ] && [ "$openssl_installed" = "true" ]; then
+      contract_pipeline=true
+    fi
 
     sess=$(jq -n \
       --arg session_id "$(session_id)" \
@@ -280,6 +299,7 @@ do_check() {
       --argjson gemini_analyst "$gemini_analyst" \
       --argjson bridge_fallback "$bridge_fallback" \
       --argjson container_workflows "$container_workflows" \
+      --argjson contract_pipeline "$contract_pipeline" \
       '{
         session_id: $session_id,
         created: $created,
@@ -293,7 +313,8 @@ do_check() {
           codex_challenger: $codex_challenger,
           gemini_analyst: $gemini_analyst,
           bridge_fallback: $bridge_fallback,
-          container_workflows: $container_workflows
+          container_workflows: $container_workflows,
+          contract_pipeline: $contract_pipeline
         }
       }')
 
@@ -326,7 +347,7 @@ do_check() {
 
     # List installed tools
     local tools_line=""
-    for tool in claude codex gemini copilot gh git docker python3 bridge; do
+    for tool in claude codex gemini copilot gh git docker python3 jq yq openssl bridge; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       local version
@@ -343,7 +364,7 @@ do_check() {
 
     # List missing tools
     local missing=""
-    for tool in claude codex gemini copilot gh git docker python3 bridge; do
+    for tool in claude codex gemini copilot gh git docker python3 jq yq openssl bridge; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       if [ "$installed" != "true" ]; then
