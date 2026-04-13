@@ -31,7 +31,7 @@ For each issue:
 Rank overall design: strong / acceptable / needs-rework / reject.
 BRIEF
 
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/challenger.md" \
   "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/challenger.md"
@@ -46,7 +46,7 @@ timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/approach.md" \
   "You are exploring approaches for [TASK].
 Context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
@@ -63,7 +63,7 @@ Be opinionated — recommend the best approach and explain why." \
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 
-timeout 120 codex exec --ephemeral --skip-git-repo-check --search \
+timeout 600 codex exec --ephemeral --skip-git-repo-check --search \
   -o "$CODEX_WORK/research.md" \
   "Research current best practices for [TECHNOLOGY/PATTERN] as of 2026.
 Focus on:
@@ -101,7 +101,7 @@ A fresh approach to solve this. Don't repeat what was already tried.
 Think differently — challenge the assumptions that led to the dead end.
 BRIEF
 
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
   -o "$CODEX_WORK/escalation-result.md" \
   "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/escalation-result.md"

@@ -241,24 +241,24 @@ For each issue: Severity (critical/moderate/minor), What's wrong, Why it matters
 Rank overall design: strong / acceptable / needs-rework / reject.
 BRIEF
 
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/challenger.md" \
-  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." || echo "CODEX_TIMEOUT: Codex did not respond within 120s" > "$CODEX_WORK/challenger.md" &
+  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/challenger.md" &
 
 # Codex Second Opinion / Approach Explorer (independent perspective)
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/approach.md" \
   "You are exploring approaches for [TASK].
 Context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Produce your top 2-3 recommended approaches with:
 1. How it works  2. Pros/cons  3. Effort estimate  4. Risks
-Be opinionated — recommend the best approach and explain why." || echo "CODEX_TIMEOUT: Codex did not respond within 120s" > "$CODEX_WORK/approach.md" &
+Be opinionated — recommend the best approach and explain why." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/approach.md" &
 
 # Codex Research (when task needs up-to-date info)
-timeout 120 codex exec --ephemeral --skip-git-repo-check --search \
+timeout 600 codex exec --ephemeral --skip-git-repo-check --search \
   -o "$CODEX_WORK/research.md" \
   "Research current best practices for [TECHNOLOGY/PATTERN] as of 2026.
-Latest versions, known limitations, community adoption, alternatives." || echo "CODEX_TIMEOUT: Codex did not respond within 120s" > "$CODEX_WORK/research.md" &
+Latest versions, known limitations, community adoption, alternatives." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/research.md" &
 
 wait  # Wait for all Codex tasks to complete
 ```
@@ -345,9 +345,9 @@ A fresh approach to solve this. Don't repeat what was already tried.
 Think differently — challenge the assumptions that led to the dead end.
 BRIEF
 
-timeout 120 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
   -o "$CODEX_WORK/escalation-result.md" \
-  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." || echo "CODEX_TIMEOUT: Codex did not respond within 120s" > "$CODEX_WORK/escalation-result.md"
+  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/escalation-result.md"
 ```
 
 ### Escalation Termination

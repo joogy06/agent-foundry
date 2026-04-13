@@ -33,7 +33,7 @@ The preferred entry point is the **codex plugin** (`~/.claude/plugins/cache/open
 
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
-timeout 120 codex exec --ephemeral -s read-only \
+timeout 600 codex exec --ephemeral -s read-only \
   -o "$CODEX_WORK/result.md" \
   "Review this skill draft at [PATH]. Output: deploy / revise / rewrite."
 ```

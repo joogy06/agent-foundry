@@ -228,7 +228,7 @@ includes:
 angles):
 
 ```bash
-timeout 180 codex exec --ephemeral --skip-git-repo-check -s read-only \
+timeout 600 codex exec --ephemeral --skip-git-repo-check -s read-only \
   -o "$WORK/team-contrarian-round1.md" \
   "You are the contrarian team. Question: $QUESTION. Data: see $CONTEXT_FILE.
    Produce $N outputs per the format in $OUTPUT_SPEC."

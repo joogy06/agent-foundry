@@ -30,7 +30,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 
 - [ ] **Project context check** — before any work in a project directory, read (in this order): `PROJECT.md`, `history.md`, `tasks.md`, `docs/plans/*.md`, `docs/components/*/COMPONENT.md`, `session_control.md`, `index.md`. Don't repeat finished work, don't re-litigate settled decisions.
 - [ ] **Wiki binding check** — check for `.wiki-link` (root or parent), `.wiki/` subdirectory, and `~/.wiki-registry.yaml` entries matching CWD. If bound, mention the wiki(s) in the session opening. Honor `auto_consult` and `auto_filing` flags. Shared wikis still require approval for NEW pages/ingestions.
-- [ ] **Autonomy prompt FIRST, then forge prompt** — ask autonomy mode, STOP, wait for answer. ONLY after the user responds, ask the forge prompt. NEVER combine the two into a single message. NEVER present both at once.
+- [ ] **Autonomy + Forge are always-on (no prompt)** — autonomy is globally configured in `~/.claude/settings.json` (acceptEdits + Bash(*) + git push ask). Forge routing is always-on per CLAUDE.md. Do NOT ask the user about autonomy or forge mode. Just route tasks through forge automatically per the Routing by Complexity rules in CLAUDE.md. The only session-start questions should be about the user's TASK, not about mode configuration.
 - [ ] **CLAUDE.md hard-rule scan — automated** — `~/.claude/skills/_meta/scan_hard_rules.py` scans global + project-local CLAUDE.md for HARD-RULE directives and diffs against this checklist. Runs automatically via **SessionStart hook** (injects `additionalContext` at session start) and also as **forge Step 1** (catches subagent / post-`cd` invocations). If the scan surfaces potentially missing rules, surface the diff to the user with a 1-line summary and ask: "add to checklist / wire into a skill / apply ad-hoc / ignore?" — do NOT silently skip. Manual fallback: `python3 ~/.claude/skills/_meta/scan_hard_rules.py` (plain mode).
 - [ ] **Superpowers version tracker** — on session start, compare latest plugin version to `~/.claude/skills/forge/superpowers-tracked.md`. If drift, alert the user and offer a review.
 
@@ -98,7 +98,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 ### CROSS-MODEL (Codex + Gemini)
 
 - [ ] **env-adoption session state** — verify `~/.claude/state/inventory.json` exists and is <24h old. If missing or stale, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` once. Read capabilities from session state, not inline probing.
-- [ ] **Timeout all codex exec** — wrap with `timeout 120`. Fallback on timeout.
+- [ ] **Timeout all codex exec** — wrap with `timeout 600`. Fallback on timeout.
 - [ ] **Escalation terminates** — Claude 2x → Codex 1x → user. Never loop.
 - [ ] **Session-scoped Codex availability** — read `tools.codex.installed` from inventory. Don't re-probe every invocation.
 - [ ] **Gemini for COMPLEX tasks** — MEDIUM = Codex only. COMPLEX = Codex + Gemini. Don't use Gemini for simple tasks (quota waste).
