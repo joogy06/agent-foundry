@@ -12,6 +12,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Claude Code local overrides (per-user, not committed)
+.claude/settings.local.json
+
 # Editors
 .vscode/
 .idea/
