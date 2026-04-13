@@ -65,6 +65,12 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Drift canary** — emit ledger header `drift_canary: "ALDEBARAN-7"` verbatim every 20 events. Paraphrase or omission = drift detected, halt.
 - [ ] **Skill file checksums** — bob logs sha256 of every invoked skill file at startup and before each gate check. Any mid-session skill-file mutation is caught.
 
+### KNOWLEDGE GROUNDING
+
+- [ ] **Check grounding tier before factual claims** — before stating facts, determine if the answer is verified (tier 1), grounded (tier 2), inferred (tier 3), or training-only (tier 4). Cite the source when tier 1-3.
+- [ ] **Respect strict_airgap** — if `strict_airgap: true` in `~/.knowledge-grounding.yaml`, tier 4 answers require explicit user override. Never silently proceed with training-only data in strict mode.
+- [ ] **Read sources.json, don't ad-hoc probe** — check `~/.claude/state/sources.json` for source availability. Don't bypass the manifest with inline checks.
+
 ### REVIEW / COMPLETION
 
 - [ ] **Evidence before assertions** — never claim "done" or "passing" without showing command output.

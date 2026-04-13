@@ -18,6 +18,21 @@ Structured deep research that produces verified, organised findings with confide
 - Any task where "I think" should be replaced with "the evidence shows"
 
 
+## Internet Reachability Check
+
+Before running web searches, check if internet is available via the knowledge-grounding manifest:
+
+```bash
+INTERNET=$(jq -r '.internet_reachable' ~/.claude/state/sources.json 2>/dev/null || echo "unknown")
+```
+
+If `internet_reachable` is `false`:
+- Do NOT attempt web searches (they will hang or fail)
+- Suggest local sources instead: wikis, project docs, configured doc_paths
+- Read active sources from `~/.claude/state/sources.json` to suggest alternatives
+
+If the manifest does not exist, run `bash ~/.claude/skills/knowledge-grounding/scripts/discover.sh discover --silent` first.
+
 ## Gemini MCP Integration
 
 When available, `mcp__gemini-cli__ask-gemini` provides an additional research source with Google Search grounding. Use it to:
