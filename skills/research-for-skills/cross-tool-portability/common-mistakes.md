@@ -151,6 +151,38 @@ ln -sfn ~/.claude/skills/my-skill ~/.codex/skills/my-skill
 
 (Unless the skill is on the skip list — see `install-matrix.md`.)
 
+### Per-file symlinks when the directory symlink already exists (DATA LOSS)
+
+This is the single most dangerous mistake in the skill install flow. If `~/.codex/skills/<name>` is already a directory symlink to `~/.claude/skills/<name>` (the canonical pattern — see `install-matrix.md`), then **every path under it resolves through the symlink back to the Claude side**. Doing per-file symlinks at that point creates self-referential links that **destroy the content**.
+
+```bash
+# SETUP: ~/.codex/skills/my-skill is a directory symlink → ~/.claude/skills/my-skill (correct, common)
+
+# BUG: trying to "install" files one by one via per-file symlinks
+for f in SKILL.md references/*.md scripts/*; do
+    ln -sf "$HOME/.claude/skills/my-skill/$f" "$HOME/.codex/skills/my-skill/$f"   # ❌ DATA LOSS
+done
+# Because ~/.codex/skills/my-skill/$f resolves to ~/.claude/skills/my-skill/$f,
+# this is "ln -sf X X" — ln overwrites X with a symlink pointing to itself.
+# The original file content is GONE.
+```
+
+**The rule**: the directory symlink delivers full parity for every file under the skill directory. Once `~/.codex/skills/<name>` points at `~/.claude/skills/<name>`, **never touch anything under the Codex path again**. All additions, updates, and deletions happen on the Claude side only.
+
+**The guard** (use this before any file-level work on the Codex side):
+
+```bash
+TARGET="$HOME/.codex/skills/$SKILL_NAME"
+if [[ -L "$TARGET" ]] && [[ "$(readlink -f "$TARGET")" == "$HOME/.claude/skills/$SKILL_NAME" ]]; then
+    echo "Codex directory symlink already in place — parity delivered. Skipping per-file work."
+    exit 0
+fi
+# Only here does it make sense to do anything on the Codex side (initial install):
+ln -sfn "$HOME/.claude/skills/$SKILL_NAME" "$TARGET"
+```
+
+Precedent: S022 lost all 12 new/modified files mid-session to this bug; recovered by rewriting verbatim from prior writes. Don't repeat.
+
 ### Description that doesn't lead with a trigger
 
 ```yaml

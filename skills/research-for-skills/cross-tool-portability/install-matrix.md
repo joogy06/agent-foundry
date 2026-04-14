@@ -34,8 +34,18 @@ SKILL_NAME=my-skill
 mkdir -p ~/.claude/skills/$SKILL_NAME/{references,scripts,assets}
 # ...write SKILL.md, references/*, scripts/*, assets/* ...
 
-# 2. Codex symlink
+# 2. Codex symlink (directory-level — NOT per-file; see common-mistakes.md § Per-file symlinks)
+# -sfn flags are critical:
+#   -s = symbolic link
+#   -f = force-replace if target exists
+#   -n = if target is a symlink to a directory, do NOT follow it (replace atomically)
+# This single command is idempotent: safe to run on fresh install, updates, or re-runs.
 ln -sfn "$HOME/.claude/skills/$SKILL_NAME" "$HOME/.codex/skills/$SKILL_NAME"
+
+# Verify the link landed correctly (directory symlink, resolves to Claude side)
+test -L "$HOME/.codex/skills/$SKILL_NAME" \
+  && [[ "$(readlink -f "$HOME/.codex/skills/$SKILL_NAME")" == "$HOME/.claude/skills/$SKILL_NAME" ]] \
+  || { echo "FAIL: Codex symlink not set correctly"; exit 1; }
 
 # 3. Gemini symlink (uses gemini skills link, not install)
 gemini skills link "$HOME/.claude/skills/$SKILL_NAME"

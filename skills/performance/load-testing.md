@@ -210,3 +210,139 @@ These four metrics are mandatory for every load test:
 | Skip the smoke test | If the app is broken, load testing tells you nothing useful. |
 | Test with empty databases | Production databases have real data. Seed realistic volumes. |
 | Ignore think time between requests | Real users pause between clicks. Add sleep(1) between requests. |
+
+---
+
+## Test Reality Requirements
+
+Every load test described above is only as good as the environment it runs in. Before running any scenario, satisfy the mandatory pre-flight in `references/test-reality-model.md`:
+
+1. `PERF_ENV` is set, not production, and recorded in the report
+2. Test data volume and distribution match the production-shape target from the contract
+3. Warmup duration meets the stack minimum (Python 30 s, Node 60 s, JVM 300 s; see the test reality model for the full table)
+4. Third-party integrations (payments, SMS, email, auth, LLM APIs) are mocked with realistic latency distributions
+5. Generator location is recorded alongside results — cross-location comparisons are invalid
+6. CI tier (PR smoke / nightly / release) matches the scenario's budget
+7. A baseline for comparison is identified, captured under identical conditions
+
+The template scripts `scripts/k6-template.js` and `scripts/locust-template.py` enforce item 1 (refuse to run on production-looking `PERF_ENV`) — the remaining items are the harness's responsibility. A run that cannot assert all seven is not a load test; it is a rehearsal.
+
+See `references/test-reality-model.md` for the full rationale and per-tier checklists.
+
+---
+
+## Capacity Validation Patterns
+
+`capacity-planning.md` produces forecasts; this section produces load-test scenarios that validate those forecasts. Scenario choice depends on what the model predicts.
+
+### Ramp-to-Failure
+
+**Purpose**: find the actual ceiling and compare it to the predicted ceiling.
+
+**Shape**: linearly increase VUs from baseline through 4–8× predicted load until SLO breach, error spike, or explicit failure.
+
+**Use when**:
+- No baseline exists (first capacity run)
+- The model predicts a specific resource will break but the exact break point is unknown
+- A refactor may have changed the ceiling
+
+**k6 example** (`scripts/k6-template.js` with `SCENARIO=ramp-to-failure`):
+
+```
+stages: [
+  { duration: '1m',  target: predicted/4 },
+  { duration: '3m',  target: predicted   },
+  { duration: '3m',  target: predicted*2 },
+  { duration: '3m',  target: predicted*4 },
+  { duration: '3m',  target: predicted*8 },
+  { duration: '1m',  target: 0           },
+]
+```
+
+**What to report back to the model**: first resource to saturate, VU count at saturation, delta vs predicted.
+
+### Stepped Concurrency
+
+**Purpose**: measure `per_user_cost` accurately at multiple concurrency levels so the capacity model can refit.
+
+**Shape**: hold steady at N users for 5 min, step to 2N for 5 min, step to 4N for 5 min, etc. Each plateau must include warmup.
+
+**Use when**:
+- The capacity model's `per_user_cost` estimates are too coarse
+- Non-linear cost is suspected (e.g. cache hit ratio drops past a threshold)
+- Scaling tests on read replicas / horizontal replicas need per-level numbers
+
+**Report format**: one row per plateau with observed resource loads at p50/p95/p99.
+
+### Contention Scenarios
+
+**Purpose**: reproduce the contention matrix from `capacity-planning.md`.
+
+1. **1 user × N processes** — a single VU issuing N parallel requests via `http.batch()` (k6) or multiple tasks per user (Locust). Measures per-user resource ceilings (per-user pool quota, session-bound caches).
+2. **N users × M processes each** — typical load-test config where VU count × in-flight requests per VU represent population. Measures global ceilings (DB pool, worker pool).
+3. **Mixed workload** — run two scenarios concurrently on the same system: interactive traffic plus a batch/background producer. Measures whether long-running work starves short requests.
+
+**Tool note**: k6 supports multiple concurrent scenarios via the `scenarios` option — use it for mixed-workload testing rather than stitching two separate runs after the fact.
+
+### Feeding capacity-model.py
+
+Every validation run must emit the Capacity JSON envelope (see `references/perf-test-contract-template.md` § Capacity JSON Envelope). The emitted `capacity-input.json` is consumed by `scripts/capacity-model.py` to refit the model and update the forecast.
+
+Required measurements the harness must populate from server-side monitoring (k6 and Locust alone do not see these):
+
+| Resource | Source |
+|---|---|
+| cpu | node-exporter, psutil, container metrics |
+| memory | RSS samples across the window |
+| db_connections | `pg_stat_activity`, `information_schema.processlist`, pool-gauge endpoint |
+| worker_threads | uWSGI stats, Gunicorn worker count, PM2 metrics |
+| network_bandwidth | interface counters |
+| external_api_quota | provider dashboard or custom exporter |
+
+---
+
+## JSON Output Envelope
+
+When running capacity validation, each scenario writes `capacity-input.json` alongside the tool's native report. The envelope schema is the one specified in `references/perf-test-contract-template.md` § Capacity JSON Envelope — reproduced here because this sub-skill is its producer:
+
+```json
+{
+  "test_metadata": {
+    "duration_seconds": 600,
+    "scenario": "ramp-to-failure",
+    "warmup_seconds": 60,
+    "tool": "k6"
+  },
+  "measurements": [
+    {
+      "resource": "cpu",
+      "ceiling": 100,
+      "current_load": 45,
+      "per_user_cost": 0.6,
+      "measurement_window_seconds": 60,
+      "p50": 38,
+      "p95": 72,
+      "p99": 89
+    }
+  ],
+  "concurrency_observed": {
+    "users": 50,
+    "concurrent_processes_per_user_avg": 3.2
+  }
+}
+```
+
+Validation happens at the capacity-planning side: `scripts/capacity-model.py` rejects envelopes missing required keys or using unknown `resource` names.
+
+---
+
+## Synthesis & Improvements
+
+For load-test findings, look up the pattern in `references/improvement-catalog.md` and delegate implementation to the detected stack's domain skill:
+
+- p95 latency high with CPU also high → § 5 Async processing, § 12 Right-sizing
+- p95 latency high with DB time high → § 2 Queries, § 3 N+1, § 10 Replicas (cross to `database.md`)
+- Throughput plateau before resource saturation → § 4 Pooling, § 12 Worker tuning
+- Error spike under load → connection / pool exhaustion (§ 4) or upstream timeout (§ 5 Batching)
+
+See `references/improvement-catalog.md` for the complete table of patterns with applicability, impact, and owner skills.
