@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/wiring-source-edge.v1.json",
+  "title": "wiring-source-edge.v1",
+  "description": "One edge emitted by a static extractor, per design 2026-04-14 §4.1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "edge_id",
+    "src_component",
+    "src_symbol",
+    "dst_component",
+    "dst_symbol",
+    "edge_kind",
+    "evidence_source",
+    "extractor_id",
+    "extractor_version",
+    "workspace_tree_hash",
+    "emitted_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "edge_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{16}$"
+    },
+    "src_component": { "type": "string", "minLength": 1 },
+    "src_symbol":    { "type": "string", "minLength": 1 },
+    "dst_component": { "type": "string", "minLength": 1 },
+    "dst_symbol":    { "type": "string", "minLength": 1 },
+    "edge_kind": {
+      "enum": [
+        "calls", "routes_to", "emits", "listens",
+        "persists_to", "reads_from", "renders",
+        "depends_on", "imports"
+      ]
+    },
+    "evidence_source": {
+      "enum": ["static_extract", "agent_asserted", "manual"]
+    },
+    "callsite_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file":   { "type": "string" },
+        "line":   { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "extractor_id":      { "type": "string", "minLength": 1 },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "workspace_tree_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "emitted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

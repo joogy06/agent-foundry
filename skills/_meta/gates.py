@@ -569,6 +569,353 @@ def check_G3(wp_id: str, invoking_skill: str, project_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# G4 — deterministic gate over the signed wiring snapshot
+# ---------------------------------------------------------------------------
+#
+# Per design 2026-04-14 §5.4. Five rules (R0, R1, R3, R6, R7). R2/R4/R5 are v2.
+#
+# Exit codes (mapped in main() from check_G4's structured return):
+#   0 = pass
+#   2 = hard fail (status='fail')
+#   3 = advisory warning (status='advisory')
+#   4 = ledger missing / skip (status='ledger_missing')
+#
+# Modes:
+#   strict   (default CI)   — R1 hard fail.   R3/R6/R7 hard fail. R0 silent.
+#   advisory (default local) — R1 exit 3.     R3/R6/R7 hard fail. R0 silent.
+
+
+def _g4_load_config(project_dir: Path) -> Dict[str, Any]:
+    cfg_path = project_dir / ".ledger" / "config.yaml"
+    if not cfg_path.is_file():
+        return {}
+    try:
+        data = yaml.safe_load(cfg_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _g4_get_stale_file_budget(cfg: Dict[str, Any]) -> int:
+    g4 = cfg.get("g4") or {}
+    return int(g4.get("stale_file_budget", 50))
+
+
+def _g4_load_latest(project_dir: Path) -> Optional[Dict[str, Any]]:
+    latest = project_dir / ".wiring" / "latest.json"
+    if not latest.is_file():
+        return None
+    try:
+        return json.loads(latest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _git_write_tree(project_dir: Path) -> Optional[str]:
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project_dir), "write-tree"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0:
+            return None
+        h = out.stdout.strip()
+        if len(h) == 40 and all(c in "0123456789abcdef" for c in h):
+            return h
+        return None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _git_changed_file_count(project_dir: Path, base_tree: str) -> Optional[int]:
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project_dir), "diff", "--name-only", base_tree],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0:
+            return None
+        lines = [ln for ln in out.stdout.splitlines() if ln.strip()]
+        return len(lines)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _g4_load_pr_components(project_dir: Path) -> set[str]:
+    """Detect components whose `source_paths` intersect the current git diff.
+
+    Used by R1 to determine which components are "changed" in this PR. If the
+    project-relative source_paths entries can't be matched, we return an empty
+    set (meaning R1 has nothing to block).
+    """
+    import subprocess
+    map_path = project_dir / "progress" / "contract-map.yaml"
+    if not map_path.is_file():
+        return set()
+    try:
+        map_yaml = yaml.safe_load(map_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return set()
+
+    components = map_yaml.get("components") or []
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project_dir), "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0:
+            return set()
+        changed_paths = [ln for ln in out.stdout.splitlines() if ln.strip()]
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+
+    changed_components: set[str] = set()
+    for c in components:
+        cid = c.get("id")
+        if not cid:
+            continue
+        for sp in (c.get("source_paths") or []):
+            # A trivial containment check — mirrors the design's looseness.
+            sp_norm = sp.replace("~/.claude/skills/", ".claude/skills/").rstrip("/")
+            for cp in changed_paths:
+                if sp_norm and sp_norm in cp:
+                    changed_components.add(cid)
+                    break
+    return changed_components
+
+
+def _g4_previous_components(previous_snapshot: Optional[Dict[str, Any]]) -> set[str]:
+    if previous_snapshot is None:
+        return set()
+    names: set[str] = set()
+    for e in previous_snapshot.get("edges") or []:
+        names.add(e.get("src_component"))
+        names.add(e.get("dst_component"))
+    names.discard(None)
+    return names
+
+
+def _g4_current_source_components(project_dir: Path) -> set[str]:
+    """Read component ids from the current contract map."""
+    map_path = project_dir / "progress" / "contract-map.yaml"
+    if not map_path.is_file():
+        return set()
+    try:
+        map_yaml = yaml.safe_load(map_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return set()
+    return {c.get("id") for c in (map_yaml.get("components") or []) if c.get("id")}
+
+
+def check_G4(project_dir: Path, mode: str = "strict") -> Dict[str, Any]:
+    """G4 implementation per design 2026-04-14 §5.4.
+
+    Rules evaluated:
+      R0 — new-component exception (R1 becomes advisory for components
+           not present in previous latest.json)
+      R1 — blocking edges must be corroborated (blocking_eligible=true) for
+           components touched by the current diff
+      R3 — removed code must not retain live edges (src/dst absent from
+           current source tree -> status must be orphan/stale/suppressed)
+      R6 — snapshot freshness (strict: exact tree hash match; advisory:
+           generated_at within 1h AND changed file count ≤ budget)
+      R7 — signature HMAC verifies against forge session key
+
+    Returns a structured dict:
+      {
+        "status": "pass" | "advisory" | "fail" | "ledger_missing",
+        "mode": "strict" | "advisory",
+        "violations": [{"rule": "R1", "severity": "hard"|"advisory",
+                        "message": "..."}, ...],
+        "message": "summary",
+        "snapshot_generation": int or None,
+      }
+    """
+    if mode not in ("strict", "advisory"):
+        env_error(f"G4 mode must be 'strict' or 'advisory', got {mode!r}")
+
+    # Ledger-missing skip (exit 4)
+    ledger = project_dir / "progress" / "integration-ledger.md"
+    if not ledger.is_file():
+        return {
+            "status": "ledger_missing",
+            "mode": mode,
+            "violations": [],
+            "message": f"no ledger at {ledger}, skipping G4",
+            "snapshot_generation": None,
+        }
+
+    # Snapshot must exist
+    snapshot = _g4_load_latest(project_dir)
+    if snapshot is None:
+        return {
+            "status": "fail",
+            "mode": mode,
+            "violations": [{"rule": "R6", "severity": "hard",
+                            "message": "no .wiring/latest.json; run wiring-reconcile"}],
+            "message": "snapshot missing",
+            "snapshot_generation": None,
+        }
+
+    violations: List[Dict[str, Any]] = []
+    cfg = _g4_load_config(project_dir)
+    previous_snapshot: Optional[Dict[str, Any]] = None  # v1: no rotation; treat as None
+
+    # R7 — signature validity (HMAC-SHA256 using forge session key)
+    session_key_path = project_dir / ".forge" / "session.key"
+    if not session_key_path.is_file():
+        violations.append({
+            "rule": "R7", "severity": "hard",
+            "message": f"session.key missing at {session_key_path}",
+        })
+    else:
+        try:
+            key = session_key_path.read_bytes()
+        except OSError as e:
+            violations.append({"rule": "R7", "severity": "hard",
+                               "message": f"session.key unreadable: {e}"})
+            key = b""
+        sig = snapshot.get("signature") or {}
+        if sig.get("algorithm") != "HMAC-SHA256":
+            violations.append({"rule": "R7", "severity": "hard",
+                               "message": "signature.algorithm is not HMAC-SHA256"})
+        else:
+            # Use exactly the same signed payload shape as promote._build_signature
+            # AND the same canonical_json convention (bit-for-bit).
+            payload = {
+                "contract_map_hash": snapshot.get("contract_map_hash", ""),
+                "contract_map_revision": int(snapshot.get("contract_map_revision", 0) or 0),
+                "forge_session_id": sig.get("key_id", "").removeprefix("forge-session-"),
+                "snapshot_id": snapshot.get("snapshot_id"),
+                "snapshot_generation": int(snapshot.get("snapshot_generation", 0) or 0),
+                "signed_at": sig.get("signed_at"),
+            }
+            expected = hmac.new(
+                key, canonical_json(payload).encode("utf-8"), hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(expected, sig.get("digest", "")):
+                violations.append({"rule": "R7", "severity": "hard",
+                                   "message": "signature HMAC does not verify"})
+
+    # R6 — snapshot freshness
+    # Strict: snapshot.workspace_tree_hash == current git write-tree.
+    # Advisory: generated_at within 1 hour AND changed file count ≤ budget.
+    cur_tree = _git_write_tree(project_dir)
+    snap_tree = snapshot.get("workspace_tree_hash")
+    if mode == "strict":
+        if not snap_tree or not cur_tree:
+            violations.append({"rule": "R6", "severity": "hard",
+                               "message": "workspace_tree_hash missing on snapshot or git"})
+        elif snap_tree != cur_tree:
+            violations.append({"rule": "R6", "severity": "hard",
+                               "message": f"tree hash mismatch "
+                                          f"(snap={snap_tree[:12]}, cur={cur_tree[:12]})"})
+    else:  # advisory
+        from datetime import datetime, timezone
+        generated_at = snapshot.get("generated_at", "")
+        try:
+            # Support trailing Z and offset
+            if generated_at.endswith("Z"):
+                gen_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            else:
+                gen_dt = datetime.fromisoformat(generated_at)
+            age_seconds = (datetime.now(timezone.utc) - gen_dt).total_seconds()
+        except (ValueError, TypeError):
+            violations.append({"rule": "R6", "severity": "hard",
+                               "message": f"generated_at unparseable: {generated_at!r}"})
+            age_seconds = None
+        if age_seconds is not None:
+            if age_seconds > 3600:
+                violations.append({"rule": "R6", "severity": "hard",
+                                   "message": f"generated_at is {int(age_seconds)}s old (>1h)"})
+            elif snap_tree and cur_tree:
+                if snap_tree != cur_tree:
+                    budget = _g4_get_stale_file_budget(cfg)
+                    changed = _git_changed_file_count(project_dir, snap_tree)
+                    if changed is None:
+                        violations.append({"rule": "R6", "severity": "hard",
+                                           "message": "cannot count changed files via git diff"})
+                    elif changed > budget:
+                        violations.append({
+                            "rule": "R6", "severity": "hard",
+                            "message": f"{changed} files changed since snapshot (budget {budget})",
+                        })
+
+    # R3 — removed code must not keep live edges
+    source_components = _g4_current_source_components(project_dir)
+    if source_components:
+        for e in snapshot.get("edges") or []:
+            src_c = e.get("src_component")
+            dst_c = e.get("dst_component")
+            missing = []
+            if src_c and src_c not in source_components:
+                missing.append(src_c)
+            if dst_c and dst_c not in source_components:
+                missing.append(dst_c)
+            if missing and e.get("status") == "live":
+                violations.append({
+                    "rule": "R3", "severity": "hard",
+                    "message": f"edge {e.get('edge_id', '?')} references removed "
+                               f"component(s) {missing} but status=live "
+                               f"(must be orphan/stale/suppressed)",
+                })
+
+    # R1 — blocking edges must be corroborated, for components touched by the PR
+    # R0 exception: if src_component is new (absent from previous latest.json AND
+    # present in current source tree), R1 becomes advisory regardless of mode.
+    previous_components = _g4_previous_components(previous_snapshot)
+    changed_components = _g4_load_pr_components(project_dir)
+    for e in snapshot.get("edges") or []:
+        src_c = e.get("src_component")
+        if not src_c:
+            continue
+        if src_c not in changed_components:
+            continue
+        if e.get("blocking_eligible"):
+            continue
+        # R0: new-component exception
+        is_new_component = (
+            previous_components  # only applies if there IS a prior snapshot
+            and src_c not in previous_components
+            and src_c in source_components
+        )
+        rule_severity = (
+            "advisory" if (mode == "advisory" or is_new_component) else "hard"
+        )
+        msg = (
+            f"R1: blocking edge {e.get('edge_id', '?')} on changed component "
+            f"{src_c!r} is not blocking_eligible (no static corroboration)"
+        )
+        if is_new_component:
+            msg += " [R0 new-component exception applied]"
+        violations.append({"rule": "R1", "severity": rule_severity, "message": msg})
+
+    # Classify status
+    any_hard = any(v["severity"] == "hard" for v in violations)
+    any_advisory = any(v["severity"] == "advisory" for v in violations)
+    if any_hard:
+        status = "fail"
+    elif any_advisory:
+        status = "advisory"
+    else:
+        status = "pass"
+
+    return {
+        "status": status,
+        "mode": mode,
+        "violations": violations,
+        "message": (
+            f"G4 {status} in {mode} mode "
+            f"({len(violations)} violation(s))"
+        ),
+        "snapshot_generation": snapshot.get("snapshot_generation"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
@@ -591,6 +938,14 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
                 env_error("--project-root requires a value")
             flags["project_root"] = argv[i + 1]
             i += 2
+            continue
+        if a == "--strict":
+            flags["g4_mode"] = "strict"
+            i += 1
+            continue
+        if a == "--advisory":
+            flags["g4_mode"] = "advisory"
+            i += 1
             continue
         positional.append(a)
         i += 1
@@ -624,6 +979,30 @@ def main(argv: Optional[List[str]] = None) -> None:
         project_root = Path(flags.get("project_root", os.getcwd())).resolve()
         check_G3(wp_id, invoking_skill, project_root)
         ok("G3", f"claim verified for WP={wp_id} skill={invoking_skill}")
+    elif gate == "G4":
+        if len(positional) < 1:
+            env_error("G4 requires <project_dir>")
+        project_dir = Path(positional[0]).resolve()
+        mode = flags.get("g4_mode", "strict")
+        result = check_G4(project_dir, mode=mode)
+        # Map structured result to exit codes
+        status = result.get("status")
+        if status == "pass":
+            sys.stdout.write(f"G4_PASS: {result.get('message', '')}\n")
+            sys.exit(0)
+        elif status == "advisory":
+            sys.stdout.write(f"G4_ADVISORY: {result.get('message', '')}\n")
+            for v in result.get("violations", []):
+                sys.stdout.write(f"  {v['rule']}: {v['message']}\n")
+            sys.exit(3)
+        elif status == "ledger_missing":
+            sys.stderr.write(f"G4_SKIP: {result.get('message', '')}\n")
+            sys.exit(4)
+        else:  # fail
+            sys.stderr.write(f"G4_FAIL: {result.get('message', '')}\n")
+            for v in result.get("violations", []):
+                sys.stderr.write(f"  {v['rule']}: {v['message']}\n")
+            sys.exit(2)
     else:
         env_error(f"unknown gate: {gate}")
 

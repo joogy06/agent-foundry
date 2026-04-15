@@ -1,0 +1,13 @@
+schema_version: "1.0.0"
+revision: 1
+components:
+  - id: app
+    source_paths:
+      - "app/main.py"
+      - "app/__init__.py"
+  - id: auth
+    source_paths:
+      - "app/auth.py"
+  - id: users
+    source_paths:
+      - "app/users.py"

@@ -1,0 +1,11 @@
+{
+  "notes": "Expected edges from the express extractor against this fixture.",
+  "expected": [
+    {"src_component": "api", "src_symbol": "GET /healthz", "dst_component": "api", "dst_symbol": "api.healthz", "edge_kind": "routes_to"},
+    {"src_component": "api", "src_symbol": "POST /users", "dst_component": "api", "dst_symbol": "api.createUser", "edge_kind": "routes_to"},
+    {"src_component": "api", "src_symbol": "GET /users/:id", "dst_component": "api", "dst_symbol": "api.readUser", "edge_kind": "routes_to"},
+    {"src_component": "api", "src_symbol": "api.use", "dst_component": "api", "dst_symbol": "api.bodyParser", "edge_kind": "calls"},
+    {"src_component": "api", "src_symbol": "api.use[/api]", "dst_component": "api", "dst_symbol": "api.router", "edge_kind": "calls"},
+    {"src_component": "api", "src_symbol": "api.app", "dst_component": "external:http", "dst_symbol": "external:http.listen[3000]", "edge_kind": "listens"}
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/wiring-source-manifest.v1.json",
+  "title": "wiring-source-manifest.v1",
+  "description": "One manifest per .wiring/runs/<run_id>/ describing what extractor sources ran.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "workspace_tree_hash",
+    "project_dir", "started_at", "sources"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id":    { "type": "string", "format": "uuid" },
+    "workspace_tree_hash": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "project_dir": { "type": "string" },
+    "contract_map_hash": { "type": "string" },
+    "contract_map_revision": { "type": "integer" },
+    "started_at":   { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "evidence_source", "status", "output_path"],
+        "properties": {
+          "source_id":      { "type": "string" },
+          "evidence_source":{ "enum": ["static_extract", "agent_asserted", "manual"] },
+          "status":         { "enum": ["succeeded", "failed", "partial", "skipped", "in_progress"] },
+          "output_path":    { "type": "string" },
+          "edge_count":     { "type": "integer", "minimum": 0 },
+          "plugin_id":      { "type": ["string", "null"] },
+          "plugin_version": { "type": ["string", "null"] },
+          "detected_framework": { "type": ["string", "null"] },
+          "duration_seconds":   { "type": "number", "minimum": 0 },
+          "gaps": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "error": { "type": "string" }
+        }
+      }
+    },
+    "languages_detected": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "frameworks_detected": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

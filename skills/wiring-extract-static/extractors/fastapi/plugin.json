@@ -1,0 +1,9 @@
+{
+  "id": "fastapi",
+  "version": "1.0.0",
+  "target_framework": "fastapi",
+  "languages": ["python"],
+  "edge_kinds": ["routes_to", "calls", "listens"],
+  "is_fallback": false,
+  "description": "FastAPI extractor: @app/@router HTTP+websocket routes, Depends() calls, and @app.on_event lifecycle listeners. AST-based; schema-validated."
+}

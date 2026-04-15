@@ -32,16 +32,6 @@ claude
 
 On next session, Claude will auto-discover everything in `~/.claude/skills/` and `~/.claude/agents/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
 
-### Permission Setup
-
-The repo ships with conservative permissions (per-command allow rules, git push prompts). For full autonomous agentic sessions, run `/setup` inside Claude Code:
-
-```
-/setup
-```
-
-This offers three levels: conservative (default), full autonomous (`Bash(*)` blanket), or full autonomous + MCP auto-approve. Choose project-scope (this repo only) or global (all projects).
-
 ---
 
 ## What You Need
