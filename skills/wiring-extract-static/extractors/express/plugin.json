@@ -1,0 +1,9 @@
+{
+  "id": "express",
+  "version": "1.0.0",
+  "target_framework": "express",
+  "languages": ["javascript", "typescript"],
+  "edge_kinds": ["routes_to", "calls", "listens"],
+  "is_fallback": false,
+  "description": "Express.js/TypeScript extractor: app.{METHOD}|router.{METHOD} routes, app.use(mw) middleware chains, app.listen(port). Regex-based; schema-validated."
+}

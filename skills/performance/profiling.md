@@ -27,148 +27,168 @@ py-spy record -o profile.svg --pid <PID>
 python -m cProfile -o output.prof script.py
 # View: python -m pstats output.prof
 
-# Memory
-python -c "import tracemalloc; tracemalloc.start(); <your code>; snapshot = tracemalloc.take_snapshot(); top_stats = snapshot.statistics('lineno'); print(top_stats[:10])"
-
-# Scalene (CPU + memory + GPU in one tool)
-scalene script.py
+# Memory profile
+python -m memory_profiler script.py
+# tracemalloc in code:
+import tracemalloc; tracemalloc.start(); ...; print(tracemalloc.get_traced_memory())
 ```
 
-**JavaScript/Node.js:**
+**Node.js:**
 ```bash
 # CPU profile
 node --prof app.js
 node --prof-process isolate-*.log > processed.txt
 
-# Clinic.js (auto-detects bottleneck type)
-npx clinic doctor -- node app.js
+# Flame graph
+0x app.js
+# Generates flamegraph.html after stopping the process
 
-# 0x flamegraph
-npx 0x app.js
-```
-
-**Go:**
-```bash
-# CPU profile (built into test)
-go test -cpuprofile cpu.prof -bench .
-go tool pprof -http=:8080 cpu.prof
-
-# HTTP server (add to main)
-import _ "net/http/pprof"
-# Then: go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+# Memory
+node --inspect app.js
+# Attach Chrome DevTools, take heap snapshot
 ```
 
 **PHP:**
 ```bash
-# Xdebug profiler (add to php.ini)
-xdebug.mode=profile
-xdebug.output_dir=/tmp/xdebug
-# View with KCachegrind/QCachegrind
+# Xdebug profiler
+# In php.ini: xdebug.mode=profile; xdebug.output_dir=/tmp
+# Run request, view cachegrind.out.* in KCacheGrind or qcachegrind
 
-# SPX (low overhead, web UI)
-# Enable: SPX_ENABLED=1 SPX_KEY=dev php script.php
+# SPX (simpler, web UI)
+# Enable via ?SPX_UI_URI=/_spx header, view in browser
+
+# Blackfire (paid, production-safe)
+blackfire run php script.php
+```
+
+**Go:**
+```bash
+# CPU profile
+go test -cpuprofile=cpu.prof -bench=.
+go tool pprof cpu.prof
+
+# Memory profile
+go test -memprofile=mem.prof -bench=.
+go tool pprof -alloc_space mem.prof
+
+# Live profile (with net/http/pprof)
+go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+```
+
+**Java:**
+```bash
+# async-profiler (low overhead, attach to running JVM)
+./profiler.sh -d 30 -f flame.html <PID>
+
+# JFR (built into JDK)
+jcmd <PID> JFR.start duration=60s filename=recording.jfr
+jmc  # Java Mission Control for analysis
 ```
 
 ---
 
-## 5-Phase Methodology
+## Profile Analysis Methodology
 
-### Phase 1: Symptom Identification
-
-What is slow? Be specific:
-- User-reported ("the page takes 10 seconds")
-- Measured (p95 response time is 2.3s, SLA is 500ms)
-- Observed (CPU at 95% during peak)
-
-If no one can articulate the symptom, there is no performance problem to solve.
-
-### Phase 2: Baseline Measurement
-
-Measure BEFORE changing anything:
-- Record the metric you intend to improve (response time, throughput, memory usage)
-- Record the conditions (concurrency, data volume, hardware)
-- Record the tool and command used (reproducible)
+### Step 1: Identify the Top 3 Hotspots
 
 ```
-Baseline: p95 response time = 1,200ms at 50 concurrent users
-Tool: hey -n 1000 -c 50 http://localhost:8080/api/products
-Date: YYYY-MM-DD
+From the profile output, find the 3 functions consuming the most CPU time.
+Order matters: the top hotspot is where optimization yields the most gain.
 ```
 
-### Phase 3: Profile
+### Step 2: Classify Each Hotspot
 
-Run the appropriate profiler. Collect data. Do not guess.
+| Classification | Signal | Optimization approach |
+|---------------|--------|----------------------|
+| Algorithmic (O(n^2) or worse) | Time grows quadratically with input | Replace with better algorithm |
+| I/O-bound waiting | High wall time, low CPU | Add concurrency or caching |
+| CPU-bound loop | High CPU, sequential logic | Vectorize, parallelize, or cache results |
+| Memory allocation | Heap churn visible in memory profile | Reuse objects, pool, or switch to stack |
+| External call | Spends time in HTTP/DB client | Batch, cache, or make async |
 
-**Decision tree:**
+### Step 3: Measure, Change, Re-measure
+
 ```
-Slow overall?
-  -> CPU profile first (cProfile / py-spy / --prof / pprof)
-
-High memory?
-  -> Memory profile (tracemalloc / heap snapshot / pprof heap)
-
-Intermittent slowness?
-  -> Continuous profiler (py-spy / async-profiler) over 30+ seconds
-
-I/O wait?
-  -> strace / ltrace to trace system calls
-  -> Check disk I/O (iostat) and network (ss, netstat)
+1. Record baseline (exact numbers)
+2. Apply one change
+3. Re-run the same profile
+4. Compare: did the hotspot shrink? Did a new hotspot appear?
+5. If no improvement: revert, try next candidate
 ```
 
-### Phase 4: Analyze
+### Step 4: Avoid Micro-Optimization
 
-Identify top N hotspots from profile data:
-
-1. Sort by cumulative time (not self time) to find the call chain
-2. Look for functions taking >10% of total time
-3. Check call counts -- a fast function called 1M times is a hotspot
-4. Distinguish CPU-bound from I/O-bound (I/O-bound shows in wait time, not CPU time)
-
-### Phase 5: Report
-
-Use the structured Performance Finding format from the parent skill SKILL.md.
+Don't optimize functions that don't appear in the top 10 of the profile. Micro-optimizations of cold code waste effort and add complexity.
 
 ---
 
-## Thresholds (Defaults -- Adaptable Per Project)
+## Flame Graph Interpretation
 
-| Indicator | Threshold | Action |
-|-----------|-----------|--------|
-| Function >10% of total CPU time | Hotspot | Investigate and optimize |
-| Memory allocation >100MB for single request | Investigate | Check for leaks, unnecessary copies |
-| GC pause >50ms | Investigate | Tune GC parameters or reduce allocation rate |
-| I/O wait >30% of request time | I/O bound | Optimize I/O, not CPU. Cache, batch, or async. |
-| Single function >1M calls per request | Call count hotspot | Reduce call frequency, cache results |
-| Memory growth over time (no plateau) | Memory leak | Profile allocations, check for retained references |
+A flame graph shows call stacks vertically (caller at bottom, callee at top) with width proportional to time spent.
 
-### When to Override Defaults
+### What to look for
 
-- **Latency-critical systems** (trading, real-time): tighten all thresholds by 2-5x
-- **Batch processing**: relax response time thresholds, focus on throughput
-- **Resource-constrained environments** (embedded, edge): tighten memory thresholds
-- **COMPONENT.md has performance budget**: use those targets instead of defaults
+| Pattern | Meaning |
+|---------|---------|
+| Wide plateaus at the top | Leaf functions consuming significant time |
+| Many thin spikes | No single hotspot; possibly death by a thousand cuts |
+| Wide blocks with deep stacks | Call overhead or recursion |
+| Unexpected libraries | Import-time work or unintended calls |
+| Repeated patterns across stacks | Same bottleneck hit from multiple paths |
+
+### Common Anti-Patterns Visible in Flame Graphs
+
+- Serialization/deserialization taking >20% of the profile -> switch formats or cache parsed data
+- Logging visible in hot loops -> remove or batch
+- String concatenation in inner loops -> use buffers or join
+- Recursive JSON/XML traversal -> iterative or typed access
+- Database client overhead -> connection pooling or batch queries
 
 ---
 
-## Cross-Platform Notes
+## Memory Profiling Patterns
 
-### Linux
-- `perf` -- hardware performance counters, kernel-level profiling
-- `strace` -- trace system calls (I/O patterns)
-- `valgrind --tool=callgrind` -- instruction-level profiling (slow but precise)
-- Flame graphs: `perf record -g` then `FlameGraph/stackcollapse-perf.pl`
+### Memory Leak Detection
 
-### Windows
-- ETW (Event Tracing for Windows) -- system-wide tracing
-- dotnet-trace -- .NET profiling
-- Process Monitor -- file/registry/network activity
-- Visual Studio Profiler -- integrated CPU/memory
+```
+1. Record baseline memory usage after warmup
+2. Apply load for N minutes
+3. Force GC, record memory
+4. Repeat. If memory grows each cycle, there's a leak.
+```
 
-### Docker
-- **Profile from host**: `perf record -p <container_pid>` (requires SYS_ADMIN or --privileged)
-- **Profile inside container**: install profiler in image, run normally
-- **py-spy from host**: `py-spy record --pid <host_pid_of_python_process>`
-- Note: container PID namespace means host PIDs differ from container PIDs. Use `docker inspect` to find the host PID.
+### Common Leak Sources
+
+| Language | Common leak |
+|----------|-------------|
+| Python | Circular references with __del__, unclosed resources, global caches |
+| Node.js | Event listeners not removed, closures capturing large objects |
+| Java | Static collections growing unbounded, listeners not deregistered |
+| Go | Goroutine leaks (goroutines blocked on channels), slices holding refs |
+| Rust | Rc cycles, unbounded Vec growth, Arc leaks |
+
+### Heap Snapshot Comparison
+
+```
+1. Take heap snapshot at baseline
+2. Perform the suspicious operation
+3. Take heap snapshot again
+4. Diff: objects that appeared but weren't GCed are suspect
+```
+
+Node.js Chrome DevTools and JVM VisualVM both support this natively.
+
+---
+
+## Hotspot Hunting Checklist
+
+1. [ ] Profile ran for long enough (>30 seconds for representative data)
+2. [ ] Profile captured realistic workload (not just startup or tests)
+3. [ ] Top 3 hotspots identified with numbers
+4. [ ] Each hotspot classified (algorithmic/IO/CPU/memory/external)
+5. [ ] Optimization applied to the top hotspot only
+6. [ ] Re-profile shows the hotspot shrank
+7. [ ] Finding logged to `_meta/perf-findings.jsonl`
 
 ---
 
@@ -176,9 +196,9 @@ Use the structured Performance Finding format from the parent skill SKILL.md.
 
 | Don't | Why |
 |-------|-----|
-| Profile in debug mode | Debug builds add overhead that distorts profiles |
-| Profile with too-small data | Profiling a 10-row table tells you nothing about 10M rows |
-| Optimize before profiling | You will optimize the wrong thing 80% of the time |
-| Trust a single profile run | Variance exists. Run 3+ times and look at patterns. |
-| Ignore I/O wait | High CPU is not always the problem. Check I/O. |
-| Read flame graphs bottom-up | Read top-down. Wide bars at the top = most total time. |
+| Profile only in development | Dev workload differs from production. Profile staging or production-like load. |
+| Optimize functions not in the profile's top N | You're optimizing cold code. No user-visible impact. |
+| Profile without warmup | JIT, caches, and pools behave differently after warmup. Skewed results. |
+| Use a sampling profiler for short-lived code | Samples miss short functions. Use tracing profilers for short code paths. |
+| Profile on different hardware than production | Ratios may match but absolute numbers do not. Pin to similar specs. |
+| Skip memory profiling for "just CPU" issues | High CPU is often a symptom of memory pressure (GC, allocation churn). |

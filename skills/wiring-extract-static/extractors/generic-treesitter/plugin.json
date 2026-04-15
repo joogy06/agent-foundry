@@ -1,0 +1,9 @@
+{
+  "id": "generic-treesitter",
+  "version": "1.0.0",
+  "target_framework": "generic",
+  "languages": ["python", "typescript", "javascript", "generic"],
+  "edge_kinds": ["calls", "imports"],
+  "is_fallback": true,
+  "description": "Language-agnostic fallback: imports and intra-project calls via AST or tree-sitter when available, Python ast module when not"
+}

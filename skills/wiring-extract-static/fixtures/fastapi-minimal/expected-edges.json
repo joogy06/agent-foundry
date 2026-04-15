@@ -1,0 +1,12 @@
+{
+  "notes": "Expected edges produced by the fastapi extractor against this fixture. Tests assert the set is a strict subset of actual output; extra edges from the generic-treesitter fallback on other files are permitted in smoke tests, but within the fastapi plug-in alone these must all appear.",
+  "expected": [
+    {"src_component": "app", "src_symbol": "event:startup", "dst_component": "app", "dst_symbol": "app.on_startup", "edge_kind": "listens"},
+    {"src_component": "app", "src_symbol": "GET /healthz", "dst_component": "app", "dst_symbol": "app.healthz", "edge_kind": "routes_to"},
+    {"src_component": "app", "src_symbol": "POST /users", "dst_component": "app", "dst_symbol": "app.create_user", "edge_kind": "routes_to"},
+    {"src_component": "app", "src_symbol": "GET /users/{user_id}", "dst_component": "app", "dst_symbol": "app.read_user", "edge_kind": "routes_to"},
+    {"src_component": "app", "src_symbol": "app.create_user", "dst_component": "app", "dst_symbol": "app.validate_token", "edge_kind": "calls"},
+    {"src_component": "app", "src_symbol": "app.create_user", "dst_component": "app", "dst_symbol": "app.session_dep", "edge_kind": "calls"},
+    {"src_component": "app", "src_symbol": "app.read_user", "dst_component": "app", "dst_symbol": "app.validate_token", "edge_kind": "calls"}
+  ]
+}

@@ -183,6 +183,11 @@ HARD REQUIREMENTS:
 - You MUST decide on `verdict` based on whether the test bundle's pass counts genuinely match every success criterion declared in the component entry. If a success criterion is declared but no passing test maps to it: that is at least a moderate disagreement, possibly a fail.
 - `evidence_verified` = true only if every success criterion has a demonstrably passing test in the bundle.
 
+DEFERRED TEST PATHS (v2 roadmap):
+
+- If a `test_paths` key (`integration`, `flow`, etc.) is declared as an object with `deferred_to_v2: true`, that path is **intentionally empty at v1**. Do NOT flag it as missing evidence. Do NOT count it as a coverage gap. The `reason` field explains why. You may still surface deferred coverage as a minor concern (v2 risk), but NOT as a critical or moderate disagreement, and NOT as grounds for `evidence_verified=false`.
+- `evidence_verified` = true requires every success_criterion to map to a passing test in the bundle from the NON-deferred test paths (typically `unit`). Deferred paths are out of scope for v1 verification.
+
 OUTPUT (JSON ONLY):"""
 
 
@@ -199,39 +204,123 @@ def build_prompt(component_entry: Dict[str, Any], audit_bundle: Dict[str, Any], 
 # ---------------------------------------------------------------------------
 
 
-def _extract_json_from_claude_output(stdout: str) -> Optional[Any]:
-    """claude -p --output-format json emits a result envelope. Extract the
-    inner verdict JSON produced by the agent.
+def _parse_agent_text_as_json(text: str) -> Optional[Any]:
+    """Parse the agent's final assistant text as JSON.
 
-    Envelope formats observed across CLI versions:
-      {"result": "<text>", ...}              # current
-      {"messages": [...], "content": "..."}  # older
-    We try the most common shapes in order.
+    Handles three flavors of payload in order of preference:
+      1. Clean JSON: `{"verdict": "pass", ...}`
+      2. Fenced: ```json\n{...}\n``` or ```\n{...}\n```
+      3. Prose + embedded JSON: use outermost `{` / `}` brace match.
+    Returns None only if no parseable JSON object can be recovered.
     """
+    if not isinstance(text, str):
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    # Strip common markdown fences (``` or ```json)
+    if stripped.startswith("```"):
+        lines = stripped.split("\n")
+        if len(lines) >= 3:
+            stripped = "\n".join(lines[1:-1]).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    # Prose + JSON fallback: outermost brace match
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            return json.loads(stripped[start:end + 1])
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _extract_json_from_claude_output(stdout: str) -> Optional[Any]:
+    """Extract the inner verdict JSON produced by a `claude -p --output-format
+    json` subprocess.
+
+    Three envelope shapes are supported across CLI versions:
+
+      (a) Current (claude 2.1.x) — top-level JSON **array** of stream messages:
+          [
+            {"type": "system", "subtype": "init", ...},
+            {"type": "assistant", "message": {"content": [{"type": "text",
+                "text": "<verdict JSON>"}], ...}, ...},
+            {"type": "result", "subtype": "success", "result": "<verdict JSON>", ...}
+          ]
+          The final `{"type": "result", ...}` element carries the agent's final
+          text in its `result` field. We prefer this; fall back to the last
+          assistant text block if `result` is missing.
+
+      (b) Legacy dict envelope — `{"result": "...", ...}` or `{"content": "..."}`
+          or `{"text": "..."}` or `{"output": "..."}` (older CLI versions).
+
+      (c) Raw verdict — the CLI occasionally prints the agent's JSON verbatim
+          with no envelope. Parsed directly.
+
+    For each shape, the extracted agent text is passed through
+    `_parse_agent_text_as_json` which handles fences and prose-wrapped JSON.
+
+    Returns None only when no recoverable JSON object exists, which triggers
+    AUDIT_UNAVAILABLE upstream.
+    """
+    if not isinstance(stdout, str) or not stdout.strip():
+        return None
+
     try:
         envelope = json.loads(stdout)
     except json.JSONDecodeError:
-        # Sometimes the CLI prints the raw agent text without an envelope
+        # Raw-text fallback — no envelope at all
+        return _parse_agent_text_as_json(stdout)
+
+    # Shape (a): list of stream messages
+    if isinstance(envelope, list):
+        # Prefer the final {"type":"result", "result":"..."} element
+        for msg in reversed(envelope):
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("type") == "result":
+                result_text = msg.get("result")
+                parsed = _parse_agent_text_as_json(result_text) if isinstance(result_text, str) else None
+                if parsed is not None:
+                    return parsed
+                break  # result exists but unparseable — fall through to assistant text
+        # Fallback: walk assistant messages in reverse, pull final text content
+        for msg in reversed(envelope):
+            if not isinstance(msg, dict) or msg.get("type") != "assistant":
+                continue
+            message = msg.get("message") or {}
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, list):
+                # content is a list of blocks like [{"type":"text","text":"..."}]
+                texts = [
+                    block.get("text")
+                    for block in content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                ]
+                for t in reversed(texts):
+                    parsed = _parse_agent_text_as_json(t) if isinstance(t, str) else None
+                    if parsed is not None:
+                        return parsed
         return None
 
+    # Shape (b): legacy dict envelope
     if isinstance(envelope, dict):
-        # Try common fields in order
         for key in ("result", "content", "text", "output"):
             inner = envelope.get(key)
             if isinstance(inner, str):
-                inner_stripped = inner.strip()
-                # Strip common markdown fences
-                if inner_stripped.startswith("```"):
-                    # Drop first line and trailing fence
-                    lines = inner_stripped.split("\n")
-                    if len(lines) >= 3:
-                        inner_stripped = "\n".join(lines[1:-1])
-                try:
-                    return json.loads(inner_stripped)
-                except json.JSONDecodeError:
-                    continue
-        # Maybe the envelope IS the verdict
-        return envelope
+                parsed = _parse_agent_text_as_json(inner)
+                if parsed is not None:
+                    return parsed
+        # Shape (c) partial: the envelope itself might already be the verdict
+        # (e.g. direct `{"verdict":"pass",...}` dump with no outer wrapper).
+        if "verdict" in envelope:
+            return envelope
+        return None
+
     return None
 
 
@@ -281,26 +370,10 @@ def run_claude_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, 
 
 
 def _extract_json_from_codex_output(stdout: str) -> Optional[Any]:
-    """codex exec emits the agent's output more or less verbatim. Try parsing
-    as JSON directly; if that fails, try stripping markdown fences.
+    """codex exec emits the agent's output more or less verbatim. Reuse the
+    shared prose/fence/brace-match parser used by the Claude arm.
     """
-    stripped = stdout.strip()
-    if stripped.startswith("```"):
-        lines = stripped.split("\n")
-        if len(lines) >= 3:
-            stripped = "\n".join(lines[1:-1])
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        # Try to find a JSON object inside the text
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                return json.loads(stripped[start:end + 1])
-            except json.JSONDecodeError:
-                return None
-    return None
+    return _parse_agent_text_as_json(stdout)
 
 
 def run_codex_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -385,28 +458,122 @@ def load_component_entry(project_root: Path, component_id: str) -> Dict[str, Any
     env_error(f"component {component_id!r} not in contract map")
 
 
-def load_ledger_row(project_root: Path, component_id: str) -> Dict[str, Any]:
-    """Load a minimal ledger row projection for the component.
+def _parse_projection_table(text: str, component_id: str) -> Optional[Dict[str, Any]]:
+    """Parse the ledger's projection table (authoritative current stage).
 
-    The ledger format is YAML frontmatter + projection table + events. For
-    audit purposes we only need the current stage, generation, and last
-    transition timestamp. We read the frontmatter and events and rebuild the
-    projection for the target component.
+    The table has this shape (leading/trailing whitespace and cell padding
+    are tolerated; ``—`` / ``-`` / ``—`` are all valid "empty" markers):
+
+        | WP   | component              | stage      | generation | deps |
+        |------|------------------------|------------|------------|------|
+        | WP-2 | wiring-extract-static  | INTEGRATED | 3          | —    |
+
+    Bob writes this table at the top of ``progress/integration-ledger.md``
+    as the **authoritative** projection of component state. Event-log prose
+    sections (``### <ts> — WP-N STAGE_A → STAGE_B ...``) are advisory
+    history only; the projection table wins on conflict.
+
+    Returns a dict with ``component_id``, ``stage``, ``generation`` (int),
+    and optionally ``wp``, ``deps``. Returns None if the table is missing,
+    malformed, or the component is absent.
     """
-    ledger_path = project_root / "progress" / "integration-ledger.md"
-    if not ledger_path.is_file():
-        return {"component_id": component_id, "stage": "UNKNOWN", "note": "ledger missing"}
-    text = ledger_path.read_text()
-    # Minimal parse: find the most recent event for this component
-    row = {"component_id": component_id, "stage": "PLANNED", "generation": 0}
     import re
-    # YAML event blocks live inside ```yaml ... ``` fences per spec section 9.2
+
+    # Locate the first markdown table that declares a "component" column and a
+    # "stage" column. This tolerates extra columns in future schema revisions.
+    lines = text.splitlines()
+    table_start = -1
+    header_cells: List[str] = []
+    for i, line in enumerate(lines):
+        if "|" not in line:
+            continue
+        cells = [c.strip().lower() for c in line.strip().strip("|").split("|")]
+        if "component" in cells and "stage" in cells and "generation" in cells:
+            table_start = i
+            header_cells = cells
+            break
+    if table_start < 0:
+        return None
+
+    # The next line after the header must be the separator `|---|---|...`.
+    sep_idx = table_start + 1
+    if sep_idx >= len(lines):
+        return None
+    sep = lines[sep_idx].strip()
+    if not re.match(r"^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$", sep):
+        return None
+
+    # Column indices
+    col = {name: idx for idx, name in enumerate(header_cells)}
+    comp_idx = col["component"]
+    stage_idx = col["stage"]
+    gen_idx = col["generation"]
+    wp_idx = col.get("wp")
+    deps_idx = col.get("deps")
+
+    # Iterate data rows until a blank / non-table line.
+    for row_line in lines[sep_idx + 1:]:
+        stripped = row_line.strip()
+        if not stripped or not stripped.startswith("|"):
+            break
+        cells_raw = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells_raw) <= max(comp_idx, stage_idx, gen_idx):
+            continue  # malformed / short row — skip
+
+        # Strip markdown emphasis from cells (``*smoke*``, ``**foo**``).
+        def _clean(s: str) -> str:
+            return s.strip().strip("*").strip("_").strip()
+
+        component_cell = _clean(cells_raw[comp_idx])
+        if component_cell != component_id:
+            continue
+
+        stage_cell = _clean(cells_raw[stage_idx])
+        gen_cell = _clean(cells_raw[gen_idx])
+        # Generation may be "—", "-", or missing — in those cases we emit 0.
+        try:
+            generation = int(gen_cell)
+        except (ValueError, TypeError):
+            generation = 0
+
+        out: Dict[str, Any] = {
+            "component_id": component_id,
+            "stage": stage_cell or "UNKNOWN",
+            "generation": generation,
+        }
+        if wp_idx is not None and len(cells_raw) > wp_idx:
+            out["wp"] = _clean(cells_raw[wp_idx])
+        if deps_idx is not None and len(cells_raw) > deps_idx:
+            deps_cell = _clean(cells_raw[deps_idx])
+            if deps_cell in ("", "—", "-", "–"):
+                out["deps"] = []
+            else:
+                out["deps"] = [d.strip() for d in deps_cell.split(",") if d.strip()]
+        return out
+
+    return None
+
+
+def _parse_yaml_fenced_events(text: str, component_id: str) -> Optional[Dict[str, Any]]:
+    """Legacy event-log parser (spec §9.2 yaml-fenced shape).
+
+    Kept for backward compatibility with ledgers that emit events as
+    ``\\`\\`\\`yaml`` fenced blocks. Returns the row rebuilt from the most
+    recent event, or None if no matching event exists.
+    """
+    import re
+
     blocks = re.findall(r"```yaml\s*\n(.*?)\n```", text, re.DOTALL)
+    if not blocks:
+        return None
     try:
         import yaml  # type: ignore
     except ImportError:
-        return row
+        return None
+
+    row: Dict[str, Any] = {"component_id": component_id, "stage": "PLANNED", "generation": 0}
     latest_at = ""
+    matched = False
     for block in blocks:
         try:
             evt = yaml.safe_load(block)
@@ -414,16 +581,60 @@ def load_ledger_row(project_root: Path, component_id: str) -> Dict[str, Any]:
             continue
         if not isinstance(evt, dict):
             continue
-        if evt.get("component_id") != component_id and evt.get("wp") is None:
+        if evt.get("component_id") != component_id:
             continue
+        matched = True
         at = str(evt.get("at", ""))
         if at >= latest_at:
             latest_at = at
             if "to" in evt:
                 row["stage"] = evt["to"]
-            if "component_id" in evt:
-                row["component_id"] = evt["component_id"]
-    return row
+            if "generation" in evt:
+                try:
+                    row["generation"] = int(evt["generation"])
+                except (ValueError, TypeError):
+                    pass
+    return row if matched else None
+
+
+def load_ledger_row(project_root: Path, component_id: str) -> Dict[str, Any]:
+    """Load a minimal ledger row projection for the component.
+
+    Stage-resolution precedence (most authoritative first):
+
+    1. **Projection table** — the markdown table at the top of
+       ``progress/integration-ledger.md`` with columns
+       ``| WP | component | stage | generation | deps |``. This is bob's
+       authoritative projection and wins over everything else.
+    2. **Yaml-fenced events (legacy §9.2)** — rebuilt from the most
+       recent ``\\`\\`\\`yaml ... \\`\\`\\``` event that matches
+       ``component_id``. Used only when no projection table exists.
+    3. **Unknown** — if neither source has a row for the component,
+       returns ``{stage: "UNKNOWN", ...}`` (NOT ``PLANNED``, which
+       would falsely imply the component is tracked but un-started).
+
+    Prose event sections like
+    ``### 2026-04-15T00:52:00Z — WP-2 UNIT_TESTED → INTEGRATED (bob applied)``
+    are advisory history. The parser intentionally does not try to derive
+    stage from prose — bob's projection table is the single source of truth.
+    """
+    ledger_path = project_root / "progress" / "integration-ledger.md"
+    if not ledger_path.is_file():
+        return {"component_id": component_id, "stage": "UNKNOWN", "note": "ledger missing"}
+    text = ledger_path.read_text()
+
+    # Precedence 1: projection table wins.
+    row = _parse_projection_table(text, component_id)
+    if row is not None:
+        return row
+
+    # Precedence 2: legacy yaml-fenced event log.
+    row = _parse_yaml_fenced_events(text, component_id)
+    if row is not None:
+        return row
+
+    # Precedence 3: component is not tracked anywhere.
+    return {"component_id": component_id, "stage": "UNKNOWN", "generation": 0, "note": "component not in projection table or events"}
 
 
 # ---------------------------------------------------------------------------

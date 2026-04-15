@@ -1,0 +1,12 @@
+schema_version: "1.0.0"
+revision: 1
+components:
+  - id: api
+    source_paths:
+      - "src/app.js"
+  - id: auth
+    source_paths:
+      - "src/auth.js"
+  - id: users
+    source_paths:
+      - "src/users.js"

@@ -111,19 +111,44 @@ def _run_pytest(
             timeout=timeout,
             check=False,
         )
-        # Try to parse JSON report from stdout
-        json_text = ""
-        for line in (result.stdout or "").splitlines():
-            line = line.strip()
-            if line.startswith("{") and line.endswith("}"):
-                json_text = line
-                break
+        # Try to parse JSON report from stdout.
+        # pytest-json-report writes its JSON to /dev/stdout, which lands on the
+        # same line as pytest's progress bar (e.g. "..... [100%]{...json...}").
+        # Strategy: scan the full stdout for the first "{", then find a balanced
+        # top-level object via brace counting (skipping braces inside strings).
         report: Dict[str, Any] = {}
-        if json_text:
-            try:
-                report = json.loads(json_text)
-            except json.JSONDecodeError:
-                report = {}
+        stdout_text = result.stdout or ""
+        first_brace = stdout_text.find("{")
+        if first_brace >= 0:
+            depth = 0
+            in_str = False
+            esc = False
+            end_idx = -1
+            for i in range(first_brace, len(stdout_text)):
+                ch = stdout_text[i]
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif ch == "\\":
+                        esc = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i
+                        break
+            if end_idx > first_brace:
+                candidate = stdout_text[first_brace : end_idx + 1]
+                try:
+                    report = json.loads(candidate)
+                except json.JSONDecodeError:
+                    report = {}
         if not report:
             # Fallback: run plain pytest, infer from returncode
             plain = subprocess.run(
@@ -133,6 +158,39 @@ def _run_pytest(
             return _result_from_returncode(test_path, plain.returncode)
         summary = report.get("summary") or {}
         tests = report.get("tests") or []
+        # RT1 fix: emit per-test granularity from pytest-json-report's tests[]
+        # instead of discarding it. Auditors need nodeid/outcome/duration to
+        # tie specific passing tests to specific success_criteria. CB3 compliance
+        # preserved — no raw stdout/stderr/tracebacks, only structured fields.
+        per_test: List[Dict[str, Any]] = []
+        for t in tests:
+            # Best-effort duration: pytest-json-report records per-phase
+            # durations under t["call"]["duration"] (+ setup/teardown). Sum
+            # the three phases if present; fall back to top-level "duration".
+            duration_s = 0.0
+            for phase in ("setup", "call", "teardown"):
+                phase_obj = t.get(phase)
+                if isinstance(phase_obj, dict):
+                    try:
+                        duration_s += float(phase_obj.get("duration", 0.0) or 0.0)
+                    except (TypeError, ValueError):
+                        pass
+            if duration_s == 0.0:
+                try:
+                    duration_s = float(t.get("duration", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    duration_s = 0.0
+            keywords = t.get("keywords") or []
+            # keywords may be a dict (older plugin versions) — coerce to list of keys
+            if isinstance(keywords, dict):
+                keywords = sorted(keywords.keys())
+            per_test.append({
+                "nodeid": t.get("nodeid", "?"),
+                "outcome": t.get("outcome", "?"),
+                "duration_s": round(duration_s, 6),
+                "keywords": list(keywords),
+            })
+        # Backward-compat: keep failed_tests[] exactly as before.
         failed_tests = [
             {"nodeid": t.get("nodeid", "?"), "outcome": t.get("outcome", "?")}
             for t in tests
@@ -149,6 +207,7 @@ def _run_pytest(
                 "error": int(summary.get("error", 0)),
                 "duration_s": float(report.get("duration", 0.0)),
             },
+            "tests": per_test,
             "failed_tests": failed_tests,
         }
     except subprocess.TimeoutExpired:
