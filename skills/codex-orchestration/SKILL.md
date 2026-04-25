@@ -1,6 +1,6 @@
 ---
 name: codex-orchestration
-description: Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Gemini CLI (Google Gemini 3) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, Gemini MCP tools (ask-gemini, brainstorm), and gemini -p headless mode. Triple-model orchestration for Claude + Codex + Gemini. Sandbox-aware: routes Gemini/Copilot calls through git-cli-bridge when local CLIs are unreachable.
+description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Gemini CLI (Google Gemini 3) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, Gemini MCP tools (ask-gemini, brainstorm), and gemini -p headless mode. Triple-model orchestration for Claude + Codex + Gemini. Sandbox-aware: routes Gemini/Copilot calls through git-cli-bridge when local CLIs are unreachable."
 ---
 
 # Cross-Model Orchestration — Claude + Codex + Gemini

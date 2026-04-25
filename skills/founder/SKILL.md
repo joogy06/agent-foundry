@@ -134,7 +134,7 @@ the user.
 | Pitch deck | Hand off to `presentation-builder` with `yc-pitch` or `sequoia-pitch` flow, pass `venture-brief.yaml` |
 | Landing copy / conversion | Hand off to `content-writer` + `conversion-psychology` |
 | SEO / organic distribution | Hand off to `seo-*` family |
-| Webstore operator (GamingBuilds) | Hand off to `entrepreneur-webstore` |
+| Webstore operator (separate venture) | Hand off to `entrepreneur-webstore` |
 | "Should I leave my job to start this" | Hand off to `career-transition` |
 | Legal / tax / incorporation / valuation / securities | **REFUSE** (HR-1, HR-2) |
 | "What's my TAM" without user inputs | **REFUSE** (HR-3) — offer calculator mode with explicit inputs |
@@ -299,7 +299,7 @@ content-writer + conversion-psychology. Founder is a router, not a universal rep
 
 - **Career questions** — "should I leave my job" → `career-transition`, `career-assessment`
 - **Implementation / coding** — → `forge` directly (after founder has produced a validated idea)
-- **GamingBuilds / the user's custom PC webstore operations** — → `entrepreneur-webstore`
+- **A separate webstore venture** — → `entrepreneur-webstore`
 - **Legal / tax / regulatory / securities** — REFUSED; human counsel only
 - **Pure writing tasks** (blog posts, landing copy) without founder context → `content-writer`,
   `conversion-psychology`, `seo-*` directly
