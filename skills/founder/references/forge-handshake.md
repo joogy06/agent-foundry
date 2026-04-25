@@ -187,7 +187,7 @@ Scope→Launch sense — they're lightweight delegations:
 | Pitch deck | `presentation-builder` with `yc-pitch` / `sequoia-pitch` flow | Pass `venture-brief.yaml` as input context; the narrative flows will read from it |
 | Landing copy | `content-writer` + `conversion-psychology` | Pass product description + target persona from `venture-brief.yaml` |
 | SEO strategy | `seo-content-strategist` + `seo-keyword-strategist` | Pass niche + product description |
-| Webstore questions (GamingBuilds-specific) | `entrepreneur-webstore` | Separate venture — not this one |
+| Webstore questions (separate-venture-specific) | `entrepreneur-webstore` | Separate venture — not this one |
 | "Should I leave my job" | `career-transition` | Separate domain — career, not venture |
 
 These delegations don't invoke the forge handoff. They're just routing to the right specialist

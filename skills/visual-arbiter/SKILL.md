@@ -1,6 +1,6 @@
 ---
 name: visual-arbiter
-description: Use when bob needs a mechanical verdict on whether a built UI product satisfies a frozen design-skeleton as part of the UI-INTEGRATED → UI-VERIFIED transition. Invoked as a subprocess (not a Claude Code Agent). Renders the built product with puppeteer at each required breakpoint, measures bbox / computed styles / interaction wiring against the skeleton, and emits ONE JSON visual-verdict.v1 object on stdout. Pure-Python decision path — NO LLM subprocess (CB4: bob is sole writer of .design-ledger/visual-verdicts/).
+description: "Use when bob needs a mechanical verdict on whether a built UI product satisfies a frozen design-skeleton as part of the UI-INTEGRATED → UI-VERIFIED transition. Invoked as a subprocess (not a Claude Code Agent). Renders the built product with puppeteer at each required breakpoint, measures bbox / computed styles / interaction wiring against the skeleton, and emits ONE JSON visual-verdict.v1 object on stdout. Pure-Python decision path — NO LLM subprocess (CB4: bob is sole writer of .design-ledger/visual-verdicts/)."
 ---
 
 # visual-arbiter

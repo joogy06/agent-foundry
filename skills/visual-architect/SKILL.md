@@ -1,6 +1,6 @@
 ---
 name: visual-architect
-description: Use at forge Step 2.5 for UI designs. Design-phase freeze skill that receives a draft skeleton (from skeleton-extractor), an approved HTML mockup, and user edits; validates every `binds_to: capability://...` URI resolves, enforces D2 strict on unresolved tokens (user must explicitly approve or add each one), HMAC-signs the payload with `.forge/session.key`, and atomically two-file writes `.design-ledger/skeletons/index.yaml` + `<screen>.yaml` via `trusted_runner.bundle_write`. Emits a `skeleton_frozen` transition request (bob applies — CB4). Mirrors S027 test-architect Phase-3 shape.
+description: "Use at forge Step 2.5 for UI designs. Design-phase freeze skill that receives a draft skeleton (from skeleton-extractor), an approved HTML mockup, and user edits; validates every `binds_to: capability://...` URI resolves, enforces D2 strict on unresolved tokens (user must explicitly approve or add each one), HMAC-signs the payload with `.forge/session.key`, and atomically two-file writes `.design-ledger/skeletons/index.yaml` + `<screen>.yaml` via `trusted_runner.bundle_write`. Emits a `skeleton_frozen` transition request (bob applies — CB4). Mirrors S027 test-architect Phase-3 shape."
 ---
 
 # visual-architect (v1)
