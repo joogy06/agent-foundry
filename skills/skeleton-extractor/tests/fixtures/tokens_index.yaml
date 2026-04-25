@@ -1,0 +1,11 @@
+schema: design-skeleton-index.v1
+index_id: "00000000-0000-4000-8000-000000000001"
+skeleton_version: "0.1"
+tokens:
+  color:
+    ink: "#0a0a0a"
+    paper: "#f5f1e8"
+    accent_sun: "#ffd23f"
+    accent_rain: "#4ea8de"
+  spacing:
+    unit_px: 4

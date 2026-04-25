@@ -68,6 +68,9 @@ Hooks defined in Gemini that invoke `gemini`, `claude`, or `codex` can recurse i
 
 ```bash
 #!/bin/bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
 export AI_CLI_CALL_DEPTH="${AI_CLI_CALL_DEPTH:-0}"
 if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
   exit 0

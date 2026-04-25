@@ -129,7 +129,7 @@ ANTHROPIC_API_KEY=$KEY \
 ### Gemini CLI
 
 ```bash
-GEMINI_API_KEY=$KEY \
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=$KEY \
   gemini -p "fix the bug" \
   --include-directories . \
   --output-format json \

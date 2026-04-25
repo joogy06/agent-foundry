@@ -39,6 +39,10 @@ Expected: skill loads, body is read.
 ### 3. Check Gemini can find the skill
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 # After symlinking via `gemini skills link ~/.claude/skills/<skill-name>`
 gemini skills list | grep <skill-name>
 # Should appear

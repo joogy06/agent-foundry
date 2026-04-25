@@ -44,6 +44,22 @@ gemini -p "say hello"
 
 Same ADC, same metadata server, same service account permission. No key file.
 
+### If the user has an AI Pro / Gemini Advanced subscription instead of Vertex
+
+`gemini-cli` routes based on env vars at invocation time:
+
+- **OAuth subscription (AI Pro / Gemini Advanced)** — default when `~/.gemini/oauth_creds.json` exists with `selectedType: oauth-personal` AND no conflicting env vars are set
+- **Cloud AI Companion API** — forced whenever `GOOGLE_CLOUD_PROJECT` is a non-empty string, requires `cloudaicompanion.googleapis.com` enabled on that project
+- **`GEMINI_API_KEY` auth** — takes precedence over OAuth when set (non-empty)
+
+On a workstation configured for Vertex ADC, the whole-shell `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` env vars will silently force subscription users onto the Cloud AI Companion path and return 403 if the Companion API isn't enabled. For an AI Pro subscription user on this workstation, override per-invocation:
+
+```bash
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p "say hello"
+```
+
+Or in a multi-call script, `export GOOGLE_CLOUD_PROJECT=` and `export GEMINI_API_KEY=` at the top of the block. This is the same trick the MCP server config uses (`claude mcp add gemini-cli -s user -e GOOGLE_CLOUD_PROJECT= -e GEMINI_API_KEY= ...`). See `~/.claude/skills/gemini-cli/references/auth.md` for the canonical routing note.
+
 ## GitHub Copilot CLI → Device flow with TCP tunnel
 
 OAuth device flow opens a browser. On a cloud VM, the browser opens **on the VM** (no display). Two workarounds:

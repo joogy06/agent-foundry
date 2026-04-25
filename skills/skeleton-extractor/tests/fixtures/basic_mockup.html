@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>basic fixture</title>
+<style>
+  :root {
+    --accent-sun: #ffd23f;
+    --accent-rain: #4ea8de;
+    --ink: #0a0a0a;
+    --paper: #f5f1e8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: sans-serif; background: var(--paper); color: var(--ink); }
+  header.masthead { padding: 16px; background: var(--ink); color: var(--paper); }
+  main { padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { border: 5px solid var(--ink); padding: 12px; background: var(--paper); }
+  .card button { background: var(--accent-sun); color: var(--ink); padding: 8px 12px; border: 2px solid var(--ink); }
+  .banner { background: var(--accent-rain); color: var(--ink); padding: 8px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 500px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <header class="masthead" role="banner" id="masthead">
+    <h1 id="title">Basic Fixture</h1>
+  </header>
+  <main id="main" role="main">
+    <section class="banner" id="banner">Informational banner</section>
+    <form id="search" role="search">
+      <input id="q" type="text" placeholder="query">
+      <select id="scope"><option>all</option><option>recent</option></select>
+      <button id="go" type="submit">Go</button>
+    </form>
+    <section class="grid" id="grid">
+      <article class="card" data-test-id="card-1"><h2>Card 1</h2><button>Open 1</button></article>
+      <article class="card" data-test-id="card-2"><h2>Card 2</h2><button>Open 2</button></article>
+      <article class="card" data-test-id="card-3"><h2>Card 3</h2><button>Open 3</button></article>
+      <article class="card" data-test-id="card-4"><h2>Card 4</h2><button>Open 4</button></article>
+    </section>
+    <nav id="nav" role="navigation"><a href="#a">Anchor A</a> <a href="#b">Anchor B</a></nav>
+    <footer id="footer" role="contentinfo">Footer</footer>
+  </main>
+</body>
+</html>

@@ -19,6 +19,10 @@ gemini -p "<prompt>"
 | `--accept-raw-output-risk` | boolean | Suppress the security warning when using `--raw-output` |
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 gemini -p --output-format json "list TODOs"            # one-shot JSON
 gemini -p --output-format stream-json "long task"     # streaming
 ```
@@ -49,7 +53,7 @@ Verified choices:
 Runs Gemini's tool calls inside a sandbox (bubblewrap on Linux, seatbelt on macOS). Combine with `-y` for fully unattended runs that cannot escape the sandbox.
 
 ```bash
-gemini -p -y -s "refactor function X across the repo"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p -y -s "refactor function X across the repo"
 ```
 
 ## Hybrid mode
@@ -99,6 +103,10 @@ Verified: `0` on success. Non-zero on error. Specific exit-code semantics are no
 ## Putting it together — CI patterns
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 # CI: read-only review, JSON for parsing, plan mode
 gemini -p \
   --approval-mode plan \

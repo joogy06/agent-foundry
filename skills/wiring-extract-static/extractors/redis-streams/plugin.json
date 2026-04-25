@@ -1,0 +1,10 @@
+{
+  "id": "redis-streams",
+  "version": "1.0.0",
+  "target_framework": "redis-streams",
+  "languages": ["python"],
+  "edge_kinds": ["emits", "reads_from"],
+  "is_fallback": false,
+  "activation_mode": "augment",
+  "description": "Redis Streams extractor: xadd (publisher) and xreadgroup (consumer) call sites. AST-based 3-pass scan — (1) load stream-name string constants from config module(s); (2) index local helper functions that forward a stream-name arg to xadd/xreadgroup; (3) walk call sites and emit edges. Augment-mode plug-in: runs on every Python file regardless of detected framework. Emits edges with dst_component = shared-redis (the redis hub in the contract map) and stream name in metadata so wiring-query impact('shared-redis') and impact('stream:<name>') both succeed."
+}

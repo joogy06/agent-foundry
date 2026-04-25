@@ -81,6 +81,10 @@ The **gemini-mcp-tool** MCP server wraps the Gemini CLI binary, using your AI Pr
 ### Raw Gemini CLI (Fallback / Parallel)
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 # Basic headless mode
 gemini -p "Review this code for security issues" --output-format json --yolo
 

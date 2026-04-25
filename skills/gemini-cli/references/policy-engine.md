@@ -46,6 +46,10 @@ The actual schema may differ — verify before relying on this.
 For a CI/CD pipeline that only reads:
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 gemini -p \
   --approval-mode plan \
   --policy ./ci-readonly.policy.yaml \
@@ -66,6 +70,10 @@ rules:
 ### Allow only specific MCP servers
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 gemini -p \
   --policy ./allow-github-only.policy.yaml \
   --allowed-mcp-server-names github \
@@ -90,6 +98,10 @@ rules:
 `--policy` accepts comma-separated files OR repeated flags:
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 gemini -p \
   --policy ./base.policy.yaml,./project.policy.yaml \
   "..."
@@ -109,6 +121,10 @@ Files are merged. Later rules override earlier ones (or AND together — verify 
 `--allowed-tools` still works in 0.36.0 but emits a deprecation warning. Replace with policy files:
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 # OLD
 gemini -p --allowed-tools read_file,list_directory "..."
 

@@ -138,6 +138,14 @@ The lead handles all user interaction:
   - "Latency requirements? (e.g., p95 < 200ms)"
   - "Is this on a hot path?"
   - "Existing performance budgets to respect?"
+- **Runtime / observability branch** (ask once, not a full questionnaire):
+  "Does this change runtime behavior, service boundaries, or SLOs?"
+  - If YES: delegate full capacity questionnaire to `performance` skill
+    (`references/capacity-questionnaire.md`), full signals-map drafting to
+    `observability` skill, BEFORE design-team exploration. Capture the
+    signals-map path + capacity answers into `shared_context` so design
+    agents consume them as constraints.
+  - If NO: skip. Existing performance-expectation questions still apply.
 - Determine complexity level
 
 ### Step 2: Approach Exploration
@@ -424,9 +432,30 @@ PAYLOAD=$(jq -cn --arg h "$MAP_HASH" --arg r "$MAP_REVISION" --arg s "$SESSION_I
 # Canonical JSON (sort keys, no whitespace) — must match gates.py canonical_json() bit-for-bit
 CANONICAL=$(printf '%s' "$PAYLOAD" | jq -cS .)
 
-# Compute HMAC-SHA256 using the session key file content as the key
-KEY=$(cat .forge/session.key)
-SIG=$(printf '%s' "$CANONICAL" | openssl dgst -sha256 -hmac "$KEY" -binary | xxd -p -c 256 | tr -d '\n')
+# Compute HMAC-SHA256 using the session key file content (ALL BYTES, including the
+# trailing newline from `openssl rand -hex 32 > file`) as the key.
+#
+# gates.py reads the key via pathlib.Path.read_bytes() which returns 65 bytes
+# (64 hex chars + newline). Shell command substitution `$(cat file)` strips trailing
+# newlines and produces a 64-byte key — mismatches gates.py. This produced a G1
+# signature-mismatch on every forge-signed contract map before 2026-04-19; see
+# skill_factory/docs/reviews/2026-04-19-product-merger-codex-spec-review.md (tasks.md #85).
+#
+# Mirrors _meta/gates.sh §HMAC verification (Python oracle preferred; bash fallback uses
+# xxd round-trip + openssl -macopt hexkey: to preserve the trailing newline byte).
+if command -v python3 >/dev/null 2>&1; then
+  SIG=$(printf '%s' "$CANONICAL" | python3 -c "
+import hmac, hashlib, sys, pathlib
+key = pathlib.Path('.forge/session.key').read_bytes()
+msg = sys.stdin.buffer.read()
+print(hmac.new(key, msg, hashlib.sha256).hexdigest())
+")
+else
+  KEY_HEX=$(xxd -p -c 0 .forge/session.key)
+  SIG=$(printf '%s' "$CANONICAL" | \
+    openssl dgst -sha256 -mac HMAC -macopt "hexkey:$KEY_HEX" -binary | \
+    xxd -p -c 256 | tr -d '\n')
+fi
 
 # Write the signature file — contains both payload and signature
 jq -cn --argjson p "$PAYLOAD" --arg s "$SIG" '{payload: $p, signature: $s}' > progress/contract-map.yaml.sig

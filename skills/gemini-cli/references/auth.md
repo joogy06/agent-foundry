@@ -2,6 +2,27 @@
 
 Gemini CLI 0.36.0 supports four authentication flows. Pick the right one for the environment.
 
+## Canonical: subscription-routing note
+
+`gemini-cli` resolves its auth path at invocation time based on environment variables. Understanding the three routing paths is critical when the host shell sets `GOOGLE_CLOUD_PROJECT` or `GEMINI_API_KEY` for other Google tooling (Vertex AI, GA, Cloud SDK image generation). Those shell vars silently redirect Gemini away from the OAuth subscription.
+
+The three routing paths:
+
+- **OAuth subscription (AI Pro / Gemini Advanced)** — what `gemini-cli` uses by default when `~/.gemini/oauth_creds.json` exists with `selectedType: oauth-personal` AND no conflicting env vars are set. This is the path you want for personal-subscription usage.
+- **Cloud AI Companion API** — forced whenever `GOOGLE_CLOUD_PROJECT` is a non-empty string inherited from the shell. Hits `cloudcode-pa.googleapis.com`, which requires the `cloudaicompanion.googleapis.com` API enabled on that specific project. If the API isn't enabled, you get a 403 even though your OAuth creds are fine.
+- **`GEMINI_API_KEY` auth (AI Studio)** — takes precedence over OAuth whenever `GEMINI_API_KEY` is set (non-empty). Routes to the AI Studio endpoint with that key, independent of Vertex or OAuth state.
+
+**Fix when the shell has conflicting vars:** set `GOOGLE_CLOUD_PROJECT=` (empty) and `GEMINI_API_KEY=` (empty) in the invocation environment to force the OAuth subscription path. Example:
+
+```bash
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p "hello"
+```
+
+The MCP server config already does this via `-e GOOGLE_CLOUD_PROJECT= -e GEMINI_API_KEY=` in the `claude mcp add` spawn env. Direct `gemini -p` invocations from user docs and skill code fences need the inline prefix (or a block-scope `export GOOGLE_CLOUD_PROJECT=` / `export GEMINI_API_KEY=` at the top of a multi-call script).
+
+The examples below under "API key (AI Studio)", "Vertex AI via ADC", and "Service account JSON" are intentional per-flow demos — they set the appropriate vars non-empty to demonstrate each flow, and do NOT need the subscription-override prefix.
+
+
 ## The four flows
 
 | Flow | When to use | Setup |

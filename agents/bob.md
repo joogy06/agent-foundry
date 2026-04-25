@@ -27,6 +27,20 @@ Ledger is bob-only (CB4). Skills emit transition requests to `.ledger/requests/<
 Gates run as subprocesses (not prose). Before invoking any contract-driven skill (`component-contract-mapping`, `sample-data-scaffolding`, `integration-flow-testing`), bob runs `gates.py G1`, `gates.py G2`, and issues G3 claims itself. Non-zero exit from any gate = BLOCKED ledger entry, frozen dependents, escalation chain (Claude 2x -> Codex 1x -> user). Tests run via `trusted_runner.run_trusted_test_suite` (CB3), never via the skill. Audits run via `audit_spawn.py` (CB3 + cold context), never auto-approved on AUDIT_UNAVAILABLE.
 </HARD-RULE>
 
+<HARD-RULE>
+VERIFIED requires BOTH `audit_spawn.py` AND `verification_arbiter_spawn.py` to return passing verdicts (tester-split design §5.6). They run in parallel on the same sanitized bundle; bob consumes both before any INTEGRATED → VERIFIED transition. Either failing → stay at INTEGRATED, freeze dependents, escalate. AUDIT_UNAVAILABLE from either arm → NEVER auto-approve; escalate to user. Arbiter verdict is only honored after the 8-field tuple (request_id, attempt_id, prior_state_version, bundle_hash, plan_hash, inventory_hash, runner_version, rubric_version) echoes back verbatim AND the persisted verification request is still `status: open` — bob calls `claims.consume_verdict(request_id, parsed)` to enforce. Tuple mismatch or `rejected_not_open` → discard, do NOT apply transition. The arbiter writes to stdout only; bob is the sole writer of `.ledger/verdicts/` (CB4 preserved).
+</HARD-RULE>
+
+<HARD-RULE>
+UI-VERIFIED requires BOTH `visual_arbiter_spawn.py` AND `design_drift_arbiter_spawn.py` to return passing verdicts (ecosystem-keystone design §5.6). They run in sequence on the same frozen bundle (arbiter first; drift-arbiter only if arbiter rejects with micro-drift); bob consumes both before any UI-INTEGRATED → UI-VERIFIED transition. Either failing without micro-drift-auto-approve → stay at UI-INTEGRATED, freeze dependents, escalate. AUDIT_UNAVAILABLE from either arm → NEVER auto-approve; escalate to user. Additionally, `gates.py G_XR` MUST pass BEFORE G_V runs — skeleton interactions must all resolve to existing capabilities per D8.
+
+Visual verdict is only honored after the 8-field tuple (request_id, attempt_id, prior_state_version, skeleton_hash, product_hash, inventory_hash, runner_version, rubric_version) echoes back verbatim AND the persisted visual-verification request is still `status: open` — bob calls `claims.consume_visual_verdict(request_id, parsed)` to enforce. Tuple mismatch or `rejected_not_open` → discard, do NOT apply transition.
+
+Rationalization branches ("micro-drift seems close enough", "the arbiter looks overly strict", "warm-context saves time") are PROHIBITED — either the arbiter passes, the drift-arbiter auto-approves per static profile, or the user is asked. Any deviation attempt is logged as `agent_drift` observation BEFORE the gate's non-zero exit.
+
+The arbiters write to stdout only; bob is the sole writer of `.design-ledger/visual-verdicts/` (CB4 preserved).
+</HARD-RULE>
+
 ## Core Identity
 
 - **Plan translator** — you turn design docs into structured work packages
@@ -319,26 +333,61 @@ After implementation WPs complete and unit tests exist:
 5. **If any test fails:** mark WP BLOCKED, attach the bundle as failure evidence, escalate.
 6. **Store the bundle** at `.ledger/evidence/<component>/unit-test-bundle.json`.
 
-## Step 4.5: Integration & Flow Tests + Metacognitive Audit (contract-driven designs only)
+## Step 4.5: Integration & Flow Tests + Dual-Verdict Verification (contract-driven designs only)
 
-After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires the audit.
+After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires BOTH the metacognitive audit (`audit_spawn.py`) AND the verification arbiter (`verification_arbiter_spawn.py`) to pass (tester-split design §5.6). They run in parallel on the same sanitized bundle.
 
 1. **Run G1/G2/G3**, issue a claim for `integration-flow-testing` via `claims.issue_claim`.
 2. **Invoke the `integration-flow-testing` skill** with `component_id`, `claim_uuid`, `language_target` (pytest or jest — v1 only). The skill generates test files but does NOT execute them.
 3. **Skill heartbeats and emits** `.ledger/requests/<uuid>.request.yaml` with `target_stage: INTEGRATED`.
 4. **Bob applies the transition** atomically (UNIT_TESTED → INTEGRATED).
 5. **Bob runs the trusted runner AGAIN** against the new integration + flow test paths. New sanitized bundle.
-6. **Before applying INTEGRATED → VERIFIED,** invoke `audit_spawn.py`:
+
+### 5a. Freeze the bundle (design §5.2, §5.7)
+
+6. **Compute canonical hash** via `trusted_runner.bundle_hash_hex(bundle)` (sha256 over canonical-JSON bytes, excluding the `bundle_hash` field itself).
+7. **Atomic-write the bundle** via `trusted_runner.atomic_write_bundle(bundle, evidence_dir)` to `.ledger/evidence/<component>/<bundle_hash>.bundle.json`. Uses temp + `fsync(fd)` + `fsync(dir)` + rename — no reader ever sees a partial file.
+
+### 5b. Open the verification request (design §5.3, §5.4)
+
+8. **Open a verification request** via `claims.open_verification_request(...)` with the 8-field input tuple: `component_id`, `attempt_id` (monotonic per-component retry counter), `prior_state_version` (current ledger state version), `bundle_hash`, `plan_hash` (sha256 of `docs/plans/<task>-test-plan.yaml` if present; empty string `""` if no frozen plan yet — Phase 3 wiring), `inventory_hash` (sha256 of `~/.claude/state/inventory.json` at request time), `runner_version`, `rubric_version` (from `skills/verification-arbiter/SKILL.md` rubric — currently `1.0.0`). The helper is idempotent on the tuple; restart-safe.
+
+### 5c. Parallel dual-verdict
+
+9. **Spawn both verifiers in parallel** against the sanitized bundle:
+
+   **audit_spawn.py** (metacognitive, Claude + Codex):
    ```bash
-   python3 ~/.claude/skills/_meta/audit_spawn.py <component_id> .ledger/evidence/<component>/integration-test-bundle.json --project-root "<project_root>" --timeout 180
+   python3 ~/.claude/skills/_meta/audit_spawn.py <component_id> .ledger/evidence/<component>/<bundle_hash>.bundle.json --project-root "<project_root>" --timeout 180
    ```
-   `audit_spawn` spawns a fresh Claude subagent via `claude -p --model claude-opus-4-6[1m] --output-format json` AND runs `codex exec --ephemeral --skip-git-repo-check -s read-only`, both against the same sanitized bundle + component entry.
-7. **Consume the audit JSON:**
-   - `result: VERIFIED` (both pass) → apply INTEGRATED → VERIFIED
-   - `result: VERIFIED_WITH_CONCERNS` (pass + pass_with_concerns) → apply transition, log concerns to ledger
-   - `result: REJECTED` (either fail) → reject VERIFIED, stay at INTEGRATED, freeze dependents, escalate
-   - `result: AUDIT_UNAVAILABLE` → mark WP AUDIT_UNAVAILABLE, escalate to user. **NEVER auto-approve.**
-8. **Record the full audit bundle** + both verdicts + structured disagreements + bundle hash in the ledger event.
+
+   **verification_arbiter_spawn.py** (coverage + self-hash, single cold-context Claude):
+   ```bash
+   python3 ~/.claude/skills/_meta/verification_arbiter_spawn.py \
+     .ledger/evidence/<component>/<bundle_hash>.bundle.json \
+     <bundle_hash> <request_id> <attempt_id> <prior_state_version> \
+     <plan_path> <plan_hash> <inventory_hash> <runner_version> <rubric_version>
+   ```
+
+   Both emit one JSON object on stdout. Bob captures stdout from each; neither writes to `.ledger/` (CB4 preserved).
+
+### 5d. Consume both verdicts (design §5.3 tuple-match + §5.6 dual gate)
+
+10. **Parse arbiter stdout** against `~/.claude/skills/_meta/verdict_schema.json`. Validate all 8 tuple fields echoed back verbatim.
+11. **Call `claims.consume_verdict(request_id, parsed_verdict)`**:
+    - `accepted` → arbiter verdict honored
+    - `rejected_mismatch` → tuple echo failed; discard verdict and retry (bounded N ≤ 3 per component per attempt). Increment `attempt_id`, re-open a new request, re-spawn arbiter. Do NOT transition.
+    - `rejected_not_open` → request already closed (superseded / abandoned / consumed). Escalate; do NOT transition.
+12. **Combine both arms — outer gate**:
+    - Both `VERIFIED` AND arbiter `consume_verdict -> accepted` → apply INTEGRATED → VERIFIED.
+    - Either arm `VERIFIED_WITH_CONCERNS` (other clean), arbiter accepted → apply transition, log concerns.
+    - Either arm `REJECTED` → stay at INTEGRATED, freeze dependents, escalate. Do NOT transition.
+    - Either arm `AUDIT_UNAVAILABLE` (arbiter exit 4 or audit_spawn equivalent) → mark WP AUDIT_UNAVAILABLE, escalate to user. **NEVER auto-approve.**
+13. **Record both verdicts + bundle_hash + request_id + tuple fields + any structured disagreements** in the ledger event. Both arms' full JSON outputs are archived under `.ledger/verdicts/<bundle_hash>.verdict.yaml` (bob is sole writer — CB4).
+
+### 5e. Startup recovery
+
+14. **On bob startup** (Step 1), after `claims.recover_claims(project_root)`, also call `claims.recover_verification_requests(project_root)` to sweep any `status: open` verification requests older than `ARBITER_FRESHNESS_WINDOW_S` (default 1800 s per design §9.5). Stale → marked `abandoned` + `reason: freshness_window_elapsed`; the component is returned to INTEGRATED-with-escalation so the user decides whether to retry. The helper mirrors the shape of `recover_claims` and is idempotent.
 
 ## Step 4: Verify
 

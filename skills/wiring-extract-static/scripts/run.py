@@ -43,7 +43,13 @@ except ImportError:
     sys.exit(1)
 
 from edge_identity import compute_edge_id  # noqa: E402
-from plugin_loader import discover_plugins, fallback_plugin, plugins_for_language, LoadedPlugin  # noqa: E402
+from plugin_loader import (  # noqa: E402
+    discover_plugins,
+    fallback_plugin,
+    plugins_for_language,
+    augment_plugins_for_language,
+    LoadedPlugin,
+)
 from component_resolver import make_resolver, ComponentResolver  # noqa: E402
 from heartbeat import HeartbeatThread  # noqa: E402
 
@@ -416,11 +422,21 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # For each language, invoke plug-ins. Framework plug-ins run on their language
         # files; generic-treesitter runs as a final pass on any language files that had
-        # no framework plug-in cover them. The "only fallback when no framework matches"
-        # rule is per-language, not per-file (design §4 open-Q resolution).
+        # no framework plug-in cover them. Augment plug-ins ALWAYS run on their
+        # language files regardless of detected frameworks (WP-WIRING-02-BOOTSTRAP).
+        # The "only fallback when no framework matches" rule is per-language, not per-file
+        # (design §4 open-Q resolution). Augment plug-ins do not gate the fallback.
         for lang, files in per_language_files.items():
             lang_plugins = plugins_for_language(plugins, lang)
-            framework_plugins = [p for p in lang_plugins if not p.is_fallback]
+            # Split by activation mode. `plugins_for_language` returns non-fallback
+            # first, then fallback; we carve out augment to handle separately and
+            # limit `framework_plugins` to the true framework-gated set.
+            framework_plugins = [
+                p for p in lang_plugins
+                if not p.is_fallback and not p.is_augment
+            ]
+            augment_plugins = augment_plugins_for_language(plugins, lang)
+
             # Only run the framework plug-in if its detected framework is in fws set.
             matched_any_framework = False
             for p in framework_plugins:
@@ -429,6 +445,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     run_plugin(p, lang, files, project_dir, resolver,
                                workspace_tree_hash, symbols={"by_file": {}, "by_name": {}},
                                config=config_dict, ctx=ctx)
+            # Augment plug-ins fire unconditionally (framework-agnostic).
+            for p in augment_plugins:
+                run_plugin(p, lang, files, project_dir, resolver,
+                           workspace_tree_hash, symbols={"by_file": {}, "by_name": {}},
+                           config=config_dict, ctx=ctx)
+            # Fallback only when no framework plug-in matched. Augment plug-ins
+            # do NOT satisfy this gate: if the only non-fallback coverage for a
+            # language is an augment plug-in (e.g. redis-streams on a non-fastapi
+            # Python project), the generic-treesitter fallback still runs to
+            # capture the broader call graph.
             if not matched_any_framework:
                 fb = fallback_plugin(plugins)
                 if fb is not None and (lang in fb.languages or "generic" in fb.languages):

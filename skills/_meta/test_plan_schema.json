@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory/schemas/test-plan.schema.json",
+  "title": "test-architect test plan",
+  "description": "Hash-addressed, signed test-plan artifact emitted by test-architect (tester-split design §5.1). Loaded by the verification-arbiter to score coverage, by bob to enforce skip declarations, and by forge to surface testability blockers. Phase 1 ships only this schema; the test-architect agent is Phase 3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "plan_hash",
+    "design_doc_hash",
+    "contract_map_hash",
+    "inventory_hash",
+    "inventory_tier",
+    "created_at",
+    "created_by",
+    "forge_session_id",
+    "requirements"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable UUID for the plan. Increments imply a re-freeze (plan amendment per §5.5)."
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the canonical body of the plan (excluding plan_hash itself)."
+    },
+    "design_doc_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the design doc at freeze time. Mismatch on later read = design has drifted."
+    },
+    "contract_map_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of progress/contract-map.yaml at freeze time. Pins plan to a specific component graph."
+    },
+    "inventory_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of ~/.claude/state/inventory.json at planning time. Tier-aware skip decisions are reproducible from this."
+    },
+    "inventory_tier": {
+      "type": "integer",
+      "enum": [0, 1, 2]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string",
+      "const": "test-architect"
+    },
+    "forge_session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "test_types", "required_tier"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^REQ-[A-Za-z0-9_-]+$"
+          },
+          "description": {"type": "string", "minLength": 1},
+          "test_types": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": ["unit", "integration", "flow", "ui", "smoke", "perf"]
+            }
+          },
+          "required_tier": {
+            "type": "integer",
+            "enum": [0, 1, 2]
+          },
+          "required_capabilities": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "description": "Names of env-adoption capabilities the test depends on (e.g., chrome_mcp, codex, gh)."
+          },
+          "fixture_dependencies": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "rationale": {"type": "string"},
+          "skip_if_tier_below": {
+            "type": "integer",
+            "enum": [1, 2],
+            "description": "First-class skip declaration (design §1 goal 5). If env tier < this value, the test is allowed to be omitted from the bundle without penalty."
+          }
+        }
+      }
+    },
+    "testability_concerns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requirement_id", "severity", "issue"],
+        "properties": {
+          "requirement_id": {"type": "string", "pattern": "^REQ-[A-Za-z0-9_-]+$"},
+          "severity": {"type": "string", "enum": ["warning", "blocker"]},
+          "issue": {"type": "string", "minLength": 1},
+          "recommendation": {"type": "string"}
+        }
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "detail"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["PLAN_INCOMPLETE", "PLAN_INFEASIBLE", "TIER_MISMATCH"]
+          },
+          "requirement_id": {"type": "string"},
+          "detail": {"type": "string", "minLength": 1}
+        }
+      },
+      "description": "Returned to forge if any blocker found at planning time. Triggers the plan amendment protocol (design §5.5)."
+    }
+  }
+}

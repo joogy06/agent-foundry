@@ -12,12 +12,19 @@ never raw skill output. This closes the prompt-injection-via-stdout hole.
 
 Public API:
     run_trusted_test_suite(component_id, test_paths, runner='pytest') -> dict
+    canonical_bundle_bytes(bundle) -> bytes        (Phase 1, tester-split design §5.7)
+    bundle_hash_hex(bundle) -> str                 (Phase 1, tester-split design §5.7)
+    atomic_write_bundle(bundle, dest_dir) -> Path  (Phase 1, tester-split design §5.7)
+    atomic_write_bytes(path, data) -> None         (Phase 1, tester-split design §5.7)
 
 CLI:
     python -m trusted_runner <component_id> <test_path> [<test_path> ...] [--runner pytest|jest]
     Output: bundle JSON to stdout. Exit 0 if all tests pass, 2 otherwise.
 
 Provenance: spec section 11.2. Critical invariants enforced: CB3.
+Phase 1 additions: tester-split design §5.7 (atomic write semantics +
+content-addressed bundle persistence). These are PURE additions; no existing
+function signature changes (rollback per design §8 = remove the new helpers).
 """
 from __future__ import annotations
 
@@ -26,9 +33,10 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +84,573 @@ def canonical_json(obj: Any) -> str:
 
 def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 additions — content-addressed bundles + atomic write (§5.7)
+# ---------------------------------------------------------------------------
+#
+# Why these helpers exist (tester-split design §5.7):
+#
+#   The verification arbiter (Phase 2) is invoked against an evidence bundle
+#   identified by its SHA-256 content hash. For the verdict tuple match
+#   (design §5.3) to be meaningful, two properties must hold:
+#
+#     1. Hash stability — recomputing bundle_hash from the on-disk bytes
+#        MUST yield the same value bob computed before persisting. This
+#        requires the field that holds the hash to be EXCLUDED from the
+#        canonical bytes, and the canonicalization to be deterministic
+#        (sorted keys, no insignificant whitespace, UTF-8, NFC-stable).
+#
+#     2. No torn writes — a reader (arbiter or recovering bob) must never
+#        observe a partially-written bundle. We use temp file in the same
+#        directory + fsync(fd) + fsync(parent dir) + atomic rename. The
+#        rename is atomic on POSIX when source and destination are on the
+#        same filesystem; placing the temp file in the destination
+#        directory guarantees that.
+#
+# Backward-compat note: run_trusted_test_suite() still computes
+# bundle["bundle_hash"] using canonical_json (over the bundle including the
+# old top-level fields). The new bundle_hash_hex() is the canonical Phase 1
+# definition and excludes the "bundle_hash" key from the digest input. Both
+# coexist during Phase 1; Phase 2 will migrate consumers to the new digest.
+
+
+# Keys excluded from the canonical-bytes input when hashing a bundle.
+# Excluding "bundle_hash" prevents the recursion paradox: you cannot include
+# the hash of X inside X. Excluding other ephemeral runtime metadata is
+# deliberate — see canonical_bundle_bytes docstring for the rationale.
+_BUNDLE_HASH_EXCLUDED_KEYS = frozenset({"bundle_hash"})
+
+
+def canonical_bundle_bytes(bundle: Dict[str, Any]) -> bytes:
+    """Return the deterministic byte serialization used for hashing a bundle.
+
+    The output:
+        - Excludes any key in _BUNDLE_HASH_EXCLUDED_KEYS (currently only
+          "bundle_hash") from the top-level object.
+        - Uses json.dumps with sort_keys=True and the most compact separators
+          so re-serialization on any platform is byte-identical.
+        - Uses ensure_ascii=False then encodes UTF-8 — the JSON is platform-
+          independent and the byte string round-trips losslessly.
+
+    Two different in-memory bundles that differ only in their "bundle_hash"
+    field MUST produce the same canonical bytes. Two bundles that differ in
+    ANY other field MUST produce different canonical bytes.
+    """
+    if not isinstance(bundle, dict):
+        raise TypeError(
+            f"bundle must be a dict; got {type(bundle).__name__}"
+        )
+    filtered = {k: v for k, v in bundle.items() if k not in _BUNDLE_HASH_EXCLUDED_KEYS}
+    return json.dumps(
+        filtered,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def bundle_hash_hex(bundle: Dict[str, Any]) -> str:
+    """Return the SHA-256 hex digest of canonical_bundle_bytes(bundle).
+
+    Phase 1 definition of bundle_hash. This is what the verification arbiter
+    will recompute from the on-disk bytes to verify content integrity
+    (verdict tuple field, design §5.3).
+    """
+    return hashlib.sha256(canonical_bundle_bytes(bundle)).hexdigest()
+
+
+def _fsync_dir(directory: Path) -> None:
+    """fsync the directory so the rename is durable on disk.
+
+    On POSIX, atomic rename's metadata change isn't durable until the parent
+    directory is fsynced. Failing this is a silent durability hole (the file
+    survives a kernel crash but the rename does not, which means a reader
+    sees the OLD file or no file at all — but never a torn one). We tolerate
+    OSError because some filesystems (e.g., certain network mounts) reject
+    fsync on directories; in that case the OS-level guarantees are weaker
+    but the rename is still atomic.
+    """
+    try:
+        fd = os.open(str(directory), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write `data` to `path` atomically with full fsync semantics (§5.7).
+
+    Steps:
+        1. Create the temp file in the SAME directory as the destination
+           (so the rename stays on the same filesystem and is atomic).
+        2. Write all bytes to the temp file's fd.
+        3. fsync the fd — guarantees the bytes are on the disk.
+        4. Close the fd, then os.replace (atomic on POSIX, atomic on
+           Windows for files that fit on the same volume per Python docs).
+        5. fsync the parent directory — guarantees the rename is durable.
+
+    No reader is ever able to observe a torn or partial write. A crash at
+    any point either leaves the destination unchanged (steps 1–3) or
+    fully replaces it (step 4 onward).
+    """
+    path = Path(path)
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    # NamedTemporaryFile with delete=False so we control the close + rename.
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".",
+        suffix=".tmp",
+        dir=str(parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(str(tmp_path), str(path))
+        _fsync_dir(parent)
+    except BaseException:
+        # On any error (including KeyboardInterrupt), do not leave a stray
+        # tmp file in the destination directory.
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def atomic_write_bundle(
+    bundle: Dict[str, Any],
+    dest_dir: Path,
+) -> Tuple[Path, str]:
+    """Persist `bundle` to dest_dir under its content-addressed filename.
+
+    The filename is `<bundle_hash>.bundle.json` per design §5.2 / §5.7. The
+    bundle is serialized via canonical_bundle_bytes (so the on-disk bytes
+    match what bundle_hash_hex hashed). If the bundle dict does not already
+    contain a `bundle_hash` field, one is added before serialization for
+    consumer convenience — but it is EXCLUDED from the canonical bytes used
+    for hashing (see canonical_bundle_bytes).
+
+    Returns (path_written, bundle_hash_hex). Idempotent: writing the same
+    bundle twice yields the same destination path and same hash; the
+    second write overwrites the first atomically with identical bytes.
+    """
+    dest_dir = Path(dest_dir)
+    h = bundle_hash_hex(bundle)
+    # Augment the bundle in-memory with the hash for consumer convenience,
+    # WITHOUT changing the bytes used to compute that hash.
+    augmented = dict(bundle)
+    augmented["bundle_hash"] = h
+    # Re-derive canonical bytes from the augmented form: this still excludes
+    # bundle_hash, so the bytes equal canonical_bundle_bytes(bundle). We then
+    # serialize the AUGMENTED form (with bundle_hash present) for human/tooling
+    # readability of the on-disk file. The hashed bytes and the persisted
+    # bytes intentionally differ in exactly one key.
+    persisted = json.dumps(
+        augmented,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    out_path = dest_dir / f"{h}.bundle.json"
+    atomic_write_bytes(out_path, persisted)
+    return out_path, h
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 additions — multi-file atomic transaction (ecosystem-keystone §5.5, §7.5 R9)
+# ---------------------------------------------------------------------------
+#
+# Why bundle_write exists (ecosystem-keystone design §5.5 last paragraph + §5.10):
+#
+#   `claims.resolve_challenge` (approved amendment) and
+#   `claims.file_lifecycle_event` (entity split/merge/retire) must write TWO
+#   or more ledger files in a single logical commit. Example — approving a
+#   challenge that amends `binds_to` must update BOTH:
+#
+#     1. .design-ledger/skeletons/<screen>.yaml   (new skeleton version)
+#     2. progress/contract-map.yaml                (matching contract-map delta)
+#
+#   If the first rename succeeds and the second fails (or the process is
+#   pkill'd between the two), the on-disk state is inconsistent: skeleton
+#   references a binds_to target that the contract-map doesn't declare yet,
+#   or vice versa. Downstream gates (G_V, G_XR) will either falsely block
+#   or falsely pass depending on which file won.
+#
+#   `bundle_write` commits a list of (path, bytes) atomically with pre-image
+#   rollback — we save each destination's pre-image bytes under
+#   `rollback_dir/<txn_id>/` BEFORE any rename, then replay per-file writes
+#   via `atomic_write_bytes`. On any failure mid-transaction, we restore
+#   already-renamed files from their pre-images (reverse order) and raise.
+#
+#   Power-loss or SIGKILL between renames is handled by
+#   `recover_orphan_rollback(project_root)` — a session-start sweeper that
+#   walks `<project_root>/.tmp/rollback/` for orphan manifests and restores
+#   pre-images back to their source paths. Orphan = rollback dir present on
+#   disk (meaning the previous transaction did NOT clean up, which only
+#   happens if the process died between "rollback dir created" and "all
+#   renames committed successfully").
+#
+# Invariant proof (design §7.6 row 5):
+#   - If bundle_write returns normally -> all writes committed; rollback
+#     dir deleted. No orphan left for recovery to process.
+#   - If bundle_write raises -> every write that renamed successfully has
+#     been reverted; rollback dir may remain only if cleanup itself failed
+#     (tolerated; next recovery sweep is idempotent).
+#   - If bundle_write is killed mid-execution -> rollback dir is still on
+#     disk with manifest.json intact; next session's
+#     `recover_orphan_rollback` restores any committed pre-images.
+#
+# Backward compatibility: these are PURE additions. Existing callers of
+# `atomic_write_bytes` / `atomic_write_bundle` are unaffected.
+
+
+# Default subdirectory within `project_root` that holds transaction scratch.
+# Matches the on-disk convention referenced in contract-map.yaml and §5.10.
+_ROLLBACK_SUBDIR = Path(".tmp") / "rollback"
+
+# Manifest filename written inside each <txn_id> rollback dir. The manifest
+# records the pre-image-to-target mapping + whether the target existed
+# pre-transaction so recovery can distinguish "restore pre-image" from
+# "unlink target that was never supposed to exist".
+_ROLLBACK_MANIFEST_NAME = "manifest.json"
+
+
+def _generate_txn_id() -> str:
+    """Return a transaction id: compact timestamp + short uuid hex.
+
+    Shape mirrors `claims.py` id conventions (uuid4-based, kept short enough
+    to fit in filesystem path segments without filesystem-case-fold issues).
+    """
+    import uuid
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    suffix = uuid.uuid4().hex[:12]
+    return f"{stamp}-{suffix}"
+
+
+def _default_rollback_dir() -> Path:
+    """Return the default rollback_dir when the caller passed None.
+
+    Convention: `<cwd>/.tmp/rollback/`. Callers (claims.resolve_challenge,
+    claims.file_lifecycle_event) will almost always pass an explicit
+    rollback_dir derived from `project_root`; the cwd default is a sane
+    fallback for ad-hoc use.
+    """
+    return Path.cwd() / _ROLLBACK_SUBDIR
+
+
+def _save_pre_image(
+    target: Path,
+    txn_dir: Path,
+    index: int,
+) -> Dict[str, Any]:
+    """Capture the pre-image of `target` under `txn_dir`.
+
+    Returns a manifest entry of the shape:
+        {
+            "target": "<absolute path of target>",
+            "pre_image": "<relative filename inside txn_dir, or null>",
+            "existed": <bool>,
+        }
+
+    If `target` does NOT exist, `existed` is False and `pre_image` is None.
+    Recovery uses `existed` to decide: False + target-now-exists -> unlink
+    the target (it was created by a partial commit); True -> restore bytes.
+
+    Pre-image bytes are written via atomic_write_bytes for durability.
+    """
+    target = Path(target)
+    entry: Dict[str, Any] = {
+        "target": str(target),
+        "pre_image": None,
+        "existed": False,
+    }
+    if target.is_file():
+        pre_image_name = f"preimage.{index:04d}.bin"
+        pre_image_path = txn_dir / pre_image_name
+        # Read-then-atomic-write. We cannot just copy because fsync semantics
+        # differ; keeping the same durability contract as the commit path
+        # ensures recovery bytes are on disk before we attempt any rename.
+        data = target.read_bytes()
+        atomic_write_bytes(pre_image_path, data)
+        entry["pre_image"] = pre_image_name
+        entry["existed"] = True
+    elif target.exists():
+        # Target exists but isn't a regular file (directory, symlink-to-dir,
+        # device). We refuse — bundle_write commits bytes to file paths only.
+        raise ValueError(
+            f"bundle_write target is not a regular file: {target}"
+        )
+    return entry
+
+
+def _restore_pre_image(entry: Dict[str, Any], txn_dir: Path) -> None:
+    """Reverse a single commit: restore target from its manifest entry.
+
+    Semantics:
+        - existed=True  -> re-materialize target from pre_image bytes.
+        - existed=False -> unlink target if it now exists (was created by
+          the partial commit we are rolling back).
+
+    This function MUST be idempotent: if the target is already in the
+    desired state (pre-image content, or absent), calling us again is a
+    no-op.  Recovery calls us repeatedly if prior recovery was interrupted.
+    """
+    target = Path(entry["target"])
+    if entry.get("existed"):
+        pre_image_name = entry.get("pre_image")
+        if not pre_image_name:
+            # Manifest corruption: existed=True but no pre_image recorded.
+            # Best effort — leave target as-is, surface via observation.
+            return
+        pre_image_path = txn_dir / pre_image_name
+        if pre_image_path.is_file():
+            atomic_write_bytes(target, pre_image_path.read_bytes())
+    else:
+        # Pre-image did not exist. If the target was created by a partial
+        # commit, remove it. If it was never created, this is a no-op.
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _delete_txn_dir(txn_dir: Path) -> None:
+    """Remove the transaction scratch dir after successful commit.
+
+    Best-effort: if cleanup fails, the next `recover_orphan_rollback` will
+    see the dir, notice all targets already match their committed state,
+    and clean up harmlessly. We never raise from cleanup.
+    """
+    if not txn_dir.is_dir():
+        return
+    try:
+        import shutil
+        shutil.rmtree(txn_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+
+class BundleWriteError(Exception):
+    """Raised when bundle_write fails and has performed a rollback.
+
+    Attributes:
+        txn_id (str)                  - id of the failed transaction
+        rolled_back_paths (list[str]) - targets whose renames were reverted
+        failed_path (str | None)      - the path whose write triggered the
+                                        rollback (commit failure point)
+        cause (BaseException | None)  - the underlying exception
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        txn_id: str,
+        rolled_back_paths: List[str],
+        failed_path: Optional[str] = None,
+        cause: Optional[BaseException] = None,
+    ):
+        super().__init__(message)
+        self.txn_id = txn_id
+        self.rolled_back_paths = list(rolled_back_paths)
+        self.failed_path = failed_path
+        self.cause = cause
+
+
+def bundle_write(
+    writes: List[Tuple[Path, bytes]],
+    *,
+    rollback_dir: Optional[Path] = None,
+    txn_id: Optional[str] = None,
+) -> str:
+    """Commit all `writes` atomically with pre-image rollback (§5.5 last para).
+
+    Each entry in `writes` is (destination_path, new_bytes). All writes
+    happen in a single logical transaction:
+
+        Phase 1 (pre-image snapshot):
+            For each write: capture current on-disk bytes (or "absent")
+            under `rollback_dir/<txn_id>/` with a manifest.json describing
+            the target-to-preimage mapping.
+
+        Phase 2 (commit):
+            For each write, in the order given: `atomic_write_bytes(path, bytes)`.
+
+        Phase 3 (cleanup):
+            If every commit succeeded: delete the rollback dir.
+            If ANY commit failed: restore already-committed targets from
+            their pre-images in reverse order, then raise BundleWriteError
+            with `rolled_back_paths`. The rollback dir is KEPT so the next
+            `recover_orphan_rollback` can verify state and clean up.
+
+    Args:
+        writes: list of (Path, bytes) pairs. Order determines commit order
+            AND the inverse rollback order on failure.
+        rollback_dir: directory that holds pre-image scratch. If None,
+            defaults to `<cwd>/.tmp/rollback/`. Callers invoking from a
+            known project root should pass `project_root / ".tmp/rollback"`.
+        txn_id: transaction identifier. If None, a time-ordered id is
+            generated automatically.
+
+    Returns:
+        The final `txn_id` (generated if caller passed None).
+
+    Raises:
+        ValueError: if `writes` is empty, or any target is not a regular file.
+        BundleWriteError: if a commit failed and rollback was performed.
+            The exception carries `txn_id`, `rolled_back_paths`, `failed_path`,
+            and `cause` attributes.
+
+    Durability:
+        Each pre-image and each commit uses the same fsync+rename semantics
+        as `atomic_write_bytes`. Power-loss between renames leaves the
+        rollback dir intact for `recover_orphan_rollback` to process.
+    """
+    if not writes:
+        raise ValueError("bundle_write requires at least one (path, bytes) pair")
+
+    if rollback_dir is None:
+        rollback_dir = _default_rollback_dir()
+    rollback_dir = Path(rollback_dir)
+
+    if txn_id is None:
+        txn_id = _generate_txn_id()
+
+    txn_dir = rollback_dir / txn_id
+    txn_dir.mkdir(parents=True, exist_ok=True)
+
+    # Phase 1: snapshot pre-images + write manifest BEFORE any commit.
+    # The manifest is what recovery reads; it MUST hit disk durably before
+    # we attempt any rename of a target, otherwise a crash between
+    # "target committed" and "manifest written" would leave recovery
+    # unable to undo.
+    manifest_entries: List[Dict[str, Any]] = []
+    for idx, (target, _data) in enumerate(writes):
+        entry = _save_pre_image(Path(target), txn_dir, idx)
+        manifest_entries.append(entry)
+
+    manifest = {
+        "txn_id": txn_id,
+        "created_at": now_iso(),
+        "entries": manifest_entries,
+    }
+    manifest_bytes = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")
+    atomic_write_bytes(txn_dir / _ROLLBACK_MANIFEST_NAME, manifest_bytes)
+
+    # Phase 2: commit each write via atomic_write_bytes. Track which ones
+    # committed so we can reverse them on failure.
+    committed: List[Path] = []
+    for idx, (target, data) in enumerate(writes):
+        target_path = Path(target)
+        try:
+            atomic_write_bytes(target_path, data)
+            committed.append(target_path)
+        except BaseException as exc:
+            # Rollback: reverse every committed write (reverse order).
+            # Recovery sweeper completes any residuals on next session start.
+            rolled_back: List[str] = []
+            for prev_target in reversed(committed):
+                prev_entry = next(
+                    (e for e in manifest_entries if Path(e["target"]) == prev_target),
+                    None,
+                )
+                if prev_entry is None:
+                    continue
+                try:
+                    _restore_pre_image(prev_entry, txn_dir)
+                    rolled_back.append(str(prev_target))
+                except Exception:
+                    # Best effort — continue with remaining rollbacks.
+                    pass
+            # Do NOT delete the rollback dir here: if our own restore
+            # failed for any reason, the next recovery sweep needs the
+            # manifest to finish the job.
+            raise BundleWriteError(
+                f"bundle_write txn {txn_id} failed on target {target_path}: {exc!r}",
+                txn_id=txn_id,
+                rolled_back_paths=rolled_back,
+                failed_path=str(target_path),
+                cause=exc,
+            ) from exc
+
+    # Phase 3: everything committed — delete rollback scratch.
+    _delete_txn_dir(txn_dir)
+    return txn_id
+
+
+def recover_orphan_rollback(project_root: Path) -> List[str]:
+    """Restore pre-images from any orphan transaction directory (§5.10).
+
+    Called at session start by bob (see design §5.10 "Cross-ledger atomic
+    write fails mid-transaction"). An orphan rollback dir indicates the
+    previous session died between the first rename and the final cleanup
+    step — we must restore every target from its pre-image so the
+    on-disk state rewinds to "before the transaction started".
+
+    Scan scope: `<project_root>/.tmp/rollback/*/manifest.json`. Directories
+    without a readable manifest are left alone (they may be in-progress
+    transactions from a concurrent process). Directories with a manifest
+    are fully processed: each entry restored, the dir deleted on success.
+
+    Args:
+        project_root: root directory whose `.tmp/rollback/` subtree holds
+            orphan transactions.
+
+    Returns:
+        Sorted list of transaction ids whose pre-images were restored (the
+        directory names that had valid manifests and completed restoration).
+
+    Idempotency:
+        Safe to call repeatedly. A no-op if `.tmp/rollback/` is absent or
+        contains no manifests.
+    """
+    project_root = Path(project_root)
+    rollback_root = project_root / _ROLLBACK_SUBDIR
+    restored: List[str] = []
+    if not rollback_root.is_dir():
+        return restored
+    for txn_dir in sorted(rollback_root.iterdir()):
+        if not txn_dir.is_dir():
+            continue
+        manifest_path = txn_dir / _ROLLBACK_MANIFEST_NAME
+        if not manifest_path.is_file():
+            # In-progress transaction (manifest not yet written) or
+            # garbage dir. Leave it alone.
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            # Corrupt manifest — skip, do not crash the session.
+            continue
+        entries = manifest.get("entries") or []
+        if not isinstance(entries, list):
+            continue
+        # Restore in reverse order — mirrors the rollback order inside
+        # `bundle_write` and makes the semantics identical whether the
+        # rollback ran in-process or post-crash.
+        for entry in reversed(entries):
+            if not isinstance(entry, dict) or "target" not in entry:
+                continue
+            try:
+                _restore_pre_image(entry, txn_dir)
+            except Exception:
+                # Best-effort — continue with remaining entries.
+                continue
+        restored.append(manifest.get("txn_id") or txn_dir.name)
+        _delete_txn_dir(txn_dir)
+    return sorted(restored)
 
 
 # ---------------------------------------------------------------------------

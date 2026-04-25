@@ -46,6 +46,16 @@ VALID_EDGE_KINDS = {
 
 VALID_LANGUAGES = {"python", "typescript", "javascript", "generic"}
 
+# Activation modes (added 2026-04-18, WP-WIRING-02-BOOTSTRAP skill patch):
+#   "framework" (default, back-compat) — non-fallback plug-in runs only if
+#       its target_framework appears in detected frameworks.
+#   "augment"  — plug-in runs regardless of detected frameworks, on files
+#       whose language matches the plug-in's `languages`. Used for
+#       framework-agnostic extractors (e.g. redis-streams xadd/xreadgroup).
+#   "fallback" — reserved synonym for `is_fallback: true`. Left for forward
+#       compatibility; current fallback plug-ins still set `is_fallback`.
+VALID_ACTIVATION_MODES = {"framework", "augment", "fallback"}
+
 
 @dataclass
 class LoadedPlugin:
@@ -72,6 +82,22 @@ class LoadedPlugin:
     @property
     def target_framework(self) -> str:
         return str(self.manifest.get("target_framework", ""))
+
+    @property
+    def activation_mode(self) -> str:
+        """Plug-in activation mode. Defaults to "framework" when absent,
+        or "fallback" when is_fallback=true (for back-compat with older
+        plugin.json files that pre-date activation_mode)."""
+        mode = self.manifest.get("activation_mode")
+        if mode:
+            return str(mode)
+        if self.is_fallback:
+            return "fallback"
+        return "framework"
+
+    @property
+    def is_augment(self) -> bool:
+        return self.activation_mode == "augment"
 
 
 class PluginLoadError(Exception):
@@ -105,6 +131,12 @@ def _validate_manifest(manifest: Dict[str, Any], plugin_dir: Path) -> None:
     if bad_langs:
         raise PluginLoadError(
             f"{plugin_dir.name}/plugin.json: unsupported languages {bad_langs}"
+        )
+    mode = manifest.get("activation_mode")
+    if mode is not None and mode not in VALID_ACTIVATION_MODES:
+        raise PluginLoadError(
+            f"{plugin_dir.name}/plugin.json: unsupported activation_mode {mode!r} "
+            f"(allowed: {sorted(VALID_ACTIVATION_MODES)})"
         )
 
 
@@ -177,10 +209,29 @@ def discover_plugins(
 def plugins_for_language(
     plugins: Dict[str, LoadedPlugin], language: str
 ) -> List[LoadedPlugin]:
-    """Return all plug-ins that accept this language, non-fallback first."""
+    """Return all plug-ins that accept this language, non-fallback first.
+
+    Augment-mode plug-ins are included alongside framework plug-ins; run.py
+    is responsible for deciding when each fires (augment always fires,
+    framework fires only when its target_framework matches detected set).
+    """
     framework = [p for p in plugins.values() if not p.is_fallback and language in p.languages]
     fallback = [p for p in plugins.values() if p.is_fallback and (language in p.languages or "generic" in p.languages)]
     return framework + fallback
+
+
+def augment_plugins_for_language(
+    plugins: Dict[str, LoadedPlugin], language: str
+) -> List[LoadedPlugin]:
+    """Return augment-mode plug-ins matching this language (sorted by id).
+
+    Augment plug-ins fire regardless of detected frameworks; they cover
+    cross-framework concerns like Redis Streams, OpenTelemetry spans, etc.
+    """
+    return sorted(
+        [p for p in plugins.values() if p.is_augment and language in p.languages],
+        key=lambda p: p.id,
+    )
 
 
 def fallback_plugin(plugins: Dict[str, LoadedPlugin]) -> Optional[LoadedPlugin]:

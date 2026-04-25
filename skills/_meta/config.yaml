@@ -1,0 +1,18 @@
+# ~/.claude/skills/_meta/config.yaml
+#
+# Shared configuration for _meta skills/arbiters. Each top-level key namespaces
+# a single skill's static configuration. Mutation requires human review (hash-
+# chain reproducibility + S028 Q2 rationale forbids self-adjustment).
+
+design_drift_arbiter:
+  active_profile: strict
+  profiles:
+    strict:
+      bbox_tolerance_px: 2
+      token_swap_allowed: false
+    lenient:
+      bbox_tolerance_px: 8
+      token_swap_allowed: true
+      token_swap_same_family_only: true
+    project_override:
+      path: ".design-ledger/drift-profile.yaml"
