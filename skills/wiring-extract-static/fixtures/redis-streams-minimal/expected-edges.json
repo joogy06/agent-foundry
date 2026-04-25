@@ -1,0 +1,13 @@
+{
+  "notes": "Expected edges produced by the redis-streams extractor against this fixture. Tests assert the set is a strict subset of actual output.",
+  "expected": [
+    {"src_component": "publisher", "src_symbol": "publisher.emits:equity:market:candles",
+     "dst_component": "shared-redis", "dst_symbol": "shared-redis", "edge_kind": "emits"},
+    {"src_component": "publisher", "src_symbol": "publisher.emits:equity:signals:news",
+     "dst_component": "shared-redis", "dst_symbol": "shared-redis", "edge_kind": "emits"},
+    {"src_component": "consumer", "src_symbol": "consumer.reads_from:equity:market:candles",
+     "dst_component": "shared-redis", "dst_symbol": "shared-redis", "edge_kind": "reads_from"},
+    {"src_component": "consumer", "src_symbol": "consumer.reads_from:equity:system:kill_switch",
+     "dst_component": "shared-redis", "dst_symbol": "shared-redis", "edge_kind": "reads_from"}
+  ]
+}

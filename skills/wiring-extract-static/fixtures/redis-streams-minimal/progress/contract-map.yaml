@@ -1,0 +1,15 @@
+schema_version: "1.0.0"
+revision: 1
+components:
+  - id: publisher
+    source_paths:
+      - "app/publisher.py"
+  - id: consumer
+    source_paths:
+      - "app/consumer.py"
+  - id: shared-redis
+    source_paths:
+      - "shared/redis_client.py"
+  - id: shared-constants
+    source_paths:
+      - "shared/constants.py"

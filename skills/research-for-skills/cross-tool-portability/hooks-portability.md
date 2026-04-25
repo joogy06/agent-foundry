@@ -54,6 +54,9 @@ A hook in Claude that calls `gemini` (or vice versa) can recurse if the called t
 ```bash
 #!/bin/bash
 # Claude hook script that calls gemini
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
 export AI_CLI_CALL_DEPTH="${AI_CLI_CALL_DEPTH:-0}"
 if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
   echo "Refusing to recurse: AI_CLI_CALL_DEPTH=$AI_CLI_CALL_DEPTH" >&2

@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/project-state.v1.json",
+  "title": "project-state.v1",
+  "description": "Holistic projection over all source ledgers. Per design 2026-04-23 section 3.2.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "projection_id",
+    "projection_generation",
+    "generated_at",
+    "generated_by",
+    "generated_from",
+    "entities",
+    "orphans",
+    "build_order",
+    "by_status",
+    "next_buildable",
+    "observations_summary",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "project-state.v1" },
+    "projection_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "projection_generation": { "type": "integer", "minimum": 0 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generated_by": { "type": "string" },
+    "generated_from": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["path", "hash"],
+        "properties": {
+          "path": { "type": "string" },
+          "hash": { "type": "string" },
+          "revision": { "type": "integer" },
+          "snapshot_id": { "type": "string" },
+          "snapshot_generation": { "type": "integer" }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["uri", "kind", "source_ledger", "source_jsonpointer", "status"],
+        "properties": {
+          "uri": { "type": "string" },
+          "kind": { "enum": ["capability", "visual_element", "flow", "component", "token", "wire"] },
+          "source_ledger": { "type": "string" },
+          "source_jsonpointer": { "type": "string" },
+          "entity_uuid": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "modifier": { "type": ["string", "null"] },
+          "blocking":   { "type": "array", "items": { "type": "string" } },
+          "blocked_by": { "type": "array", "items": { "type": "string" } },
+          "visual_refs": { "type": "array", "items": { "type": "string" } },
+          "flow_refs":   { "type": "array", "items": { "type": "string" } },
+          "test_count":  { "type": "object" },
+          "last_touched": { "type": ["string", "null"] },
+          "last_observation_severity": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "orphans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["uri", "reason"],
+        "properties": {
+          "uri": { "type": "string" },
+          "entity_uuid": { "type": ["string", "null"] },
+          "reason": { "type": "string" },
+          "root_set_hash": { "type": "string" }
+        }
+      }
+    },
+    "build_order": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["level", "entities"],
+        "properties": {
+          "level": { "type": "integer" },
+          "entities": { "type": "array", "items": { "type": "string" } },
+          "note": { "type": "string" },
+          "scc_id": { "type": "string" }
+        }
+      }
+    },
+    "by_status": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "next_buildable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["uri"],
+        "properties": { "uri": { "type": "string" } }
+      }
+    },
+    "observations_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "last_7_days": { "type": "object" },
+        "unresolved_blocking": { "type": "integer" }
+      }
+    },
+    "focus_packs_cache": { "type": "object" },
+    "signature": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["algorithm", "key_id", "signed_fields", "signed_at", "digest"],
+      "properties": {
+        "algorithm": { "const": "HMAC-SHA256" },
+        "key_id": { "type": "string" },
+        "signed_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "signed_at": { "type": "string", "format": "date-time" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

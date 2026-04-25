@@ -274,9 +274,14 @@ def _render_flow_test_pytest(
         body_lines.append("@pytest.mark.unconfirmed_wiring")
 
     func_name = f"test_flow_{fid.lower().replace('-', '_')}"
+    # Fix for codegen defect (S028 Phase 4c-A observation): use repr() but escape any
+    # embedded triple-quote sequence that would break the docstring boundary. Python
+    # repr picks " as delimiter when the string contains ' — combined with outer """
+    # this produced 4 consecutive " and a SyntaxError. Split escaped repr instead.
+    escaped_expected = repr(expected).replace('"""', '\\"\\"\\"')
     body_lines.extend([
         f"def {func_name}():",
-        f"    \"\"\"{fid}: expected_outcome = {expected!r}\"\"\"",
+        f"    # {fid}: expected_outcome = {escaped_expected}",
         "    # TODO: real test body",
         "    assert True",
         "",

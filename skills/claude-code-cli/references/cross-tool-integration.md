@@ -66,6 +66,10 @@ Already installed at this machine. MCP tools:
 For headless invocations or shell scripts:
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 gemini -p "summarise this codebase" --output-format json -y
 gemini -p --include-directories ./src "find all the public API entry points"
 ```

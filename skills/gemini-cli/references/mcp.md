@@ -48,7 +48,7 @@ gemini mcp remove <name>         # delete
 ## Restricting per-invocation
 
 ```bash
-gemini -p --allowed-mcp-server-names github,linter "review this PR"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p --allowed-mcp-server-names github,linter "review this PR"
 ```
 
 Only the named MCP servers are exposed to the model for this invocation. Useful for sandboxing CI runs.
@@ -60,7 +60,7 @@ Only the named MCP servers are exposed to the model for this invocation. Useful 
 To use it from a `gemini -p` call:
 
 ```bash
-gemini -p -e nanobanana "generate a thumbnail for this blog post"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p -e nanobanana "generate a thumbnail for this blog post"
 ```
 
 ## Settings.json MCP block

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory/schemas/verdict.schema.json",
+  "title": "verification-arbiter verdict",
+  "description": "Strict JSON contract emitted on stdout by the verification-arbiter subprocess (tester-split design §5.1, §5.3). Bob captures stdout, validates against this schema, then validates the 8-field tuple match against the open verification request before applying any ledger transition. Phase 1 ships only this schema; the arbiter binary is Phase 2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "request_id",
+    "attempt_id",
+    "prior_state_version",
+    "bundle_hash",
+    "plan_hash",
+    "inventory_hash",
+    "runner_version",
+    "rubric_version",
+    "coverage",
+    "concerns",
+    "self_hash_check"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["VERIFIED", "VERIFIED_WITH_CONCERNS", "REJECTED", "AUDIT_UNAVAILABLE"],
+      "description": "Top-level verification outcome. AUDIT_UNAVAILABLE forces escalation; bob must NEVER auto-approve (mirrors audit_spawn.py policy)."
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "Echo of the open verification request's request_id (32-hex SHA-256 prefix derived deterministically from the input tuple)."
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Echo of the bob-supplied attempt_id; distinguishes retries against the same component."
+    },
+    "prior_state_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Echo of the ledger state version at request open time. If the ledger moves between open and consume, the request is superseded."
+    },
+    "bundle_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Echo of the SHA-256 hex of the canonicalized evidence bundle the arbiter reviewed."
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Echo of the SHA-256 hex of the canonicalized test plan the arbiter scored coverage against."
+    },
+    "inventory_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Echo of the SHA-256 hex of the env-adoption inventory.json at the time of verification (so tier-skip declarations are reproducible)."
+    },
+    "runner_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Echo of the trusted_runner version string that produced the bundle."
+    },
+    "rubric_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Echo of the arbiter's evaluation rubric version (design §9 open question 6 — file lives at _meta/verification_rubric.yaml in Phase 2+)."
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirements_total", "requirements_covered", "uncovered", "skipped_with_reason"],
+      "properties": {
+        "requirements_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requirements_covered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uncovered": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "description": "Requirement IDs (REQ-NNN) with no test in the bundle."
+        },
+        "skipped_with_reason": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requirement_id", "reason"],
+            "properties": {
+              "requirement_id": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1},
+              "tier_required": {"type": "integer", "minimum": 0, "maximum": 2}
+            }
+          },
+          "description": "First-class skip declarations (design §1, goal 5). A skip with reason is NOT a coverage gap."
+        }
+      }
+    },
+    "concerns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "detail"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["warning", "blocker"]},
+          "detail": {"type": "string", "minLength": 1},
+          "requirement_id": {"type": "string", "minLength": 1}
+        }
+      },
+      "description": "Verification-arbiter concerns. blocker concerns force REJECTED."
+    },
+    "self_hash_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_recomputed_hash", "matches_input"],
+      "properties": {
+        "bundle_recomputed_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the bundle bytes the arbiter actually read from disk. If this differs from bundle_hash, the arbiter saw a different file than bob asked it to verify."
+        },
+        "matches_input": {
+          "type": "boolean",
+          "description": "Convenience: bundle_recomputed_hash == bundle_hash. Bob still re-checks; this field exists so a downstream consumer can fail fast on mismatch."
+        }
+      }
+    }
+  }
+}

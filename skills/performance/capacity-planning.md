@@ -20,6 +20,30 @@ Output:
 
 ---
 
+## Capacity Framing
+
+State capacity in the axes users and product teams actually think in before
+running the math. Getting these right up front turns the subsequent
+resource-ceiling analysis from a guess into a model.
+
+| Axis | Unit | Example |
+|---|---|---|
+| Concurrent users | active sessions at p95 | "200 simultaneous editors" |
+| Transactions per second | steady-state TPS | "50 TPS avg, 200 TPS peak" |
+| Long-running processes | worker / consumer count | "8 Celery workers, 2 streaming consumers" |
+| Batch jobs | count × window × duration | "3 nightly ETLs, 2h window, 45 min each" |
+| Scheduled jobs | cadence × duration | "every 5 min, <10s each, up to 12 concurrent" |
+
+The headroom math below is only meaningful once these axes are filled in.
+DAU / MAU are not substitutes for concurrent-at-p95 — monthly actives
+overestimate peak concurrency by 10-100x on most systems. TPS must be
+both steady-state AND peak-burst; systems that handle the average but
+fall over during bursts are the default failure mode.
+
+For the capture path, see `references/capacity-questionnaire.md`.
+
+---
+
 ## Architecture-Based Capacity Model
 
 Before running the math, enumerate the request flow and the cost of each operation at each tier:

@@ -916,13 +916,922 @@ def check_G4(project_dir: Path, mode: str = "strict") -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Shared observation helper (ecosystem-keystone §4.7 Hook 1)
+# ---------------------------------------------------------------------------
+#
+# Every non-zero gate exit in the G_V / G_XR / G_SCOPE paths MUST call
+# `exit_with_observation` instead of bare `sys.exit` (or the shared `fail()`
+# helper used by the pre-existing S014 gates). The helper writes a
+# `gate_false_block` (or `gate_false_pass` for scope-claim mismatches)
+# observation via `claude_observe`, wrapped in a best-effort try/except so
+# a broken observation backend CANNOT block the gate exit. Observation is
+# diagnostic; the gate is authoritative (design §4.7 rationale).
+#
+# The existing S014 G1/G2/G3/G4 paths continue to use `fail()` / `env_error()`
+# for backwards compatibility — conversion to `exit_with_observation` is
+# tracked as a separate follow-up (#43). This is an ADDITIVE change: no S014
+# gate behavior is modified.
+
+
+def _load_claude_observe_for_gates():
+    """Fail-open loader for `claude_observe`; returns a no-op stub if the
+    process-observation backend is unavailable. Mirrors the three-tier fallback
+    in claims.py so gates.py runs correctly in minimal environments.
+    """
+    try:
+        from process_observation.scripts.write import claude_observe as _co  # type: ignore
+        return _co
+    except ImportError:
+        pass
+    try:
+        _scripts_dir = (
+            Path(__file__).resolve().parent.parent
+            / "process-observation" / "scripts"
+        )
+        if _scripts_dir.is_dir():
+            _scripts_str = str(_scripts_dir)
+            if _scripts_str not in sys.path:
+                sys.path.insert(0, _scripts_str)
+            from write import claude_observe as _co  # type: ignore
+            return _co
+    except Exception:
+        pass
+    return lambda *args, **kwargs: None
+
+
+claude_observe = _load_claude_observe_for_gates()
+
+
+_GATE_FALSE_BLOCK_SET = frozenset({"G1", "G2", "G3", "G4", "G_V", "G_XR"})
+
+
+def exit_with_observation(
+    gate_name: str,
+    exit_code: int,
+    subject_id: str,
+    what_happened: str,
+    severity: str = "blocking",
+    category: Optional[str] = None,
+    fingerprint: Optional[str] = None,
+) -> None:
+    """Emit an observation then exit with the given non-zero code.
+
+    Per design §4.7 Hook 1:
+      - `category` defaults to `gate_false_block` for G1/G2/G3/G4/G_V/G_XR
+        and `gate_false_pass` for scope-claim mismatches (G_SCOPE).
+      - `fingerprint` defaults to `<gate_name>-<subject_id>` so all refusals
+        of the same kind for the same subject collapse into one active
+        observation (dedup_key algorithm, §4.3).
+      - observation-write is best-effort: exceptions during `claude_observe`
+        are trapped + logged to stderr, never block the gate exit.
+
+    NEVER called with exit_code == 0. Pass path should bypass this helper.
+    """
+    if exit_code == 0:
+        # Defense-in-depth: pass paths must not route through here.
+        sys.stdout.write(f"{gate_name}_PASS: {what_happened}\n")
+        sys.exit(0)
+
+    resolved_category = (
+        category
+        if category is not None
+        else ("gate_false_block" if gate_name in _GATE_FALSE_BLOCK_SET else "gate_false_pass")
+    )
+    resolved_fingerprint = fingerprint or f"{gate_name}-{subject_id}"
+
+    # Write the observation best-effort. Never let a failure here block the exit.
+    try:
+        claude_observe(
+            resolved_category,
+            subject_id,
+            what_happened,
+            fingerprint=resolved_fingerprint,
+            subject_type="gate",
+            severity=severity,
+            observed_by=f"gates.py:{gate_name}",
+            related=[f"uri://{subject_id}"],
+        )
+    except Exception as e:  # pragma: no cover - defense-in-depth
+        sys.stderr.write(f"OBSERVATION_WRITE_FAIL: {e}\n")
+
+    # Print the fail line to stderr in the same shape the existing S014 gates use.
+    sys.stderr.write(f"{gate_name}_FAIL: {what_happened}\n")
+    sys.exit(exit_code)
+
+
+# ---------------------------------------------------------------------------
+# G_V — visual gate (design §5.3)
+# ---------------------------------------------------------------------------
+#
+# Invoked by bob BEFORE any UI-INTEGRATED -> UI-VERIFIED transition.
+# Verdict file produced by visual-arbiter + design-drift-arbiter; read here.
+# bob is the sole writer of `.design-ledger/visual-verdicts/*` (CB4).
+
+
+VISUAL_VERDICTS_SUBDIR = ".design-ledger/visual-verdicts"
+SKELETONS_SUBDIR = ".design-ledger/skeletons"
+VERIFICATION_REQUESTS_SUBDIR = ".design-ledger/verification-requests"
+
+
+def _gv_fail(impl_hash: str, message: str, *, category: Optional[str] = None,
+             fingerprint: Optional[str] = None) -> None:
+    """G_V non-zero exit helper — always routes through exit_with_observation."""
+    exit_with_observation(
+        "G_V",
+        2,
+        impl_hash,
+        message,
+        severity="blocking",
+        category=category,
+        fingerprint=fingerprint,
+    )
+
+
+def _gv_env_error(impl_hash: str, message: str) -> None:
+    """G_V environmental (non-gate-violation) exit. Still emits an observation
+    so alf can catch chronic env issues, but tagged external_tool_fail."""
+    exit_with_observation(
+        "G_V",
+        3,
+        impl_hash,
+        message,
+        severity="degraded",
+        category="external_tool_fail",
+        fingerprint=f"G_V-env-{impl_hash[:8]}",
+    )
+
+
+def _load_current_skeleton_version(project_root: Path) -> Optional[str]:
+    """Read `.design-ledger/skeletons/index.yaml` and return the pinned
+    `skeleton_version` (design §2.2). Returns None on any read/parse failure;
+    caller decides whether that is an env error or a gate violation.
+    """
+    index_path = project_root / SKELETONS_SUBDIR / "index.yaml"
+    if not index_path.is_file():
+        return None
+    try:
+        data = yaml.safe_load(index_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sv = data.get("skeleton_version")
+    if not isinstance(sv, str) or not sv:
+        return None
+    return sv
+
+
+def check_G_V(impl_hash: str, project_root: Path) -> None:
+    """G_V per design §5.3.
+
+    Checks, in order (first failure exits 2 with observation):
+      1. `.design-ledger/visual-verdicts/<impl_hash>.verdict.yaml` exists +
+         well-formed YAML mapping with `schema: visual-verdict.v1`.
+      2. Both arms present: `arbiter_verdict` + `drift_arbiter_verdict`.
+      3. Both arms `status: pass` (drift arm may instead be
+         `status: auto_approved` for micro-drift).
+      4. Skeleton version pinned in verdict matches current
+         `.design-ledger/skeletons/index.yaml` skeleton_version.
+         Mismatch is a `gate_false_pass` observation (arbiter missed the bump).
+      5. 8-field tuple echoes verbatim via `claims.consume_visual_verdict`.
+         Any rejection outcome -> exit 2. `accepted` -> exit 0.
+
+    Exit codes: 0 pass, 2 fail, 3 env error.
+    Non-zero exits route through `exit_with_observation`.
+    """
+    project_root = project_root.resolve()
+    verdict_path = project_root / VISUAL_VERDICTS_SUBDIR / f"{impl_hash}.verdict.yaml"
+
+    # 1. Verdict file exists and is well-formed
+    if not verdict_path.is_file():
+        _gv_fail(
+            impl_hash,
+            f"verdict file missing at {verdict_path} (expected after arbiter spawn)",
+            fingerprint="verdict-missing",
+        )
+    try:
+        verdict = yaml.safe_load(verdict_path.read_text())
+    except yaml.YAMLError as e:
+        _gv_env_error(impl_hash, f"verdict YAML unparseable: {e}")
+    except OSError as e:
+        _gv_env_error(impl_hash, f"verdict file unreadable: {e}")
+
+    if not isinstance(verdict, dict):
+        _gv_fail(
+            impl_hash,
+            f"verdict is not a YAML mapping (got {type(verdict).__name__})",
+            fingerprint="verdict-malformed",
+        )
+
+    # 2. Both arms present
+    arbiter = verdict.get("arbiter_verdict")
+    drift = verdict.get("drift_arbiter_verdict")
+    if not isinstance(arbiter, dict):
+        _gv_fail(
+            impl_hash,
+            "verdict missing arbiter_verdict arm",
+            fingerprint="arm-missing-arbiter",
+        )
+    if not isinstance(drift, dict):
+        _gv_fail(
+            impl_hash,
+            "verdict missing drift_arbiter_verdict arm",
+            fingerprint="arm-missing-drift",
+        )
+
+    # 3. Both arms pass (drift may be auto_approved for micro-drift)
+    arbiter_status = arbiter.get("status")
+    drift_status = drift.get("status")
+    if arbiter_status != "pass":
+        _gv_fail(
+            impl_hash,
+            f"arbiter_verdict.status={arbiter_status!r} (expected 'pass')",
+            fingerprint="arbiter-not-pass",
+        )
+    if drift_status not in ("pass", "auto_approved"):
+        _gv_fail(
+            impl_hash,
+            f"drift_arbiter_verdict.status={drift_status!r} "
+            f"(expected 'pass' or 'auto_approved')",
+            fingerprint="drift-not-pass",
+        )
+
+    # 4. Skeleton version match
+    verdict_skeleton_version = verdict.get("skeleton_version")
+    current_skeleton_version = _load_current_skeleton_version(project_root)
+    if current_skeleton_version is None:
+        _gv_env_error(
+            impl_hash,
+            f"cannot read skeleton_version from "
+            f"{project_root / SKELETONS_SUBDIR / 'index.yaml'}",
+        )
+    if verdict_skeleton_version != current_skeleton_version:
+        # Per §5.3: arbiter missed the skeleton bump -> gate_false_pass
+        _gv_fail(
+            impl_hash,
+            f"verdict.skeleton_version={verdict_skeleton_version!r} "
+            f"but current index.yaml pins {current_skeleton_version!r} "
+            f"(arbiter missed a skeleton bump)",
+            category="gate_false_pass",
+            fingerprint="skeleton-version-mismatch",
+        )
+
+    # 5. 8-field tuple echo via claims.consume_visual_verdict
+    request_id = verdict.get("request_id")
+    if not isinstance(request_id, str) or not request_id:
+        _gv_fail(
+            impl_hash,
+            "verdict missing request_id field (required for tuple echo)",
+            fingerprint="request-id-missing",
+        )
+
+    # Lazy import to avoid circular dependency at module load time
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import claims as claims_mod  # type: ignore
+    except ImportError as e:
+        _gv_env_error(impl_hash, f"claims.py not importable: {e}")
+
+    try:
+        outcome, _record = claims_mod.consume_visual_verdict(
+            project_root, request_id, verdict,
+        )
+    except RuntimeError as e:
+        # consume_visual_verdict raises only when the request file is missing.
+        _gv_fail(
+            impl_hash,
+            f"visual-verification request {request_id!r} not found: {e}",
+            fingerprint="request-not-found",
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        _gv_env_error(
+            impl_hash,
+            f"consume_visual_verdict raised unexpectedly: {e!r}",
+        )
+
+    if outcome == "accepted":
+        sys.stdout.write(
+            f"G_V_PASS: verdict {request_id} accepted for impl_hash={impl_hash}\n"
+        )
+        sys.exit(0)
+    if outcome == "rejected_tuple_mismatch":
+        _gv_fail(
+            impl_hash,
+            f"8-field tuple echo mismatch for request_id={request_id}",
+            fingerprint="tuple-mismatch",
+        )
+    if outcome == "rejected_not_open":
+        _gv_fail(
+            impl_hash,
+            f"verification-request {request_id} is not status=open "
+            f"(already consumed/abandoned)",
+            fingerprint="request-not-open",
+        )
+    # Any other outcome string (future-compat)
+    _gv_fail(
+        impl_hash,
+        f"consume_visual_verdict returned unexpected outcome={outcome!r}",
+        fingerprint="outcome-unknown",
+    )
+
+
+# ---------------------------------------------------------------------------
+# G_XR — cross-reference / orphan gate (design §5.4)
+# ---------------------------------------------------------------------------
+#
+# Three checks (D8):
+#   1. Every `capability://` in contract-map reachable from visual entry
+#      points OR has an `entry_point` tag in ENTRY_POINT_TAGS.
+#   2. Every `visual_entry_points[]` URI in contract-map resolves.
+#   3. Every skeleton `interactions[].binds_to` URI resolves OR the
+#      interaction declares `visual_only: true`.
+#
+# Reachability walk prefers `.wiring/latest.json` edges; falls back to
+# contract-map `callees[]` so we still run (looser but no false orphans)
+# when wiring is unavailable (A4 degradation path).
+
+
+ENTRY_POINT_TAGS = frozenset({
+    "cron", "webhook", "cli", "api_public", "test_harness", "migration",
+})
+
+
+def _gxr_fail(message: str, *, fingerprint: str = "G_XR") -> None:
+    """G_XR non-zero exit helper — routes through exit_with_observation."""
+    exit_with_observation(
+        "G_XR",
+        2,
+        "contract-map",
+        message,
+        severity="blocking",
+        fingerprint=fingerprint,
+    )
+
+
+def _gxr_env_error(message: str) -> None:
+    exit_with_observation(
+        "G_XR",
+        3,
+        "contract-map",
+        message,
+        severity="degraded",
+        category="external_tool_fail",
+        fingerprint="G_XR-env",
+    )
+
+
+def _load_contract_map_for_gxr(project_root: Path) -> Dict[str, Any]:
+    map_path = project_root / "progress" / "contract-map.yaml"
+    if not map_path.is_file():
+        _gxr_env_error(f"contract-map not found at {map_path}")
+    try:
+        data = yaml.safe_load(map_path.read_text()) or {}
+    except yaml.YAMLError as e:
+        _gxr_env_error(f"contract-map unparseable: {e}")
+    except OSError as e:
+        _gxr_env_error(f"contract-map unreadable: {e}")
+    if not isinstance(data, dict):
+        _gxr_env_error("contract-map is not a YAML mapping")
+    return data
+
+
+def _load_all_skeletons(project_root: Path) -> Dict[str, Dict[str, Any]]:
+    """Load every per-screen skeleton YAML under `.design-ledger/skeletons/`.
+
+    Returns a dict screen_id -> parsed YAML mapping. Screens are enumerated
+    from index.yaml's `screens[]` list; the index.yaml itself is NOT included.
+    Missing index or unreadable screens -> empty dict (G_XR check 3 will
+    harmlessly skip absent skeletons; the env is either pre-UI or broken).
+    """
+    skeletons: Dict[str, Dict[str, Any]] = {}
+    index_path = project_root / SKELETONS_SUBDIR / "index.yaml"
+    if not index_path.is_file():
+        return skeletons
+    try:
+        index = yaml.safe_load(index_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return skeletons
+    if not isinstance(index, dict):
+        return skeletons
+    for screen in (index.get("screens") or []):
+        if not isinstance(screen, dict):
+            continue
+        screen_file = screen.get("file")
+        screen_id = screen.get("screen_id") or screen.get("id")
+        if not isinstance(screen_file, str) or not isinstance(screen_id, str):
+            continue
+        screen_path = project_root / SKELETONS_SUBDIR / screen_file
+        if not screen_path.is_file():
+            continue
+        try:
+            data = yaml.safe_load(screen_path.read_text()) or {}
+        except (yaml.YAMLError, OSError):
+            continue
+        if isinstance(data, dict):
+            skeletons[screen_id] = data
+    return skeletons
+
+
+def _enumerate_capability_uris(contract_map: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
+    """Yield (uri, cap_node) for every declared capability in the contract map.
+
+    Capabilities are components[].capabilities (dict of name -> node). If a
+    component has no `capabilities:` subsection (current legacy format), its
+    `id` alone is the URI (`capability://<component_id>`). This matches the
+    uri.py convention.
+    """
+    out: List[Tuple[str, Dict[str, Any]]] = []
+    for comp in contract_map.get("components") or []:
+        if not isinstance(comp, dict):
+            continue
+        cid = comp.get("id")
+        if not isinstance(cid, str):
+            continue
+        caps = comp.get("capabilities")
+        if isinstance(caps, dict) and caps:
+            for cap_name, cap_node in caps.items():
+                if not isinstance(cap_name, str):
+                    continue
+                uri_str = f"capability://{cid}.{cap_name}"
+                node = cap_node if isinstance(cap_node, dict) else {}
+                out.append((uri_str, node))
+        # If no explicit capabilities subsection, the component itself is not
+        # a `capability://` target — it's a `component://`, not enumerated here.
+    return out
+
+
+def _load_call_graph(project_root: Path, contract_map: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Return adjacency list of capability URIs (or component ids as a fallback).
+
+    Primary source: `.wiring/latest.json` edges (S023) -- preferred when present.
+    Fallback: declared `callees[]` from contract-map components. The fallback is
+    "looser" (misses runtime edges) but guarantees no FALSE orphans (declared ⊆
+    true). Any empty/missing wiring file -> fall back silently.
+    """
+    graph: Dict[str, List[str]] = {}
+
+    wiring_path = project_root / ".wiring" / "latest.json"
+    if wiring_path.is_file():
+        try:
+            wiring = json.loads(wiring_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            wiring = None
+        if isinstance(wiring, dict):
+            for edge in (wiring.get("edges") or []):
+                if not isinstance(edge, dict):
+                    continue
+                src = edge.get("src_uri") or edge.get("src_symbol") or edge.get("src_component")
+                dst = edge.get("dst_uri") or edge.get("dst_symbol") or edge.get("dst_component")
+                if isinstance(src, str) and isinstance(dst, str):
+                    graph.setdefault(src, []).append(dst)
+            if graph:
+                return graph
+
+    # Fallback: contract-map declared callees[]
+    for comp in contract_map.get("components") or []:
+        if not isinstance(comp, dict):
+            continue
+        cid = comp.get("id")
+        if not isinstance(cid, str):
+            continue
+        src_uri = f"capability://{cid}"
+        for callee in (comp.get("callees") or []):
+            if isinstance(callee, str):
+                dst_uri = f"capability://{callee}"
+                graph.setdefault(src_uri, []).append(dst_uri)
+        # Also map capability-suffixed URIs for the walk to follow from
+        # capabilities within the component.
+        caps = comp.get("capabilities")
+        if isinstance(caps, dict):
+            for cap_name in caps.keys():
+                if not isinstance(cap_name, str):
+                    continue
+                cap_uri = f"capability://{cid}.{cap_name}"
+                # Component-level callees flow through each capability
+                for callee in (comp.get("callees") or []):
+                    if isinstance(callee, str):
+                        graph.setdefault(cap_uri, []).append(f"capability://{callee}")
+    return graph
+
+
+def _compute_reachable_capabilities(
+    project_root: Path,
+    contract_map: Dict[str, Any],
+    skeletons: Dict[str, Dict[str, Any]],
+) -> set:
+    """BFS from visual_roots + entry_point-tagged capabilities."""
+    # Visual roots — skeleton interactions with a real binds_to (not visual_only)
+    visual_roots: set = set()
+    for skel in skeletons.values():
+        elements = skel.get("elements")
+        # `elements` may be either a dict (keyed by element_id) or a list (ordered)
+        if isinstance(elements, dict):
+            element_iter = elements.values()
+        elif isinstance(elements, list):
+            element_iter = elements
+        else:
+            continue
+        for elem in element_iter:
+            if not isinstance(elem, dict):
+                continue
+            for inter in (elem.get("interactions") or []):
+                if not isinstance(inter, dict):
+                    continue
+                if inter.get("visual_only"):
+                    continue
+                bt = inter.get("binds_to")
+                if isinstance(bt, str) and bt:
+                    visual_roots.add(bt)
+
+    # Entry-point-tagged capabilities
+    tagged_roots: set = set()
+    for cap_uri, cap_node in _enumerate_capability_uris(contract_map):
+        ep = cap_node.get("entry_point") if isinstance(cap_node, dict) else None
+        if isinstance(ep, str) and ep in ENTRY_POINT_TAGS:
+            tagged_roots.add(cap_uri)
+    # Also allow component-level entry_point (tag applies to all its caps)
+    for comp in contract_map.get("components") or []:
+        if not isinstance(comp, dict):
+            continue
+        ep = comp.get("entry_point")
+        cid = comp.get("id")
+        if isinstance(ep, str) and ep in ENTRY_POINT_TAGS and isinstance(cid, str):
+            tagged_roots.add(f"capability://{cid}")
+            caps = comp.get("capabilities")
+            if isinstance(caps, dict):
+                for cap_name in caps.keys():
+                    if isinstance(cap_name, str):
+                        tagged_roots.add(f"capability://{cid}.{cap_name}")
+
+    graph = _load_call_graph(project_root, contract_map)
+    reachable: set = set(visual_roots | tagged_roots)
+    frontier: List[str] = list(reachable)
+    while frontier:
+        cap = frontier.pop()
+        for callee in graph.get(cap, ()):
+            if callee not in reachable:
+                reachable.add(callee)
+                frontier.append(callee)
+    return reachable
+
+
+def check_G_XR(project_root: Path) -> None:
+    """G_XR per design §5.4.
+
+    Three checks — any failure exits 2 with a specific fingerprint so the
+    observation aggregate stays informative:
+      - `orphan-capability` when a capability is neither reachable nor tagged
+      - `unresolved-uri` when a visual_entry_point does not resolve
+      - `dead-interaction` when a skeleton binds_to does not resolve
+    """
+    project_root = project_root.resolve()
+    contract_map = _load_contract_map_for_gxr(project_root)
+    skeletons = _load_all_skeletons(project_root)
+
+    # Lazy import uri with fail-soft: G_XR requires uri.resolve for checks 2+3
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import uri as uri_mod  # type: ignore
+    except ImportError as e:
+        _gxr_env_error(f"uri.py not importable: {e}")
+
+    # Check 1 — every capability reachable OR tagged
+    capability_uris = _enumerate_capability_uris(contract_map)
+    if capability_uris:
+        reachable = _compute_reachable_capabilities(project_root, contract_map, skeletons)
+        # The tagged set (entry_point-declared) is ALSO implicitly "reachable"
+        # (a cron / webhook IS an entry point). _compute_reachable already
+        # seeds tagged into `reachable`. Keep the explicit tag set for clarity.
+        tagged: set = set()
+        for cap_uri, cap_node in capability_uris:
+            ep = cap_node.get("entry_point") if isinstance(cap_node, dict) else None
+            if isinstance(ep, str) and ep in ENTRY_POINT_TAGS:
+                tagged.add(cap_uri)
+        for comp in contract_map.get("components") or []:
+            if not isinstance(comp, dict):
+                continue
+            ep = comp.get("entry_point")
+            cid = comp.get("id")
+            if isinstance(ep, str) and ep in ENTRY_POINT_TAGS and isinstance(cid, str):
+                tagged.add(f"capability://{cid}")
+                caps = comp.get("capabilities")
+                if isinstance(caps, dict):
+                    for cap_name in caps.keys():
+                        if isinstance(cap_name, str):
+                            tagged.add(f"capability://{cid}.{cap_name}")
+
+        orphans = [
+            uri_str for uri_str, _node in capability_uris
+            if uri_str not in reachable and uri_str not in tagged
+        ]
+        if orphans:
+            preview = ", ".join(orphans[:5])
+            suffix = "..." if len(orphans) > 5 else ""
+            _gxr_fail(
+                f"{len(orphans)} orphan capability(ies): {preview}{suffix}",
+                fingerprint="orphan-capability",
+            )
+
+    # Check 2 — every visual_entry_point resolves
+    for vep in contract_map.get("visual_entry_points") or []:
+        if not isinstance(vep, str) or not vep:
+            _gxr_fail(
+                f"visual_entry_points contains non-string entry: {vep!r}",
+                fingerprint="unresolved-uri",
+            )
+        if not uri_mod.exists(vep, project_root):
+            _gxr_fail(
+                f"visual_entry_point {vep!r} does not resolve",
+                fingerprint="unresolved-uri",
+            )
+
+    # Check 3 — every skeleton interaction binds_to resolves (or visual_only)
+    for screen_id, skel in skeletons.items():
+        elements = skel.get("elements")
+        if isinstance(elements, dict):
+            element_iter = list(elements.items())
+        elif isinstance(elements, list):
+            element_iter = [(e.get("id") if isinstance(e, dict) else None, e)
+                            for e in elements]
+        else:
+            continue
+        for element_id, elem in element_iter:
+            if not isinstance(elem, dict):
+                continue
+            for inter in (elem.get("interactions") or []):
+                if not isinstance(inter, dict):
+                    continue
+                event = inter.get("event", "<unknown-event>")
+                if inter.get("visual_only"):
+                    continue
+                bt = inter.get("binds_to")
+                if not isinstance(bt, str) or not bt:
+                    _gxr_fail(
+                        f"{screen_id}/{element_id}/{event}: missing binds_to "
+                        "AND missing visual_only:true",
+                        fingerprint="dead-interaction",
+                    )
+                if not uri_mod.exists(bt, project_root):
+                    _gxr_fail(
+                        f"{screen_id}/{element_id}/{event}: binds_to "
+                        f"{bt!r} does not resolve",
+                        fingerprint="dead-interaction",
+                    )
+
+    sys.stdout.write(
+        f"G_XR_PASS: cross-reference checks passed at {project_root}\n"
+    )
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# G_SCOPE — D18 scope-check mini-gate (design §7.2)
+# ---------------------------------------------------------------------------
+#
+# Invoked by bob BEFORE G_V + G_XR when bob declares a lightweight ui_scope.
+# Validates the declaration against the actual git diff — mechanical, no
+# semantic judgment. False declaration -> `gate_false_pass` observation
+# with fingerprint `scope-mismatch` (bob self-claimed a relaxed scope
+# that the diff contradicts).
+
+
+DECLARED_SCOPE_CLOSED_SET = frozenset({"none", "text_only", "tokens_only"})
+
+
+def _gscope_fail(message: str, *, fingerprint: str = "scope-mismatch") -> None:
+    """G_SCOPE non-zero exit helper — emits gate_false_pass on scope-claim
+    mismatches per design §7.2."""
+    exit_with_observation(
+        "G_SCOPE",
+        2,
+        "declared_scope",
+        message,
+        severity="blocking",
+        category="gate_false_pass",
+        fingerprint=fingerprint,
+    )
+
+
+def _gscope_env_error(message: str) -> None:
+    exit_with_observation(
+        "G_SCOPE",
+        3,
+        "declared_scope",
+        message,
+        severity="degraded",
+        category="external_tool_fail",
+        fingerprint="G_SCOPE-env",
+    )
+
+
+def _git_diff_name_only(project_root: Path) -> List[str]:
+    """Return `git diff --name-only HEAD` output as a list of changed paths.
+
+    On any git failure, raises RuntimeError — caller converts to env error.
+    Empty output (no diff) returns an empty list, not an error.
+    """
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(project_root), "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(f"git diff failed: {e!r}") from e
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"git diff exit {proc.returncode}: {proc.stderr.strip()[:200]}"
+        )
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()]
+
+
+def _git_diff_for_path(project_root: Path, path: str) -> str:
+    """Return `git diff HEAD -- <path>` unified diff text, or empty string on failure."""
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(project_root), "diff", "HEAD", "--", path],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout
+
+
+_UI_STRUCTURAL_SUFFIXES = (".html", ".css", ".js", ".tsx")
+_DESIGN_LEDGER_PREFIX = ".design-ledger/"
+
+
+def _is_ui_path(path: str) -> bool:
+    """True if the path counts as a UI-touching file for ui_scope:none."""
+    if path.startswith(_DESIGN_LEDGER_PREFIX):
+        return True
+    return any(path.endswith(suffix) for suffix in _UI_STRUCTURAL_SUFFIXES)
+
+
+def _is_structural_diff(diff_text: str) -> bool:
+    """Heuristic: a diff is 'structural' if any added/removed line, after
+    stripping leading +/- and whitespace, begins with a tag opener (`<`)
+    or an attribute (`...=`), or contains JSX element syntax. Pure text
+    changes (labels, inner text nodes) are ALLOWED under text_only.
+
+    False positives err on the side of blocking — if a diff looks structural,
+    the gate fails, forcing the caller to either retag the scope or split
+    the commit. This matches the spec's "mechanical, no semantic judgment"
+    policy.
+    """
+    for line in diff_text.splitlines():
+        if not line or line[0] not in "+-":
+            continue
+        if line.startswith(("+++", "---", "@@")):
+            continue
+        stripped = line[1:].strip()
+        if not stripped:
+            continue
+        # Quick structural markers: opening tags, attribute-like tokens, JSX.
+        if stripped.startswith("<") or stripped.startswith("</"):
+            return True
+        # attribute-ish (space + ident=...): `  class="foo"` after the +/-.
+        # Check for standalone `="..."` or `={...}` segments.
+        if "=" in stripped and ("<" in stripped or stripped.endswith(">")
+                                or "{" in stripped or "}" in stripped):
+            return True
+    return False
+
+
+def _tokens_only_change(project_root: Path, index_path: str) -> bool:
+    """Best-effort check that a diff against `.design-ledger/skeletons/index.yaml`
+    touches ONLY the `tokens:` block. We parse the full file at HEAD and at
+    working tree and compare everything except `tokens:`; if those are equal,
+    the diff is tokens-only.
+
+    Conservative: on parse failure, returns False (forces G_SCOPE fail; the
+    caller should re-check manually).
+    """
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(project_root), "show", f"HEAD:{index_path}"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        return False
+    head_text = proc.stdout
+
+    current_path = project_root / index_path
+    if not current_path.is_file():
+        return False
+    try:
+        current_text = current_path.read_text()
+    except OSError:
+        return False
+
+    try:
+        head_doc = yaml.safe_load(head_text) or {}
+        current_doc = yaml.safe_load(current_text) or {}
+    except yaml.YAMLError:
+        return False
+    if not isinstance(head_doc, dict) or not isinstance(current_doc, dict):
+        return False
+
+    head_no_tokens = {k: v for k, v in head_doc.items() if k != "tokens"}
+    current_no_tokens = {k: v for k, v in current_doc.items() if k != "tokens"}
+    return head_no_tokens == current_no_tokens
+
+
+def check_G_SCOPE(declared_scope: str, project_root: Path) -> None:
+    """G_SCOPE per design §7.2 pseudocode.
+
+    Declared scopes (closed set): none | text_only | tokens_only.
+    Any other value -> env error (caller passed a malformed scope).
+
+    none        -> no .design-ledger/** or **/*.{html,css,js,tsx} may change.
+    text_only   -> HTML/JSX files may change only in text-node positions
+                   (no tag/attribute diff markers).
+    tokens_only -> only .design-ledger/skeletons/index.yaml may change, and
+                   only its `tokens:` block.
+
+    False claim (diff contradicts declaration) -> exit 2 + `gate_false_pass`
+    observation with fingerprint `scope-mismatch`.
+    """
+    project_root = project_root.resolve()
+
+    if declared_scope not in DECLARED_SCOPE_CLOSED_SET:
+        _gscope_env_error(
+            f"declared_scope={declared_scope!r} not in "
+            f"{sorted(DECLARED_SCOPE_CLOSED_SET)}"
+        )
+
+    try:
+        changed_paths = _git_diff_name_only(project_root)
+    except RuntimeError as e:
+        _gscope_env_error(str(e))
+
+    if declared_scope == "none":
+        ui_touched = [p for p in changed_paths if _is_ui_path(p)]
+        if ui_touched:
+            preview = ", ".join(ui_touched[:5])
+            suffix = "..." if len(ui_touched) > 5 else ""
+            _gscope_fail(
+                f"declared ui_scope:none but touched UI files: {preview}{suffix}",
+                fingerprint="scope-mismatch",
+            )
+    elif declared_scope == "text_only":
+        structural: List[str] = []
+        for p in changed_paths:
+            if not (p.endswith(".html") or p.endswith(".tsx")):
+                # non-HTML/JSX file change under text_only is always fine here;
+                # the declaration is scoped to structural UI changes only.
+                continue
+            diff_text = _git_diff_for_path(project_root, p)
+            if _is_structural_diff(diff_text):
+                structural.append(p)
+        if structural:
+            preview = ", ".join(structural[:5])
+            suffix = "..." if len(structural) > 5 else ""
+            _gscope_fail(
+                f"declared text_only but structural diff in: {preview}{suffix}",
+                fingerprint="scope-mismatch",
+            )
+    else:  # tokens_only
+        index_path_str = ".design-ledger/skeletons/index.yaml"
+        # Accept only the index.yaml file; any other file change is a false claim.
+        non_index = [p for p in changed_paths if p != index_path_str]
+        if non_index:
+            preview = ", ".join(non_index[:5])
+            suffix = "..." if len(non_index) > 5 else ""
+            _gscope_fail(
+                f"declared tokens_only but other files changed: {preview}{suffix}",
+                fingerprint="scope-mismatch",
+            )
+        # If index.yaml itself is NOT in the diff, there's nothing to check —
+        # the declaration is vacuously satisfied (zero changes).
+        if index_path_str in changed_paths:
+            if not _tokens_only_change(project_root, index_path_str):
+                _gscope_fail(
+                    f"declared tokens_only but {index_path_str} "
+                    "changes extend beyond the tokens: block",
+                    fingerprint="scope-mismatch",
+                )
+
+    sys.stdout.write(
+        f"G_SCOPE_PASS: declared_scope={declared_scope!r} matches diff\n"
+    )
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
 
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
     if len(argv) < 2:
-        env_error("usage: gates.py G1|G2|G3 ...")
+        env_error("usage: gates.py G1|G2|G3|G4|G_V|G_XR|G_SCOPE ...")
     gate = argv[1]
     positional: List[str] = []
     flags: Dict[str, str] = {}
@@ -1003,6 +1912,21 @@ def main(argv: Optional[List[str]] = None) -> None:
             for v in result.get("violations", []):
                 sys.stderr.write(f"  {v['rule']}: {v['message']}\n")
             sys.exit(2)
+    elif gate == "G_V":
+        if len(positional) < 1:
+            env_error("G_V requires <impl_hash>")
+        impl_hash = positional[0]
+        project_root = Path(flags.get("project_root", os.getcwd())).resolve()
+        check_G_V(impl_hash, project_root)
+    elif gate == "G_XR":
+        project_root = Path(flags.get("project_root", os.getcwd())).resolve()
+        check_G_XR(project_root)
+    elif gate == "G_SCOPE":
+        if len(positional) < 1:
+            env_error("G_SCOPE requires <declared_scope>")
+        declared_scope = positional[0]
+        project_root = Path(flags.get("project_root", os.getcwd())).resolve()
+        check_G_SCOPE(declared_scope, project_root)
     else:
         env_error(f"unknown gate: {gate}")
 

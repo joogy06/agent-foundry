@@ -127,6 +127,10 @@ hooks            Manage hooks — only one subcommand: migrate (one-shot import 
 ## Headless (`-p`) cheat sheet
 
 ```bash
+# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
+export GOOGLE_CLOUD_PROJECT=
+export GEMINI_API_KEY=
+
 # One-shot prompt, plain text
 gemini -p "summarize this file" < notes.md
 

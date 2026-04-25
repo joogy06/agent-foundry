@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<style>
+  /* Load a data-URI font with a synthetic 400ms delay via a chained @font-face
+     that references a DataURL asset. We simulate the delay by inlining a
+     ttf-style payload so document.fonts.ready has real work to do; puppeteer's
+     networkidle0 alone will not wait for this. */
+  @font-face {
+    font-family: "Slowfont";
+    /* valid base64 but deliberately a tiny OpenType blob (truthy enough to force load) */
+    src: url(data:font/ttf;base64,AAEAAAANAIAAAwBQRkZUTWIxhC8AAAE8AAAAHEdERUYAKAADAAABWAAAAB5PUy8yVT9eWwAAAXgAAABWY21hcAAP) format("truetype");
+    font-display: block;
+  }
+  body { font-family: "Slowfont", sans-serif; margin: 0; }
+  #banner { background: #ffd23f; color: #0a0a0a; padding: 12px; }
+</style>
+<script>
+// Simulate a 400ms font load using the CSS Font Loading API: create a FontFace
+// that resolves after a setTimeout delay, then add() it to document.fonts.
+(function () {
+  const delayMs = 400;
+  const ff = new FontFace("Delayed", "url(data:font/ttf;base64,AAEAAAANAIAAAwBQRkZUTQ==)");
+  // We lie about the load: replace the load() method so fonts.ready waits delayMs
+  // then resolves successfully without touching the network.
+  const realLoad = ff.load.bind(ff);
+  ff.load = function () {
+    return new Promise((res) => setTimeout(() => {
+      // Resolve synthetically — we don't actually need glyph data for this test.
+      res(ff);
+    }, delayMs));
+  };
+  document.fonts.add(ff);
+  // Kick off load so fonts.ready reflects it.
+  ff.load().catch(() => {});
+})();
+</script>
+</head>
+<body>
+  <header id="banner" role="banner">Delayed-font banner</header>
+  <main role="main"><button id="go" type="button">Primary</button></main>
+</body>
+</html>
