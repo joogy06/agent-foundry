@@ -236,61 +236,111 @@ def install_gemini(
 
 
 COPILOT_AGENTS_MD = """\
-# AGENTS.md
+# Copilot CLI instructions (cross-tool agent context)
 
-This is a cross-tool agent-context file consumed natively by:
+Loaded natively by GitHub Copilot CLI (`@github/copilot`) from any of:
 
-- **GitHub Copilot CLI** — pass via `--instructions-file` or place at repo root
-- **Codex CLI** — `@AGENTS.md` import in `~/.codex/CLAUDE.md`
-- **Gemini CLI** — `@AGENTS.md` import in `~/.gemini/GEMINI.md`
+- `.github/copilot-instructions.md`     (per-repo; `copilot init` bootstraps it)
+- `AGENTS.md`                           (per-repo, repo root)
+- `~/.copilot/copilot-instructions.md`  (user-global — this file when written there)
 
-## Skills + agents available on this machine
+Verified by the `--no-custom-instructions` flag in `copilot --help`: Copilot
+CLI reads `AGENTS.md` natively. No bridge or import syntax is required.
 
-This file documents the canonical skills + agents tree that Claude Code uses.
-For tools without a native skill concept (Copilot CLI, the VS Code Copilot
-extension), this file points at the canonical location so the same context
-is reachable.
+**Model selection:** Copilot CLI supports `--model <model>` — pick from the
+Claude / GPT / Gemini variants available on your subscription. Instructions
+in this file apply across every backend.
+
+## Skills + agents on this machine
+
+Claude Code's canonical tree (this is also what `agent-foundry` ships):
 
 - Skills: `~/.claude/skills/<name>/SKILL.md`
 - Agents: `~/.claude/agents/<name>.md`
 
-## VS Code Copilot per-project setup
+| Tool        | Discovery                                                          |
+|-------------|--------------------------------------------------------------------|
+| Claude Code | auto, from `~/.claude/skills/`                                     |
+| Gemini CLI  | `gemini skills link <path>` per skill (or `~/.gemini/skills/`)     |
+| Copilot CLI | this file + per-repo `AGENTS.md` / `.github/copilot-instructions.md` |
+| Codex CLI   | symlinks under `~/.codex/skills/<name>/`                           |
 
-VS Code's GitHub Copilot extension reads project-level instructions from:
+Skills are auto-discovered by Claude Code from frontmatter `description:`.
+For Copilot, you can reference specific skills inline by reading their
+`SKILL.md` files when relevant — Copilot has no native skill concept but
+will treat this file's content as system context.
 
-  `<project-root>/.github/copilot-instructions.md`
+## Useful Copilot CLI invocations
 
-For project-specific Copilot context, copy this file there or symlink:
-
-```bash
-ln -sfn ~/.claude/AGENTS.md <project-root>/.github/copilot-instructions.md
+```
+copilot                                 # interactive mode
+copilot -p "rewrite this function"      # headless, one-shot
+copilot --model claude-sonnet-4 ...     # explicit model
+copilot --no-custom-instructions ...    # disable AGENTS.md loading
+copilot mcp list                        # list MCP servers
+copilot init                            # bootstrap .github/copilot-instructions.md
 ```
 
-(On Windows from PowerShell:
-`New-Item -ItemType SymbolicLink -Path .\\.github\\copilot-instructions.md -Target $env:USERPROFILE\\.claude\\AGENTS.md`)
+Copilot's MCP config: `~/.copilot/mcp-config.json` (user-level) and
+`.mcp.json` / `.vscode/mcp.json` (workspace). The built-in `github-mcp-server`
+is enabled by default — disable with `--disable-builtin-mcps`.
+
+## VS Code Copilot Chat (extension, not CLI)
+
+The VS Code Copilot extension reads `<project>/.github/copilot-instructions.md`.
+Same content, different path. To reuse this file project-wide:
+
+```bash
+ln -sfn ~/.copilot/copilot-instructions.md <project>/.github/copilot-instructions.md
+```
+
+(Windows PowerShell:
+`New-Item -ItemType SymbolicLink -Path .\\.github\\copilot-instructions.md -Target $env:USERPROFILE\\.copilot\\copilot-instructions.md`)
 
 ## See also
 
+- `~/.claude/skills/gh-copilot-cli/SKILL.md` — full Copilot CLI reference
 - `~/.claude/skills/research-for-skills/cross-tool-portability/install-matrix.md`
-  for the full per-tool install matrix.
 """
 
 
-def install_copilot(repo_root: Path, claude_home: Path) -> bool:
+def install_copilot(repo_root: Path, force: bool = False) -> bool:
     """
-    Generate the AGENTS.md bridge at ~/.claude/AGENTS.md and print
-    instructions for VS Code Copilot per-project setup.
+    Install GitHub Copilot CLI integration.
+
+    Copilot CLI (`@github/copilot`) reads instructions from (precedence order):
+      1. .github/copilot-instructions.md  (per-repo; `copilot init` bootstraps it)
+      2. AGENTS.md                        (per-repo, repo root)
+      3. ~/.copilot/copilot-instructions.md  (user-global)
+
+    Per the verified `--no-custom-instructions` flag in `copilot --help`,
+    Copilot CLI loads AGENTS.md natively (no bridge or import syntax needed).
+
+    We write the user-global file so Copilot has cross-tool context regardless
+    of which project you're in. Per-project setup is left to `copilot init`
+    (Copilot's own bootstrap, runs read-only repo analysis).
+
+    Note: Copilot CLI supports `--model <model>` (Claude / GPT / Gemini
+    variants depending on subscription). Instructions in this file apply
+    across every backend.
     """
-    target = claude_home / "AGENTS.md"
-    if target.exists():
+    copilot_dir = Path.home() / ".copilot"
+    copilot_dir.mkdir(parents=True, exist_ok=True)
+    target = copilot_dir / "copilot-instructions.md"
+
+    if target.exists() and not force:
         print(f"    ⚠ {target} already exists — leaving as-is (use --force to overwrite)")
     else:
-        claude_home.mkdir(parents=True, exist_ok=True)
         target.write_text(COPILOT_AGENTS_MD)
         print(f"    + wrote {target}")
-    print(f"    For VS Code Copilot in a project, run:")
-    print(f"      ln -sfn '{target}' <project-root>/.github/copilot-instructions.md")
-    print(f"    (Windows: New-Item -ItemType SymbolicLink -Path '<project>\\.github\\copilot-instructions.md' -Target '{target}')")
+
+    has_copilot = shutil.which("copilot") is not None
+    if not has_copilot:
+        print(f"    ⚠ `copilot` not found on PATH; install via:")
+        print(f"      npm install -g @github/copilot")
+    print(f"    Per-project setup: cd <project> && copilot init")
+    print(f"      (or copy/symlink {target.name} → <project>/AGENTS.md)")
+    print(f"    Model selection:   copilot --model <name>   (Claude / GPT / Gemini)")
     return True
 
 
@@ -403,7 +453,7 @@ def main() -> int:
         gemini_via = "via `gemini skills link`" if shutil.which("gemini") else "direct symlink (no `gemini` on PATH)"
         print(f"  Gemini  ({mode}, {gemini_via}): {REPO_ROOT/'skills'} → {gemini_home/'skills'}")
     if "copilot" in targets:
-        print(f"  Copilot (AGENTS.md bridge): write {claude_home/'AGENTS.md'}")
+        print(f"  Copilot: write {Path.home()/'.copilot'/'copilot-instructions.md'} (user-global; native AGENTS.md format; supports --model Claude/GPT/Gemini)")
     print("=" * 60)
 
     if not args.noninteractive:
@@ -425,7 +475,7 @@ def main() -> int:
         print(f"  ✓ {n} skills (skipped {sk})")
     if "copilot" in targets:
         print("[Copilot]")
-        install_copilot(REPO_ROOT, claude_home)
+        install_copilot(REPO_ROOT, force=args.force)
 
     print()
     print("done.")
