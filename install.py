@@ -56,6 +56,19 @@ def banner() -> None:
     print(line)
 
 
+def check_claude_cli() -> tuple[bool, str | None]:
+    """Probe for the `claude` CLI on PATH. Returns (found, version_or_None)."""
+    cli = shutil.which("claude")
+    if not cli:
+        return False, None
+    try:
+        r = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=5)
+        version = (r.stdout or r.stderr or "").strip().splitlines()
+        return True, version[0] if version else "(unknown version)"
+    except (subprocess.SubprocessError, OSError):
+        return True, "(version probe failed)"
+
+
 def ask(prompt: str, default: str | None = None, choices: list[str] | None = None) -> str:
     suffix = ""
     if choices:
@@ -157,9 +170,16 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
 
 
 def install_claude(
-    repo_root: Path, claude_home: Path, mode: str, force: bool
-) -> tuple[int, int, int, int]:
-    """Install skills + agents + commands into Claude's config tree."""
+    repo_root: Path, claude_home: Path, mode: str, skip_existing: bool
+) -> tuple[int, int, int, int, int]:
+    """Install skills + agents + commands into Claude's config tree.
+
+    Default behavior REPLACES existing entries at the destination (any kind:
+    file, dir, or symlink — see _replace_existing). Pass skip_existing=True
+    to opt into the old behavior of leaving existing entries untouched.
+
+    Returns (skill_n, agent_n, command_n, replaced_or_skipped, chmodded).
+    """
     skills_target = claude_home / "skills"
     agents_target = claude_home / "agents"
     commands_target = claude_home / "commands"
@@ -170,40 +190,78 @@ def install_claude(
     skill_n = 0
     agent_n = 0
     command_n = 0
-    skipped = 0
+    touched_existing = 0  # replaced (default) or skipped (skip_existing)
+
+    def place(src: Path, dest: Path) -> bool:
+        """Place src at dest. Returns True if installed, False if skipped."""
+        nonlocal touched_existing
+        existed = dest.exists() or dest.is_symlink()
+        if skip_existing and existed:
+            touched_existing += 1
+            return False
+        if existed:
+            touched_existing += 1
+        _replace_existing(dest)
+        link_or_copy(src, dest, mode)
+        return True
 
     for skill in sorted((repo_root / "skills").iterdir()):
         if not skill.is_dir() or not (skill / "SKILL.md").exists():
             continue
-        dest = skills_target / skill.name
-        if (dest.exists() or dest.is_symlink()) and not force:
-            skipped += 1
-            continue
-        _replace_existing(dest)
-        link_or_copy(skill, dest, mode)
-        skill_n += 1
+        if place(skill, skills_target / skill.name):
+            skill_n += 1
 
     for agent in sorted((repo_root / "agents").glob("*.md")):
-        dest = agents_target / agent.name
-        if (dest.exists() or dest.is_symlink()) and not force:
-            skipped += 1
-            continue
-        _replace_existing(dest)
-        link_or_copy(agent, dest, mode)
-        agent_n += 1
+        if place(agent, agents_target / agent.name):
+            agent_n += 1
 
     commands_dir = repo_root / "commands"
     if commands_dir.exists():
         for command in sorted(commands_dir.glob("*.md")):
-            dest = commands_target / command.name
-            if (dest.exists() or dest.is_symlink()) and not force:
-                skipped += 1
-                continue
-            _replace_existing(dest)
-            link_or_copy(command, dest, mode)
-            command_n += 1
+            if place(command, commands_target / command.name):
+                command_n += 1
 
-    return skill_n, agent_n, command_n, skipped
+    chmodded = 0
+    if sys.platform != "win32":
+        chmodded = chmod_scripts(skills_target)
+
+    return skill_n, agent_n, command_n, touched_existing, chmodded
+
+
+def chmod_scripts(skills_root: Path) -> int:
+    """Ensure shell/python scripts inside *copied* skills are executable.
+
+    Walks copied skills only — symlinked skills are skipped because their
+    targets live in the source repo's working tree, which we should never
+    mutate. On POSIX, copy-installed scripts can lose +x on filesystems that
+    don't honor git's executable bit; this restores it. Idempotent — already
+    +x files are left alone.
+
+    Returns the count of files whose mode was changed.
+    """
+    if not skills_root.exists():
+        return 0
+    changed = 0
+    extensions = {".sh", ".bash", ".py"}
+    for skill in skills_root.iterdir():
+        # Skip symlinked skill installs — chmod would follow into the source repo.
+        if skill.is_symlink() or not skill.is_dir():
+            continue
+        scripts_dir = skill / "scripts"
+        if not scripts_dir.is_dir() or scripts_dir.is_symlink():
+            continue
+        for f in scripts_dir.rglob("*"):
+            if f.is_symlink() or not f.is_file() or f.suffix.lower() not in extensions:
+                continue
+            try:
+                mode = f.stat().st_mode
+                if mode & 0o100:  # already executable for owner; skip
+                    continue
+                f.chmod(mode | 0o111)
+                changed += 1
+            except OSError:
+                continue  # broken symlink, permission denied, etc.
+    return changed
 
 
 def install_gemini(
@@ -384,7 +442,9 @@ def main() -> int:
     parser.add_argument("--gemini-home", default=None,
                         help=f"override Gemini config dir (default {DEFAULT_GEMINI_HOME})")
     parser.add_argument("--force", action="store_true",
-                        help="overwrite existing skills/agents at the target")
+                        help="(no-op; replace-existing is now the default — kept for backward compat)")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="leave existing skills/agents/commands at the target untouched (old --force=False behavior)")
     parser.add_argument("--noninteractive", action="store_true",
                         help="use defaults — claude + link mode — without prompting")
     args = parser.parse_args()
@@ -393,13 +453,21 @@ def main() -> int:
     print()
 
     skill_n, agent_n, command_n = detect(REPO_ROOT)
+    has_claude, claude_version = check_claude_cli()
     print(f"Repo root:      {REPO_ROOT}")
     print(f"Platform:       {sys.platform}")
     print(f"Python:         {sys.version.split()[0]}")
+    print(f"Claude CLI:     {claude_version if has_claude else 'NOT FOUND on PATH'}")
     print(f"Skills found:   {skill_n}")
     print(f"Agents found:   {agent_n}")
     print(f"Commands found: {command_n}")
     print()
+    if not has_claude:
+        print("⚠ `claude` CLI not on PATH — install with:")
+        print("    curl -fsSL https://claude.ai/install.sh | bash")
+        print("  (or see https://docs.claude.com/en/docs/claude-code/setup)")
+        print("  Continuing — files will land at ~/.claude/ and be picked up once `claude` is installed.")
+        print()
 
     if skill_n == 0 and agent_n == 0 and command_n == 0:
         print("⚠ no skills, agents, or commands found in this directory.")
@@ -472,6 +540,10 @@ def main() -> int:
         print(f"  Gemini  ({mode}, {gemini_via}): {REPO_ROOT/'skills'} → {gemini_home/'skills'}")
     if "copilot" in targets:
         print(f"  Copilot: write {Path.home()/'.copilot'/'copilot-instructions.md'} (user-global; native AGENTS.md format; supports --model Claude/GPT/Gemini)")
+    if args.skip_existing:
+        print("  Existing entries at the targets will be KEPT (--skip-existing).")
+    else:
+        print("  Existing entries at the targets will be REPLACED. Pass --skip-existing to keep them.")
     print("=" * 60)
 
     if not args.noninteractive:
@@ -480,20 +552,27 @@ def main() -> int:
             return 0
 
     # ---- Execute ----
+    # Default: replace existing entries. `--skip-existing` keeps them.
+    # `--force` is preserved as a no-op for backward compat (replacement is now the default).
+    skip_existing = bool(args.skip_existing)
     print()
     if "claude" in targets:
         print("[Claude]")
-        sc, ac, cc, sk = install_claude(REPO_ROOT, claude_home, mode, args.force)
-        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands installed (skipped {sk} existing — use --force to overwrite)")
+        sc, ac, cc, te, chm = install_claude(REPO_ROOT, claude_home, mode, skip_existing)
+        verb = "kept" if skip_existing else "replaced"
+        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands installed ({te} {verb} existing)")
+        if chm:
+            print(f"    + chmod +x on {chm} skill scripts")
     if "gemini" in targets:
         print("[Gemini]")
-        n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, mode, args.force)
+        # install_gemini still uses `force`-style semantics; pass not-skip to mean replace.
+        n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, mode, not skip_existing)
         if not used_cli:
             print(f"  ⚠ `gemini` CLI not found on PATH; used direct {mode} fallback")
         print(f"  ✓ {n} skills (skipped {sk})")
     if "copilot" in targets:
         print("[Copilot]")
-        install_copilot(REPO_ROOT, force=args.force)
+        install_copilot(REPO_ROOT, force=not skip_existing)
 
     print()
     print("done.")
