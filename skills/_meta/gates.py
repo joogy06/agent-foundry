@@ -161,6 +161,39 @@ def read_ledger_header(ledger_path: Path) -> LedgerHeader:
 
 
 # ---------------------------------------------------------------------------
+# CONTRACT_SCOPE_CRITICAL_GLOBS — locked constant (S029 design §7.2 R1).
+#
+# Anti-baseline-poisoning fix: this is hard-coded as a constant, not config-
+# driven. Modifying it requires a code change reviewable in git history.
+# Configs are mutable and rubber-stampable; constants are not.
+#
+# Used by check_G_CONTRACT_SCOPE (WP-3) for severity classification:
+# any ArtifactDelta whose path matches a glob below is severity=critical
+# regardless of artifact_kind, and the path also overrides
+# contract_map.excluded_paths (M4 precedence rule: critical wins).
+# ---------------------------------------------------------------------------
+
+CONTRACT_SCOPE_CRITICAL_GLOBS: Tuple[str, ...] = (
+    "migrations/**/*.sql",
+    "**/migrations/**/*.sql",
+    "**/.env",
+    "**/.env.*",
+    "**/secrets/*",
+    "**/secrets.*",
+    "**/credentials*",
+    "**/*service-account*",
+    "**/Dockerfile",
+    "**/Dockerfile.*",
+    "**/docker-compose*.yml",
+    "**/docker-compose*.yaml",
+    "infra/**",
+    "**/*.pem",
+    "**/*.key",
+    "**/.ssh/**",
+)
+
+
+# ---------------------------------------------------------------------------
 # G1 — contract map exists, signed, AND bound to the ledger
 # ---------------------------------------------------------------------------
 
@@ -1825,13 +1858,600 @@ def check_G_SCOPE(declared_scope: str, project_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# G_CONTRACT_SCOPE — S029 contract-scope-enforcement keystone (design §7.2/§9)
+# ---------------------------------------------------------------------------
+#
+# Invoked by bob (eager / Q4) at every WP boundary AND at INTEGRATED→VERIFIED
+# (TOCTOU re-check). Walks the workspace, classifies each path NOT in the
+# frozen contract-map's declared_universe via the LOCKED extractor priority
+# chain, writes scope_delta.v1 records under .ledger/scope-deltas/, and
+# exits 2 with fingerprint `contract-scope-critical-undeclared` if any
+# record has severity=critical AND status=undecided.
+#
+# declared_universe per design §7.1 / §9:
+#     union(components[].source_paths)
+#   + union(flows[].source_paths)        (v1 flows have no source_paths,
+#                                         so this is currently empty —
+#                                         union is forward-compat)
+#   + excluded_paths
+#
+# PRECEDENCE (M4): if a path matches BOTH excluded_paths AND
+# CONTRACT_SCOPE_CRITICAL_GLOBS, critical wins. Excluded_paths cannot mask
+# critical artifacts.
+#
+# PRIORITY ORDER (M3): secret > db_migration > env_var > public_api >
+# config_key > generated_artifact > file. Locked in extractors/__init__.py;
+# this gate just calls extractors.first_match().
+
+
+def _gcontract_scope_fail(message: str, *, count: int) -> None:
+    """G_CONTRACT_SCOPE non-zero exit helper — `gate_false_pass` because the
+    specialist's COMPLETE claim contradicts the frozen contract-map.
+    Fingerprint dedups all critical-undeclared refusals together (alf can
+    spot chronic recurrence)."""
+    exit_with_observation(
+        "G_CONTRACT_SCOPE",
+        2,
+        f"critical-undeclared:{count}",
+        message,
+        severity="blocking",
+        category="gate_false_pass",
+        fingerprint="contract-scope-critical-undeclared",
+    )
+
+
+def _gcontract_scope_env_error(message: str) -> None:
+    exit_with_observation(
+        "G_CONTRACT_SCOPE",
+        3,
+        "env",
+        message,
+        severity="degraded",
+        category="external_tool_fail",
+        fingerprint="G_CONTRACT_SCOPE-env",
+    )
+
+
+def _gcs_expand_path(p: str) -> str:
+    """Normalise contract-map source_path string into a project-relative or
+    absolute filesystem hint. Supports `~/...` (expanduser), absolute paths,
+    or project-relative paths. Returned as-is for glob matching — the gate
+    only cares about glob set membership, not filesystem existence."""
+    if p.startswith("~"):
+        return str(Path(p).expanduser())
+    return p
+
+
+def _gcs_glob_to_regex(pat: str) -> "re.Pattern":
+    """Convert a glob with `**` (recursive) semantics into a compiled regex.
+
+    Glob conventions honored:
+        `**/` at the start  → zero-or-more dir segments
+        `**` between slashes → zero-or-more dir segments (matches across /)
+        `*`                 → any chars except `/`
+        `?`                 → single char except `/`
+    Anything else is escaped literally.
+    """
+    parts: List[str] = []
+    i = 0
+    while i < len(pat):
+        ch = pat[i]
+        # Handle `**` first.
+        if ch == "*" and i + 1 < len(pat) and pat[i + 1] == "*":
+            # Determine if it's `**/` or `/**` or standalone `**`.
+            if i + 2 < len(pat) and pat[i + 2] == "/":
+                # `**/`  → zero-or-more segments + slash, OR nothing
+                parts.append(r"(?:.*/)?")
+                i += 3
+                continue
+            else:
+                # bare `**` or trailing `**` — match anything across /
+                parts.append(r".*")
+                i += 2
+                continue
+        if ch == "*":
+            parts.append(r"[^/]*")
+            i += 1
+            continue
+        if ch == "?":
+            parts.append(r"[^/]")
+            i += 1
+            continue
+        # Default — regex-escape the character.
+        parts.append(re.escape(ch))
+        i += 1
+    return re.compile("^" + "".join(parts) + "$")
+
+
+def _gcs_glob_match(path: str, pat: str) -> bool:
+    """Match `path` against a single glob `pat` with `**` semantics."""
+    return bool(_gcs_glob_to_regex(pat).match(path))
+
+
+def _gcs_in_universe(path: str, universe_globs: List[str]) -> bool:
+    """True iff `path` matches at least one glob in the declared universe.
+
+    Treats `**` as the recursive directory wildcard. Also accepts non-glob
+    prefix matches (e.g., a tilde-expanded absolute path that names a
+    specific file inside a subdir).
+    """
+    for g in universe_globs:
+        if _gcs_glob_match(path, g):
+            return True
+        # Allow exact prefix match for non-glob declared paths.
+        if "*" not in g and "?" not in g and "[" not in g:
+            if path == g or path.startswith(g.rstrip("/") + "/"):
+                return True
+    return False
+
+
+def _gcs_matches_critical(path: str) -> bool:
+    """True iff `path` matches any glob in CONTRACT_SCOPE_CRITICAL_GLOBS."""
+    for g in CONTRACT_SCOPE_CRITICAL_GLOBS:
+        if _gcs_glob_match(path, g):
+            return True
+    return False
+
+
+def _gcs_walk_workspace(project_root: Path) -> List[str]:
+    """Walk the project filesystem and return project-relative paths.
+
+    Skips dot-directories that are universally excluded (.git, .ledger,
+    __pycache__, node_modules) at walk-time for performance. The full
+    excluded_paths list is still consulted at classification time so the
+    contract-map's declarations control what reaches scope_delta.
+
+    The walk-time skip set is hard-coded (small, universally-excluded);
+    excluded_paths from the map controls everything else.
+    """
+    SKIP_DIR_NAMES = {
+        ".git", ".ledger", ".forge", ".design-ledger",
+        "__pycache__", "node_modules", ".venv", "venv",
+        ".tox", ".mypy_cache", ".pytest_cache",
+    }
+    out: List[str] = []
+    project_root = project_root.resolve()
+    for root, dirs, files in os.walk(project_root, topdown=True):
+        # Prune in-place for performance.
+        dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES]
+        for f in files:
+            full = Path(root) / f
+            try:
+                rel = full.relative_to(project_root)
+            except ValueError:
+                continue
+            out.append(str(rel))
+    return out
+
+
+def _gcs_load_contract_map(map_path: Path) -> Dict[str, Any]:
+    if not map_path.is_file():
+        _gcontract_scope_env_error(f"contract-map not found at {map_path}")
+    try:
+        return yaml.safe_load(map_path.read_text()) or {}
+    except yaml.YAMLError as e:
+        _gcontract_scope_env_error(f"contract-map unparseable: {e}")
+    return {}
+
+
+def _gcs_compute_declared_universe(map_yaml: Dict[str, Any]) -> List[str]:
+    """declared_universe = union(components[].source_paths)
+                         + union(flows[].source_paths)
+                         + excluded_paths."""
+    universe: List[str] = []
+    for comp in map_yaml.get("components", []) or []:
+        for sp in comp.get("source_paths", []) or []:
+            universe.append(_gcs_expand_path(sp))
+    for flow in map_yaml.get("flows", []) or []:
+        # Forward-compat: v1 flows don't carry source_paths but the design
+        # spec keeps the union edge open.
+        for sp in flow.get("source_paths", []) or []:
+            universe.append(_gcs_expand_path(sp))
+    for ex in map_yaml.get("excluded_paths", []) or []:
+        universe.append(ex)
+    return universe
+
+
+def _gcs_compute_critical_only_universe(map_yaml: Dict[str, Any]) -> List[str]:
+    """Same as declared_universe but EXCLUDES excluded_paths.
+
+    Used for the M4 precedence rule: a path that matches a critical glob
+    is critical even if excluded_paths would otherwise mask it. The gate
+    consults this universe before short-circuiting on excluded_paths so
+    critical wins.
+    """
+    universe: List[str] = []
+    for comp in map_yaml.get("components", []) or []:
+        for sp in comp.get("source_paths", []) or []:
+            universe.append(_gcs_expand_path(sp))
+    for flow in map_yaml.get("flows", []) or []:
+        for sp in flow.get("source_paths", []) or []:
+            universe.append(_gcs_expand_path(sp))
+    return universe
+
+
+# ---------------------------------------------------------------------------
+# Retro-scan baseline consultation (S029 spawn-4b defect-fix per design §7.5)
+#
+# Per design §7.5 paragraph 4: "Is this an advisory finding from baseline?
+# Allow with logging." When `progress/retro-scan-S028.yaml` is present, the
+# gate consults the baseline and adjusts emission as follows:
+#
+#   1. Path in baseline `pre_existing_critical` set AND op=="added"
+#      (workspace-walk emits all paths as op="added" for v1)
+#        → GRANDFATHER: do NOT emit a critical scope_delta record. The path
+#          existed before S029 shipped; the baseline-allow rule applies.
+#          v2-refinement (S030): if op∈{"changed","removed"} for a baseline-
+#          critical path, emit critical (modification of pre-existing
+#          critical resource is still a scope change).
+#   2. Path in baseline `pre_existing_advisory` set
+#        → emit advisory record but mark severity stays advisory and the
+#          record carries the baseline marker (informational only). Same
+#          severity classification as today; baseline membership is
+#          recorded in extractor_meta for audit trail.
+#   3. Path NOT in baseline AND matches CONTRACT_SCOPE_CRITICAL_GLOBS
+#        → emit critical (current Q2 #3 behavior — block; new artifact
+#          introduced post-baseline is still a scope change).
+#   4. Path NOT in baseline AND no critical-glob match
+#        → emit advisory (current behavior — non-blocking).
+#
+# v1 limitation (Q2 #4): the workspace-walk gate cannot distinguish "added"
+# from "changed" without a git diff. For v1 we treat all walked paths as
+# op="added" and grandfather every baseline-critical path. Synthetic-delta
+# tests exercise the op="changed" branch via direct helper invocation.
+# Refinement to git-aware diffing is S030 work.
+#
+# Safety:
+#   * Missing baseline file → no-consultation; behavior identical to today.
+#   * Malformed YAML → no-consultation; warning to stderr; do not crash.
+#   * `contract_map_hash` mismatch with live map → no-consultation; warning
+#     to stderr (baseline is stale; user should re-run retro-scan).
+# ---------------------------------------------------------------------------
+
+RETRO_SCAN_RELPATH = "progress/retro-scan-S028.yaml"
+
+
+def _gcs_load_baseline(
+    project_root: Path,
+    contract_map_hash: str,
+) -> Dict[str, Any]:
+    """Load `progress/retro-scan-S028.yaml` and return a dict with keys:
+
+        {
+          "present": bool,                # True iff file exists and parses
+          "stale":   bool,                # True iff hash mismatch with live map
+          "critical_paths": set[str],     # paths classified pre_existing_critical
+          "advisory_paths": set[str],     # paths classified pre_existing_advisory
+        }
+
+    On any error (missing file, malformed YAML, hash mismatch with live
+    map, schema issues) the helper falls back safely: returns
+    `present=False` (no-consultation) and emits one stderr warning. The
+    gate never crashes on baseline issues.
+
+    `contract_map_hash` is the LIVE contract-map hash (sha256:<hex>) the
+    gate computed from `map_path.read_bytes()`. The baseline pins
+    `contract_map_hash` at scan time; mismatch → baseline is stale
+    relative to the current map and should not be consulted (operator
+    should re-run retro-scan after any contract-map amendment).
+    """
+    empty = {
+        "present": False,
+        "stale": False,
+        "critical_paths": set(),
+        "advisory_paths": set(),
+    }
+    baseline_path = project_root / RETRO_SCAN_RELPATH
+    if not baseline_path.is_file():
+        return empty
+    try:
+        data = yaml.safe_load(baseline_path.read_text())
+    except yaml.YAMLError as e:
+        sys.stderr.write(
+            f"G_CONTRACT_SCOPE: baseline {baseline_path} unparseable "
+            f"({e}); falling back to no-consultation.\n"
+        )
+        return empty
+    if not isinstance(data, dict):
+        sys.stderr.write(
+            f"G_CONTRACT_SCOPE: baseline {baseline_path} not a dict; "
+            f"falling back to no-consultation.\n"
+        )
+        return empty
+    if data.get("schema_version") != "retro_scan.v1":
+        sys.stderr.write(
+            f"G_CONTRACT_SCOPE: baseline {baseline_path} schema_version "
+            f"!= retro_scan.v1; falling back to no-consultation.\n"
+        )
+        return empty
+    # Hash binding: stale baseline → no-consultation.
+    baseline_hash = data.get("contract_map_hash")
+    if baseline_hash and baseline_hash != contract_map_hash:
+        sys.stderr.write(
+            f"G_CONTRACT_SCOPE: baseline contract_map_hash {baseline_hash} "
+            f"!= live {contract_map_hash}; falling back to no-consultation.\n"
+        )
+        return {**empty, "stale": True}
+    crit: set = set()
+    adv: set = set()
+    # Top-level baseline_critical_paths is the canonical critical list
+    # per design §7.5 (Q2 #4 enforcement list).
+    for p in data.get("baseline_critical_paths", []) or []:
+        if isinstance(p, str):
+            crit.add(p)
+    # findings[] inside each component bucket is the canonical finding list;
+    # for v1 attribution all findings are placed under the first bucket
+    # (per scan.py docstring), but we walk every bucket to be robust.
+    for comp in data.get("components", []) or []:
+        for f in (comp or {}).get("findings", []) or []:
+            if not isinstance(f, dict):
+                continue
+            path = f.get("path")
+            sev = f.get("severity")
+            if not isinstance(path, str):
+                continue
+            if sev == "pre_existing_critical":
+                crit.add(path)
+            elif sev == "pre_existing_advisory":
+                adv.add(path)
+    return {
+        "present": True,
+        "stale": False,
+        "critical_paths": crit,
+        "advisory_paths": adv,
+    }
+
+
+def _gcs_classify_against_baseline(
+    path: str,
+    operation: str,
+    baseline_critical: set,
+    baseline_advisory: set,
+) -> str:
+    """Classify a candidate scope_delta against baseline membership.
+
+    Returns one of:
+        "grandfather"       → do not emit a record; pre-existing critical,
+                              op="added" (Q2 #4: modification still blocks)
+        "block_modification"→ emit critical; baseline-critical path was
+                              modified (op∈{"changed","removed"})
+        "advisory_baseline" → emit advisory, baseline-marker; pre-existing
+                              advisory (informational only)
+        "block_new_critical"→ emit critical; not in baseline + critical-glob
+        "advisory_new"      → emit advisory; not in baseline + no critical-glob
+
+    The two "block_*" outcomes are the Q2 #3/#4 enforcement paths.
+    The "grandfather"/"advisory_baseline" outcomes are the §7.5 baseline
+    relief valves.
+
+    `operation` is one of OPERATIONS = ("added", "removed", "changed").
+    Caller decides whether to honor critical-glob match independently
+    (this helper takes that decision as already-made via signature; it
+    only handles the baseline-membership branch).
+    """
+    if path in baseline_critical:
+        if operation == "added":
+            return "grandfather"
+        # op∈{"changed","removed"} → modification of pre-existing critical
+        # resource is still a scope change. Q2 #4 enforces this.
+        return "block_modification"
+    if path in baseline_advisory:
+        return "advisory_baseline"
+    # Not in baseline → caller's existing critical-glob decision applies.
+    # Helper does not duplicate that logic; sentinel value tells caller
+    # to fall through to its existing classification path.
+    return "no_baseline_match"
+
+
+def check_G_CONTRACT_SCOPE(
+    project_root: Path,
+    map_path: Path,
+    requesting_wp: str,
+    detection_point: str,
+) -> None:
+    """G_CONTRACT_SCOPE per design §7.2 / §9.
+
+    Steps:
+      1. Load frozen contract-map.yaml (env-error on missing/parse-fail).
+      2. Compute declared_universe (components + flows + excluded_paths).
+      3. Walk workspace; for each path NOT in declared_universe (with M4
+         precedence: critical globs override excluded_paths):
+           a. Classify ArtifactKind via extractors.first_match (LOCKED M3
+              priority chain).
+           b. Severity = critical iff path matches CONTRACT_SCOPE_CRITICAL_GLOBS,
+              else advisory.
+           c. Write scope_delta.v1 record (status=undecided).
+      4. Exit 0 if no critical undecided records were written.
+         Exit 2 (fingerprint=contract-scope-critical-undeclared) if any
+         critical undecided records were written.
+
+    Side effects: writes scope_delta records to project_root/.ledger/scope-deltas/.
+    Never modifies contract-map.yaml. Bob is the sole consumer of the records.
+    """
+    project_root = project_root.resolve()
+
+    if detection_point not in ("wp_boundary", "integrated_to_verified"):
+        _gcontract_scope_env_error(
+            f"detection_point must be wp_boundary|integrated_to_verified, got {detection_point!r}"
+        )
+    if not requesting_wp:
+        _gcontract_scope_env_error("requesting_wp must be non-empty")
+
+    # Load the map and compute declared_universe.
+    map_yaml = _gcs_load_contract_map(map_path)
+    declared_universe = _gcs_compute_declared_universe(map_yaml)
+    critical_only_universe = _gcs_compute_critical_only_universe(map_yaml)
+
+    contract_map_revision = int(map_yaml.get("revision", 0))
+    map_hash = hashlib.sha256(map_path.read_bytes()).hexdigest()
+    contract_map_hash = f"sha256:{map_hash}"
+
+    # Local imports to avoid any startup cost when the gate isn't invoked.
+    import extractors as _extractors  # noqa: E402
+    import scope_delta as _scope_delta  # noqa: E402
+
+    # S030 #61: per-invocation dedup. Build the set of pre-existing undecided
+    # records ONCE so we can skip re-emitting on every invocation.
+    # Dedup key is (path, content_hash, severity). A change in any field
+    # (e.g. file mutated, severity escalated, status moved off-undecided)
+    # MUST produce a fresh record.
+    existing_undecided_keys: set = set()
+    for _rec in _scope_delta.read_records(project_root, status_filter="undecided"):
+        existing_undecided_keys.add((
+            _rec.get("path"),
+            _rec.get("content_hash"),
+            _rec.get("severity"),
+        ))
+
+    # Walk the workspace.
+    actual_paths = _gcs_walk_workspace(project_root)
+
+    # Spawn-4b: load retro-scan-S028 baseline (design §7.5 paragraph 4).
+    # On missing/malformed/stale baseline, the helper returns present=False
+    # and the gate behaves identically to today (no-consultation).
+    baseline = _gcs_load_baseline(project_root, contract_map_hash)
+    baseline_critical: set = baseline["critical_paths"]
+    baseline_advisory: set = baseline["advisory_paths"]
+    baseline_present: bool = baseline["present"]
+
+    critical_records: List[str] = []
+    advisory_records: List[str] = []
+
+    for rel in actual_paths:
+        is_critical_match = _gcs_matches_critical(rel)
+        if is_critical_match:
+            # M4 PRECEDENCE: a critical-glob path is "in declared" only if
+            # it appears in components[].source_paths or flows[].source_paths.
+            # excluded_paths cannot mask it.
+            if _gcs_in_universe(rel, critical_only_universe):
+                continue
+        else:
+            # Non-critical paths can be excluded normally.
+            if _gcs_in_universe(rel, declared_universe):
+                continue
+
+        # Path is undeclared. Classify via extractor priority chain.
+        # v1: workspace-walk emits all paths as op="added".
+        delta = _extractors.first_match(project_root, rel, "added")
+        if delta is None:
+            # Should never happen — file extractor is catch-all.
+            continue
+
+        # Spawn-4b baseline consultation (design §7.5).
+        # Only consulted when baseline is present + non-stale; otherwise
+        # behavior is identical to pre-spawn-4b.
+        baseline_outcome = "no_baseline_match"
+        if baseline_present:
+            baseline_outcome = _gcs_classify_against_baseline(
+                rel, delta.operation, baseline_critical, baseline_advisory,
+            )
+            if baseline_outcome == "grandfather":
+                # Pre-existing critical, op="added" → §7.5 baseline-allow.
+                # Do not emit a record. The path was present at S029
+                # baseline freeze; the user has implicitly accepted it.
+                # An audit-trail observation is preferable but the
+                # in-process scope-delta ledger is append-only and the
+                # baseline file itself is the authoritative audit trail.
+                continue
+
+        severity = "critical" if is_critical_match else "advisory"
+        record = {
+            "delta_id": _scope_delta.new_delta_id(),
+            "schema_version": "scope_delta.v1",
+            "created_at": _scope_delta._now_iso(),
+            "created_by": "G_CONTRACT_SCOPE",
+            "project_root": str(project_root),
+            "contract_map_hash": contract_map_hash,
+            "contract_map_revision": contract_map_revision,
+            "artifact_kind": delta.kind,
+            "operation": delta.operation,
+            "path": delta.path,
+            "content_hash": delta.content_hash,
+            "contract_ref": None,
+            "consumer_refs": [],
+            "severity": severity,
+            "requesting_wp": requesting_wp,
+            "detection_point": detection_point,
+            "status": "undecided",
+            "extractor_meta": dict(delta.extractor_meta or {}),
+        }
+        # Mark baseline-derived records via extractor_meta (informational).
+        if baseline_outcome == "advisory_baseline":
+            record["extractor_meta"]["baseline_marker"] = "pre_existing_advisory"
+        elif baseline_outcome == "block_modification":
+            # Q2 #4 (v1 unreachable via workspace-walk; reached only via
+            # synthetic-delta tests). Severity stays critical.
+            record["extractor_meta"]["baseline_marker"] = (
+                "pre_existing_critical_modified"
+            )
+        if severity == "critical":
+            record["critical_reason"] = (
+                f"path matches CONTRACT_SCOPE_CRITICAL_GLOBS and is not in "
+                f"components[].source_paths or flows[].source_paths"
+            )
+
+        # S030 #61: per-invocation dedup. If an undecided record with the
+        # same (path, content_hash, severity) already exists, skip emission.
+        # Only `undecided` records dedupe — excluded/amended records are
+        # intentionally NOT dedup keys (re-emit so the user sees them
+        # again if the situation re-arises post-resolution).
+        dedup_key = (record["path"], record["content_hash"], record["severity"])
+        if dedup_key in existing_undecided_keys:
+            # Already-undecided record covers this finding. Track it so the
+            # exit-code calculation still treats critical as blocking.
+            if severity == "critical":
+                critical_records.append("dedup:" + record["path"])
+            else:
+                advisory_records.append("dedup:" + record["path"])
+            continue
+
+        try:
+            _scope_delta.write_record(project_root, record)
+        except FileExistsError:
+            # Duplicate delta-id (extremely unlikely with timestamp+hex);
+            # mint a fresh one and retry once.
+            record["delta_id"] = _scope_delta.new_delta_id()
+            _scope_delta.write_record(project_root, record)
+
+        # Add the new record's key so subsequent iterations within this
+        # same invocation also dedupe (defense-in-depth; the workspace walk
+        # is unique-on-path so this is informational).
+        existing_undecided_keys.add(dedup_key)
+
+        if severity == "critical":
+            critical_records.append(record["delta_id"])
+        else:
+            advisory_records.append(record["delta_id"])
+
+    # Always print a structured one-line summary so callers can parse.
+    summary = (
+        f"G_CONTRACT_SCOPE summary: critical_undecided={len(critical_records)} "
+        f"advisory_undecided={len(advisory_records)} "
+        f"requesting_wp={requesting_wp} detection_point={detection_point} "
+        f"map_revision={contract_map_revision}"
+    )
+
+    if critical_records:
+        # Echo the critical delta IDs to stdout for bob to consume.
+        for did in critical_records:
+            sys.stdout.write(
+                f"G_CONTRACT_SCOPE_CRITICAL: {did}\n"
+            )
+        # Then fail through the observation pipeline.
+        _gcontract_scope_fail(summary, count=len(critical_records))
+
+    sys.stdout.write(f"G_CONTRACT_SCOPE_PASS: {summary}\n")
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
 
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
     if len(argv) < 2:
-        env_error("usage: gates.py G1|G2|G3|G4|G_V|G_XR|G_SCOPE ...")
+        env_error("usage: gates.py G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE ...")
     gate = argv[1]
     positional: List[str] = []
     flags: Dict[str, str] = {}
@@ -1855,6 +2475,26 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
         if a == "--advisory":
             flags["g4_mode"] = "advisory"
             i += 1
+            continue
+        if a == "--wp":
+            if i + 1 >= len(argv):
+                env_error("--wp requires a value")
+            flags["wp"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--detection-point":
+            if i + 1 >= len(argv):
+                env_error("--detection-point requires a value")
+            flags["detection_point"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--map":
+            # Optional flag form for G_CONTRACT_SCOPE if caller prefers it
+            # over positional; positional path still takes precedence.
+            if i + 1 >= len(argv):
+                env_error("--map requires a value")
+            flags["map"] = argv[i + 1]
+            i += 2
             continue
         positional.append(a)
         i += 1
@@ -1927,6 +2567,21 @@ def main(argv: Optional[List[str]] = None) -> None:
         declared_scope = positional[0]
         project_root = Path(flags.get("project_root", os.getcwd())).resolve()
         check_G_SCOPE(declared_scope, project_root)
+    elif gate == "G_CONTRACT_SCOPE":
+        # CLI: gates.py G_CONTRACT_SCOPE <project_root> <map_path>
+        #                                  --wp <wp_id>
+        #                                  --detection-point wp_boundary|integrated_to_verified
+        if len(positional) < 2:
+            env_error(
+                "G_CONTRACT_SCOPE requires <project_root> <map_path>"
+            )
+        project_root = Path(positional[0]).resolve()
+        map_path = Path(positional[1]).resolve()
+        requesting_wp = flags.get("wp", "")
+        detection_point = flags.get("detection_point", "wp_boundary")
+        check_G_CONTRACT_SCOPE(
+            project_root, map_path, requesting_wp, detection_point
+        )
     else:
         env_error(f"unknown gate: {gate}")
 

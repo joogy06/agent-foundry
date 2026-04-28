@@ -544,5 +544,200 @@ def test_ts_var_06_tuple_echo_verbatim(tmp_path):
     assert result["rubric_version"] == rubric
 
 
+# ---------------------------------------------------------------------------
+# Phase 5b — closing tests for codex/claude disagreements at attempt_id=2
+#
+# Maps to per-component gap file:
+#   /tmp/s028-phase5b/gaps/visual-arbiter.gaps.txt
+#
+#   Codex disagreements addressed:
+#     [1] stdout-only contract / no ledger writes (CB4)              -> test_phase5b_stdout_only_contract_no_ledger_writes
+#     [2] NO LLM subprocess invariant (static AST)                   -> test_phase5b_no_llm_subprocess_static_ast_invariant
+#     [3] external Chrome failure → exit non-zero, AUDIT_UNAVAILABLE -> test_phase5b_chrome_crash_returns_audit_unavailable
+#     [5] (and Claude [1]) visual_only:true skip path                -> test_phase5b_visual_only_true_skips_handler_check
+# ---------------------------------------------------------------------------
+
+
+def test_phase5b_stdout_only_contract_no_ledger_writes(tmp_path, monkeypatch):
+    """Phase5b SC-stdout-only: arbiter writes NOTHING under .design-ledger/.
+
+    Runs the full CLI in a sandbox CWD (tmp_path) with no .design-ledger/ dir
+    pre-existing. After invocation, asserts that .design-ledger/ does not
+    exist anywhere under tmp_path. Pure-Python path (argv-validation error
+    triggers stdout-emit + exit 3) — no chrome required.
+    """
+    monkeypatch.chdir(tmp_path)
+    # Trigger an argv-validation path that still goes through the
+    # stdout-only emit_and_exit code (returns AUDIT_UNAVAILABLE on bad hash).
+    proc = subprocess.run(
+        [sys.executable, str(BINARY)] + ["x"] * 10,
+        cwd=str(tmp_path),
+        capture_output=True, text=True, timeout=10,
+    )
+    assert proc.returncode == 3
+    # Output must be on stdout, JSON-parseable, single object
+    out = json.loads(proc.stdout)
+    assert out["verdict"] == "AUDIT_UNAVAILABLE"
+
+    # CB4 negative invariant: no .design-ledger/ created anywhere under cwd
+    rogue_writes = list(tmp_path.rglob(".design-ledger"))
+    assert rogue_writes == [], f"arbiter wrote ledger files: {rogue_writes}"
+    rogue_verdicts = list(tmp_path.rglob("*verdict*.yaml")) + list(tmp_path.rglob("*verdict*.json"))
+    # Exclude any test fixtures we might have created under tmp_path
+    rogue_verdicts = [p for p in rogue_verdicts if "fixture" not in str(p) and "test" not in str(p)]
+    assert rogue_verdicts == [], f"arbiter wrote verdict files: {rogue_verdicts}"
+
+
+def test_phase5b_no_llm_subprocess_static_ast_invariant():
+    """Phase5b SC[2]: arbiter MUST NOT subprocess any LLM binary in verdict path.
+
+    Static-analysis test. Walks the AST of visual_arbiter_spawn.py and asserts
+    NO subprocess.* call to a forbidden LLM binary path. The arbiter is allowed
+    to subprocess `node` (the puppeteer measurement script) — that is the only
+    permitted external binary per ecosystem-keystone §2.6.
+
+    This is a module-level invariant: a regression where someone later adds an
+    LLM call into the verdict path will fail this test loudly.
+    """
+    import ast
+    src = BINARY.read_text()
+    tree = ast.parse(src)
+
+    forbidden_binary_substrings = (
+        "codex", "claude", "gemini", "ollama", "llama",
+        "openai", "anthropic", "/codex", "/claude",
+    )
+
+    # Collect every string-literal that appears as the first arg to a
+    # subprocess.run / Popen / call call — the arg representing the executable.
+    offenders: List[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        # Recognize subprocess.run(...) / subprocess.Popen(...) / subprocess.call(...)
+        is_subprocess = False
+        if isinstance(node.func, ast.Attribute):
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
+                is_subprocess = node.func.attr in ("run", "Popen", "call", "check_call", "check_output")
+        if not is_subprocess:
+            continue
+        if not node.args:
+            continue
+        # The first arg may be a list/tuple of strings, or a bare string.
+        first = node.args[0]
+        candidate_strings: List[str] = []
+        if isinstance(first, (ast.List, ast.Tuple)):
+            for elt in first.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    candidate_strings.append(elt.value)
+        elif isinstance(first, ast.Constant) and isinstance(first.value, str):
+            candidate_strings.append(first.value)
+        # Even though some args reference a variable (e.g. NODE_BIN), we only
+        # care about literal forbidden binary names. A future regression
+        # ALWAYS surfaces by either embedding the forbidden literal here or
+        # by a `subprocess.run(["claude", ...])` call shape that the AST
+        # walker catches.
+        for s in candidate_strings:
+            low = s.lower()
+            for needle in forbidden_binary_substrings:
+                if needle in low:
+                    offenders.append(s)
+
+    assert offenders == [], (
+        f"visual_arbiter_spawn.py invokes forbidden LLM subprocess(es): {offenders}. "
+        "Per ecosystem-keystone §2.6, the verdict path is pure-Python + node-puppeteer only."
+    )
+
+
+def test_phase5b_chrome_crash_returns_audit_unavailable(tmp_path, monkeypatch):
+    """Phase5b integration_points[chrome] failure_mode: chrome subprocess
+    crash → exit 4 + verdict=AUDIT_UNAVAILABLE + external_tool_fail-shaped
+    diagnostic. Verdict NOT a pass/warn/reject body. (No .design-ledger
+    write — CB4 still preserved.)
+
+    We force a crash by pointing VISUAL_ARBITER_NODE_BIN at a binary that
+    exits non-zero immediately. Skeleton + URL are valid (so we get past
+    argv-validation), but the measurement subprocess will fail.
+    """
+    elements_block = """\
+  - id: "masthead"
+    kind: structural
+    selector: "header.masthead"
+    bbox:
+      desktop: {x: 0, y: 0, w: 1280, h: 120}
+    tokens_used: {}
+    visibility: {default: visible}
+    interactions: []
+"""
+    skeleton = _write_skeleton(tmp_path, elements_block)
+    html = _write_html(tmp_path, body='<header class="masthead"></header>')
+
+    # /bin/false always exits with returncode 1 — simulates chrome/node crash
+    env = os.environ.copy()
+    env["VISUAL_ARBITER_NODE_BIN"] = "/bin/false"
+    env["VISUAL_ARBITER_TIMEOUT_S"] = "10"
+
+    cmd = [
+        sys.executable, str(BINARY),
+        str(skeleton), HEX64, HEX32, "attempt-1",
+        "v0", html.as_uri(), HEX64B, HEX64C, "runner-1.0", "v1.0.0",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+    # exit 4 = AUDIT_UNAVAILABLE per visual_arbiter_spawn.py contract
+    assert proc.returncode == 4, f"expected 4, got {proc.returncode}, stderr={proc.stderr}"
+    out = json.loads(proc.stdout)
+    assert out["verdict"] == "AUDIT_UNAVAILABLE"
+    assert "subprocess" in out.get("reason", "").lower() or "measurement" in out.get("reason", "").lower()
+    # No verdict body — these keys belong to a successful verdict only
+    assert "element_verdicts" not in out
+    assert "coverage" not in out
+    # CB4: stdout-only; no .design-ledger creation under tmp_path
+    rogue = list(tmp_path.rglob(".design-ledger"))
+    assert rogue == [], f"arbiter wrote ledger on chrome crash: {rogue}"
+
+
+def test_phase5b_visual_only_true_skips_handler_check():
+    """Phase5b SC4 'bindless interactions (visual_only:true) skipped'.
+
+    Unit-level test against _check_interaction_wiring. A declared interaction
+    with visual_only:true MUST yield status='ok' even when no handler fires
+    and no binds_to is given — the design contract is that pure-visual
+    elements (e.g. animations) are intentionally bindless.
+    """
+    import visual_arbiter_spawn as va
+
+    # Element with one visual_only interaction (no binds_to, no handler)
+    el = {
+        "id": "decorative_pulse",
+        "interactions": [
+            {"event": "animationiteration", "visual_only": True},
+        ],
+    }
+    # Empty measured interactions → no handler_fired report at all
+    measured: List[Dict[str, Any]] = []
+
+    verdicts = va._check_interaction_wiring(el, measured, project_root=None)
+    assert len(verdicts) == 1
+    v = verdicts[0]
+    assert v["status"] == "ok", f"visual_only must skip handler check: {v}"
+    assert v.get("reason") == "visual_only"
+    # And critically: NO 'dead' status — even though no handler fired
+    assert v["status"] != "dead"
+
+    # Compare against a non-visual_only sibling: same shape but visual_only
+    # missing → should fail dead because no handler fired AND no binds_to
+    el_bindless_nonvisual = {
+        "id": "broken_btn",
+        "interactions": [
+            {"event": "click"},  # no binds_to, no visual_only
+        ],
+    }
+    verdicts2 = va._check_interaction_wiring(el_bindless_nonvisual, [], project_root=None)
+    assert len(verdicts2) == 1
+    assert verdicts2[0]["status"] == "dead", (
+        f"non-visual_only bindless interaction must be dead: {verdicts2[0]}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

@@ -344,6 +344,14 @@ LOOP while any team is running:
      - skill_gap -> invoke research-for-skills, write DEPENDENCY_RESOLVED to team inbox
      - external_dependency -> log, escalate to caller (bob/forge)
      - file_conflict -> attempt auto-merge per ownership rules, if fails escalate
+     - scope_change -> defer to bob's pause cycle. Do NOT auto-restart the team
+       and do NOT escalate as a team failure. Bob's `claims.request_scope_pause`
+       (S029 design §10) drives the freeze-the-world / amend / resume arc;
+       team-managers and specialists MUST NOT call `pause_state.request_pause`
+       directly (CB4: bob is the sole pause-cycle caller). When the gate fires,
+       bob takes over orchestration; agent-teams holds the team in a paused
+       outbox state until bob signals resume via the team's inbox (RESUMING ->
+       NORMAL transitions land as DEPENDENCY_RESOLVED messages).
      - unknown -> escalate to caller with full context
   5. Check circuit breakers (see Failure Handling)
   6. Continue until all teams complete or failure
