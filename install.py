@@ -2,10 +2,10 @@
 """
 agent-foundry installer.
 
-Moves or symlinks skills + agents from a cloned agent-foundry repo into the
-config tree(s) of one or more AI CLIs you have installed:
+Moves or symlinks skills + agents + commands from a cloned agent-foundry repo
+into the config tree(s) of one or more AI CLIs you have installed:
 
-    - Claude Code CLI    (~/.claude/{skills,agents}/)
+    - Claude Code CLI    (~/.claude/{skills,agents,commands}/)
     - Gemini CLI         (~/.gemini/skills/  via `gemini skills link`)
     - GitHub Copilot CLI (AGENTS.md bridge — Copilot has no skill concept)
 
@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 TARGETS_HELP = """\
 Targets:
-  c = Claude Code CLI         (~/.claude/skills/, ~/.claude/agents/)
+  c = Claude Code CLI         (~/.claude/skills/, ~/.claude/agents/, ~/.claude/commands/)
   g = Gemini CLI              (~/.gemini/skills/  — via `gemini skills link` if installed)
   p = GitHub Copilot CLI      (AGENTS.md bridge — Copilot has no skill concept)
   a = All of the above
@@ -99,16 +99,18 @@ def confirm(prompt: str, default: bool = False) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def detect(repo_root: Path) -> tuple[int, int]:
+def detect(repo_root: Path) -> tuple[int, int, int]:
     skills = repo_root / "skills"
     agents = repo_root / "agents"
+    commands = repo_root / "commands"
     skill_count = (
         sum(1 for d in skills.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
         if skills.exists()
         else 0
     )
     agent_count = sum(1 for f in agents.glob("*.md")) if agents.exists() else 0
-    return skill_count, agent_count
+    command_count = sum(1 for f in commands.glob("*.md")) if commands.exists() else 0
+    return skill_count, agent_count, command_count
 
 
 # ---------------------------------------------------------------------------
@@ -156,15 +158,18 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
 
 def install_claude(
     repo_root: Path, claude_home: Path, mode: str, force: bool
-) -> tuple[int, int, int]:
-    """Install skills + agents into Claude's config tree."""
+) -> tuple[int, int, int, int]:
+    """Install skills + agents + commands into Claude's config tree."""
     skills_target = claude_home / "skills"
     agents_target = claude_home / "agents"
+    commands_target = claude_home / "commands"
     skills_target.mkdir(parents=True, exist_ok=True)
     agents_target.mkdir(parents=True, exist_ok=True)
+    commands_target.mkdir(parents=True, exist_ok=True)
 
     skill_n = 0
     agent_n = 0
+    command_n = 0
     skipped = 0
 
     for skill in sorted((repo_root / "skills").iterdir()):
@@ -187,7 +192,18 @@ def install_claude(
         link_or_copy(agent, dest, mode)
         agent_n += 1
 
-    return skill_n, agent_n, skipped
+    commands_dir = repo_root / "commands"
+    if commands_dir.exists():
+        for command in sorted(commands_dir.glob("*.md")):
+            dest = commands_target / command.name
+            if (dest.exists() or dest.is_symlink()) and not force:
+                skipped += 1
+                continue
+            _replace_existing(dest)
+            link_or_copy(command, dest, mode)
+            command_n += 1
+
+    return skill_n, agent_n, command_n, skipped
 
 
 def install_gemini(
@@ -376,17 +392,18 @@ def main() -> int:
     banner()
     print()
 
-    skill_n, agent_n = detect(REPO_ROOT)
-    print(f"Repo root:    {REPO_ROOT}")
-    print(f"Platform:     {sys.platform}")
-    print(f"Python:       {sys.version.split()[0]}")
-    print(f"Skills found: {skill_n}")
-    print(f"Agents found: {agent_n}")
+    skill_n, agent_n, command_n = detect(REPO_ROOT)
+    print(f"Repo root:      {REPO_ROOT}")
+    print(f"Platform:       {sys.platform}")
+    print(f"Python:         {sys.version.split()[0]}")
+    print(f"Skills found:   {skill_n}")
+    print(f"Agents found:   {agent_n}")
+    print(f"Commands found: {command_n}")
     print()
 
-    if skill_n == 0 and agent_n == 0:
-        print("⚠ no skills or agents found in this directory.")
-        print(f"  expected: {REPO_ROOT / 'skills'} and {REPO_ROOT / 'agents'}")
+    if skill_n == 0 and agent_n == 0 and command_n == 0:
+        print("⚠ no skills, agents, or commands found in this directory.")
+        print(f"  expected: {REPO_ROOT / 'skills'}, {REPO_ROOT / 'agents'}, or {REPO_ROOT / 'commands'}")
         return 1
 
     # ---- Targets ----
@@ -447,8 +464,9 @@ def main() -> int:
     print("=" * 60)
     print("Plan:")
     if "claude" in targets:
-        print(f"  Claude  ({mode}): {REPO_ROOT/'skills'} → {claude_home/'skills'}")
-        print(f"                    {REPO_ROOT/'agents'} → {claude_home/'agents'}")
+        print(f"  Claude  ({mode}): {REPO_ROOT/'skills'}   → {claude_home/'skills'}")
+        print(f"                    {REPO_ROOT/'agents'}   → {claude_home/'agents'}")
+        print(f"                    {REPO_ROOT/'commands'} → {claude_home/'commands'}")
     if "gemini" in targets:
         gemini_via = "via `gemini skills link`" if shutil.which("gemini") else "direct symlink (no `gemini` on PATH)"
         print(f"  Gemini  ({mode}, {gemini_via}): {REPO_ROOT/'skills'} → {gemini_home/'skills'}")
@@ -465,8 +483,8 @@ def main() -> int:
     print()
     if "claude" in targets:
         print("[Claude]")
-        sc, ac, sk = install_claude(REPO_ROOT, claude_home, mode, args.force)
-        print(f"  ✓ {sc} skills, {ac} agents installed (skipped {sk} existing — use --force to overwrite)")
+        sc, ac, cc, sk = install_claude(REPO_ROOT, claude_home, mode, args.force)
+        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands installed (skipped {sk} existing — use --force to overwrite)")
     if "gemini" in targets:
         print("[Gemini]")
         n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, mode, args.force)

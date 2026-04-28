@@ -40,9 +40,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot  = $PSScriptRoot
-$SkillsDir = Join-Path $RepoRoot "skills"
-$AgentsDir = Join-Path $RepoRoot "agents"
+$RepoRoot   = $PSScriptRoot
+$SkillsDir  = Join-Path $RepoRoot "skills"
+$AgentsDir  = Join-Path $RepoRoot "agents"
+$CommandsDir = Join-Path $RepoRoot "commands"
 
 function Write-Banner {
     $line = "=" * 60
@@ -98,22 +99,28 @@ $agents = @()
 if (Test-Path -LiteralPath $AgentsDir) {
     $agents = @(Get-ChildItem -LiteralPath $AgentsDir -Filter "*.md")
 }
+$commands = @()
+if (Test-Path -LiteralPath $CommandsDir) {
+    $commands = @(Get-ChildItem -LiteralPath $CommandsDir -Filter "*.md")
+}
 
-Write-Host ("Repo root:    " + $RepoRoot)
-Write-Host ("Platform:     Windows (PowerShell " + $PSVersionTable.PSVersion + ")")
-Write-Host ("Skills found: " + $skills.Count)
-Write-Host ("Agents found: " + $agents.Count)
+Write-Host ("Repo root:      " + $RepoRoot)
+Write-Host ("Platform:       Windows (PowerShell " + $PSVersionTable.PSVersion + ")")
+Write-Host ("Skills found:   " + $skills.Count)
+Write-Host ("Agents found:   " + $agents.Count)
+Write-Host ("Commands found: " + $commands.Count)
 Write-Host ""
 
-if ($skills.Count -eq 0 -and $agents.Count -eq 0) {
-    Write-Host "⚠ nothing to install (empty skills/ and agents/)." -ForegroundColor Red
+if ($skills.Count -eq 0 -and $agents.Count -eq 0 -and $commands.Count -eq 0) {
+    Write-Host "⚠ nothing to install (empty skills/, agents/, and commands/)." -ForegroundColor Red
     exit 1
 }
 
 Write-Host ("=" * 60)
 Write-Host "Plan:"
-Write-Host ("  Claude (" + $Mode + "): " + $SkillsDir + " → " + (Join-Path $ClaudeHome "skills"))
-Write-Host ("                    " + $AgentsDir + " → " + (Join-Path $ClaudeHome "agents"))
+Write-Host ("  Claude (" + $Mode + "): " + $SkillsDir + "   → " + (Join-Path $ClaudeHome "skills"))
+Write-Host ("                    " + $AgentsDir + "   → " + (Join-Path $ClaudeHome "agents"))
+Write-Host ("                    " + $CommandsDir + " → " + (Join-Path $ClaudeHome "commands"))
 Write-Host ("=" * 60)
 
 if (-not $NonInteractive) {
@@ -124,9 +131,10 @@ if (-not $NonInteractive) {
     }
 }
 
-$ClaudeSkills = Join-Path $ClaudeHome "skills"
-$ClaudeAgents = Join-Path $ClaudeHome "agents"
-foreach ($d in @($ClaudeSkills, $ClaudeAgents)) {
+$ClaudeSkills   = Join-Path $ClaudeHome "skills"
+$ClaudeAgents   = Join-Path $ClaudeHome "agents"
+$ClaudeCommands = Join-Path $ClaudeHome "commands"
+foreach ($d in @($ClaudeSkills, $ClaudeAgents, $ClaudeCommands)) {
     if (-not (Test-Path -LiteralPath $d)) {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
     }
@@ -158,8 +166,20 @@ foreach ($agent in $agents) {
     $agentInstalled++
 }
 
+$commandInstalled = 0
+foreach ($command in $commands) {
+    $dest = Join-Path $ClaudeCommands $command.Name
+    if ((Test-Path -LiteralPath $dest) -and (-not $Force)) {
+        $skipped++
+        continue
+    }
+    $null = Place-Item -Source $command.FullName -Destination $dest -Mode $Mode
+    $commandInstalled++
+}
+
 Write-Host ("  ✓ " + $installed + " skills, " + $agentInstalled +
-            " agents installed (skipped " + $skipped + " existing)") -ForegroundColor Green
+            " agents, " + $commandInstalled +
+            " commands installed (skipped " + $skipped + " existing)") -ForegroundColor Green
 
 Write-Host ""
 Write-Host "done."
