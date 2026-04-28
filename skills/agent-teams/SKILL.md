@@ -17,6 +17,38 @@ You are NOT standalone. You are always invoked by forge or bob. Do not interact 
 You do NOT implement code. You orchestrate teams. If you catch yourself writing application code, STOP. Create a team and delegate.
 </HARD-RULE>
 
+## When delegation is unavailable (S030-quickwins #52)
+
+Some Claude Code spawn contexts are configured WITHOUT the Task / Agent tool
+in the subagent. Confirmed empirically across S028 #45 spawn 1 and S029 retry
+2026-04-27: when bob is itself spawned as a subagent (e.g. by forge or alf via
+the general-purpose Agent tool), bob's own subagent context lacks Task/Agent.
+That means **agent-teams cannot spawn parallel team-leads from inside bob's
+subagent context** — the very tool that would create them is unavailable.
+
+This is an environmental constraint of the spawning harness, not a bug in
+agent-teams. Symptoms:
+
+- `Agent(...)` calls fail at first use with "tool not available" or similar.
+- Repeated team-lead spawns each fail at the same point in execution.
+- Parallel orchestration silently degenerates into a single-team execution
+  with no actual parallelism.
+
+### Proven workaround: serial bob spawns with `.bob-checkpoint.md`
+
+When the harness will not give bob's subagent the Agent tool, the caller
+(forge / alf / pa / standalone) MUST orchestrate the WP cycle as **serial
+bob spawns** — one bob per WP-batch — with state persisted in
+`.bob-checkpoint.md` between spawns. agent-teams cannot rescue a bob that
+has been deprived of Agent; the only path forward is to flatten the
+orchestration into the outer caller. Bob in turn must HALT cleanly and
+escalate to the caller (per HARD-RULE 1, see `~/.claude/agents/bob.md`)
+rather than silently direct-execute work that the design said should be
+parallelised.
+
+`.bob-checkpoint.md` is bob's own restart-resume contract; agent-teams
+does NOT touch it.
+
 ## Input Contract
 
 Your caller passes you a structured request:

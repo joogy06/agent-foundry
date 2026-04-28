@@ -654,6 +654,32 @@ After writing the design doc (step 8), run a two-stage review:
 
 Fix issues inline. Then proceed to stage 2.
 
+**Stage 1.5 — External-finding verification (S030-quickwins #37):**
+
+If Stage 2 will dispatch external-model reviewers (Codex, Gemini), or if
+external-model findings already exist from earlier in the design (Step 4b
+challengers, the Gemini analyst), run the **verification pass** BEFORE
+merging any of those findings into the consolidated review report.
+
+For each external-model finding that cites a specific code/file/symbol:
+
+1. Open the cited artifact and confirm the citation actually exists.
+2. Mark the finding `VERIFIED` (citation + claim match), `FALSE-POSITIVE`
+   (citation does not match the claim — e.g. spec text contradicts the
+   model's interpretation), or `NEEDS-FOLLOWUP` (citation is unclear or
+   needs human judgement).
+3. Only `VERIFIED` findings flow into the consolidated review report. Move
+   `FALSE-POSITIVE` findings to a separate "False positives, with grep
+   evidence" section. Move `NEEDS-FOLLOWUP` to a third section for the
+   user to adjudicate.
+
+Codex and Gemini have observed false-positive rates of 60-65% on adversarial
+spec/design review (DLP pilot 2026-04-09; S030-init WP-0). Skipping this
+verification pass would propagate model hallucinations into the design doc
+and waste user attention. The protocol — including worked examples of how
+to distinguish a real bug from a model misread — lives at
+`~/.claude/skills/forge/references/external-finding-verification.md`.
+
 **Stage 2 — Subagent review (dispatched):**
 Dispatch a spec reviewer subagent:
 

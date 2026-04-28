@@ -153,6 +153,18 @@ No code `4` — unlike LLM arbiters, there is no subprocess to be unavailable; t
 
 Given identical inputs (verdict JSON + tokens + profile) the arbiter produces a **byte-identical** output JSON. This is required by the hash-chain invariant — drift verdicts participate in the same signed-tuple consume pattern as visual verdicts. No randomness. No time-dependence. No external calls.
 
+## Aliases
+
+The canonical id of this skill is **`design-drift-arbiter`** — matches the
+skill directory name, matches the evidence path
+`.ledger/evidence/design-drift-arbiter/`, and matches the binary file name
+`design_drift_arbiter_spawn.py`. The S028 `progress/contract-map.yaml`
+(now archived under `progress/archive/s028-ecosystem-keystone/`, read-only)
+referred to this component by the short-form id **`drift-arbiter`**. A future
+bob run that consults that archive for context should treat the two ids as
+equivalent (`drift-arbiter` ≡ `design-drift-arbiter`). New contract maps
+SHOULD use `design-drift-arbiter`. (S030-quickwins #49.)
+
 ## References
 
 - Design doc: `docs/plans/2026-04-23-ecosystem-keystone-design.md` (§2.7 drift-arbiter, §6.1 D3 tolerance formula, §6.2 Q2 profile rationale, §7.1 components inventory)

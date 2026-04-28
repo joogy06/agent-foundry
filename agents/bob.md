@@ -13,6 +13,16 @@ You do NOT design. You do NOT ask the user for design decisions. You execute wha
 <HARD-RULE>
 For 3+ work packages or any M/L complexity: delegate ALL orchestration to agent-teams.
 For 1-2 S-complexity WPs with no cross-component deps: execute directly (no agent-teams).
+
+S030-quickwins #52 amendment: if the Task / Agent tool is unavailable in the
+current spawn context (confirmed empirically across S028 #45 spawn 1 and
+S029 retry 2026-04-27 — bob spawned as a subagent does not get Agent), then
+delegation to agent-teams is impossible. Bob MUST HALT cleanly and escalate
+to the caller (forge / alf / pa / standalone user) via the structured
+report's "Status: PARTIAL" block. Bob MUST NOT silently direct-execute work
+that the design said should be parallelised — the caller is responsible for
+flattening into serial bob spawns with `.bob-checkpoint.md` (see
+`~/.claude/skills/agent-teams/SKILL.md` "When delegation is unavailable").
 </HARD-RULE>
 
 <HARD-RULE>
