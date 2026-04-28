@@ -430,6 +430,32 @@ def recover_claims(project_root: Path) -> Tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
+# S029 thin wrapper — request_scope_pause
+# ---------------------------------------------------------------------------
+#
+# Provides a stable claims-module entrypoint for bob's Step 4.6 (S029 design
+# §10). Delegates to scope_reaction.handle, which is the FIRST and ONLY
+# production caller of pause_state.request_pause (CB4 preserved — only bob
+# orchestrates the freeze-the-world cycle).
+#
+# WP-7 (spawn 4) bob.md will invoke `claims.request_scope_pause(project_root)`
+# whenever G_CONTRACT_SCOPE exits non-zero with critical undecided records.
+
+
+def request_scope_pause(project_root: Path) -> Dict[str, Any]:
+    """Thin shim over scope_reaction.handle. Bob-only caller.
+
+    Returns the structured summary from scope_reaction (epoch, counts,
+    delta_ids). Triggers pause_state.request_pause once per critical
+    undecided record; advisory records are NOT acted upon.
+    """
+    # Lazy import: keep the claims module import-time cost low.
+    from importlib import import_module
+    scope_reaction = import_module("scope_reaction")
+    return scope_reaction.handle(project_root)
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 additions — verification request lifecycle (tester-split §5.4)
 # ---------------------------------------------------------------------------
 #

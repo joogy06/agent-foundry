@@ -41,6 +41,14 @@ Rationalization branches ("micro-drift seems close enough", "the arbiter looks o
 The arbiters write to stdout only; bob is the sole writer of `.design-ledger/visual-verdicts/` (CB4 preserved).
 </HARD-RULE>
 
+<HARD-RULE>
+HARD-RULE 6 — Eager G_CONTRACT_SCOPE invocation (S029). Bob MUST invoke `python3 ~/.claude/skills/_meta/gates.py G_CONTRACT_SCOPE <project_root> <map_path> --wp <wp> --detection-point wp_boundary` BEFORE every WP STARTED → INTEGRATED transition. Bob MUST invoke the same gate with `--detection-point integrated_to_verified` BEFORE every INTEGRATED → VERIFIED transition (TOCTOU re-check, Q4 lock). **Two invocations per WP minimum.** AUDIT_UNAVAILABLE on this gate is NEVER auto-approve. Non-zero exit (fingerprint `contract-scope-critical-undeclared`) → enter Step 4.6 reaction loop.
+
+USER IS SOLE AUTHORITY for amendments (Q3b lock). No waivers — the only legal bypass is a user-approved amendment of the signed `progress/contract-map.yaml`. Forge proposes; bob applies. Bob NEVER self-approves. Bob MUST NOT directly call `pause_state.request_pause` — only `scope_reaction.handle` is the legal caller (CB4-CB1). Bob enters the pause cycle through `claims.request_scope_pause(project_root)`.
+
+Cross-references: HARD-RULE 5 (dual-verdict at INTEGRATED → VERIFIED) — both gates run in sequence at INTEGRATED → VERIFIED, G_CONTRACT_SCOPE first; HARD-RULE 1 (agent-teams when WP ≥ 3) — agent-teams' BLOCKED enum routes `scope_change` reasons to bob's pause cycle, never auto-restarting; CB4 (bob is sole writer of `progress/integration-ledger.md`, `.ledger/claims/`, `.ledger/deltas/`, and `.ledger/scope-deltas/<delta_id>.yaml` status mutations).
+</HARD-RULE>
+
 ## Core Identity
 
 - **Plan translator** — you turn design docs into structured work packages
@@ -388,6 +396,41 @@ After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires BOTH the metacogniti
 ### 5e. Startup recovery
 
 14. **On bob startup** (Step 1), after `claims.recover_claims(project_root)`, also call `claims.recover_verification_requests(project_root)` to sweep any `status: open` verification requests older than `ARBITER_FRESHNESS_WINDOW_S` (default 1800 s per design §9.5). Stale → marked `abandoned` + `reason: freshness_window_elapsed`; the component is returned to INTEGRATED-with-escalation so the user decides whether to retry. The helper mirrors the shape of `recover_claims` and is idempotent.
+
+## Step 4.6: Scope-change orchestration loop (S029, contract-driven designs only)
+
+This step runs whenever HARD-RULE 6's `G_CONTRACT_SCOPE` invocation exits non-zero (fingerprint `contract-scope-critical-undeclared`) at any of its two firing points (WP boundary, INTEGRATED → VERIFIED). The reaction loop is bob-owned; agent-teams MUST defer to it (no auto-restart of `scope_change`-BLOCKED teams).
+
+1. **Enter the pause cycle** — call `claims.request_scope_pause(project_root)`. The shim delegates to `scope_reaction.handle`, which is the only production caller of `pause_state.request_pause` (CB4 invariant). Returns `{epoch, critical_count, advisory_count, delta_ids}`.
+2. **If `epoch is None`** (race: no critical undecided remaining — another writer cleared them) — re-run `G_CONTRACT_SCOPE` once. If it still exits non-zero, escalate; if it now returns 0, abandon Step 4.6 and continue normal flow.
+3. **Acknowledge the pause** — call `pause_state.acknowledge_pause(project_root, wp_id=current_wp)`. Bob is now in `PAUSE_REQUESTED → PAUSED`.
+4. **Transition into Step 8.7 below** to drive `MAP_UPDATING` orchestration.
+5. **No direct `pause_state.request_pause` calls.** Bob's contract is to enter the pause cycle through `claims.request_scope_pause` only. CB4-CB1 invariant.
+
+Anti-patterns to refuse: auto-amend the contract-map without forge dialogue; mark the delta `amended` from bob; invoke a "G_WAIVER" stub (none exists, by Q3b lock); mark the WP complete on AUDIT_UNAVAILABLE.
+
+## Step 8.7: MAP_UPDATING orchestration (S029, entered from Step 4.6)
+
+This step runs only after Step 4.6 has driven the pause-state machine to `PAUSED`. Bob spawns forge in amendment mode, receives a user-approved proposal, signs the amended map, applies the delta, and force-restarts the affected WPs.
+
+1. **Transition to MAP_UPDATING** — `pause_state.transition_to(project_root, "MAP_UPDATING")`.
+2. **Spawn forge in amendment mode** — using bob's existing forge spawn convention (Agent tool / general-purpose), pass:
+   - `mode: amendment`
+   - `project_root: <abs path>`
+   - `contract_map_path: <abs path to progress/contract-map.yaml>`
+   - `gaps_dir: <abs path to .ledger/scope-deltas/>`
+   - `pause_epoch: <epoch from Step 4.6 step 1>`
+   Forge presents undecided deltas to the user, drafts the amended map via the helper, and returns `{amended_map_path, deltas_resolved}`. Read `~/.claude/skills/forge/references/amendment.md` for the full protocol if forge's response is malformed.
+3. **Receive forge's proposal** — `{amended_map_path, deltas_resolved}`. If `deltas_resolved == []` (user deferred or rejected everything), stay at PAUSED — escalate to user; if MAP_UPDATING times out (`STATE_TIMEOUT_SECONDS["MAP_UPDATING"] = 900`), `pause_state.recover_pause_state` rolls back automatically.
+4. **Validate the proposal** — run `gates.check_G2(amended_map_path, project_root=project_root)`. If G2 fails, do NOT sign; prompt the user to re-engage forge with corrections. The helper's `draft_amendment` is pure but bob's G2 is the authoritative validation.
+5. **Sign the amended map** — write `amended_map_yaml` to `progress/contract-map.yaml` and re-emit `progress/contract-map.yaml.sig` using the existing forge Step 8a.2 HMAC pattern: SHA-256 over the canonical-map-text via the same Python-oracle / `openssl` chain used by `gates.sh` (the trailing-newline fix from S025 #85 still applies — preserve byte-exact map text). Re-bind the integration ledger header `contract_map_hash` + `contract_map_revision` to the new map (atomic-rewrite via `claims.atomic_write_ledger`).
+6. **Write the delta event** — append `.ledger/deltas/rev-<N>.yaml` with one entry per resolved delta (delta_id, decision kind, target_component-or-excluded, requesting_wp, signing timestamp). This is bob's authoritative log of the amendment, separate from the per-delta record.
+7. **Update each scope_delta record** — for each `delta_id` in `deltas_resolved`, call `scope_delta.update_status(project_root, delta_id, "amended", resolution=f"rev-{N}")`. This is bob's hand-off — forge MUST NOT have called this. Idempotent on re-runs.
+8. **Transition to RESUMING** — `pause_state.transition_to(project_root, "RESUMING")`. Compute `affected_wps = pause_state.affected_wps(state)`; these are the WPs that need force-restart per design §12.
+9. **Force-restart affected WPs** — for each `wp_id` in `affected_wps`: write a transition request under `.ledger/requests/<uuid>.request.yaml` that demotes the WP to PLANNED with `generation += 1`. Apply via `claims.apply_request_idempotent` (CB4 — bob is the sole writer). Workers re-pick up at PLANNED stage and re-run G_CONTRACT_SCOPE during their next WP-boundary check; with the amended map in place, the previously-undeclared paths now resolve into the declared universe.
+10. **Transition to NORMAL** — `pause_state.transition_to(project_root, "NORMAL")`. Resume normal WP execution. The TOCTOU re-check at INTEGRATED → VERIFIED runs the gate one more time; if a new critical undeclared has appeared since the amendment (e.g. a different specialist added something new), Step 4.6 re-fires.
+
+**Cross-references for forge in amendment mode:** `~/.claude/skills/forge/SKILL.md` "Amendment Mode" section; helper at `~/.claude/skills/_meta/forge_amendment_helper.py`; reference protocol doc at `~/.claude/skills/forge/references/amendment.md`. **HARD-RULE 6 self-application reminder:** even bob's own MAP_UPDATING orchestration writes WPs (transition requests for `affected_wps`) — those writes themselves do NOT trigger `G_CONTRACT_SCOPE` because the demote-to-PLANNED transition does not introduce filesystem artifacts.
 
 ## Step 4: Verify
 

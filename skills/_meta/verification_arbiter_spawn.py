@@ -551,24 +551,44 @@ def recompute_bundle_hash(bundle_path: Path) -> str:
 def main(argv: Optional[List[str]] = None) -> None:
     if argv is None:
         argv = sys.argv
-    # argv[0] + 10 positional args
-    if len(argv) != 11:
+
+    # Extract optional --timeout <seconds> flag (mirrors audit_spawn.py).
+    # The remaining positional args MUST be exactly the 10-tuple.
+    timeout_s = DEFAULT_TIMEOUT_S
+    positional: List[str] = []
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == "--timeout":
+            if i + 1 >= len(argv):
+                env_error("--timeout requires a value")
+            try:
+                timeout_s = int(argv[i + 1])
+            except ValueError:
+                env_error(f"invalid --timeout value {argv[i + 1]!r}")
+            i += 2
+            continue
+        positional.append(a)
+        i += 1
+
+    if len(positional) != 10:
         env_error(
             "usage: verification_arbiter_spawn.py <bundle_path> <bundle_hash> "
             "<request_id> <attempt_id> <prior_state_version> <plan_path> "
-            "<plan_hash> <inventory_hash> <runner_version> <rubric_version>"
+            "<plan_hash> <inventory_hash> <runner_version> <rubric_version> "
+            "[--timeout <s>]"
         )
 
-    bundle_path = Path(argv[1]).resolve()
-    bundle_hash_input = argv[2]
-    request_id = argv[3]
-    attempt_id = argv[4]
-    prior_state_version = argv[5]
-    plan_path = Path(argv[6]).resolve()
-    plan_hash_input = argv[7]
-    inventory_hash = argv[8]
-    runner_version = argv[9]
-    rubric_version = argv[10]
+    bundle_path = Path(positional[0]).resolve()
+    bundle_hash_input = positional[1]
+    request_id = positional[2]
+    attempt_id = positional[3]
+    prior_state_version = positional[4]
+    plan_path = Path(positional[5]).resolve()
+    plan_hash_input = positional[6]
+    inventory_hash = positional[7]
+    runner_version = positional[8]
+    rubric_version = positional[9]
 
     # Basic argv sanity (environmental, not schema).
     if not HEX64_RE.match(bundle_hash_input):
@@ -609,7 +629,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     prompt = build_prompt(evidence_bundle, test_plan, tuple_inputs)
 
-    parsed, err = run_claude_arbiter(prompt, DEFAULT_TIMEOUT_S)
+    parsed, err = run_claude_arbiter(prompt, timeout_s)
     if parsed is None:
         audit_unavailable(
             f"arbiter subprocess failed: {err}",

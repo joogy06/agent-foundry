@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/scope_delta.v1.json",
+  "title": "scope_delta.v1",
+  "description": "S029 canonical workflow object representing a divergence between the frozen contract-map and the actual implementation. Append-only; written by G_CONTRACT_SCOPE; read by bob, forge, retro-scan-s028.",
+  "type": "object",
+  "required": [
+    "delta_id",
+    "schema_version",
+    "created_at",
+    "created_by",
+    "project_root",
+    "contract_map_hash",
+    "contract_map_revision",
+    "artifact_kind",
+    "operation",
+    "path",
+    "severity",
+    "requesting_wp",
+    "detection_point",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "delta_id": {
+      "type": "string",
+      "pattern": "^scope-delta-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z-[0-9a-f]{6}$",
+      "description": "Format: scope-delta-<ISO8601>-<6-hex>"
+    },
+    "schema_version": {
+      "const": "scope_delta.v1"
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "created_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Producing gate name (currently always G_CONTRACT_SCOPE)."
+    },
+    "project_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contract_map_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "contract_map_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "artifact_kind": {
+      "type": "string",
+      "enum": [
+        "secret",
+        "db_migration",
+        "env_var",
+        "public_api",
+        "config_key",
+        "generated_artifact",
+        "file"
+      ]
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["added", "removed", "changed"]
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project-relative path."
+    },
+    "content_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of file content; null if removed."
+    },
+    "contract_ref": {
+      "type": ["string", "null"],
+      "description": "JSONPath into contract-map.yaml or null if undeclared."
+    },
+    "consumer_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "v1 ships empty; reserved for S030 graph-aware extractor."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "advisory"]
+    },
+    "critical_reason": {
+      "type": ["string", "null"],
+      "description": "Populated when severity=critical."
+    },
+    "requesting_wp": {
+      "type": "string",
+      "minLength": 1
+    },
+    "detection_point": {
+      "type": "string",
+      "enum": ["wp_boundary", "integrated_to_verified"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["undecided", "amended", "excluded"]
+    },
+    "resolution": {
+      "type": ["string", "null"],
+      "description": "Populated when status changes; references a contract-map revision (e.g. 'rev-5')."
+    },
+    "extractor_meta": {
+      "type": "object",
+      "description": "Free-form per-extractor extras."
+    }
+  }
+}

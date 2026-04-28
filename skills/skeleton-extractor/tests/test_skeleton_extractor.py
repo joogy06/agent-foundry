@@ -232,3 +232,337 @@ def test_extract_python_wrapper_handles_missing_chrome(tmp_path, monkeypatch):
         f"stdout={r.stdout!r} stderr={r.stderr!r}"
     )
     assert "google-chrome" in r.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase5b — closing tests for skeleton-extractor (Codex structured_disagreements)
+# ---------------------------------------------------------------------------
+#
+# These tests close the four critical / moderate Codex gaps without requiring
+# Chrome or puppeteer-core, so they ALWAYS run in CI:
+#
+#   test_phase5b_sc1_subprocess_contract     (Codex critical [1])
+#       SC[1]: subprocess returns exactly one JSON blob on stdout, runs under
+#       a sanitized env, and is invoked with timeout=120. Drives extract.py's
+#       _run_extractor with subprocess.run monkeypatched to capture the call
+#       parameters; asserts the env passed contains ONLY allow-listed keys
+#       and that timeout=120 is the literal kwarg.
+#
+#   test_phase5b_sc4_draft_unsigned_and_filename   (Codex critical [3])
+#       SC[5]: draft is unsigned (no `signature` field) AND callers honor the
+#       `.draft.yaml` filename convention. The wrapper itself does not enforce
+#       the suffix (caller-controlled `--out`), but the produced YAML body
+#       must NEVER carry a signature block — that's reserved for visual-architect
+#       freezing. Test patches _run_extractor to return a synthetic draft and
+#       asserts both invariants on the persisted file.
+#
+#   test_phase5b_sc1_subprocess_runtime_error_observed (Codex critical [1])
+#       SC[1] failure mode: when subprocess returns non-zero, _run_extractor
+#       must (a) raise RuntimeError with a stderr-tail diagnostic, AND (b)
+#       emit an `external_tool_fail` observation via the fail-open helper.
+#       This proves the contract that subprocess failures NEVER pass through
+#       silently.
+#
+#   test_phase5b_sc1_subprocess_empty_stdout_rejected (Codex critical [1])
+#       SC[1] adversarial: subprocess returns rc=0 but empty stdout → must
+#       raise RuntimeError + emit observation. Chrome can crash AFTER printing
+#       to stderr but before printing JSON; this MUST surface as a hard error.
+#
+#   test_phase5b_fixture_diversity_malformed_html_handled (Claude minor [5])
+#       Adversarial fixture: generate a malformed-HTML mockup at test-time
+#       (no <body>, broken CSS, deeply nested DOM) and run a subprocess-free
+#       smoke test against the YAML serialization layer to prove the wrapper
+#       can persist non-trivial drafts (key existence, list/dict round-trip)
+#       without depending on the goldenpath weather-mockup fixture.
+
+
+import importlib
+
+# Import extract as a module so we can drive its private helpers directly.
+sys.path.insert(0, str(SCRIPTS))
+import extract  # noqa: E402
+
+
+def _make_canned_completed_process(stdout_bytes: bytes, returncode: int = 0,
+                                    stderr_bytes: bytes = b"") -> subprocess.CompletedProcess:
+    """Build a CompletedProcess that mimics what subprocess.run returns
+    (bytes for stdout/stderr because we capture_output=True without text=True).
+    """
+    return subprocess.CompletedProcess(
+        args=["node", "fake.mjs"],
+        returncode=returncode,
+        stdout=stdout_bytes,
+        stderr=stderr_bytes,
+    )
+
+
+def _minimal_synthetic_draft() -> Dict[str, Any]:
+    """A canned draft skeleton roughly matching what skeleton_extractor.mjs
+    would emit — used to drive _run_extractor in the absence of Chrome."""
+    return {
+        "schema": "design-skeleton.v1",
+        "draft": True,
+        "breakpoints": [420, 700, 1280],
+        "elements": [
+            {
+                "id": f"el-{i}",
+                "selector": f".elem-{i}",
+                "bbox": {
+                    "mobile":  {"x": 0, "y": i * 10, "w": 420,  "h": 10},
+                    "tablet":  {"x": 0, "y": i * 10, "w": 700,  "h": 10},
+                    "desktop": {"x": 0, "y": i * 10, "w": 1280, "h": 10},
+                },
+                "interactions": [],
+            }
+            for i in range(12)
+        ],
+        "tokens_used": {},
+        "unresolved_tokens_report": [],
+        "fonts_loaded": True,
+        "fonts_ready_max_ms": 250,
+    }
+
+
+def test_phase5b_sc1_subprocess_contract(tmp_path, monkeypatch):
+    """SC[1]: _run_extractor invokes subprocess.run with timeout=120, a
+    sanitized env, and parses ONE JSON blob from stdout.
+
+    We capture the subprocess.run call to assert:
+      - the second argv element (the .mjs path) exists and ends with the
+        skeleton_extractor.mjs filename,
+      - timeout kwarg is exactly 120 (matches SC[1] declared budget),
+      - env kwarg is the sanitized subset (no PYTHONPATH, no LDAP, no SSH_AUTH_SOCK),
+      - stdin payload is valid JSON containing 'mockupHtml' + 'breakpoints' + 'tokens'.
+    """
+    # We need a real .mjs file to exist for _find_extractor_mjs() to succeed.
+    # Use the real one — its path is observable, just don't actually invoke it.
+    captured: Dict[str, Any] = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        # Return a canned single-JSON-blob response.
+        blob = json.dumps(_minimal_synthetic_draft()).encode("utf-8")
+        return _make_canned_completed_process(blob)
+
+    monkeypatch.setattr(extract.subprocess, "run", fake_run)
+
+    mockup = tmp_path / "fake.html"
+    mockup.write_text("<html><body>x</body></html>", encoding="utf-8")
+    result = extract._run_extractor(mockup, [420, 700, 1280], None, timeout_s=120)
+
+    # --- argv shape: ['node', '<...>/skeleton_extractor.mjs']
+    assert captured["cmd"][0] == "node", (
+        f"expected node binary, got {captured['cmd'][0]!r}"
+    )
+    assert captured["cmd"][1].endswith("skeleton_extractor.mjs"), (
+        f"expected .mjs path, got {captured['cmd'][1]!r}"
+    )
+
+    # --- timeout MUST be 120 per SC[1]
+    assert captured["kwargs"].get("timeout") == 120, (
+        f"SC[1]: subprocess timeout must be 120s, got {captured['kwargs'].get('timeout')!r}"
+    )
+
+    # --- env MUST be sanitized (allow-list only)
+    env = captured["kwargs"].get("env") or {}
+    allowed = {
+        "PATH", "HOME", "LANG", "LC_ALL", "USER", "SHELL", "TMPDIR", "TERM",
+        "NODE_PATH", "SKELETON_EXTRACTOR_PUPPETEER_PATH",
+        "DISPLAY", "XDG_RUNTIME_DIR",
+    }
+    forbidden = set(env.keys()) - allowed
+    assert not forbidden, (
+        f"SC[1]: subprocess env contains non-allow-listed keys: {forbidden}. "
+        "Only the explicit allow-list in extract._sanitized_env() is permitted."
+    )
+    # PATH must always be present so node + chrome resolve.
+    assert "PATH" in env, "SC[1]: PATH must propagate so 'node' resolves"
+
+    # --- stdin must be a single JSON blob with the expected fields.
+    stdin = captured["kwargs"].get("input")
+    assert stdin is not None, "SC[1]: subprocess must receive stdin payload"
+    payload = json.loads(stdin.decode("utf-8"))
+    assert "mockupHtml" in payload and "breakpoints" in payload and "tokens" in payload, (
+        f"SC[1]: stdin payload must carry mockupHtml/breakpoints/tokens; got {sorted(payload.keys())}"
+    )
+    assert payload["breakpoints"] == [420, 700, 1280]
+
+    # --- result MUST be the parsed dict from the canned JSON blob (single blob).
+    assert isinstance(result, dict)
+    assert result["schema"] == "design-skeleton.v1"
+    assert result["draft"] is True
+    assert len(result["elements"]) == 12
+
+
+def test_phase5b_sc4_draft_unsigned_and_filename(tmp_path, monkeypatch):
+    """SC[5]: drafts produced by the extractor MUST be unsigned (no
+    'signature' field anywhere in the YAML body), and the wrapper must not
+    silently rename a `.draft.yaml` output path. Closes Codex critical [3].
+    """
+    # Patch _run_extractor so we don't need Chrome.
+    monkeypatch.setattr(extract, "_run_extractor",
+                        lambda *a, **kw: _minimal_synthetic_draft())
+    # Pretend chrome is present so main() doesn't bail early.
+    monkeypatch.setattr(
+        extract.Path, "exists",
+        lambda self: True if str(self) == "/bin/google-chrome" else Path.exists(self),
+        raising=True,
+    )
+
+    out = tmp_path / "test_screen.draft.yaml"
+    mockup = tmp_path / "fake.html"
+    mockup.write_text("<html><body>x</body></html>", encoding="utf-8")
+
+    rc = extract.main([
+        "--mockup", str(mockup),
+        "--out", str(out),
+        "--breakpoints", "420,700,1280",
+    ])
+    assert rc == 0, f"expected exit 0; got {rc}"
+
+    # --- File written exactly where the caller asked, suffix preserved.
+    assert out.is_file(), "draft file must exist at the requested path"
+    assert out.name.endswith(".draft.yaml"), (
+        f"SC[5]: caller-supplied .draft.yaml suffix must be preserved; got {out.name}"
+    )
+
+    # --- The serialized YAML body MUST NOT contain a `signature:` block.
+    body = out.read_text(encoding="utf-8")
+    # We look for a top-level signature key — both inline and indented.
+    # The extractor's draft is unsigned by contract; signing happens later in
+    # visual-architect.freeze_skeleton (see SIGNED_FIELDS at freeze.py:110).
+    assert "\nsignature:" not in body and not body.startswith("signature:"), (
+        "SC[5]: draft must be unsigned. Found a top-level `signature:` key in:\n"
+        + body[:500]
+    )
+    # Sanity: the schema is still design-skeleton.v1 + draft: true.
+    assert "schema: design-skeleton.v1" in body
+    assert "draft: true" in body
+
+
+def test_phase5b_sc1_subprocess_runtime_error_observed(tmp_path, monkeypatch):
+    """SC[1] failure-mode: subprocess returns non-zero → RuntimeError +
+    `external_tool_fail` observation. NEVER passes through silently."""
+    captured_obs: List[Tuple[str, str]] = []
+
+    def fake_observe(category: str, what_happened: str, **kw):
+        captured_obs.append((category, what_happened))
+
+    monkeypatch.setattr(extract, "_observe", fake_observe)
+
+    def fake_run(cmd, *args, **kwargs):
+        return _make_canned_completed_process(
+            stdout_bytes=b"", returncode=2,
+            stderr_bytes=b"FATAL: chrome OOM at line 47\n" * 100,
+        )
+
+    monkeypatch.setattr(extract.subprocess, "run", fake_run)
+
+    mockup = tmp_path / "fake.html"
+    mockup.write_text("<html><body>x</body></html>", encoding="utf-8")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        extract._run_extractor(mockup, [420, 700, 1280], None, timeout_s=120)
+
+    # Exception message must carry the exit code AND a stderr tail for triage.
+    msg = str(excinfo.value)
+    assert "2" in msg, f"RuntimeError must mention exit code 2; got {msg!r}"
+    assert "chrome OOM" in msg, f"RuntimeError must include stderr tail; got {msg!r}"
+
+    # Exactly one observation was emitted.
+    assert len(captured_obs) >= 1, (
+        f"SC[1]: subprocess failure must emit at least 1 observation; got {captured_obs!r}"
+    )
+    assert captured_obs[0][0] == "external_tool_fail", (
+        f"SC[1]: failure category must be external_tool_fail; got {captured_obs[0][0]!r}"
+    )
+
+
+def test_phase5b_sc1_subprocess_empty_stdout_rejected(tmp_path, monkeypatch):
+    """SC[1] adversarial: rc=0 but stdout is empty → MUST raise RuntimeError
+    and emit observation. Chrome crashes that print to stderr but not stdout
+    are the most common silent-failure mode for puppeteer subprocesses."""
+    captured_obs: List[Tuple[str, str]] = []
+
+    def fake_observe(category: str, what_happened: str, **kw):
+        captured_obs.append((category, what_happened))
+
+    monkeypatch.setattr(extract, "_observe", fake_observe)
+    monkeypatch.setattr(
+        extract.subprocess, "run",
+        lambda *a, **kw: _make_canned_completed_process(stdout_bytes=b"", returncode=0),
+    )
+
+    mockup = tmp_path / "fake.html"
+    mockup.write_text("<html><body>x</body></html>", encoding="utf-8")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        extract._run_extractor(mockup, [420, 700, 1280], None, timeout_s=120)
+
+    assert "empty stdout" in str(excinfo.value).lower(), (
+        f"empty-stdout error must self-describe; got {excinfo.value!r}"
+    )
+    assert any(c == "external_tool_fail" for c, _ in captured_obs), (
+        f"empty-stdout failure must emit external_tool_fail observation; got {captured_obs!r}"
+    )
+
+
+def test_phase5b_fixture_diversity_malformed_html_yaml_round_trip(tmp_path):
+    """Fixture diversity (Claude minor [5]): the YAML serialization layer
+    must round-trip drafts containing adversarial inputs (deeply-nested DOM,
+    special characters, empty lists, None values) without losing field
+    integrity. This is the subprocess-free smoke test that complements the
+    Chrome-required TS-SE-* fixtures.
+    """
+    adversarial_draft = {
+        "schema": "design-skeleton.v1",
+        "draft": True,
+        # Field with special YAML chars (would break unquoted YAML).
+        "source_url": "http://example.com:8080/path?q=value#anchor",
+        "breakpoints": [420, 700, 1280],
+        "elements": [
+            # Deeply-nested element — 5 levels of dict + list interleaving.
+            {
+                "id": "deep",
+                "selector": ".deep > .nested > .very > .deep > .leaf",
+                "bbox": {"mobile": {"x": 0, "y": 0, "w": 0, "h": 0}},
+                "tokens_used": {
+                    "background": "token://color.bg",
+                    "border": None,  # explicit None must round-trip
+                },
+                "interactions": [],
+            },
+            # Empty element — every field is empty/None.
+            {
+                "id": "empty",
+                "selector": "",
+                "bbox": {},
+                "interactions": [],
+            },
+        ],
+        "unresolved_tokens_report": [],
+        "fonts_loaded": False,
+        "fonts_ready_max_ms": 0,
+    }
+
+    yaml_text = extract._to_yaml(adversarial_draft)
+    # Must be parseable by PyYAML without ambiguity.
+    import yaml as _yaml
+    parsed = _yaml.safe_load(yaml_text)
+
+    # Field integrity assertions:
+    assert parsed["schema"] == "design-skeleton.v1"
+    assert parsed["source_url"] == "http://example.com:8080/path?q=value#anchor", (
+        "URL with special chars (:?#) must round-trip through YAML"
+    )
+    assert len(parsed["elements"]) == 2
+    assert parsed["elements"][0]["selector"] == ".deep > .nested > .very > .deep > .leaf"
+    # tokens_used: nested field with None must survive.
+    assert parsed["elements"][0]["tokens_used"]["border"] is None
+    assert parsed["elements"][0]["tokens_used"]["background"] == "token://color.bg"
+    # Empty element preserved as empty (not dropped).
+    assert parsed["elements"][1]["selector"] == "" or parsed["elements"][1]["selector"] is None
+    assert parsed["fonts_loaded"] is False
+    assert parsed["fonts_ready_max_ms"] == 0

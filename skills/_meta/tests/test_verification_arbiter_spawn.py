@@ -424,5 +424,84 @@ class TestStreamArrayEnvelope(unittest.TestCase):
             self.assertEqual(payload["verdict"], "VERIFIED")
 
 
+class TestTimeoutFlag(unittest.TestCase):
+    """S030 follow-up #59: --timeout knob mirrors audit_spawn.py."""
+
+    def _argv_with(self, bundle_path, bhash, plan_path, phash, *extra):
+        return [
+            "prog",
+            str(bundle_path), bhash, HEX32, "att-1", "sv-1",
+            str(plan_path), phash, HEX64_INV, RUNNER_VERSION, RUBRIC_VERSION,
+            *extra,
+        ]
+
+    def test_default_timeout_180s(self):
+        import io, tempfile
+        captured = {}
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
+            verdict_body = valid_verdict_for(bhash, plan_hash=phash)
+
+            def fake_runner(prompt, timeout_s):
+                captured["timeout_s"] = timeout_s
+                return verdict_body, None
+
+            argv = self._argv_with(bundle_path, bhash, plan_path, phash)
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(vas, "run_claude_arbiter", side_effect=fake_runner):
+                code = run_main_capture(argv, out, err)
+            self.assertEqual(code, 0)
+            self.assertEqual(captured["timeout_s"], vas.DEFAULT_TIMEOUT_S)
+            self.assertEqual(captured["timeout_s"], 180)
+
+    def test_custom_timeout_300s(self):
+        import io, tempfile
+        captured = {}
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
+            verdict_body = valid_verdict_for(bhash, plan_hash=phash)
+
+            def fake_runner(prompt, timeout_s):
+                captured["timeout_s"] = timeout_s
+                return verdict_body, None
+
+            argv = self._argv_with(bundle_path, bhash, plan_path, phash, "--timeout", "300")
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(vas, "run_claude_arbiter", side_effect=fake_runner):
+                code = run_main_capture(argv, out, err)
+            self.assertEqual(code, 0)
+            self.assertEqual(captured["timeout_s"], 300)
+
+    def test_invalid_timeout_value_errors(self):
+        import io, tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
+            argv = self._argv_with(bundle_path, bhash, plan_path, phash, "--timeout", "abc")
+            out, err = io.StringIO(), io.StringIO()
+            code = run_main_capture(argv, out, err)
+            self.assertEqual(code, 3)
+            payload = json.loads(out.getvalue())
+            self.assertEqual(payload["verdict"], "AUDIT_UNAVAILABLE")
+            self.assertTrue(payload["reason"].startswith("ENV_ERROR"))
+            self.assertIn("--timeout", payload["reason"])
+
+    def test_missing_timeout_value_errors(self):
+        import io, tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
+            # `--timeout` as the LAST argv slot -> no value following
+            argv = self._argv_with(bundle_path, bhash, plan_path, phash, "--timeout")
+            out, err = io.StringIO(), io.StringIO()
+            code = run_main_capture(argv, out, err)
+            self.assertEqual(code, 3)
+            payload = json.loads(out.getvalue())
+            self.assertEqual(payload["verdict"], "AUDIT_UNAVAILABLE")
+            self.assertIn("--timeout", payload["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()

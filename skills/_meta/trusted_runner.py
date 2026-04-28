@@ -50,6 +50,95 @@ SANITIZED_ENV_KEYS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Fail-open claude_observe loader (for bundle_write rollback emission)
+# ---------------------------------------------------------------------------
+#
+# S028 Phase-5b spawn 7 fix: bundle_write must emit a `gate_false_block`
+# observation BEFORE raising BundleWriteError, so alf has a side-channel
+# signal in addition to the exception fields. Mirrors the three-tier
+# fallback in claims.py / gates.py so trusted_runner.py runs correctly
+# in minimal environments.
+#
+# IMPORTANT: this must NEVER let an observation backend failure block the
+# rollback path; the BundleWriteError raise is authoritative.
+
+def _load_claude_observe_for_runner():  # pragma: no cover - tested via spy
+    """Fail-open loader that returns a no-op stub if process-observation
+    is unavailable. The wrapping `_safe_observe_rollback` adds defense in
+    depth so observation failure cannot block the BundleWriteError raise.
+    """
+    try:
+        from process_observation.scripts.write import claude_observe as _co  # type: ignore
+        return _co
+    except ImportError:
+        pass
+    try:
+        _scripts_dir = (
+            Path(__file__).resolve().parent.parent
+            / "process-observation" / "scripts"
+        )
+        if _scripts_dir.is_dir():
+            _scripts_str = str(_scripts_dir)
+            if _scripts_str not in sys.path:
+                sys.path.insert(0, _scripts_str)
+            from write import claude_observe as _co  # type: ignore
+            return _co
+    except Exception:
+        pass
+    return lambda *args, **kwargs: None
+
+
+claude_observe = _load_claude_observe_for_runner()
+
+
+def _safe_observe_rollback(
+    *,
+    fingerprint: str,
+    target_path: str,
+    txn_id: str,
+    failed_path: Optional[str],
+    cause: Optional[BaseException],
+) -> None:
+    """Emit a `gate_false_block` observation for a bundle_write rollback.
+
+    Per S028 Phase-5b spawn 7 (Codex disagreement SC[2] gate_false_block
+    emission gap): rollback is a structural failure (the atomic-commit
+    contract just refused to make a multi-file change), so alf needs a
+    side-channel signal in addition to the BundleWriteError fields.
+
+    Best-effort: every failure mode (import miss, write miss, observation
+    backend down) is swallowed. The BundleWriteError raise that follows
+    this call is authoritative — observation is diagnostic only.
+    """
+    errno = None
+    if cause is not None and hasattr(cause, "errno"):
+        try:
+            errno = int(getattr(cause, "errno"))
+        except (TypeError, ValueError):
+            errno = None
+    detail = (
+        f"bundle_write txn {txn_id} rolled back at {target_path}"
+        + (f" (errno={errno})" if errno is not None else "")
+    )
+    try:
+        claude_observe(
+            "gate_false_block",
+            "trusted-runner-keystone",
+            detail,
+            fingerprint=fingerprint,
+            subject_type="gate",
+            severity="blocking",
+            observed_by="trusted_runner.py:bundle_write",
+            related=[f"file://{failed_path}"] if failed_path else [],
+        )
+    except BaseException as e:  # noqa: BLE001 — defense-in-depth
+        sys.stderr.write(
+            f"TRUSTED_RUNNER_OBSERVE_FAIL: {type(e).__name__}: {e}\n"
+        )
+        return None
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -577,6 +666,17 @@ def bundle_write(
             # Do NOT delete the rollback dir here: if our own restore
             # failed for any reason, the next recovery sweep needs the
             # manifest to finish the job.
+            #
+            # S028 Phase-5b spawn 7 fix: emit gate_false_block observation
+            # BEFORE the raise so alf has a side-channel signal alongside
+            # the BundleWriteError fields. Best-effort; never blocks raise.
+            _safe_observe_rollback(
+                fingerprint="trusted-runner-keystone-bundle-write-rollback",
+                target_path=str(target_path),
+                txn_id=txn_id,
+                failed_path=str(target_path),
+                cause=exc,
+            )
             raise BundleWriteError(
                 f"bundle_write txn {txn_id} failed on target {target_path}: {exc!r}",
                 txn_id=txn_id,
