@@ -10,8 +10,9 @@ A curated collection of skills and agents for [Claude Code CLI](https://claude.a
 
 - **125+ skills** — domain knowledge Claude loads on demand to help with specific tasks (including `publish-to-github` for releasing this whole tree to public github safely, and `visual-companion` for browser-based mockup/diagram review during design)
 - **4 agents** — specialized sub-agents for design, execution, review, and knowledge management
+- **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
-Skills are auto-discovered by Claude Code from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`).
+Skills are auto-discovered by Claude Code from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
 
 ---
 
@@ -34,7 +35,7 @@ The installer asks:
 3. **Path overrides** — useful on enterprise machines where `~/.claude` etc. are non-standard
 
 It then:
-- For **Claude Code**: places skills + agents under `~/.claude/skills/` and `~/.claude/agents/`
+- For **Claude Code**: places skills + agents + commands under `~/.claude/skills/`, `~/.claude/agents/`, and `~/.claude/commands/`
 - For **Gemini CLI**: runs `gemini skills link <path>` per skill (or falls back to direct symlink if `gemini` isn't on PATH)
 - For **GitHub Copilot**: writes a cross-tool `~/.claude/AGENTS.md` bridge file (Copilot has no native skill concept) and prints VS Code per-project setup instructions
 
@@ -61,9 +62,10 @@ If you'd rather not run a script:
 ```bash
 cp -r skills/* ~/.claude/skills/
 cp -r agents/*.md ~/.claude/agents/
+cp -r commands/*.md ~/.claude/commands/
 ```
 
-On next session, Claude auto-discovers everything in `~/.claude/skills/` and `~/.claude/agents/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
+On next session, Claude auto-discovers everything in `~/.claude/skills/`, `~/.claude/agents/`, and `~/.claude/commands/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
 
 ---
 
