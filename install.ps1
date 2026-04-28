@@ -20,7 +20,10 @@ Note: symbolic links on Windows require admin OR Developer Mode; if the
 attempt fails, the script falls back to copy.
 
 .PARAMETER Force
-Overwrite existing skills + agents at the target.
+(no-op; replace-existing is now the default — kept for backward compat)
+
+.PARAMETER SkipExisting
+Leave existing skills/agents/commands at the target untouched (old default).
 
 .PARAMETER NonInteractive
 Skip the confirmation prompt; use defaults.
@@ -36,6 +39,7 @@ param(
     [string]$ClaudeHome = (Join-Path $env:USERPROFILE ".claude"),
     [ValidateSet("link", "move")][string]$Mode = "link",
     [switch]$Force,
+    [switch]$SkipExisting,
     [switch]$NonInteractive
 )
 
@@ -51,6 +55,17 @@ function Write-Banner {
     Write-Host " agent-foundry installer (PowerShell fallback — Claude only)"
     Write-Host $line
     Write-Host ""
+}
+
+function Get-ClaudeCli {
+    $cmd = Get-Command claude -ErrorAction SilentlyContinue
+    if (-not $cmd) { return @{ Found = $false; Version = $null } }
+    try {
+        $out = & $cmd.Source --version 2>&1 | Select-Object -First 1
+        return @{ Found = $true; Version = "$out".Trim() }
+    } catch {
+        return @{ Found = $true; Version = "(version probe failed)" }
+    }
 }
 
 function Place-Item {
@@ -104,12 +119,27 @@ if (Test-Path -LiteralPath $CommandsDir) {
     $commands = @(Get-ChildItem -LiteralPath $CommandsDir -Filter "*.md")
 }
 
+$claude = Get-ClaudeCli
+
 Write-Host ("Repo root:      " + $RepoRoot)
 Write-Host ("Platform:       Windows (PowerShell " + $PSVersionTable.PSVersion + ")")
+if ($claude.Found) {
+    Write-Host ("Claude CLI:     " + $claude.Version)
+} else {
+    Write-Host ("Claude CLI:     NOT FOUND on PATH") -ForegroundColor Yellow
+}
 Write-Host ("Skills found:   " + $skills.Count)
 Write-Host ("Agents found:   " + $agents.Count)
 Write-Host ("Commands found: " + $commands.Count)
 Write-Host ""
+
+if (-not $claude.Found) {
+    Write-Host "⚠ ``claude`` CLI not on PATH. Install with:" -ForegroundColor Yellow
+    Write-Host "    irm https://claude.ai/install.ps1 | iex"
+    Write-Host "  (or see https://docs.claude.com/en/docs/claude-code/setup)"
+    Write-Host "  Continuing — files will land at ~/.claude/ and be picked up once ``claude`` is installed."
+    Write-Host ""
+}
 
 if ($skills.Count -eq 0 -and $agents.Count -eq 0 -and $commands.Count -eq 0) {
     Write-Host "⚠ nothing to install (empty skills/, agents/, and commands/)." -ForegroundColor Red
@@ -121,6 +151,11 @@ Write-Host "Plan:"
 Write-Host ("  Claude (" + $Mode + "): " + $SkillsDir + "   → " + (Join-Path $ClaudeHome "skills"))
 Write-Host ("                    " + $AgentsDir + "   → " + (Join-Path $ClaudeHome "agents"))
 Write-Host ("                    " + $CommandsDir + " → " + (Join-Path $ClaudeHome "commands"))
+if ($SkipExisting) {
+    Write-Host "  Existing entries at the target will be KEPT (-SkipExisting)."
+} else {
+    Write-Host "  Existing entries at the target will be REPLACED. Pass -SkipExisting to keep them."
+}
 Write-Host ("=" * 60)
 
 if (-not $NonInteractive) {
@@ -143,43 +178,46 @@ foreach ($d in @($ClaudeSkills, $ClaudeAgents, $ClaudeCommands)) {
 Write-Host ""
 Write-Host "[Claude]"
 
-$installed = 0
-$skipped   = 0
-foreach ($skill in $skills) {
-    $dest = Join-Path $ClaudeSkills $skill.Name
-    if ((Test-Path -LiteralPath $dest) -and (-not $Force)) {
-        $skipped++
-        continue
-    }
-    $null = Place-Item -Source $skill.FullName -Destination $dest -Mode $Mode
-    $installed++
-}
-
-$agentInstalled = 0
-foreach ($agent in $agents) {
-    $dest = Join-Path $ClaudeAgents $agent.Name
-    if ((Test-Path -LiteralPath $dest) -and (-not $Force)) {
-        $skipped++
-        continue
-    }
-    $null = Place-Item -Source $agent.FullName -Destination $dest -Mode $Mode
-    $agentInstalled++
-}
-
+$installed       = 0
+$agentInstalled  = 0
 $commandInstalled = 0
-foreach ($command in $commands) {
-    $dest = Join-Path $ClaudeCommands $command.Name
-    if ((Test-Path -LiteralPath $dest) -and (-not $Force)) {
-        $skipped++
-        continue
+$touchedExisting = 0
+
+function Install-Item {
+    param(
+        [Parameter(Mandatory)] [string]$Source,
+        [Parameter(Mandatory)] [string]$Destination
+    )
+    $existed = Test-Path -LiteralPath $Destination
+    if ($SkipExisting -and $existed) {
+        $script:touchedExisting++
+        return $false
     }
-    $null = Place-Item -Source $command.FullName -Destination $dest -Mode $Mode
-    $commandInstalled++
+    if ($existed) { $script:touchedExisting++ }
+    $null = Place-Item -Source $Source -Destination $Destination -Mode $Mode
+    return $true
 }
 
+foreach ($skill in $skills) {
+    if (Install-Item -Source $skill.FullName -Destination (Join-Path $ClaudeSkills $skill.Name)) {
+        $installed++
+    }
+}
+foreach ($agent in $agents) {
+    if (Install-Item -Source $agent.FullName -Destination (Join-Path $ClaudeAgents $agent.Name)) {
+        $agentInstalled++
+    }
+}
+foreach ($command in $commands) {
+    if (Install-Item -Source $command.FullName -Destination (Join-Path $ClaudeCommands $command.Name)) {
+        $commandInstalled++
+    }
+}
+
+$verb = if ($SkipExisting) { "kept" } else { "replaced" }
 Write-Host ("  ✓ " + $installed + " skills, " + $agentInstalled +
             " agents, " + $commandInstalled +
-            " commands installed (skipped " + $skipped + " existing)") -ForegroundColor Green
+            " commands installed (" + $touchedExisting + " " + $verb + " existing)") -ForegroundColor Green
 
 Write-Host ""
 Write-Host "done."
