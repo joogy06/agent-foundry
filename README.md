@@ -22,15 +22,48 @@ Skills are auto-discovered by Claude Code from frontmatter descriptions — you 
 git clone https://github.com/<your-username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Install into Claude Code's config directory
-cp -r skills/* ~/.claude/skills/
-cp -r agents/*.md ~/.claude/agents/
-
-# 3. Start Claude Code in any project
-claude
+# 2. Run the installer (asks a few questions; symlinks by default)
+python3 install.py
+# or, on Linux/macOS:   ./install.sh
+# or, on Windows:       install.cmd
 ```
 
-On next session, Claude will auto-discover everything in `~/.claude/skills/` and `~/.claude/agents/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
+The installer asks:
+1. **Which CLIs?** — Claude Code, Gemini, GitHub Copilot, or all
+2. **Mode?** — `link` (symlinks; agent-foundry edits propagate; recommended) or `move` (copy; independent)
+3. **Path overrides** — useful on enterprise machines where `~/.claude` etc. are non-standard
+
+It then:
+- For **Claude Code**: places skills + agents under `~/.claude/skills/` and `~/.claude/agents/`
+- For **Gemini CLI**: runs `gemini skills link <path>` per skill (or falls back to direct symlink if `gemini` isn't on PATH)
+- For **GitHub Copilot**: writes a cross-tool `~/.claude/AGENTS.md` bridge file (Copilot has no native skill concept) and prints VS Code per-project setup instructions
+
+### Non-interactive install
+
+```bash
+python3 install.py --noninteractive                       # Claude + link
+python3 install.py --target claude,gemini --mode link
+python3 install.py --target all --mode move --force       # full copy, overwrite
+python3 install.py --claude-home /opt/claude              # custom path
+python3 install.py --help                                 # all flags
+```
+
+### Windows enterprise notes
+
+- `install.cmd` is the entry point — it tries `python` / `python3` on PATH first, then falls back to `install.ps1` (PowerShell native, Claude install only).
+- The PowerShell call uses `-ExecutionPolicy Bypass` so it works on locked-down machines that block dot-sourcing.
+- Symbolic links require admin **or** Developer Mode. If symlinks fail, the installer transparently falls back to copy.
+
+### Manual install (alternative)
+
+If you'd rather not run a script:
+
+```bash
+cp -r skills/* ~/.claude/skills/
+cp -r agents/*.md ~/.claude/agents/
+```
+
+On next session, Claude auto-discovers everything in `~/.claude/skills/` and `~/.claude/agents/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
 
 ---
 
