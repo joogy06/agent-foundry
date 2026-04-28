@@ -299,6 +299,10 @@ def generate_tests(
     project_root: Path,
     language_target: str = "pytest",
     output_root: Optional[Path] = None,
+    *,
+    claim_uuid: Optional[str] = None,
+    wp_id: Optional[str] = None,
+    emit_request: bool = False,
 ) -> Dict[str, Any]:
     """Produce integration + flow tests for a given component.
 
@@ -310,7 +314,16 @@ def generate_tests(
         "flow_tests": [path, ...],
         "suggestions_file": path or None,
         "snapshot_present": bool,
+        "request_file": str or None,
       }
+
+    When `emit_request=True` AND `claim_uuid` + `wp_id` are provided, the
+    function ALSO emits a `.ledger/requests/<uuid>.request.yaml` file that
+    bob's `claims.apply_request_idempotent` can consume to apply the
+    UNIT_TESTED → INTEGRATED transition. This closes the SKILL.md Step 7
+    doc-vs-code drift surfaced by S030-quickwins #48. Without
+    `emit_request=True`, the function preserves v1.0/v1.1 behaviour
+    (test files only; bob's caller emits the request manually).
     """
     if language_target not in ("pytest", "jest"):
         raise ValueError(f"unsupported language_target: {language_target}")
@@ -340,14 +353,21 @@ def generate_tests(
     snapshot_present = snapshot is not None
 
     # Integration tests per integration_point
+    # S030-quickwins #33: prefix test filenames with the component id so
+    # sibling component dirs whose names contain hyphens (and therefore are
+    # not Python packages) cannot collide on `test_int_<target>.py` when the
+    # pytest collector flattens them. Discovered in DLP pilot 2026-04-09 +
+    # S028 keystone weather widget smoke. The bob workaround was a manual
+    # rename; this makes it the native behaviour.
     int_paths: List[Path] = []
     int_dir = output_root / "tests" / "integration" / component_id
     int_dir.mkdir(parents=True, exist_ok=True)
+    safe_component = component_id.replace(":", "_").replace("/", "_").replace("-", "_")
     for ip in component.get("integration_points") or []:
         target = (ip.get("with") or "unknown").replace(":", "_").replace(
             "/", "_"
         ).replace("-", "_")
-        fpath = int_dir / f"test_int_{target}.py"
+        fpath = int_dir / f"test_int_{safe_component}__{target}.py"
         content = _render_integration_test_pytest(
             component_id, ip, revision,
         )
@@ -389,6 +409,66 @@ def generate_tests(
             encoding="utf-8",
         )
 
+    # S030-quickwins #48: optional transition-request emit. Requires both
+    # claim_uuid AND wp_id (lacking either is a programming error from the
+    # caller, NOT a silent no-op — bob would otherwise apply a request that
+    # bound to no claim and CB4 would reject it). The request file shape
+    # mirrors SKILL.md Step 7 verbatim.
+    request_path: Optional[Path] = None
+    if emit_request:
+        if not claim_uuid or not wp_id:
+            raise ValueError(
+                "emit_request=True requires both claim_uuid and wp_id "
+                "(found claim_uuid=%r, wp_id=%r)" % (claim_uuid, wp_id)
+            )
+        import uuid as _uuid_mod  # local — keeps top-level imports stable
+        import hashlib as _hashlib
+
+        def _content_hash(paths: List[Path]) -> str:
+            h = _hashlib.sha256()
+            for p in sorted(paths, key=lambda x: str(x)):
+                h.update(str(p).encode("utf-8"))
+                h.update(b"\0")
+                try:
+                    h.update(p.read_bytes())
+                except OSError:
+                    pass
+                h.update(b"\0\0")
+            return f"sha256:{h.hexdigest()}"
+
+        request_id = str(_uuid_mod.uuid4())
+        request_dir = project_root / ".ledger" / "requests"
+        request_dir.mkdir(parents=True, exist_ok=True)
+        request_payload: Dict[str, Any] = {
+            "request_id": request_id,
+            "claim_uuid": claim_uuid,
+            "wp": wp_id,
+            "component_id": component_id,
+            "requester": "integration-flow-testing",
+            "target_stage": "INTEGRATED",
+            "evidence": [
+                {
+                    "type": "integration_test_files",
+                    "produced_by": "skill:integration-flow-testing",
+                    "paths": [str(p) for p in int_paths],
+                    "hash": _content_hash(int_paths),
+                },
+                {
+                    "type": "flow_test_files",
+                    "produced_by": "skill:integration-flow-testing",
+                    "paths": [str(p) for p in flow_paths],
+                    "hash": _content_hash(flow_paths),
+                },
+            ],
+            "language_target": language_target,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        request_path = request_dir / f"{request_id}.request.yaml"
+        request_path.write_text(
+            yaml.safe_dump(request_payload, sort_keys=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+
     return {
         "version": VERSION,
         "component_id": component_id,
@@ -396,6 +476,7 @@ def generate_tests(
         "flow_tests": [str(p) for p in flow_paths],
         "suggestions_file": str(suggestions_path) if suggestions_path else None,
         "snapshot_present": snapshot_present,
+        "request_file": str(request_path) if request_path else None,
     }
 
 
@@ -407,10 +488,20 @@ if __name__ == "__main__":
     ap.add_argument("--project-root", required=True)
     ap.add_argument("--language", default="pytest")
     ap.add_argument("--output-root", default=None)
+    # S030-quickwins #48 — optional transition-request emit (pass both or neither).
+    ap.add_argument("--claim-uuid", default=None,
+                    help="bob-issued claim UUID; required with --emit-request")
+    ap.add_argument("--wp-id", default=None,
+                    help="work-package id; required with --emit-request")
+    ap.add_argument("--emit-request", action="store_true",
+                    help="also write .ledger/requests/<uuid>.request.yaml")
     args = ap.parse_args()
     r = generate_tests(
         args.component, Path(args.contract_map),
         Path(args.project_root), args.language,
         Path(args.output_root) if args.output_root else None,
+        claim_uuid=args.claim_uuid,
+        wp_id=args.wp_id,
+        emit_request=args.emit_request,
     )
     print(json.dumps(r, indent=2))

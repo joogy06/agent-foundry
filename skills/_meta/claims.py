@@ -136,9 +136,14 @@ class Ledger:
         return None
 
 
+# NOTE (S030-quickwins #34): `wp` and `component` cells accept `.` so dotted
+# WP IDs (e.g. "WP-2.A", "WP-3.foo.bar") parse cleanly. Discovered in the
+# 2026-04-09 DLP pilot where `claims.issue_claim("WP-2.A", ...)` failed because
+# the previous `[A-Za-z0-9_-]+` regex rejected the dot. Tests in
+# tests/test_claims_row_re.py.
 _ROW_RE = re.compile(
-    r"^\|\s*(?P<wp>[A-Za-z0-9_-]+)\s*\|"
-    r"\s*(?P<component>[A-Za-z0-9_-]+)\s*\|"
+    r"^\|\s*(?P<wp>[A-Za-z0-9_.-]+)\s*\|"
+    r"\s*(?P<component>[A-Za-z0-9_.-]+)\s*\|"
     r"\s*(?P<stage>[A-Z_]+)\s*\|"
     r"\s*(?P<gen>\d+)\s*\|"
     r"\s*(?P<deps>[^|]*)\|"

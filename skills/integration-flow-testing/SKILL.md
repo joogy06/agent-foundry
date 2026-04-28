@@ -82,8 +82,14 @@ integration_points:
 
 Generate ONE test file per integration point. For pytest target:
 
+> **Filename convention (S030-quickwins #33):** test files are named
+> `test_int_<component>__<target>.py` to avoid sibling collisions when sibling
+> component dirs contain hyphens (and therefore are not Python packages, so
+> pytest's collector flattens them). Pre-#33 the path was `test_int_<target>.py`
+> and bob had to manually rename. The `<component>__` prefix makes it native.
+
 ```python
-# tests/integration/auth-service/test_int_user_service.py
+# tests/integration/auth-service/test_int_auth_service__user_service.py
 import json
 import pytest
 from pathlib import Path
@@ -114,7 +120,9 @@ def test_auth_service_user_service_unhappy_404():
 ```
 
 Key properties:
-- Test file name derives from the integration point: `test_int_<target>.py`
+- Test file name: `test_int_<component>__<target>.py` (S030-quickwins #33;
+  was `test_int_<target>.py` pre-#33). Component prefix prevents collisions
+  in the pytest collector across sibling component dirs.
 - Happy path + unhappy path per `failure_mode`
 - Fixture loading paths match the scaffolding skill's output
 - Header comment records contract-map revision for traceability
@@ -162,7 +170,13 @@ The skill plays NO role in execution or audit. Attempting to run tests from the 
 
 ## Step 7: Emit Transition Request to Bob
 
-Write `.ledger/requests/<request_id>.request.yaml`:
+The script natively emits the transition request when called with
+`--emit-request --claim-uuid <UUID> --wp-id <WP-NN>` (S030-quickwins #48).
+Without those flags the script preserves v1.0/v1.1 byte-identity and the
+caller emits the request manually. The schema below shows the file the
+script writes when `--emit-request` is set.
+
+`.ledger/requests/<request_id>.request.yaml`:
 
 ```yaml
 request_id: <UUID>

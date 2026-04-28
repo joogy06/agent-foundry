@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_TIMEOUT_S = 180  # per-auditor wall time
+DEFAULT_TIMEOUT_S = 300  # per-auditor wall time (S030-quickwins #53; was 180s)
 MIN_DISAGREEMENTS = 3    # spec section 11.5 — forced disagreements
 
 CLAUDE_BIN = os.environ.get("AUDIT_CLAUDE_BIN", "claude")
@@ -86,6 +86,58 @@ def env_error(message: str) -> None:
         },
         exit_code=3,
     )
+
+
+# ---------------------------------------------------------------------------
+# Race-safe directory provisioning (S030-quickwins #54)
+# ---------------------------------------------------------------------------
+#
+# The S028 #45 spawn 6 race surfaced when two parallel processes (verdict
+# writer + symlink updater) hit a `mkdir -p` against the same `.ledger/`
+# subdir at the same time. POSIX `mkdir(2)` itself is atomic per directory
+# component, but `pathlib.Path.mkdir(parents=True, exist_ok=True)` walks the
+# parent chain and a sibling process creating an intermediate component can
+# race against `os.stat` -> `os.mkdir`. The defensive pattern is: provision
+# the directory ONCE in the parent process BEFORE forking / spawning any
+# parallel work that will write into it. This helper bakes that contract in.
+#
+# Use this from any future caller that wants to spawn audit_spawn alongside
+# another verdict producer (e.g. a coverage arbiter, a drift-arbiter pipeline
+# stage). The helper is intentionally narrow: it ensures the directory exists
+# synchronously, then yields control to the caller. It does NOT spawn
+# subprocesses itself — that's the caller's responsibility — because spawn
+# semantics differ across callers (subprocess.Popen vs ThreadPoolExecutor vs
+# asyncio.create_subprocess_exec). Keeping the directory provisioning
+# separate from the spawn keeps this file a single self-contained module.
+
+def ensure_verdicts_dir(verdicts_dir: Path) -> Path:
+    """Synchronously create `verdicts_dir` (and parents) before any spawn.
+
+    Resolves the directory path, calls `mkdir(parents=True, exist_ok=True)`
+    once in the parent process, and returns the resolved path. After this
+    call returns, the caller can safely fork / Popen multiple verdict
+    producers that will all write into the same directory without racing on
+    the directory's creation. CB4 boundary preserved (only bob ever calls
+    this; only bob ever writes into `.ledger/verdicts/`).
+
+    See `audit_spawn_race_note` for the full back-story.
+    """
+    verdicts_dir = Path(verdicts_dir).resolve()
+    verdicts_dir.mkdir(parents=True, exist_ok=True)
+    return verdicts_dir
+
+
+# RACE NOTE (S028 #45 spawn 6, fixed in S030-quickwins #54):
+# Do NOT call `mkdir -p` (or pathlib's equivalent) from inside a backgrounded
+# subshell or a child Python process if a sibling process is also writing into
+# the same directory tree. The parent must provision the directory first via
+# `ensure_verdicts_dir()` and then spawn the parallel workers.
+audit_spawn_race_note = (
+    "ensure_verdicts_dir() must be called by the caller BEFORE spawning any "
+    "parallel verdict producer that will write into `.ledger/verdicts/` or a "
+    "sibling subdir. Provisions the directory synchronously in the parent "
+    "process so concurrent writers do not race on directory creation."
+)
 
 
 # ---------------------------------------------------------------------------

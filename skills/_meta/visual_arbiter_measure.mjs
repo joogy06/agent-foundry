@@ -36,6 +36,28 @@
  *   }
  *
  * Exit 0 on success; exit 2 on unrecoverable chrome crash.
+ *
+ * Mutation handling (S030 #47):
+ *   Per-element interaction dispatchEvent calls can mutate the live DOM
+ *   (e.g. `<form onsubmit="renderSkeleton()">` wipes the grid; subsequent
+ *   sibling lookups return found=false). The original implementation
+ *   measured + dispatched + measured next, leaving N>=1 elements blind
+ *   to mutations triggered by element N-1.
+ *
+ *   Fix: TWO-PHASE PER BREAKPOINT.
+ *     Phase 1 — measure ALL element bboxes + computed styles in a SINGLE
+ *               page.evaluate, before any dispatchEvent. Snapshot is now
+ *               immune to handler-induced DOM mutation.
+ *     Phase 2 — for each element with non-visual_only interactions,
+ *               dispatch events with capture-phase preventDefault +
+ *               stopImmediatePropagation defense-in-depth, then read
+ *               handler-detection heuristics (inline on*, data-arbiter-wired,
+ *               opt-in __arbiter_handler_ran flag). Heuristics deliberately
+ *               do NOT depend on post-state DOM, so suppressing default
+ *               doesn't mask real failures.
+ *
+ *   Output contract (CONTRACT-A1) unchanged: same field names, same shape,
+ *   same null/false semantics for not-found / hidden cases.
  */
 
 import { readFileSync } from "node:fs";
@@ -83,12 +105,81 @@ async function measureBreakpoint(browser, input, bpName, bpViewport) {
     const fontsReadyMs = Date.now() - fontsStart;
     await new Promise((r) => setTimeout(r, input.settle_ms || 300));
 
+    // ─── PHASE 1: snapshot ALL bboxes/computed BEFORE any dispatchEvent ───
+    // Runs in a single page.evaluate so all measurements come from the same
+    // pre-mutation DOM state. Hidden-at-breakpoint elements (declaredBbox===null)
+    // are still skipped, but the decision is now made inside the snapshot
+    // closure and recorded in lockstep with measured elements.
+    const elementSpecs = (input.elements || []).map((el) => ({
+      id: el.id,
+      selector: el.selector,
+      hidden_at_bp:
+        el.bbox && el.bbox[bpName] !== undefined && el.bbox[bpName] === null,
+    }));
+
+    const snapshots = await page.evaluate((specs) => {
+      const out = [];
+      const props = [
+        "color", "background-color", "background",
+        "border-color", "border-top-color",
+        "border-top-width", "border-top-style",
+        "font-family", "font-weight", "font-size",
+        "box-shadow", "padding", "margin", "gap",
+        "display", "visibility", "opacity",
+      ];
+      for (const spec of specs) {
+        if (spec.hidden_at_bp) {
+          out.push({ id: spec.id, kind: "hidden" });
+          continue;
+        }
+        const node = document.querySelector(spec.selector);
+        if (!node) {
+          out.push({ id: spec.id, kind: "not_found" });
+          continue;
+        }
+        const rect = node.getBoundingClientRect();
+        const cs = window.getComputedStyle(node);
+        const computed = {};
+        for (const p of props) computed[p] = cs.getPropertyValue(p);
+        computed["__inline_style__"] = node.getAttribute("style") || "";
+        computed["__outer_html__"] = node.outerHTML.slice(0, 4096);
+        out.push({
+          id: spec.id,
+          kind: "found",
+          bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+          computed,
+        });
+      }
+      return out;
+    }, elementSpecs);
+
+    // Build snapshot lookup keyed by element id.
+    const snapshotById = new Map();
+    for (const s of snapshots) snapshotById.set(s.id, s);
+
+    // ─── PHASE 2: dispatch events + handler-detection heuristics ───
+    // Phase-1 snapshot is already immutable JS data — even if a handler
+    // wipes the live DOM here, output for sibling elements is unaffected.
+    // Defense-in-depth: capture-phase preventDefault + stopImmediatePropagation
+    // suppresses default actions (form submission, navigation) without masking
+    // the heuristics, which read inline on*, data-arbiter-wired, and the
+    // opt-in __arbiter_handler_ran flag — none of which depend on post-state
+    // DOM survival.
     const results = [];
     for (const el of input.elements || []) {
-      const declaredBbox =
-        el.bbox && el.bbox[bpName] !== undefined ? el.bbox[bpName] : undefined;
-      if (declaredBbox === null) {
-        // Element explicitly declared hidden at this breakpoint; skip measurement.
+      const snap = snapshotById.get(el.id);
+      if (!snap) {
+        // Defensive: spec went missing from snapshot (shouldn't happen).
+        results.push({
+          element_id: el.id,
+          found: false,
+          bbox: null,
+          computed: {},
+          interactions: [],
+        });
+        continue;
+      }
+      if (snap.kind === "hidden") {
         results.push({
           element_id: el.id,
           found: null,
@@ -98,34 +189,7 @@ async function measureBreakpoint(browser, input, bpName, bpViewport) {
         });
         continue;
       }
-
-      const measurement = await page.evaluate((elSpec) => {
-        const node = document.querySelector(elSpec.selector);
-        if (!node) return { found: false };
-        const rect = node.getBoundingClientRect();
-        const cs = window.getComputedStyle(node);
-        const computed = {};
-        const props = [
-          "color", "background-color", "background",
-          "border-color", "border-top-color",
-          "border-top-width", "border-top-style",
-          "font-family", "font-weight", "font-size",
-          "box-shadow", "padding", "margin", "gap",
-          "display", "visibility", "opacity",
-        ];
-        for (const p of props) computed[p] = cs.getPropertyValue(p);
-        computed["__inline_style__"] = node.getAttribute("style") || "";
-        // Capture a snippet of outerHTML so Python can inspect var(--...)
-        // indirections vs hardcoded hex/rgb.
-        computed["__outer_html__"] = node.outerHTML.slice(0, 4096);
-        return {
-          found: true,
-          bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
-          computed,
-        };
-      }, el);
-
-      if (!measurement.found) {
+      if (snap.kind === "not_found") {
         results.push({
           element_id: el.id,
           found: false,
@@ -164,21 +228,39 @@ async function measureBreakpoint(browser, input, bpName, bpViewport) {
             ({ selector, mapped }) => {
               const el = document.querySelector(selector);
               if (!el) return false;
-              // Track if any listener runs — the handler itself must set
-              // this flag (implementations conforming to skeleton contract).
-              el.__arbiter_handler_ran = false;
-              // Patch addEventListener detection: wrap listeners at test time
-              const origDispatch = el.dispatchEvent.bind(el);
-              const ev = new Event(mapped, { bubbles: true, cancelable: true });
-              origDispatch(ev);
-              // Heuristic 1: inline on* attribute
+              // Heuristic 1: inline on* attribute (read BEFORE dispatch so
+              // even a handler that removes the node from the DOM is
+              // detectable).
               const onAttr = el.getAttributeNames().some(
                 (n) => n.startsWith("on") && (el.getAttribute(n) || "").trim().length > 0,
               );
-              // Heuristic 2: explicit opt-in data attribute
+              // Heuristic 2: explicit opt-in data attribute (also read
+              // pre-dispatch).
               const wiredAttr = el.dataset.arbiterWired === "true";
-              // Heuristic 3: handler set the flag
-              return !!(onAttr || wiredAttr || el.__arbiter_handler_ran);
+              // Track if any listener runs — the handler itself must set
+              // this flag (implementations conforming to skeleton contract).
+              el.__arbiter_handler_ran = false;
+              // Defense-in-depth: capture-phase listener that suppresses
+              // default and stops immediate propagation. Does NOT prevent
+              // user-installed listeners on the element itself from running
+              // (those are bubble-phase or capture-phase on ancestors), so
+              // heuristic 3 still fires when a real handler is wired.
+              const guard = (ev) => {
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+              };
+              document.addEventListener(mapped, guard, { capture: true, once: true });
+              try {
+                const origDispatch = el.dispatchEvent.bind(el);
+                const ev = new Event(mapped, { bubbles: true, cancelable: true });
+                origDispatch(ev);
+              } finally {
+                document.removeEventListener(mapped, guard, { capture: true });
+              }
+              // Heuristic 3: handler set the flag (read AFTER dispatch — but
+              // safe because we only need the boolean, not the surrounding DOM).
+              const ranFlag = !!el.__arbiter_handler_ran;
+              return !!(onAttr || wiredAttr || ranFlag);
             },
             { selector: el.selector, mapped },
           );
@@ -196,8 +278,8 @@ async function measureBreakpoint(browser, input, bpName, bpViewport) {
       results.push({
         element_id: el.id,
         found: true,
-        bbox: measurement.bbox,
-        computed: measurement.computed,
+        bbox: snap.bbox,
+        computed: snap.computed,
         interactions,
       });
     }
