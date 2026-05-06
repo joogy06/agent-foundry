@@ -92,7 +92,7 @@ Delegating to a reference file means: **read that file into context, then follow
 ## When NOT to Use This Skill
 
 - **Architecture mapping for AI consumption** → use `project-documentation` (PROJECT.md, COMPONENT.md)
-- **Session operational log** → use `history.md` in the project root
+- **Session operational log** → use `history.md` (recent) + `history/INDEX.md` (archived) in the project root
 - **Personal user memory** → use MEMORY.md auto-memory
 - **Live web search / RAG** → wikis are compiled knowledge, not live search
 - **Small one-off notes** → just use a markdown file, don't bootstrap a wiki

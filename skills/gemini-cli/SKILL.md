@@ -124,36 +124,45 @@ hooks            Manage hooks — only one subcommand: migrate (one-shot import 
 
 `gemini extensions` and `gemini extension` are aliases. Same for `gemini skills` / `gemini skill`. Same for `gemini hooks` / `gemini hook`.
 
+## Host directive (verified 2026-05-04)
+
+**Canonical pattern for any headless gemini call on this host:**
+
+```bash
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "<prompt>"
+```
+
+- Empty env prefix forces OAuth subscription routing (otherwise `GOOGLE_CLOUD_PROJECT=thecpuwebwoov01` inherits in and 403s).
+- `-m gemini-3.1-pro-preview` requests top-tier — silently downgrades to lower tier on capacity exhaustion or routing decisions, but pin it anyway to express intent.
+- Model self-identification is unreliable (a model asked "what model are you?" may return the CLI name, the wrong model id, or a sibling). When the served model matters, append a `served_by=<model_id>` probe line to the prompt and capture it in the output.
+- Verdict / output quality varies by served tier (verified: same ballot prompt returned different verdicts on `gemini-2.5-pro` vs `gemini-3.1-pro-preview`). Record served_by in any deliberation artifact.
+
 ## Headless (`-p`) cheat sheet
 
 ```bash
-# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
-export GOOGLE_CLOUD_PROJECT=
-export GEMINI_API_KEY=
-
-# One-shot prompt, plain text
-gemini -p "summarize this file" < notes.md
+# Canonical (always do this on this host)
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "summarize this file" < notes.md
 
 # JSON output
-gemini -p --output-format json "list TODOs in this repo"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p --output-format json "list TODOs in this repo"
 
 # Hybrid: run a prompt then drop into interactive
-gemini -i "investigate this bug" --include-directories ./src
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -i "investigate this bug" --include-directories ./src
 
 # Auto-approve all (YOLO) — sandbox + non-interactive
-gemini -p -y -s "refactor this function"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p -y -s "refactor this function"
 
 # Read-only plan mode
-gemini -p --approval-mode plan "what would you change in this file?"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p --approval-mode plan "what would you change in this file?"
 
 # Restrict via Policy Engine
-gemini -p --policy ./ci-readonly.policy "review this PR"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p --policy ./ci-readonly.policy "review this PR"
 
 # Pin specific extensions
-gemini -p -e my-skill -e nanobanana "build a thumbnail for this post"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p -e my-skill -e nanobanana "build a thumbnail for this post"
 
 # Resume the most recent session
-gemini -r latest "continue where we left off"
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -r latest "continue where we left off"
 ```
 
 See `references/headless.md` for the full surface and `references/policy-engine.md` for policy file format.
@@ -179,6 +188,9 @@ See `references/headless.md` for the full surface and `references/policy-engine.
 | Skip the JSON parse check on `~/.gemini/settings.json` | Malformed JSON silently breaks Gemini config loading. Run the verify script. |
 | Put all skills under `~/.gemini/skills/` and forget about Claude | Canonical location is `~/.claude/skills/<name>/`. Symlink to `~/.gemini/skills/<name>/` and run `gemini skills link <path>`. See `cross-tool-portability/install-matrix.md`. |
 | Use `--raw-output` without `--accept-raw-output-risk` | Disables sanitization of model output, allows ANSI escapes. Security risk if model output is untrusted. |
+| Trust model self-ID for "which model answered me?" | Verified 2026-05-04: model self-ID is unreliable on this CLI — same prompt asking "what model are you?" returned `gemini-cli` (the CLI name) on one run and `gemini-2.5-pro` on another, when the actual served model was different. Capture `served_by` at the call layer with a structured probe line, not from the model's free-text answer. |
+| Assume `-m <model>` deterministically picks that model | Verified 2026-05-04: requesting `-m gemini-2.5-pro` was actually served by `gemini-3.1-pro-preview` after settings.json updates. The `-m` flag is advisory; settings.json + server-side routing dominates. Always capture served_by; never assume what was asked == what was served. |
+| Drop the `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` env prefix on this host | Shell sets `GOOGLE_CLOUD_PROJECT=thecpuwebwoov01` for vertex-banana / GA tooling. Without the empty overrides, `gemini -p` fails 403 from `cloudcode-pa.googleapis.com` even with valid OAuth creds. |
 
 ## See also
 

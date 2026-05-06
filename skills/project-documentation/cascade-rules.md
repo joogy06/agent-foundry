@@ -162,6 +162,10 @@ If the coding agent is working solo (no team context):
 | Add rate limiting middleware to API | 2 (internal) | api COMPONENT.md if it affects how requests flow |
 | Frontend starts calling workers directly (bypassing API) | 4 (boundary) | PROJECT.md edges + frontend COMPONENT.md + workers COMPONENT.md |
 
+## History rotation interaction
+
+Every append to `history.md` triggers `rotate.run` automatically. If the file is already stamped and within thresholds, this is a <50ms no-op. Sessions older than `N=3` (or content over `CAP=600` lines) are archived into `history/<YYYY-MM>.md`. See `SKILL.md` "History rotation policy" for the full contract; the cascade rules above are unchanged by rotation.
+
 ## Freshness Checks
 
 Architecture docs include `last_verified_at` in metadata. Check freshness:

@@ -322,6 +322,102 @@ Each flow doc has YAML metadata, a Mermaid or ASCII diagram (per documentation p
 
 ---
 
+## History rotation policy
+
+`history.md` is read on every session start and grows unbounded by default — eventually it dominates the context budget. This skill enforces a bounded-size policy with monthly archives.
+
+### Defaults
+
+| Knob | Default | Override path |
+|---|---:|---|
+| `N` (target session count) | 3 | `docs/DOCUMENTATION-PREFERENCES.md` `history_rotation:` block |
+| `CAP` (line ceiling, circuit-breaker) | 600 | same |
+| `MIN_SESSION_LINES` (merge-tiny floor) | 20 | same |
+| `mode` | `auto` | `auto` / `suggest` / `never` |
+
+Override example (inline):
+```
+history_rotation: { N: 5, CAP: 800, mode: suggest }
+```
+
+Or block form:
+```
+history_rotation:
+  N: 5
+  CAP: 800
+  mode: suggest
+```
+
+### File layout after rotation
+
+```
+<project-root>/
+├── history.md                          # live; ≤ N sessions OR ≤ CAP lines
+├── history.md.pre-rotation-bak         # one-level undo (overwritten on next roll)
+└── history/                            # archives, created on first roll
+    ├── INDEX.md                        # auto-maintained TOC (regenerated each roll)
+    ├── 2026-04.md                      # monthly bucket
+    ├── 2026-03.md
+    └── pre-rotation-bulk.md            # only if E2 bulk-archive was chosen at first-touch
+```
+
+### Auto-roll on every history.md write (`scripts/rotate.py`)
+
+After every append, the rotation engine counts session markers (S) and total lines (L). If `S ≤ N AND L ≤ CAP`, it appends silently (~95% of writes; <50ms hot path). Otherwise it archives the oldest session into `history/<YYYY-MM>.md` (file created if absent), recounts, and repeats. Floor: if S=1 (or S=0 / unparseable) and L > CAP, the file is kept with a `floor_warning` header — content is never silently dropped.
+
+Every rotation:
+- Acquires `flock` on `<live_history_dir>/.history.lock` (5s timeout)
+- Records mtime before read; aborts if changed mid-rotation (user-edit guard)
+- Backs up to `history.md.pre-rotation-bak` *before* any archive write
+- Writes archives + live atomically (temp + `os.replace`)
+- Verifies sha256(backup) == sha256(original) before declaring success
+- Rolls back (delete archives, restore `.pre-rotation-bak`) on any failure
+- Adds an idempotency stamp `<!-- rotated: <iso-ts> by=<actor> schema=v1 sha256=<hex> -->` so re-runs are no-ops
+
+### First-touch evergreen migration (`scripts/first_touch.py`)
+
+When this skill runs at session start in a project where `history.md` exists, lacks the rotation stamp, and exceeds 100 lines, it computes a plan and asks the operator (one-time per project):
+
+- **E1. Bucket-by-date** — parse + archive into monthly buckets; current behavior of auto-roll on subsequent writes
+- **E2. Bulk-archive** — move whole file to `history/pre-rotation-bulk.md` unchanged; start with a stub (`ALWAYS-SAFE`, no parsing)
+- **E3. Skip** — make no changes; ask again next session (default if no answer)
+- **E4. Never** — write `mode: never` to `DOCUMENTATION-PREFERENCES.md`; no auto-rotation ever
+
+After any path, the file is stamped — operator is never prompted again for this project. **No bulk migration.** Rotation attaches per project on natural session entry.
+
+### Manual override
+
+| Surface | Invocation |
+|---|---|
+| Claude Code | `/roll [flags]` (slash command at `~/.claude/commands/roll.md`) |
+| Codex CLI | `Skill('project-documentation', args='roll [flags]')` |
+| Direct CLI | `python ~/.claude/skills/project-documentation/scripts/rotate.py <project> [flags]` |
+| Power-user proactive | `python ~/.claude/skills/project-documentation/scripts/migrate.py <path>` (default `--dry-run`; `--apply` to execute) |
+
+Flags: `--dry-run` (preview), `--keep N` / `--cap N` (overrides), `--restore` (one-level undo), `--force` (bypass floor).
+
+### Boundary detection ladder (`scripts/_boundary_detect.py`)
+
+Used by `rotate` and `first_touch` to find session boundaries in unstamped files. Priority order, first tier with ≥2 matches AND <30% ambiguous lines wins:
+
+H1 explicit `<!-- SESSION_BOUNDARY -->` → H2 `## Session N` → H3 `## YYYY-MM-DD` → H4 `### S\d+` → H5 `### YYYY-MM-DD` → F1 paragraph heuristic → F2 lossy-safe bulk
+
+F2 is preferred over a low-confidence parse: a bad parse silently drops/duplicates content; F2 (whole file as one unit) loses bucketing convenience but never loses content.
+
+Code-fence-aware: heading patterns inside ``` and ~~~ blocks are ignored.
+
+### Rotation anti-patterns
+
+| Don't | Why |
+|-------|-----|
+| Edit `history.md.pre-rotation-bak` | It's the one-level-undo target; treat as read-only |
+| Edit between `<!-- HISTORY_HEADER -->` markers | Auto-managed; the next roll will overwrite |
+| Delete `history/INDEX.md` manually | It's regenerated; deleting just causes a re-write next roll |
+| Bulk-migrate the fleet | Per-project on session entry; no batch scripts |
+| Set `mode: never` casually | The file grows unbounded; only do this for archived projects |
+
+---
+
 ## Size Constraints
 
 | Document | Max Lines | Max Components/Items |
