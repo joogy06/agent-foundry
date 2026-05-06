@@ -2,6 +2,8 @@
 
 Reference for `project-documentation`. Full templates with metadata headers for each architecture level.
 
+> **Note**: `history.md` is bounded by the rotation policy (default ≤3 sessions OR ≤600 lines live; older content lives in `history/<YYYY-MM>.md` with `history/INDEX.md` as the TOC). When older context is needed, follow `history/INDEX.md`. See `SKILL.md` "History rotation policy".
+
 ## PROJECT.md Template (Level 0)
 
 Lives at: project root `PROJECT.md`. Max 120 lines.

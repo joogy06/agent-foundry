@@ -85,7 +85,7 @@ For any project directory:
 | File | Purpose |
 |---|---|
 | `PROJECT.md` | Hierarchical architecture map: components, integration edges, external deps |
-| `history.md` | Session history, decisions, progress |
+| `history.md` | Session history, decisions, progress (bounded by rotation policy; older context in `history/INDEX.md`) |
 | `tasks.md` | Task list, priorities, completion status |
 | `index.md` | File index |
 | `session_control.md` | Session-specific instructions |

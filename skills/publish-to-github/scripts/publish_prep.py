@@ -3,7 +3,7 @@
 publish_prep.py — Generic engine for preparing a public-safe staging directory.
 
 Reads its rules from a config file (JSON). The config defines:
-  - which directories to exclude when copying skills/ and agents/
+  - which directories to exclude when copying skills/, agents/, and commands/
   - which strings to scrub from individual files (find/replace)
   - which patterns to grep for as forbidden leak indicators
   - optional paths to bundle into staging (README, docs)
@@ -246,7 +246,7 @@ def load_config(path):
         sys.exit(1)
     if 'subdirs' in data['source']:
         if not isinstance(data['source']['subdirs'], list):
-            print(red('source.subdirs must be a list (e.g. ["skills", "agents"])'),
+            print(red('source.subdirs must be a list (e.g. ["skills", "agents", "commands"])'),
                   file=sys.stderr)
             sys.exit(1)
         for i, sd in enumerate(data['source']['subdirs']):
@@ -627,7 +627,7 @@ def run_extended_scan(staging_root, ignore_rules=None, max_file_size=10 * 1024 *
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Create a clean staging directory for publishing ~/.claude/skills/ and ~/.claude/agents/ to public github.',
+        description='Create a clean staging directory for publishing ~/.claude/skills/, ~/.claude/agents/, and ~/.claude/commands/ to public github.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -707,7 +707,7 @@ def main():
         ).resolve()
         if not source_root_v.exists():
             warnings.append(f'source.root not found: {source_root_v}')
-        for sd in config['source'].get('subdirs', ['skills', 'agents']):
+        for sd in config['source'].get('subdirs', ['skills', 'agents', 'commands']):
             if not (source_root_v / sd).exists():
                 warnings.append(f'source subdir not found: {source_root_v / sd}')
         for scrub in config['scrubs']:
@@ -730,7 +730,7 @@ def main():
     source_root = Path(
         os.path.expanduser(config['source'].get('root', str(CLAUDE_HOME)))
     ).resolve()
-    source_subdirs = config['source'].get('subdirs', ['skills', 'agents'])
+    source_subdirs = config['source'].get('subdirs', ['skills', 'agents', 'commands'])
 
     # --- Resolve staging dir ---
     staging_dir = Path(args.staging_dir) if args.staging_dir else STAGING_DIR_DEFAULT
@@ -903,7 +903,7 @@ def main():
     print(f'    {bold("cd " + str(staging_dir))}')
     print(f'    {bold("git init -b main")}')
     print(f'    {bold("git add .")}')
-    print(f'    {bold("git commit -m \"Initial commit: Claude Code skills and agents\"")}')
+    print(f'    {bold("git commit -m \"Initial commit: Claude Code skills, agents, and commands\"")}')
     print()
     print('    # Create the repo on github.com, then:')
     print(f'    {bold("git remote add origin git@github.com:YOURNAME/REPONAME.git")}')

@@ -1,6 +1,18 @@
 # Headless Gemini CLI
 
-Verified from local `gemini --help` output for Gemini CLI 0.36.0 on 2026-04-08.
+Verified from local `gemini --help` output for Gemini CLI 0.36.0 on 2026-04-08; host-specific directive verified 2026-05-04 (CLI 0.40.1).
+
+## Host directive (read this first)
+
+**On this host, every headless gemini call MUST use:**
+
+```bash
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "<prompt>"
+```
+
+- The empty `GOOGLE_CLOUD_PROJECT=` and `GEMINI_API_KEY=` overrides force OAuth subscription routing. Without them, the shell-level `GOOGLE_CLOUD_PROJECT=thecpuwebwoov01` (set for vertex-banana / GA tooling) inherits in and the call returns 403 from `cloudcode-pa.googleapis.com`.
+- `-m gemini-3.1-pro-preview` requests the top-tier model on this OAuth subscription. The flag is advisory — settings.json + server-side routing dominate — but pin it anyway to express intent and ensure consistent capability.
+- Same prompt produces different verdicts on different served tiers. Always capture which model actually answered (see "Capturing served_by" below).
 
 ## The default
 
@@ -9,6 +21,25 @@ gemini -p "<prompt>"
 ```
 
 `-p, --prompt` puts Gemini in non-interactive mode. The output goes to stdout, the process exits when the model is done. Stdin is appended to the prompt if both are provided.
+
+## Capturing served_by
+
+Model self-ID is unreliable on this CLI (verified 2026-05-04: same prompt asking the model what model it is returned `gemini-cli`, `gemini-2.5-pro`, and the actual served model in different runs). To reliably capture which model served a request:
+
+```bash
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "$(cat <<'EOF'
+<your actual prompt>
+
+---
+At the very end of your response, append a single line:
+served_by=<the exact model id you are running on, e.g. gemini-3.1-pro-preview>
+EOF
+)"
+```
+
+Then parse `served_by=` out of the tail. This is the only reliable mechanism — the User-Agent of the API call may also lie (Gemini CLI 0.40.1 advertised `gemini-3.1-pro-preview` while the API gateway returned 429 errors referring to `gemini-3-flash-preview`).
+
+For deliberation / ballot work where verdict quality matters, log served_by alongside the verdict.
 
 ## Output formats
 
@@ -103,12 +134,8 @@ Verified: `0` on success. Non-zero on error. Specific exit-code semantics are no
 ## Putting it together — CI patterns
 
 ```bash
-# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
-export GOOGLE_CLOUD_PROJECT=
-export GEMINI_API_KEY=
-
 # CI: read-only review, JSON for parsing, plan mode
-gemini -p \
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p \
   --approval-mode plan \
   --output-format json \
   --include-directories ./src \
@@ -117,7 +144,7 @@ gemini -p \
   > /tmp/review.json
 
 # CI: enforce one specific MCP server only
-gemini -p \
+GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p \
   --approval-mode auto_edit \
   --allowed-mcp-server-names github,linter \
   -y -s \

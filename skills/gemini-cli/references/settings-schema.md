@@ -45,15 +45,22 @@ From Google's docs (not yet verified locally):
 
 ### `model`
 
+**Schema-key discrepancy (verified 2026-05-04):** the bundled docs at `/usr/local/lib/node_modules/@google/gemini-cli/bundle/docs/cli/settings.md` document the model key as **`model.name`**. This skill's schema (Google docs research) documents it as **`model.default` + `model.fallback`**. Set both for forward-compat; CLI 0.40.1 reads at least one of them.
+
 ```json
 {
   "model": {
-    "default": "gemini-3-pro",
-    "fallback": "gemini-3-flash",
+    "name": "gemini-3.1-pro-preview",
+    "default": "gemini-3.1-pro-preview",
+    "fallback": "gemini-2.5-pro",
     "temperature": 0.2
   }
 }
 ```
+
+**Important caveat (verified 2026-05-04):** pinning these keys does NOT guarantee the requested model is served. The OAuth subscription tier may silently route to a different model (e.g., requested `gemini-3.1-pro-preview`, served `gemini-2.5-pro`). The `-m <model>` CLI flag is also advisory. Always capture which model actually answered via a `served_by=<model_id>` probe line in the prompt — see `headless.md` "Capturing served_by" section.
+
+**Recommendation on this host:** keep the canonical pattern (env prefix + `-m gemini-3.1-pro-preview` + served_by capture) AND pin the model in settings.json. Belt + braces.
 
 ### `context`
 

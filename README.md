@@ -8,7 +8,7 @@ A curated collection of skills and agents for [Claude Code CLI](https://claude.a
 
 ## What's Inside
 
-- **125+ skills** — domain knowledge Claude loads on demand to help with specific tasks (including `publish-to-github` for releasing this whole tree to public github safely, and `visual-companion` for browser-based mockup/diagram review during design)
+- **150+ skills** — domain knowledge Claude loads on demand to help with specific tasks (including `publish-to-github` for releasing this whole tree to public github safely, and `visual-companion` for browser-based mockup/diagram review during design)
 - **4 agents** — specialized sub-agents for design, execution, review, and knowledge management
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
@@ -73,7 +73,7 @@ On next session, Claude auto-discovers everything in `~/.claude/skills/`, `~/.cl
 
 | Tier | What it gives you | What to install |
 |------|-------------------|-----------------|
-| **Minimal** | All 125 domain skills work as Claude reference material. `wiki` agent works fully. | Claude Code CLI only |
+| **Minimal** | All 150+ domain skills work as Claude reference material. `wiki` agent works fully. | Claude Code CLI only |
 | **Standard** | + `forge` / `bob` / `alf` agents with multi-model reviews (Codex + Gemini) | Add Codex CLI + Codex plugin + Gemini CLI MCP |
 | **Full** | + `pa` agent with persistent task tracking, browser-based product reviews | Add pa-server MCP (custom) + claude-in-chrome MCP |
 
@@ -325,7 +325,7 @@ Skills and agents in this repository follow these principles:
 
 | Installing | You get | Time |
 |-----------|---------|------|
-| Skills only | 125 domain knowledge modules | <1 min |
+| Skills only | 150+ domain knowledge modules | <1 min |
 | Skills + agents | + forge/bob/alf/wiki/pa orchestration | <2 min |
 | + Codex CLI + plugin | + GPT-5.4 challenger reviews | ~10 min (Codex auth) |
 | + Gemini CLI + MCP | + Gemini 3 third-model verification, 1M-context analysis | ~10 min (Gemini auth) |

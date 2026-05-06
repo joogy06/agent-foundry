@@ -1,8 +1,8 @@
 ---
 name: publish-to-github
 description: >
-  Use when preparing to publish ~/.claude/skills/ and ~/.claude/agents/ to a public github
-  repository. Wraps publish_prep.py to scrub embedded private content, run extended security
+  Use when preparing to publish ~/.claude/skills/, ~/.claude/agents/, and ~/.claude/commands/
+  to a public github repository. Wraps publish_prep.py to scrub embedded private content, run extended security
   checks, bundle README and documentation, and produce a clean staging directory ready for
   git init / commit / push. Also trigger on "publish skills to github", "deploy public skills",
   "prepare github release", "scan skills for secrets", "bump skill version", "create publish
