@@ -1,0 +1,14 @@
+{
+  "name": "monorepo-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "axios": "^0.21.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "eslint": "^8.0.0"
+  }
+}

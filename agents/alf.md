@@ -97,10 +97,30 @@ If web-research skill unavailable OR Codex unavailable:
 - Do NOT skip the review entirely — local observations are still valuable
 
 **2a: Freshness Check** — For every versioned reference (libraries, APIs, tools, patterns):
-- Research via `/codex:rescue` (preferred) or raw `codex exec`: current stable version, deprecation status, breaking changes since target's version
-- Invoke `web-research` skill for claims that need triangulation (3+ sources for "X is outdated")
-- Additionally, use `mcp__gemini-cli__ask-gemini` with Google Search grounding for real-time freshness checks (especially for version drift and deprecation status)
-- Check official docs first, then community consensus
+
+**Primary path** — invoke `dep-currency-check` for deterministic dep-version + CVE data (added 2026-05-12, replaces the prior 3-LLM-call improvisation):
+
+```bash
+PYTHONPATH="$HOME/.claude/skills/dep-currency-check" python3 -m dep_currency_check "$TARGET_PATH" \
+    --format json --severity all --ecosystems auto \
+    --output "$ALF_REPORT_DIR/dep-currency.json" 2>&1 || true
+```
+
+Read `$ALF_REPORT_DIR/dep-currency.json` and construct one **structured finding** per entry in `findings[]`:
+- `package` + `ecosystem` + `declared_version` + `latest_stable` → version-drift finding
+- `gap_kind == "deprecated"` → deprecation finding
+- `cves[]` non-empty → CVE finding (one per CVE)
+
+Latency drop: minutes (3 model calls per dep) → seconds (1 deterministic JSON read).
+
+**Fallback path** — for freshness claims the skill could NOT resolve (`gap_kind: deferred_offline` or `gap_kind: unknown`), or for non-dep references (APIs, tools, patterns), fall back to:
+- `/codex:rescue` (preferred) or raw `codex exec`: current stable version, deprecation status, breaking changes since target's version
+- `web-research` skill for claims that need triangulation (3+ sources for "X is outdated")
+- `mcp__gemini-cli__ask-gemini` with Google Search grounding for real-time freshness checks
+- Official docs first, then community consensus
+- Mark any inference NOT backed by `dep-currency-check` output as `confidence_level: interpretive`
+
+See `~/.claude/skills/dep-currency-check/references/integration-alf.md` for the full integration pattern.
 
 **2b: Best-Practice Comparison** — For major patterns/approaches:
 - Research via `/codex:rescue` (preferred) or raw `codex exec`: still recommended? Superseded? Migration guide exists?

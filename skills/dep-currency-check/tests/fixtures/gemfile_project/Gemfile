@@ -1,0 +1,10 @@
+source 'https://rubygems.org'
+
+gem 'rails', '~> 7.0.4'
+gem 'sidekiq', '~> 7.0'
+gem 'puma', '~> 5.6'
+
+group :development, :test do
+  gem 'rspec-rails', '~> 6.0'
+  gem 'rubocop', '~> 1.50'
+end

@@ -2445,13 +2445,110 @@ def check_G_CONTRACT_SCOPE(
 
 
 # ---------------------------------------------------------------------------
+# G_DEP_CURRENCY — dependency currency + CVE check gate (2026-05-12)
+#
+# Wraps `python3 -m dep_currency_check` and maps CLI exit code to gate exit
+# code. STRICT blocking criteria (gate fails ONLY if ALL met):
+#   - severity == "critical"
+#   - is_direct (not transitive)
+#   - is_dev == false (production dep)
+#   - cve.fixed_versions non-empty (a fix is available)
+#   - AND --mode strict (advisory mode never blocks)
+# ---------------------------------------------------------------------------
+
+
+def check_G_DEP_CURRENCY(
+    project_root: Path,
+    *,
+    mode: str = "advisory",
+    changed_manifests: str = "",
+    allow_deferred: bool = False,
+) -> None:
+    """Run dep-currency-check and exit 0/2/3/4 per gate contract."""
+    import subprocess  # local import — keep gates.py import-light
+    skill_root = Path.home() / ".claude" / "skills" / "dep-currency-check" / "dep_currency_check"
+    if not skill_root.is_dir():
+        env_error(
+            f"dep-currency-check skill not installed at {skill_root}"
+        )
+    # Build the dep_currency_check CLI invocation
+    cmd = [
+        sys.executable, "-m", "dep_currency_check",
+        str(project_root),
+        "--format", "json",
+        "--severity", "critical",  # gate only cares about critical
+        "--mode", mode,
+        "--quiet",
+    ]
+    if changed_manifests:
+        cmd.extend(["--changed-manifests", changed_manifests])
+    if allow_deferred:
+        cmd.append("--allow-deferred")
+
+    # Ensure dep_currency_check is importable. The skill ships a
+    # `dep_currency_check` symlink → `scripts/` at the skill root for
+    # `python3 -m dep_currency_check` to work.
+    env = os.environ.copy()
+    skill_root_dir = str(skill_root.parent)  # ~/.claude/skills/dep-currency-check/
+    env["PYTHONPATH"] = (
+        skill_root_dir + os.pathsep + env.get("PYTHONPATH", "")
+    )
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=180, check=False, env=env,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        env_error(f"dep_currency_check subprocess failed: {e}")
+        return  # unreachable; env_error exits
+
+    rc = proc.returncode
+    if rc == 0:
+        ok("G_DEP_CURRENCY",
+            "no critical findings in production direct deps")
+    elif rc == 1:
+        fail(
+            "G_DEP_CURRENCY",
+            "critical CVE in production direct dep with fix available "
+            f"(stdout truncated: {proc.stdout[:200]})"
+        )
+    elif rc == 2:
+        # Soft findings only; advisory mode — don't fail
+        ok("G_DEP_CURRENCY",
+            "soft findings only (advisory mode, never blocks)")
+    elif rc == 4:
+        if allow_deferred:
+            ok("G_DEP_CURRENCY",
+                "offline + cold cache, deferred allowed")
+        else:
+            sys.stderr.write(
+                "G_DEP_CURRENCY_DEFERRED: offline + cold cache; "
+                "retry online or pass --allow-deferred\n"
+            )
+            sys.exit(4)
+    elif rc == 3:
+        env_error(
+            f"dep_currency_check environmental error: "
+            f"{proc.stderr[:300] or 'unknown'}"
+        )
+    else:
+        env_error(
+            f"dep_currency_check unexpected rc={rc}: "
+            f"stdout={proc.stdout[:200]!r} stderr={proc.stderr[:200]!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
 
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
     if len(argv) < 2:
-        env_error("usage: gates.py G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE ...")
+        env_error(
+            "usage: gates.py "
+            "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY ..."
+        )
     gate = argv[1]
     positional: List[str] = []
     flags: Dict[str, str] = {}
@@ -2495,6 +2592,24 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
                 env_error("--map requires a value")
             flags["map"] = argv[i + 1]
             i += 2
+            continue
+        if a == "--mode":
+            # G_DEP_CURRENCY mode (advisory|strict)
+            if i + 1 >= len(argv):
+                env_error("--mode requires a value")
+            flags["dep_currency_mode"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--changed-manifests":
+            # G_DEP_CURRENCY: comma-separated paths
+            if i + 1 >= len(argv):
+                env_error("--changed-manifests requires a value")
+            flags["dep_currency_changed"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--allow-deferred":
+            flags["dep_currency_allow_deferred"] = "1"
+            i += 1
             continue
         positional.append(a)
         i += 1
@@ -2581,6 +2696,27 @@ def main(argv: Optional[List[str]] = None) -> None:
         detection_point = flags.get("detection_point", "wp_boundary")
         check_G_CONTRACT_SCOPE(
             project_root, map_path, requesting_wp, detection_point
+        )
+    elif gate == "G_DEP_CURRENCY":
+        # CLI: gates.py G_DEP_CURRENCY <project_root>
+        #                                 [--mode advisory|strict]
+        #                                 [--changed-manifests <list>]
+        #                                 [--allow-deferred]
+        # Exit codes:
+        #   0 = pass (no findings meeting strict criteria, OR --mode advisory)
+        #   2 = fail (strict criteria met: critical CVE in production direct
+        #             dep with known fix AND --mode strict)
+        #   3 = environmental error
+        #   4 = deferred-only findings (offline + cold cache for required packages)
+        if len(positional) < 1:
+            env_error("G_DEP_CURRENCY requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        mode = flags.get("dep_currency_mode", "advisory")
+        changed = flags.get("dep_currency_changed", "")
+        allow_deferred = "dep_currency_allow_deferred" in flags
+        check_G_DEP_CURRENCY(
+            project_root, mode=mode, changed_manifests=changed,
+            allow_deferred=allow_deferred,
         )
     else:
         env_error(f"unknown gate: {gate}")
