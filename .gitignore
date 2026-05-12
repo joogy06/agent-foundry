@@ -30,6 +30,8 @@ build/
 
 # Config-driven exclusions
 skills/entrepreneur-webstore/
+skills/vs-code-foundry/
+skills/vs-code-copilot-foundry/
 skills/_meta/archive/
 skills/_meta/evals/
 skills/_meta/creation-log.jsonl/
