@@ -34,6 +34,7 @@ class Finding:
     gap: Gap
     cves: tuple
     blocks_build: bool
+    api_delta: Optional[dict] = None   # set when gap is major_behind/deprecated and changelog fetch succeeded
 
 
 GroundingMode = Literal["full", "internal-only", "offline-cold-cache"]
@@ -148,6 +149,7 @@ def _finding_to_dict(f: Finding) -> dict:
         "cves": [_cve_to_dict(c) for c in f.cves],
         "blocks_build": f.blocks_build,
         "recommended_action": _recommend_action(g.gap_kind, f.cves),
+        "api_delta": f.api_delta,
     }
 
 
@@ -220,6 +222,34 @@ def render_markdown(report: Report) -> str:
                 f"{'YES' if f.blocks_build else 'no'} |"
             )
         lines.append("")
+        # API-delta detail blocks (only for findings that have it)
+        deltas = [f for f in report.findings if f.api_delta]
+        if deltas:
+            lines.append("## API changes since declared version")
+            lines.append("")
+            for f in deltas:
+                d = f.api_delta or {}
+                versions = ", ".join(d.get("versions_in_range") or []) or "—"
+                lines.append(f"### `{f.dep.name}` ({d.get('from_version')} → {d.get('to_version')})")
+                lines.append(f"Source: {d.get('source', 'unknown')} · versions covered: {versions}")
+                breaking = d.get("breaking_lines") or []
+                if breaking:
+                    lines.append("")
+                    lines.append("**Breaking / deprecation hints (keyword-extracted):**")
+                    for ln in breaking:
+                        lines.append(f"- {ln}")
+                excerpt = (d.get("release_notes_excerpt") or "").strip()
+                if excerpt:
+                    lines.append("")
+                    lines.append("<details><summary>Release notes excerpt</summary>")
+                    lines.append("")
+                    lines.append("```")
+                    lines.append(excerpt)
+                    lines.append("```")
+                    if d.get("truncated"):
+                        lines.append("_(truncated — fetch the full release notes from the repo for the complete diff)_")
+                    lines.append("</details>")
+                lines.append("")
     if report.advisories:
         lines.append("## Advisories")
         lines.append("")

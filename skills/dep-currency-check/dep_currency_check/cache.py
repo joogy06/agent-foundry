@@ -32,6 +32,7 @@ TTL = {
     "vulns": 2 * 3600,
     "deprecation": 7 * 24 * 3600,
     "wrappers": 2 * 3600,
+    "changelog": 7 * 24 * 3600,   # release notes are immutable once published
 }
 
 
