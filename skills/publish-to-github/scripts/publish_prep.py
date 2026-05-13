@@ -818,6 +818,29 @@ def main():
         print('  (no bundle files configured)')
         copied_bundle = []
 
+    # --- Phase 3b: re-apply scrubs to bundled files ---
+    # Scrubs in Phase 2 only see files copied in Phase 1 (source.subdirs).
+    # Run scrubs again now so rules targeting bundled files (e.g. "CLAUDE.md"
+    # at staging root) can take effect.
+    bundle_only_scrubs = [
+        s for s in config['scrubs']
+        if (staging_dir / s['file']).exists()
+        and not any(
+            s['file'].startswith(sd + '/') or s['file'] == sd
+            for sd in config['source'].get('subdirs', ['skills', 'agents', 'commands'])
+        )
+    ]
+    if bundle_only_scrubs:
+        header('Phase 3b: re-apply scrubs to bundled files')
+        rerun = apply_scrubs(staging_dir, bundle_only_scrubs)
+        for r in rerun:
+            if r['status'] == 'modified':
+                print(green(f'  ✓ {r["file"]}'))
+                for n in r['notes']:
+                    print(f'      {n}')
+            elif r['status'] == 'no-change':
+                print(f'  = {r["file"]} (no changes)')
+
     # --- Phase 4: write .gitignore ---
     header('Phase 4: write .gitignore')
     gitignore_content = config.get('gitignore') or GITIGNORE_DEFAULT

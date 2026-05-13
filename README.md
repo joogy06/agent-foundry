@@ -23,37 +23,77 @@ Skills are auto-discovered by Claude Code from frontmatter descriptions — you 
 git clone https://github.com/<your-username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Run the installer (asks a few questions; symlinks by default)
-python3 install.py
-# or, on Linux/macOS:   ./install.sh
-# or, on Windows:       install.cmd
+# 2. Bootstrap a full environment (recommended for first-time setup)
+python3 bootstrap-environment.py
+# or, on Windows:  pwsh -NoProfile -NonInteractive -File bootstrap-environment.ps1
 ```
 
-The installer asks:
-1. **Which CLIs?** — Claude Code, Gemini, GitHub Copilot, or all
-2. **Mode?** — `link` (symlinks; agent-foundry edits propagate; recommended) or `move` (copy; independent)
-3. **Path overrides** — useful on enterprise machines where `~/.claude` etc. are non-standard
+The bootstrap orchestrator runs `install.py` plus 9 idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
 
-It then:
-- For **Claude Code**: places skills + agents + commands under `~/.claude/skills/`, `~/.claude/agents/`, and `~/.claude/commands/`
-- For **Gemini CLI**: runs `gemini skills link <path>` per skill (or falls back to direct symlink if `gemini` isn't on PATH)
-- For **GitHub Copilot**: writes a cross-tool `~/.claude/AGENTS.md` bridge file (Copilot has no native skill concept) and prints VS Code per-project setup instructions
+| Step | What happens |
+|---|---|
+| 1 | `install.py` places skills / agents / commands under `~/.claude/` |
+| 2 | Places `~/.claude/CLAUDE.md` (global instructions) |
+| 3 | Symlinks `~/.claude/AGENTS.md → CLAUDE.md` (GitHub Copilot bridge) |
+| 4 | Mirrors `pa-server/` into `~/.claude/pa-server/` (MCP server for the `pa` agent) |
+| 5 | Merges canonical `SessionStart` hooks into `~/.claude/settings.json` (preserves any you already have; backs the old file up to `.bak`) |
+| 6 | Writes `~/.claude/policy-limits.json` with conservative defaults, mode `0600` |
+| 7 | Symlinks `~/.claude/bin/claude-observe` for the process-observation skill |
+| 8 | Mirrors skills into `~/.codex/skills/*` (only if `codex` CLI is on PATH) |
+| 9 | Pins Gemini model to `gemini-3.1-pro-preview` in `~/.gemini/settings.json` (only if file exists) |
+| 10 | Prints next-step guidance |
 
-### Non-interactive install
+After bootstrap, two more steps inside Claude Code finish the setup:
+
+```
+# Inside Claude Code:
+/setup                                               # interactive permissions upgrade
+                                                      # (conservative -> autonomous)
+```
 
 ```bash
-python3 install.py --noninteractive                       # Claude + link
-python3 install.py --target claude,gemini --mode link
-python3 install.py --target all --mode move --force       # full copy, overwrite
-python3 install.py --claude-home /opt/claude              # custom path
-python3 install.py --help                                 # all flags
+# Per working repo you care about:
+bash scripts/install-pre-push-hook.sh /path/to/repo  # POSIX
+# or Windows:
+pwsh -NoProfile -NonInteractive -File \
+    scripts\install-pre-push-hook.ps1 -TargetRepo C:\path\to\repo
 ```
+
+The pre-push hook runs a secrets scanner (live API keys, PEM private keys, AWS credentials, JWTs, inline tokens, etc.) before every `git push`. Critical/high findings block the push; medium/low advisory hits print but don't block. Override per-push with `git push --no-verify`.
+
+### Bootstrap flags
+
+```bash
+python3 bootstrap-environment.py --dry-run        # preview without writing
+python3 bootstrap-environment.py --force          # overwrite existing CLAUDE.md / pa-server / policy-limits
+python3 bootstrap-environment.py --skip-install   # don't run install.py
+python3 bootstrap-environment.py --skip-codex     # don't touch ~/.codex/
+python3 bootstrap-environment.py --skip-gemini    # don't touch ~/.gemini/settings.json
+python3 bootstrap-environment.py --claude-home /opt/claude   # custom config root
+python3 bootstrap-environment.py --help
+```
+
+### Minimal install (skills + agents + commands only)
+
+If you already have a CLAUDE.md, hooks, and other host config and just want the skill content placed:
+
+```bash
+python3 install.py                                       # interactive
+python3 install.py --noninteractive                      # Claude + link
+python3 install.py --target claude,gemini --mode link
+python3 install.py --target all --mode move --force      # full copy, overwrite
+python3 install.py --claude-home /opt/claude             # custom path
+python3 install.py --help                                # all flags
+```
+
+`install.py` is what `bootstrap-environment.py` calls under the hood for step 1, so the flags are pass-through-able via `--install-arg`.
 
 ### Windows enterprise notes
 
-- `install.cmd` is the entry point — it tries `python` / `python3` on PATH first, then falls back to `install.ps1` (PowerShell native, Claude install only).
-- The PowerShell call uses `-ExecutionPolicy Bypass` so it works on locked-down machines that block dot-sourcing.
-- Symbolic links require admin **or** Developer Mode. If symlinks fail, the installer transparently falls back to copy.
+- `bootstrap-environment.ps1` is enterprise-hardened — `#Requires -Version 5.1`, `[CmdletBinding()]` with named switch parameters, **no** `-ExecutionPolicy Bypass`, no dot-source, no `-Command`. Invoke with `pwsh -NoProfile -NonInteractive -File bootstrap-environment.ps1`.
+- The bootstrap script probes `py` (PEP-397 launcher) → `python3` → `python` in that order and runs the orchestrator with whichever resolves first.
+- For backward compatibility, the older `install.cmd` / `install.ps1` entry points are still present. They use `-ExecutionPolicy Bypass` for compatibility with very locked-down machines; prefer `bootstrap-environment.ps1` on modern setups.
+- Symbolic links on Windows require **admin** or **Developer Mode**. If symlinks fail, the bootstrap falls back to copy and prints a warning (drift risk if you later edit `CLAUDE.md` — the `AGENTS.md` copy won't update).
 
 ### Manual install (alternative)
 
@@ -63,9 +103,12 @@ If you'd rather not run a script:
 cp -r skills/* ~/.claude/skills/
 cp -r agents/*.md ~/.claude/agents/
 cp -r commands/*.md ~/.claude/commands/
+cp CLAUDE.md ~/.claude/CLAUDE.md
+ln -s ~/.claude/CLAUDE.md ~/.claude/AGENTS.md
+cp -r pa-server ~/.claude/pa-server
 ```
 
-On next session, Claude auto-discovers everything in `~/.claude/skills/`, `~/.claude/agents/`, and `~/.claude/commands/`. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
+You'll then need to add the `SessionStart` hooks to `~/.claude/settings.json` by hand — see the bootstrap script's source for the canonical entries. For the full multi-model experience with Codex and Gemini as second-opinion models, see [Dependencies](docs/dependencies/README.md).
 
 ---
 
