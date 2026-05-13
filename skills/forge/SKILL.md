@@ -202,7 +202,18 @@ The lead handles all user interaction:
 Agent(subagent_type="general-purpose"):
 "You are exploring [APPROACH NAME] for [TASK].
 Project context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
-Produce: 1. How it works  2. Pros/cons  3. Effort estimate  4. Risks"
+Produce: 1. How it works  2. Pros/cons  3. Effort estimate  4. Risks
+
+Version awareness (REQUIRED for every library / framework / service you propose):
+- Name the exact version you are designing against (e.g. 'pandas 2.2', not 'pandas')
+- If shared_context.dependency_health flags the lib as stale (gap_kind in
+  {major_behind, deprecated}), READ its api_delta block before choosing.
+- If you are using APIs you remember from your training-era version, state
+  whether they still exist in the target version. If unsure, request a
+  follow-up codex / web-research call rather than guessing.
+- Note any breaking changes / deprecations / new functionality that affect
+  the approach. A version mismatch between your design and the installed
+  version is a HIGH risk — surface it explicitly."
 
 # UX Agent (for UI-facing work)
 Agent(subagent_type="multi-platform-apps:ui-ux-designer"):

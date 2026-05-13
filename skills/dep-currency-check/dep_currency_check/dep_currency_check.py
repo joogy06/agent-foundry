@@ -503,6 +503,39 @@ def main(argv: Optional[list] = None) -> int:
                 "grounding_mode: offline-cold-cache — all version queries deferred"
             )
 
+    # Enrich findings with api_delta for major-version-stale / deprecated
+    # entries (advisory v1.1; no-op in offline/airgapped mode).
+    if not args.offline and grounding_mode != "offline-cold-cache":
+        try:
+            from .changelog import discover_repo_url, fetch_api_delta
+            enriched = []
+            for f in all_findings:
+                if (
+                    f.gap.gap_kind in ("major_behind", "deprecated")
+                    and not f.dep.is_transitive
+                    and f.gap.latest_stable
+                    and f.gap.declared_resolves_to
+                ):
+                    repo_url = discover_repo_url(f.dep.name, f.dep.ecosystem)
+                    delta = fetch_api_delta(
+                        package=f.dep.name,
+                        ecosystem=f.dep.ecosystem,
+                        repo_url=repo_url,
+                        from_version=f.gap.declared_resolves_to,
+                        to_version=f.gap.latest_stable,
+                        cache=cache,
+                    )
+                    if delta is not None:
+                        enriched.append(Finding(
+                            dep=f.dep, gap=f.gap, cves=f.cves,
+                            blocks_build=f.blocks_build, api_delta=delta,
+                        ))
+                        continue
+                enriched.append(f)
+            all_findings = enriched
+        except Exception as e:  # noqa: BLE001 — advisory; never fail the run
+            advisories.append(f"changelog enrichment skipped: {type(e).__name__}: {e}")
+
     # Assemble report
     report = assemble_report(
         project_root, manifests, all_findings,

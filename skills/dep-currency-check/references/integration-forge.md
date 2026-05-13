@@ -37,8 +37,40 @@ project_context:
         latest_stable: "2.32.3"
         cves: [CVE-2024-35195]
         impact: "Design proposing new HTTP client code must not target requests <2.32.0"
+    api_delta_findings:                       # v1.1 — major_behind / deprecated only
+      - package: pandas
+        ecosystem: python
+        from_version: "1.5.3"
+        to_version: "2.2.3"
+        breaking_lines:
+          - "pandas 2.0.0: Series.append() removed"
+          - "pandas 2.0.0: deprecated get_option('compute.use_numexpr')"
+        repo_url: https://github.com/pandas-dev/pandas
     advisories: ["crates.io rate-limited; 3 packages cached >24h"]
 ```
+
+### `api_delta` field (v1.1)
+
+Per-finding optional block surfaced when `gap_kind in {major_behind, deprecated}` AND a GitHub repo URL is discoverable from the registry metadata. Today covers Python (PyPI `project_urls`), JavaScript (npm `repository.url`), and Rust (crates.io `repository`); other ecosystems gracefully degrade to `api_delta: null`.
+
+Shape:
+
+```json
+{
+  "source": "github_releases",
+  "repo_url": "https://github.com/<owner>/<repo>",
+  "from_version": "<declared>",
+  "to_version": "<latest>",
+  "versions_in_range": ["2.0.0", "2.1.0", "2.2.0"],
+  "breaking_lines": ["<package> <ver>: <keyword-extracted line>", ...],
+  "release_notes_excerpt": "## 2.0.0\n...",
+  "truncated": false
+}
+```
+
+Caps: ≤5 versions, ≤15 breaking lines, ≤3 KB total release-notes excerpt. Cached 7 days under the `changelog` namespace.
+
+**Why this matters for design agents**: when the AI's training-era knowledge of a library lags its current API surface, blind reuse of remembered patterns ships dead/dropped/changed APIs. The forge approach-agent prompt now mandates version-awareness — each approach agent must name the version it designs against and consult `api_delta` if the lib is flagged stale. See `~/.claude/skills/forge/SKILL.md` "Approach Agent (Claude)" template.
 
 ## Skip rules forge MUST honor
 
