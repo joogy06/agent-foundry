@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lineage Report — {{ project_name | e }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; line-height: 1.4; color: #222; }
+    header { background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%); color: white; padding: 16px 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { margin: 0; font-size: 1.4em; font-weight: 600; }
+    .meta { font-size: 0.85em; opacity: 0.9; margin-top: 4px; }
+    main { padding: 16px 24px; max-width: 1400px; margin: 0 auto; }
+    .tiles { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+    .tile { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; min-width: 120px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .tile .label { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+    .tile .value { font-size: 1.6em; font-weight: 600; color: #222; margin-top: 4px; }
+    .tile.grounded .value { color: #1a73e8; }
+    .tile.inferred .value { color: #f9ab00; }
+    .tile.speculative .value { color: #d93025; }
+    section { margin: 24px 0; }
+    h2 { font-size: 1.2em; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; margin-top: 32px; }
+    #dag-container { width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
+    .controls { margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+    .controls button { padding: 6px 14px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; font-size: 0.9em; }
+    .controls button:hover { background: #f0f0f0; }
+    .controls button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+    .banner { background: #fff3cd; border: 1px solid #ffeeba; padding: 10px 14px; margin: 12px 0; border-radius: 4px; color: #856404; font-size: 0.9em; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; background: white; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
+    th { background: #f5f5f5; font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; }
+    th:hover { background: #ebebeb; }
+    th::after { content: " \25B4\25BE"; opacity: 0.4; font-size: 0.7em; }
+    th.sorted-asc::after { content: " \25B4"; opacity: 1; }
+    th.sorted-desc::after { content: " \25BE"; opacity: 1; }
+    tr:hover td { background: #fafafa; }
+    .conf-grounded { color: #1a73e8; font-weight: 500; }
+    .conf-inferred { color: #f9ab00; font-weight: 500; }
+    .conf-speculative { color: #d93025; font-weight: 500; }
+    .downloads { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .downloads a { padding: 6px 14px; border: 1px solid #1a73e8; color: #1a73e8; text-decoration: none; border-radius: 4px; font-size: 0.9em; }
+    .downloads a:hover { background: #1a73e8; color: white; }
+    details { margin: 8px 0; }
+    summary { cursor: pointer; padding: 6px 0; font-weight: 500; }
+    .table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
+    code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+    footer { padding: 16px 24px; color: #888; font-size: 0.85em; border-top: 1px solid #eee; margin-top: 32px; }
+  </style>
+</head>
+<body data-scan-id="{{ run_id | e }}">
+  <header>
+    <h1>Lineage Report — {{ project_name | e }}</h1>
+    <div class="meta">Scan: {{ scan_started_at | e }} | Run: {{ run_id | e }} | Extractor: {{ extractor_id | e }} {{ extractor_version | e }} | OL Spec: {{ openlineage_spec_version | e }}</div>
+  </header>
+  <main>
+    <section>
+      <h2>Summary</h2>
+      <div class="tiles">
+        <div class="tile"><div class="label">Datasets</div><div class="value">{{ counts.datasets }}</div></div>
+        <div class="tile"><div class="label">Jobs</div><div class="value">{{ counts.jobs }}</div></div>
+        <div class="tile"><div class="label">Edges</div><div class="value">{{ counts.edges }}</div></div>
+        <div class="tile"><div class="label">Chunked Files</div><div class="value">{{ counts.chunked_files }}</div></div>
+        <div class="tile grounded"><div class="label">Grounded</div><div class="value">{{ counts.grounded }}</div></div>
+        <div class="tile inferred"><div class="label">Inferred</div><div class="value">{{ counts.inferred }}</div></div>
+        <div class="tile speculative"><div class="label">Speculative</div><div class="value">{{ counts.speculative }}</div></div>
+      </div>
+    </section>
+
+    {% if banner_cdn_fallback %}
+    <div class="banner">CDN fallback in use: cytoscape.min.js loaded from unpkg.com. Run <code>scripts/install_vendor.sh</code> for air-gap-safe deployments.</div>
+    {% endif %}
+
+    <section>
+      <h2>Lineage DAG</h2>
+      <div class="controls">
+        <button id="layout-cose" class="active">Layout: cose-bilkent</button>
+        <button id="layout-dagre">Layout: dagre</button>
+        <button id="filter-all" class="active">All</button>
+        <button id="filter-grounded">Grounded only</button>
+        <button id="filter-no-spec">Hide speculative</button>
+      </div>
+      <div id="dag-container"></div>
+    </section>
+
+    <section>
+      <h2>Datasets ({{ counts.datasets }})</h2>
+      <div class="table-wrap">
+        <table id="datasets-table">
+          <thead><tr><th>Namespace</th><th>Name</th><th>Kind</th><th>Edge count</th></tr></thead>
+          <tbody>
+          {% for ds in datasets %}
+            <tr><td>{{ ds.namespace | e }}</td><td>{{ ds.name | e }}</td><td>{{ ds.kind | e }}</td><td>{{ ds.edge_count }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Jobs ({{ counts.jobs }})</h2>
+      <div class="table-wrap">
+        <table id="jobs-table">
+          <thead><tr><th>Namespace</th><th>Name</th><th>Kind</th><th>Inputs</th><th>Outputs</th></tr></thead>
+          <tbody>
+          {% for j in jobs %}
+            <tr><td>{{ j.namespace | e }}</td><td>{{ j.name | e }}</td><td>{{ j.kind | e }}</td><td>{{ j.input_count }}</td><td>{{ j.output_count }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Edges ({{ counts.edges }})</h2>
+      <div class="table-wrap">
+        <table id="edges-table">
+          <thead><tr><th>Source dataset</th><th>Target job</th><th>Edge kind</th><th>Confidence</th><th>Evidence</th></tr></thead>
+          <tbody>
+          {% for e in edges %}
+            <tr>
+              <td>{{ e.source_dataset.namespace | e }}/{{ e.source_dataset.name | e }}</td>
+              <td>{{ e.target_job.namespace | e }}/{{ e.target_job.name | e }}</td>
+              <td>{{ e.edge_kind | e }}</td>
+              <td class="conf-{{ e.confidence | e }}">{{ e.confidence | e }}</td>
+              <td><code>{{ e.source_file | e }}:{{ e.evidence_line_start | e }}</code></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Downloads</h2>
+      <div class="downloads">
+        <a href="openlineage.ndjson">openlineage.ndjson</a>
+        <a href="openlineage.json">openlineage.json</a>
+        <a href="lineage_edges.csv">lineage_edges.csv</a>
+        <a href="manifest.json">manifest.json</a>
+        <a href="report.md">report.md</a>
+      </div>
+    </section>
+
+    {% if gaps_by_file %}
+    <section>
+      <h2>Gaps by file</h2>
+      {% for f in gaps_by_file %}
+      <details>
+        <summary>{{ f.file_path | e }} ({{ f.gap_count }} gaps)</summary>
+        <ul>
+        {% for g in f.gaps %}
+          <li><code>line {{ g.line | e }}</code>: <strong>{{ g.kind | e }}</strong> — {{ g.description | e }}</li>
+        {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </main>
+
+  <footer>
+    Generated by <code>lineage-extract-static</code> | OpenLineage Spec {{ openlineage_spec_version | e }} | Workspace tree hash: <code>{{ workspace_tree_hash | e }}</code>
+  </footer>
+
+  {% if cytoscape_src %}
+  <script src="{{ cytoscape_src | e }}"></script>
+  {% if dagre_src %}<script src="{{ dagre_src | e }}"></script>{% endif %}
+  {% if cytoscape_layout_src %}<script src="{{ cytoscape_layout_src | e }}"></script>{% endif %}
+  <script>
+    (function() {
+      // Embedded Cytoscape elements (escaped JSON):
+      var elements = {{ cytoscape_elements_json | safe }};
+
+      var cy = cytoscape({
+        container: document.getElementById('dag-container'),
+        elements: elements,
+        layout: { name: 'grid' },
+        style: [
+          { selector: 'node[kind="dataset"]', style: { 'background-color': '#4285f4', 'shape': 'rectangle', 'label': 'data(label)', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '11px', 'width': 'label', 'padding': '6px' }},
+          { selector: 'node[kind="job"]', style: { 'background-color': '#34a853', 'shape': 'round-rectangle', 'label': 'data(label)', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '11px', 'width': 'label', 'padding': '6px' }},
+          { selector: 'edge[confidence="grounded"]', style: { 'line-color': '#1a73e8', 'target-arrow-color': '#1a73e8', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'width': 2 }},
+          { selector: 'edge[confidence="inferred"]', style: { 'line-color': '#f9ab00', 'target-arrow-color': '#f9ab00', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'line-style': 'dashed', 'width': 2 }},
+          { selector: 'edge[confidence="speculative"]', style: { 'line-color': '#d93025', 'target-arrow-color': '#d93025', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'line-style': 'dotted', 'width': 1.5 }}
+        ]
+      });
+      try {
+        cy.layout({ name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true }).run();
+      } catch (err) {
+        cy.layout({ name: 'grid' }).run();
+      }
+      document.getElementById('layout-cose').addEventListener('click', function() {
+        try { cy.layout({ name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true }).run(); } catch(e) { cy.layout({name:'grid'}).run(); }
+      });
+      document.getElementById('layout-dagre').addEventListener('click', function() {
+        try { cy.layout({ name: 'dagre', rankDir: 'LR' }).run(); } catch(e) { cy.layout({name:'grid'}).run(); }
+      });
+      document.getElementById('filter-all').addEventListener('click', function() {
+        cy.elements().style('display', 'element');
+      });
+      document.getElementById('filter-grounded').addEventListener('click', function() {
+        cy.edges('[confidence != "grounded"]').style('display', 'none');
+        cy.edges('[confidence = "grounded"]').style('display', 'element');
+      });
+      document.getElementById('filter-no-spec').addEventListener('click', function() {
+        cy.edges('[confidence = "speculative"]').style('display', 'none');
+        cy.edges('[confidence != "speculative"]').style('display', 'element');
+      });
+
+      // Table sorting
+      ['datasets-table', 'jobs-table', 'edges-table'].forEach(function(tableId) {
+        var t = document.getElementById(tableId);
+        if (!t) return;
+        var headers = t.querySelectorAll('th');
+        headers.forEach(function(h, idx) {
+          h.addEventListener('click', function() {
+            var tbody = t.querySelector('tbody');
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            var asc = !h.classList.contains('sorted-asc');
+            headers.forEach(function(o){ o.classList.remove('sorted-asc','sorted-desc'); });
+            h.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+            rows.sort(function(a, b) {
+              var av = a.cells[idx].textContent.trim();
+              var bv = b.cells[idx].textContent.trim();
+              var an = parseFloat(av), bn = parseFloat(bv);
+              if (!isNaN(an) && !isNaN(bn)) { return asc ? an - bn : bn - an; }
+              return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+            rows.forEach(function(r){ tbody.appendChild(r); });
+          });
+        });
+      });
+    })();
+  </script>
+  {% else %}
+  <script>
+    document.getElementById('dag-container').innerHTML = '<div style="padding:24px;text-align:center;color:#666">DAG rendering unavailable: cytoscape.min.js not loaded (air-gap mode). See <a href="report.md">report.md</a> for the Mermaid summary graph.</div>';
+  </script>
+  {% endif %}
+</body>
+</html>

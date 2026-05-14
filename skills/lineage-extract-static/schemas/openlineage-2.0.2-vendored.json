@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openlineage.io/spec/2-0-2/OpenLineage.json",
+  "title": "OpenLineage",
+  "description": "Vendored copy of the OpenLineage 2.0.2 base spec (https://openlineage.io/spec/2-0-2/OpenLineage.json). Captures DatasetEvent + JobEvent + RunEvent shapes used by lineage-extract-static. The full upstream schema includes additional facet definitions; this vendored copy implements the core event-type discriminator and required fields. Bumping the pin = update this file + scripts/validate_ol.py constants + history.md entry. Re-fetch when bumping.",
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "required": ["eventTime", "producer", "schemaURL"],
+      "properties": {
+        "eventTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The time the event occurred at. RFC 3339 / ISO 8601 with millisecond precision."
+        },
+        "producer": {
+          "type": "string",
+          "format": "uri",
+          "description": "URI identifying the producer of this event. E.g. 'urn:lineage:static-scan' for lineage-extract-static."
+        },
+        "schemaURL": {
+          "type": "string",
+          "format": "uri",
+          "description": "URI of the JSON schema for this event. MUST equal the $id of the vendored OL spec, e.g. 'https://openlineage.io/spec/2-0-2/OpenLineage.json'."
+        }
+      }
+    },
+    "DatasetRef": {
+      "type": "object",
+      "required": ["namespace", "name"],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "description": "Namespace identifying the source system (e.g. 'postgres://dwh:5432/analytics', 'file://repo', 's3://bucket')."
+        },
+        "name": {
+          "type": "string",
+          "description": "Unique name within the namespace (e.g. 'public.users', 'data/landing/users.csv')."
+        },
+        "facets": {
+          "type": "object",
+          "description": "Custom dataset facets keyed by facet name. Each value is an object whose schema is defined by the facet's _producer + _schemaURL."
+        }
+      }
+    },
+    "InputDataset": {
+      "allOf": [
+        { "$ref": "#/definitions/DatasetRef" },
+        {
+          "type": "object",
+          "properties": {
+            "inputFacets": {
+              "type": "object",
+              "description": "Input-specific facets (e.g. dataVersion at read time)."
+            }
+          }
+        }
+      ]
+    },
+    "OutputDataset": {
+      "allOf": [
+        { "$ref": "#/definitions/DatasetRef" },
+        {
+          "type": "object",
+          "properties": {
+            "outputFacets": {
+              "type": "object",
+              "description": "Output-specific facets (e.g. outputStatistics row counts)."
+            }
+          }
+        }
+      ]
+    },
+    "Job": {
+      "type": "object",
+      "required": ["namespace", "name"],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "description": "Namespace identifying the job system (e.g. 'repo://my-project', 'airflow://prod')."
+        },
+        "name": {
+          "type": "string",
+          "description": "Unique name within the namespace (e.g. 'etl/load_users.py:main', 'load_users_dag')."
+        },
+        "facets": {
+          "type": "object",
+          "description": "Custom job facets. lineage-extract-static attaches 'staticAnalysis' facet (HARD-RULE 1) to every JobEvent."
+        }
+      }
+    },
+    "Run": {
+      "type": "object",
+      "required": ["runId"],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "RFC 4122 UUID identifying this run. For lineage-extract-static --with-static-run mode, this is uuid5(NAMESPACE_OID, workspace_tree_hash + scan_started_at) for deterministic idempotency."
+        },
+        "facets": {
+          "type": "object",
+          "description": "Run-level facets."
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/DatasetEvent" },
+    { "$ref": "#/definitions/JobEvent" },
+    { "$ref": "#/definitions/RunEvent" }
+  ],
+  "DatasetEvent": {
+    "type": "object",
+    "required": ["eventType", "eventTime", "producer", "schemaURL", "dataset"],
+    "additionalProperties": false,
+    "properties": {
+      "$schema": { "type": "string", "format": "uri" },
+      "eventType": { "const": "DATASET_EVENT" },
+      "eventTime": { "type": "string", "format": "date-time" },
+      "producer": { "type": "string", "format": "uri" },
+      "schemaURL": { "type": "string", "format": "uri" },
+      "dataset": { "$ref": "#/definitions/DatasetRef" }
+    }
+  },
+  "JobEvent": {
+    "type": "object",
+    "required": ["eventType", "eventTime", "producer", "schemaURL", "job"],
+    "additionalProperties": false,
+    "properties": {
+      "$schema": { "type": "string", "format": "uri" },
+      "eventType": { "const": "JOB_EVENT" },
+      "eventTime": { "type": "string", "format": "date-time" },
+      "producer": { "type": "string", "format": "uri" },
+      "schemaURL": { "type": "string", "format": "uri" },
+      "job": { "$ref": "#/definitions/Job" },
+      "inputs": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/InputDataset" }
+      },
+      "outputs": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/OutputDataset" }
+      }
+    }
+  },
+  "RunEvent": {
+    "type": "object",
+    "required": ["eventType", "eventTime", "producer", "schemaURL", "run", "job"],
+    "additionalProperties": false,
+    "properties": {
+      "$schema": { "type": "string", "format": "uri" },
+      "eventType": {
+        "enum": ["START", "RUNNING", "COMPLETE", "ABORT", "FAIL", "OTHER"]
+      },
+      "eventTime": { "type": "string", "format": "date-time" },
+      "producer": { "type": "string", "format": "uri" },
+      "schemaURL": { "type": "string", "format": "uri" },
+      "run": { "$ref": "#/definitions/Run" },
+      "job": { "$ref": "#/definitions/Job" },
+      "inputs": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/InputDataset" }
+      },
+      "outputs": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/OutputDataset" }
+      }
+    }
+  },
+  "_vendored_metadata": {
+    "vendored_from": "https://openlineage.io/spec/2-0-2/OpenLineage.json",
+    "vendored_at": "2026-05-14",
+    "vendored_version": "2.0.2",
+    "note": "This is a MINIMAL spec-compliant copy capturing the JobEvent + DatasetEvent + RunEvent shapes lineage-extract-static emits. Full upstream schema includes facet sub-schemas (SchemaDatasetFacet, ColumnLineageDatasetFacet, etc.) not used at static-extract time. When facets are added in v1.1, vendor the full upstream schema and bump the pin via deliberate constants change + re-test + history entry per HARD-RULE."
+  }
+}

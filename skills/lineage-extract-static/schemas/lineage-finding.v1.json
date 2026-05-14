@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/lineage-finding.v1.json",
+  "title": "lineage-finding.v1",
+  "description": "S033 lineage-extract-static per-chunk emission from the in-session AI CLI's LLM analysis. Captures data-flow edges (reads_from / writes_to / schedules / depends_on) with confidence classification (grounded / inferred / speculative) and gap[] entries for honest disclosure of static-analysis lossiness. Used at chunk-level (single chunk of a file) AND at file-level (rollup from accumulate after merge-chunks-within-file). Validated by scripts/validate_finding.py before accumulation and before OL emission.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "extractor_id",
+    "extractor_version",
+    "file_path",
+    "file_sha256",
+    "chunk_id",
+    "start_line",
+    "end_line",
+    "start_byte",
+    "end_byte",
+    "boundary_status",
+    "edges",
+    "gaps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "extractor_id": { "const": "lineage-extract-static" },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "file_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative path of the analyzed file. Path separator is forward slash on all platforms."
+    },
+    "file_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 of the entire file content (NOT the chunk)."
+    },
+    "chunk_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed chunk number within the file. 1 always for single-chunk (inline) files; 0 reserved for file-level rollups produced by accumulate."
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed start line of this chunk within the file."
+    },
+    "end_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed end line of this chunk within the file (inclusive)."
+    },
+    "start_byte": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "0-indexed start byte of this chunk within the file."
+    },
+    "end_byte": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "0-indexed end byte of this chunk within the file (exclusive, like Python slice end)."
+    },
+    "boundary_status": {
+      "enum": ["complete", "partial_start", "partial_end", "partial_both"],
+      "description": "Whether the chunk ends mid-statement. 'complete' means clean boundaries on both ends. 'partial_start' means the chunk begins inside a statement that started earlier. 'partial_end' means a statement was open at chunk end. 'partial_both' means both. Used by merge-chunks-within-file prompt to pair adjacent partials. Always 'complete' for inline (single-chunk) files."
+    },
+    "edges": {
+      "type": "array",
+      "description": "Data-flow edges extracted from the chunk. Empty array is valid (chunk contained no lineage-relevant statements).",
+      "items": {
+        "type": "object",
+        "required": [
+          "edge_kind",
+          "source_dataset",
+          "target_job",
+          "evidence_line_start",
+          "evidence_line_end",
+          "evidence_snippet",
+          "confidence",
+          "confidence_reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "edge_kind": {
+            "enum": ["reads_from", "writes_to", "schedules", "depends_on"],
+            "description": "Closed enum. reads_from = job consumes dataset as input. writes_to = job produces dataset as output. schedules = scheduler triggers job. depends_on = job has downstream-task dependency."
+          },
+          "source_dataset": {
+            "type": "object",
+            "required": ["namespace", "name", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "minLength": 1,
+                "description": "URI scheme + authority. Examples: 'postgres://dwh:5432/analytics', 'file://repo', 's3://acme-data'. Resolved via 3-step waterfall in resolve-identity prompt BEFORE OL emission."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "In-namespace identifier. Examples: 'public.users' (SQL), 'data/landing/users.csv' (filesystem), 'tasks/load_users' (DAG task)."
+              },
+              "kind": {
+                "enum": ["table", "file", "topic", "endpoint", "queue"],
+                "description": "Dataset taxonomy for renderer node-shape selection."
+              }
+            }
+          },
+          "target_job": {
+            "type": "object",
+            "required": ["namespace", "name", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repo-relative path or DAG id. Examples: 'repo://my-project', 'airflow://prod/users_dag'."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Symbol or task id within the namespace. Examples: 'etl/load_users.py:main', 'load_users_task'."
+              },
+              "kind": {
+                "enum": ["script", "dag_task", "dsx_job", "spark_app", "stored_procedure"],
+                "description": "Job taxonomy. Maps to OL Job.facets at emission time."
+              }
+            }
+          },
+          "evidence_line_start": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed line number where evidence begins (relative to the file, not the chunk)."
+          },
+          "evidence_line_end": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed line number where evidence ends (relative to the file, not the chunk; inclusive)."
+          },
+          "evidence_snippet": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Verbatim text from the file showing the lineage statement (e.g. `df = pd.read_csv(USERS_PATH)`). MUST NOT contain credentials per HARD-RULE 4 — LLM is instructed to omit creds, and redact.py provides a second pass."
+          },
+          "confidence": {
+            "enum": ["grounded", "inferred", "speculative"],
+            "description": "Bright-line classifier per HARD-RULE 2. grounded = literal string + symbols resolve in local context. inferred = name-resolution heuristic (env-var resolved, CTE alias). speculative = string interpolation OR unresolved symbol OR SELECT * OR basename-only match. f-string / .format() / %-format / env-var template = ALWAYS speculative."
+          },
+          "confidence_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "One-line explanation of why this confidence tier applies. Examples: 'literal string path', 'env-var resolved against .env', 'f-string interpolation within 5 lines', 'basename-only match'."
+          },
+          "boundary_issue": {
+            "type": "boolean",
+            "description": "True iff this edge was emitted from an unpaired partial chunk. accumulate.py sets this when boundary_matching predicate cannot pair partials; the edge is forced to speculative confidence. Optional; default false."
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Honest disclosure of points where static analysis is fundamentally lossy. NOT errors — gaps say 'I saw something but cannot extract a confident edge'.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "line", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "dynamic_path",
+              "unresolved_symbol",
+              "obfuscated",
+              "binary_file",
+              "language_unsupported",
+              "oversized_file",
+              "redaction_applied"
+            ],
+            "description": "Closed enum. dynamic_path = f-string / template path. unresolved_symbol = name not resolvable in chunk. obfuscated = encoded / minified. binary_file = chunk_file detected non-text. language_unsupported = LLM has no extraction prompt for this format. oversized_file = file exceeded LINEAGE_HARD_FILE_LIMIT_MB. redaction_applied = redact.py replaced content."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed line of the gap site (file-relative, not chunk-relative)."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "One-line explanation. Examples: 'path = f\"{base_dir}/{filename}\" — interpolation', 'function arg resolved upstream, not in chunk', 'PE binary signature detected at offset 0'."
+          }
+        }
+      }
+    },
+    "by_confidence": {
+      "type": "object",
+      "description": "OPTIONAL counters surfaced by accumulate.py at file-level rollup. Sum of children edges grouped by confidence tier. Absent at chunk-level emission.",
+      "additionalProperties": false,
+      "properties": {
+        "grounded": { "type": "integer", "minimum": 0 },
+        "inferred": { "type": "integer", "minimum": 0 },
+        "speculative": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "by_kind": {
+      "type": "object",
+      "description": "OPTIONAL counters surfaced by accumulate.py at file-level rollup. Sum of children edges grouped by edge_kind.",
+      "additionalProperties": false,
+      "properties": {
+        "reads_from": { "type": "integer", "minimum": 0 },
+        "writes_to": { "type": "integer", "minimum": 0 },
+        "schedules": { "type": "integer", "minimum": 0 },
+        "depends_on": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "boundary_issues_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OPTIONAL count of edges with boundary_issue=true. Surfaced by accumulate.py at file-level rollup; absent at chunk-level."
+    }
+  }
+}
