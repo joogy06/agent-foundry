@@ -348,6 +348,7 @@ Profiling, load testing, query optimization, bottleneck analysis.
 - **[docs/dependencies/local-tools.md](docs/dependencies/local-tools.md)** — Claude Code CLI, Codex CLI, Gemini CLI, plugins, environment variables
 - **[docs/dependencies/mcp-servers.md](docs/dependencies/mcp-servers.md)** — Gemini CLI MCP, claude-in-chrome MCP, pa-server MCP
 - **[docs/dependencies/agent-graph.md](docs/dependencies/agent-graph.md)** — how agents interconnect, data contracts, minimal subsets
+- **[feedback-loop.md](feedback-loop.md)** — known compatibility issues + reporting template. **Read this first if you're installing on Windows / macOS / WSL / a container / an air-gapped host** — this collection was developed on a single Linux host and your environment may behave differently. Your bug report becomes the next user's starting point.
 
 ---
 
