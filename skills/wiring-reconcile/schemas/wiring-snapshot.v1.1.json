@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/wiring-snapshot.v1.1.json",
+  "title": "wiring-snapshot.v1.1",
+  "description": "Reconciled snapshot, single JSON. v1.1 (S032) extends v1 with an optional per-component intent block populated by intent-extract. Backward-compatible: v1.0 readers continue to parse v1.1 snapshots; v1.1 readers parse v1.0 snapshots (intent absent).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "snapshot_id", "snapshot_generation", "run_id",
+    "workspace_tree_hash", "generated_at", "generated_by",
+    "source_statuses", "edges"
+  ],
+  "properties": {
+    "schema_version": { "enum": ["1.0.0", "1.1.0"] },
+    "snapshot_id": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "snapshot_generation": { "type": "integer", "minimum": 1 },
+    "run_id": { "type": "string", "format": "uuid" },
+    "workspace_tree_hash": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "contract_map_hash": { "type": "string" },
+    "contract_map_revision": { "type": "integer" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generated_by": { "type": "string" },
+    "source_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": { "enum": ["succeeded", "failed", "partial", "skipped"] },
+          "edge_count": { "type": "integer", "minimum": 0 },
+          "last_seen_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edge_id", "src_component", "src_symbol", "dst_component",
+          "dst_symbol", "edge_kind", "status", "evidence",
+          "blocking_eligible"
+        ],
+        "properties": {
+          "edge_id": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+          "src_component": { "type": "string" },
+          "src_symbol":    { "type": "string" },
+          "dst_component": { "type": "string" },
+          "dst_symbol":    { "type": "string" },
+          "edge_kind":     { "type": "string" },
+          "callsite_refs": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "status": { "enum": ["live", "stale", "orphan", "suppressed"] },
+          "blocking_eligible": { "type": "boolean" },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["evidence_source", "extractor_id", "last_seen_at", "workspace_tree_hash"],
+              "properties": {
+                "evidence_source": { "enum": ["static_extract", "agent_asserted", "manual"] },
+                "extractor_id": { "type": "string" },
+                "extractor_version": { "type": "string" },
+                "last_seen_at": { "type": "string", "format": "date-time" },
+                "workspace_tree_hash": { "type": "string" },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          },
+          "last_seen_by_source": {
+            "type": "object",
+            "additionalProperties": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "inbound_edge_count":  { "type": "integer", "minimum": 0 },
+          "outbound_edge_count": { "type": "integer", "minimum": 0 },
+          "intent": {
+            "description": "S032 v1.1 — per-component intent reference; populated by intent-extract when run for evo. Absent in v1.0 snapshots and in v1.1 snapshots not associated with an evo run.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "function_class": {
+                "enum": [
+                  "auth", "rbac", "crud", "pricing", "routing", "transform",
+                  "io", "persistence", "cache", "queue", "scheduler",
+                  "observability", "config", "metric", "glue", "test_harness",
+                  "unknown"
+                ]
+              },
+              "one_line": {
+                "type": "string",
+                "description": "Copied verbatim from functional-intent.v1.intent.one_line"
+              },
+              "confidence_level": {
+                "enum": ["grounded", "interpretive", "degraded"]
+              },
+              "extract_run_id": {
+                "type": "string",
+                "description": "run_id from the intent-extract run that produced the source intent file (.wiring/runs/<id>/intent/<comp>.yaml)"
+              },
+              "cache_key": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "sha256 cache_key of the source functional-intent.v1.0 file"
+              },
+              "intent_path": {
+                "type": "string",
+                "description": "Relative path to the source intent file under .wiring/runs/<extract_run_id>/intent/"
+              },
+              "test_seed_count": { "type": "integer", "minimum": 0 },
+              "error_path_count": { "type": "integer", "minimum": 0 },
+              "evidence_edge_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm":     { "const": "HMAC-SHA256" },
+        "key_id":        { "type": "string" },
+        "signed_at":     { "type": "string", "format": "date-time" },
+        "signed_fields": { "type": "array", "items": { "type": "string" } },
+        "digest":        { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

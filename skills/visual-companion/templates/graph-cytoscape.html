@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Blast Radius — {{title}}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         margin: 0; background: #f7f7f9; color: #1a1a1f; }
+  header { background: #1a1a1f; color: #fff; padding: 12px 24px; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 500; }
+  header .subtitle { font-size: 13px; opacity: 0.65; margin-top: 4px; }
+  #graph { width: 100vw; height: calc(100vh - 110px); background: #fff; }
+  .banner { background: #fdf4d3; border-bottom: 1px solid #d8c266;
+            padding: 10px 24px; font-size: 13px; }
+  .banner.error { background: #f8d7da; border-color: #f5c2c7; }
+  .legend { position: absolute; right: 16px; top: 110px; background: #fff;
+            border: 1px solid #ddd; padding: 10px 14px; border-radius: 6px;
+            font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+  .legend h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; }
+  .legend .swatch { display: inline-block; width: 12px; height: 12px;
+                    border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Blast Radius — {{title}}</h1>
+  <div class="subtitle">{{subtitle}}</div>
+</header>
+<div id="truncation-banner" class="banner" style="display:none">
+  <strong>Truncated:</strong> the call graph exceeded the edge cap. Showing
+  the first <span id="edge-count">0</span> edges of <span id="max-edges">200</span>.
+</div>
+<div id="cdn-banner" class="banner error" style="display:none">
+  <strong>Offline note:</strong> vendor cytoscape.min.js missing —
+  falling back to CDN. If you're air-gapped, expect this page to fail.
+</div>
+<div id="graph"></div>
+<div class="legend">
+  <h4>Function class</h4>
+  <div><span class="swatch" style="background:#5b9bd5"></span>auth / rbac</div>
+  <div><span class="swatch" style="background:#7fcf95"></span>routing / transform</div>
+  <div><span class="swatch" style="background:#ffd766"></span>io / cache / queue</div>
+  <div><span class="swatch" style="background:#f08080"></span>persistence / db</div>
+  <div><span class="swatch" style="background:#a0a0a0"></span>other / unknown</div>
+</div>
+
+<script>
+function loadVendor(onok, onfail) {
+  const s = document.createElement('script');
+  s.src = 'vendor/cytoscape.min.js';
+  s.onload = onok;
+  s.onerror = function() {
+    document.getElementById('cdn-banner').style.display = 'block';
+    const fallback = document.createElement('script');
+    fallback.src = 'https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js';
+    fallback.onload = onok;
+    fallback.onerror = onfail;
+    document.body.appendChild(fallback);
+  };
+  document.body.appendChild(s);
+}
+
+function colorFor(fc) {
+  switch(fc) {
+    case 'auth': case 'rbac': return '#5b9bd5';
+    case 'routing': case 'transform': case 'glue': return '#7fcf95';
+    case 'io': case 'cache': case 'queue': case 'observability': case 'metric': return '#ffd766';
+    case 'persistence': case 'crud': return '#f08080';
+    default: return '#a0a0a0';
+  }
+}
+
+function start(payload) {
+  if (payload.truncated) {
+    document.getElementById('truncation-banner').style.display = 'block';
+    document.getElementById('edge-count').textContent = payload.edge_count || 0;
+    document.getElementById('max-edges').textContent = payload.max_edges || 200;
+  }
+  const elements = (payload.elements || []).map(function(el) {
+    const d = el.data || {};
+    if (d.kind === 'node') {
+      return { data: { id: d.id, label: d.label, function_class: d.function_class } };
+    }
+    return { data: { id: d.id, source: d.source, target: d.target,
+                     edge_kind: d.edge_kind } };
+  });
+  cytoscape({
+    container: document.getElementById('graph'),
+    elements: elements,
+    style: [
+      { selector: 'node', style: {
+          'background-color': function(ele){ return colorFor(ele.data('function_class')); },
+          'label': 'data(label)',
+          'color': '#1a1a1f',
+          'font-size': '11px',
+          'text-wrap': 'wrap',
+          'text-max-width': 130,
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'width': 'label',
+          'height': 'label',
+          'padding': '8px',
+          'shape': 'round-rectangle',
+        }
+      },
+      { selector: 'edge', style: {
+          'width': 1.5,
+          'line-color': '#bbb',
+          'target-arrow-color': '#bbb',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+        }
+      },
+    ],
+    layout: { name: 'cose', animate: false, padding: 30 },
+  });
+}
+
+window.addEventListener('load', function() {
+  loadVendor(function() {
+    fetch('./D2.json').then(function(r){ return r.json(); }).then(start)
+      .catch(function(err) {
+        document.getElementById('graph').innerHTML =
+          '<p style="padding:24px">Failed to load D2.json: ' + err + '</p>';
+      });
+  }, function() {
+    document.getElementById('graph').innerHTML =
+      '<p style="padding:24px">Failed to load cytoscape.js (vendor + CDN unreachable)</p>';
+  });
+});
+</script>
+</body>
+</html>

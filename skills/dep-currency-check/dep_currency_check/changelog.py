@@ -69,13 +69,14 @@ PREFIXED_TAG_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9._-]*-v?(\d+)\.(\d+)\.(\d+)(?:
 def discover_repo_url(package: str, ecosystem: str) -> Optional[str]:
     """Best-effort GitHub repo URL discovery from ecosystem metadata.
 
-    Covers python / javascript / rust today. Other ecosystems return None
-    (callers gracefully degrade to no `api_delta`).
+    Covers python / js / rust today (matches manifests.Ecosystem literals).
+    Other ecosystems (go / ruby / java) return None and callers gracefully
+    degrade to no `api_delta`.
     """
     try:
         if ecosystem == "python":
             return _discover_pypi(package)
-        if ecosystem == "javascript":
+        if ecosystem == "js":
             return _discover_npm(package)
         if ecosystem == "rust":
             return _discover_crates(package)

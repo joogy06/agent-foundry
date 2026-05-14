@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/consult-decision.v1.json",
+  "title": "consult-decision.v1",
+  "description": "One line in .ledger/evo/runs/<run_id>/consult-log.jsonl. Append-only decision tape — replay reconstructs evo's CONSULTED state on resume. User_decision is closed-set; default_on_timeout is required per HARD-RULE 4.",
+  "type": "object",
+  "required": [
+    "decision_id", "decided_at", "presented_finding_id",
+    "user_decision", "default_on_timeout"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "pattern": "^d-[0-9]{3,}$",
+      "description": "Stable id within a run; monotonic."
+    },
+    "decided_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "presented_finding_id": {
+      "type": "string",
+      "pattern": "^f-[0-9]{3,}$",
+      "description": "Foreign key into drift-report.v1.findings[].finding_id."
+    },
+    "user_decision": {
+      "enum": ["accept", "reject", "defer", "modify", "abort"],
+      "description": "abort terminates the entire run."
+    },
+    "default_on_timeout": {
+      "enum": ["accept", "reject", "defer", "modify", "abort"],
+      "description": "Fires after EVO_CONSULT_TIMEOUT_HOURS. Almost always 'reject' for safety (HARD-RULE 4)."
+    },
+    "decision_source": {
+      "enum": ["user", "timeout_default", "auto_applied"],
+      "description": "auto_applied = patch-version CVE fix where mode-c declared no consent required."
+    },
+    "modification": {
+      "type": "string",
+      "description": "If user_decision == 'modify', captures the changed instruction."
+    },
+    "notes": { "type": "string" },
+    "llm_model": { "type": "string" },
+    "commit_sha": { "type": "string" },
+    "evidence_edges": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
