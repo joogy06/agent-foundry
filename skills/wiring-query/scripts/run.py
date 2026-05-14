@@ -29,6 +29,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from loader import load_snapshot, SnapshotMissing, SnapshotInvalid  # noqa: E402
 from graph_ops import build_symbol_index, impact, subgraph_for_llm  # noqa: E402
+from intent_ops import intent_of, flow_intent  # noqa: E402
 
 
 def _parse_args(argv):
@@ -49,6 +50,15 @@ def _parse_args(argv):
     p_sub.add_argument("--max-tokens", type=int, default=50000)
     p_sub.add_argument("--max-depth", type=int, default=2)
     p_sub.add_argument("--include-stale", action="store_true", default=False)
+
+    # v1.1 ops (S032)
+    p_intent = sub.add_parser("intent_of",
+                              help="Return intent block for one component")
+    p_intent.add_argument("--component", required=True)
+
+    p_flow = sub.add_parser("flow_intent",
+                            help="Aggregate intent across a contract-map flow")
+    p_flow.add_argument("--flow-id", required=True)
     return p.parse_args(argv)
 
 
@@ -91,6 +101,10 @@ def main(argv=None) -> int:
             include_stale=args.include_stale,
             index=idx,
         )
+    elif args.op == "intent_of":
+        result = intent_of(snapshot, args.component)
+    elif args.op == "flow_intent":
+        result = flow_intent(snapshot, args.flow_id, project_dir)
     else:  # argparse enforces this unreachable
         sys.stderr.write(f"unknown op: {args.op}\n")
         return 2

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/evergreen-verdict.v1.json",
+  "title": "evergreen-verdict.v1",
+  "description": "S032 EVO final report written at REPORTED phase. The single user-facing artifact summarising the run; consumed by pa for cross-run carryover.",
+  "type": "object",
+  "required": [
+    "schema_version", "run_id", "mode", "started_at", "ended_at",
+    "status", "status_reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "mode": {
+      "enum": ["intent-map-only", "version-upgrade", "cve-fix"]
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "ended_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "status": {
+      "enum": ["SUCCESS", "PARTIAL", "HALTED"]
+    },
+    "status_reason": {
+      "type": "string",
+      "description": "Empty string on SUCCESS. Required to be non-empty on PARTIAL/HALTED. EVO_HALT_DEGRADED_DATA is the canonical HALTED reason for HARD-RULE 3 trips."
+    },
+    "branch_name": {
+      "type": "string",
+      "pattern": "^evo/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z]+(?:-.+)?$",
+      "description": "Mode-a never sets this. Modes b/c set evo/<YYYY-MM-DD>-<mode>[-<suffix>]."
+    },
+    "scope_deltas_emitted": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "scope_delta ids bob wrote on evo's behalf during APPLY. Always [] for mode-a."
+    },
+    "tests_added": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "confidence_level", "requires_user_review"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "confidence_level": {
+            "enum": ["characterization-aid", "regression-aid", "cve-proof-of-fix"]
+          },
+          "requires_user_review": { "type": "boolean" },
+          "source_seed": { "type": "string" }
+        }
+      }
+    },
+    "tests_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "type": "object",
+          "required": ["passed", "failed", "skipped"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 },
+            "skipped": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "post_change": {
+          "type": "object",
+          "required": ["passed", "failed", "skipped"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 },
+            "skipped": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "findings_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "deferred": { "type": "integer", "minimum": 0 },
+        "modified": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "follow_ups": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Surfaced gaps, deferred items, budget-exhaustion notes, and PARTIAL-degrade reasons (HARD-RULE 8)."
+    },
+    "budget_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokens_used": { "type": "integer", "minimum": 0 },
+        "tokens_budget": { "type": "integer", "minimum": 0 },
+        "files_analyzed": { "type": "integer", "minimum": 0 },
+        "runtime_minutes": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "Mode-a never spawns bob, never creates a branch.",
+      "if": { "properties": { "mode": { "const": "intent-map-only" } } },
+      "then": {
+        "properties": {
+          "scope_deltas_emitted": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "description": "HALTED with EVO_HALT_DEGRADED_DATA → no branch, no scope_deltas.",
+      "if": {
+        "properties": {
+          "status": { "const": "HALTED" },
+          "status_reason": { "pattern": "^EVO_HALT_DEGRADED_DATA" }
+        },
+        "required": ["status", "status_reason"]
+      },
+      "then": {
+        "properties": {
+          "scope_deltas_emitted": { "maxItems": 0 },
+          "tests_added": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

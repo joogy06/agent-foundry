@@ -2539,6 +2539,181 @@ def check_G_DEP_CURRENCY(
 
 
 # ---------------------------------------------------------------------------
+# G_INTENT_MAP_FRESH — evo's intent-map staleness gate (S032)
+#
+# Verifies that the per-run intent-map.yaml is still bound to the current
+# wiring snapshot and dependency lockfile. Three-way exit (per design §4.2):
+#
+#   0 = PASS    — intent_map fresh; safe to consume in mode-b/c APPLYING
+#   2 = FAIL    — file missing OR hash mismatch (intent-map.yaml exists but
+#                 either wiring_hash or dep_lock_hash drifted from current
+#                 .wiring/latest.json / resolved lockfile)
+#   3 = ENV_ERROR — referenced inputs missing (no .wiring/latest.json, no
+#                 lockfile to compute against); auto-rewind trigger for evo
+#
+# In mode-a (intent-map-only), evo treats FAIL/ENV_ERROR as advisory.
+# In modes b/c, FAIL blocks APPLYING; ENV_ERROR triggers auto-rewind to
+# ANALYZED phase (preserves consult-log decisions for still-applicable
+# deltas — see design §6.1).
+#
+# CLI: gates.py G_INTENT_MAP_FRESH <project_root> <run_id>
+#                                  [--lockfile <path>]   # explicit lockfile
+# ---------------------------------------------------------------------------
+
+
+_LOCKFILE_CANDIDATES = (
+    # Python
+    "poetry.lock", "uv.lock", "Pipfile.lock", "requirements.lock",
+    "requirements.txt",
+    # JavaScript / TypeScript
+    "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb",
+    # Rust / Go / Ruby / Java
+    "Cargo.lock", "go.sum", "Gemfile.lock", "pom.xml", "build.gradle.lock",
+)
+
+
+def _resolve_lockfile(project_root: Path, explicit: Optional[Path] = None) -> Optional[Path]:
+    """Return the first lockfile under project_root, or None.
+
+    If `explicit` is given, only that file is checked.
+    """
+    if explicit is not None:
+        return explicit if explicit.is_file() else None
+    for name in _LOCKFILE_CANDIDATES:
+        candidate = project_root / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _file_sha256(path: Path) -> str:
+    """Return sha256 hex of a file's bytes (deterministic, no-mmap)."""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check_G_INTENT_MAP_FRESH(
+    project_root: Path,
+    run_id: str,
+    *,
+    explicit_lockfile: Optional[Path] = None,
+) -> None:
+    """Implement G_INTENT_MAP_FRESH per design §4.2.
+
+    Exit codes:
+      0 PASS  — intent_map present, both hashes match current snapshot+lock
+      2 FAIL  — hash drift OR intent-map.yaml missing
+      3 ENV_ERROR — referenced inputs missing (auto-rewind trigger)
+    """
+    if not project_root.is_dir():
+        env_error(f"G_INTENT_MAP_FRESH: project_root not a directory: {project_root}")
+
+    intent_map_path = (
+        project_root
+        / ".ledger"
+        / "evo"
+        / "runs"
+        / run_id
+        / "intent-map.yaml"
+    )
+    if not intent_map_path.is_file():
+        fail(
+            "G_INTENT_MAP_FRESH",
+            f"intent-map.yaml not found at {intent_map_path}",
+        )
+
+    try:
+        intent_map = yaml.safe_load(intent_map_path.read_text()) or {}
+    except yaml.YAMLError as e:
+        fail("G_INTENT_MAP_FRESH", f"intent-map.yaml parse error: {e}")
+
+    if not isinstance(intent_map, dict):
+        fail(
+            "G_INTENT_MAP_FRESH",
+            f"intent-map.yaml top-level must be a mapping, got {type(intent_map).__name__}",
+        )
+
+    # Hashes we expect the map to carry. Per design §5.5 evo-manifest.v1
+    # also has these, but the intent-map.yaml is the gate-checked artifact
+    # at consumption time.
+    declared_wiring_hash = intent_map.get("wiring_hash")
+    declared_dep_lock_hash = intent_map.get("dep_lock_hash")
+
+    if not declared_wiring_hash:
+        fail(
+            "G_INTENT_MAP_FRESH",
+            "intent-map.yaml missing required field: wiring_hash",
+        )
+    if not declared_dep_lock_hash:
+        fail(
+            "G_INTENT_MAP_FRESH",
+            "intent-map.yaml missing required field: dep_lock_hash",
+        )
+
+    # Resolve current wiring snapshot.
+    wiring_latest = project_root / ".wiring" / "latest.json"
+    if not wiring_latest.is_file():
+        env_error(
+            f"G_INTENT_MAP_FRESH: .wiring/latest.json not found at "
+            f"{wiring_latest}; cannot verify wiring_hash. Auto-rewind to "
+            f"ANALYZED recommended."
+        )
+
+    try:
+        wiring_data = json.loads(wiring_latest.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        env_error(
+            f"G_INTENT_MAP_FRESH: .wiring/latest.json unreadable: {e}; "
+            f"auto-rewind recommended."
+        )
+
+    # Workspace_tree_hash is the canonical comparator per wiring-snapshot.v1
+    # schema (see schemas/wiring-snapshot.v1.json — required pattern
+    # ^[a-f0-9]{40}$). If the snapshot uses a different attribute name we
+    # fall back to a content hash of the file itself.
+    current_wiring_hash = wiring_data.get("workspace_tree_hash") or _file_sha256(wiring_latest)
+
+    if declared_wiring_hash != current_wiring_hash:
+        fail(
+            "G_INTENT_MAP_FRESH",
+            f"wiring_hash drift: intent-map declares "
+            f"{declared_wiring_hash[:16]}... but current "
+            f"{current_wiring_hash[:16]}... (run wiring-extract-static and "
+            f"intent-extract again)",
+        )
+
+    # Resolve current lockfile.
+    lockfile = _resolve_lockfile(project_root, explicit_lockfile)
+    if lockfile is None:
+        env_error(
+            "G_INTENT_MAP_FRESH: no lockfile found under project_root; "
+            "tried "
+            + ", ".join(_LOCKFILE_CANDIDATES)
+            + ". Auto-rewind recommended."
+        )
+
+    current_dep_lock_hash = _file_sha256(lockfile)
+    if declared_dep_lock_hash != current_dep_lock_hash:
+        fail(
+            "G_INTENT_MAP_FRESH",
+            f"dep_lock_hash drift: intent-map declares "
+            f"{declared_dep_lock_hash[:16]}... but current "
+            f"{current_dep_lock_hash[:16]}... at {lockfile.name} "
+            f"(deps changed since intent-extract; re-run intent-extract)",
+        )
+
+    ok(
+        "G_INTENT_MAP_FRESH",
+        f"intent-map.yaml at run={run_id} bound to wiring "
+        f"{current_wiring_hash[:16]}... and lockfile {lockfile.name} "
+        f"{current_dep_lock_hash[:16]}...",
+    )
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
@@ -2547,7 +2722,8 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
     if len(argv) < 2:
         env_error(
             "usage: gates.py "
-            "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY ..."
+            "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
+            "G_INTENT_MAP_FRESH ..."
         )
     gate = argv[1]
     positional: List[str] = []
@@ -2610,6 +2786,13 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
         if a == "--allow-deferred":
             flags["dep_currency_allow_deferred"] = "1"
             i += 1
+            continue
+        if a == "--lockfile":
+            # G_INTENT_MAP_FRESH: explicit lockfile path override
+            if i + 1 >= len(argv):
+                env_error("--lockfile requires a value")
+            flags["intent_map_lockfile"] = argv[i + 1]
+            i += 2
             continue
         positional.append(a)
         i += 1
@@ -2696,6 +2879,25 @@ def main(argv: Optional[List[str]] = None) -> None:
         detection_point = flags.get("detection_point", "wp_boundary")
         check_G_CONTRACT_SCOPE(
             project_root, map_path, requesting_wp, detection_point
+        )
+    elif gate == "G_INTENT_MAP_FRESH":
+        # CLI: gates.py G_INTENT_MAP_FRESH <project_root> <run_id>
+        #                                  [--lockfile <path>]
+        # Exit codes:
+        #   0 = pass
+        #   2 = fail (hash drift / file missing)
+        #   3 = environmental (auto-rewind trigger)
+        if len(positional) < 2:
+            env_error(
+                "G_INTENT_MAP_FRESH requires <project_root> <run_id>"
+            )
+        project_root = Path(positional[0]).resolve()
+        run_id = positional[1]
+        explicit_lockfile: Optional[Path] = None
+        if "intent_map_lockfile" in flags:
+            explicit_lockfile = Path(flags["intent_map_lockfile"]).resolve()
+        check_G_INTENT_MAP_FRESH(
+            project_root, run_id, explicit_lockfile=explicit_lockfile
         )
     elif gate == "G_DEP_CURRENCY":
         # CLI: gates.py G_DEP_CURRENCY <project_root>

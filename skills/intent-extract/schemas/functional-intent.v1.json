@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/functional-intent.v1.json",
+  "title": "functional-intent.v1",
+  "description": "S032 EVO per-component output of the intent-extract skill. Captures both mechanically-derived structural fields (gate-validatable) and LLM-inferred prose intent (advisory, never feeds gates). Cache-keyed by content_hash; promoted into .wiring/runs/<run_id>/intent/<component_id>.yaml under evo's claim.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "component_id",
+    "workspace_tree_hash",
+    "content_hash",
+    "extractor_id",
+    "extractor_version",
+    "model_id",
+    "sampled_at",
+    "template_hash",
+    "function_class",
+    "entry_points",
+    "inputs",
+    "outputs",
+    "side_effects",
+    "flows_participated",
+    "intent",
+    "error_paths",
+    "test_seeds",
+    "unknowns",
+    "determinism_class"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "component_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "MUST equal a components[].id in progress/contract-map.yaml at the bound revision."
+    },
+    "workspace_tree_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "git write-tree hash of the workspace at sampling time."
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 over canonical-concat of source file bytes (sorted by path). Cache key."
+    },
+    "extractor_id": { "const": "intent-extract" },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Specific model id (e.g. 'claude-opus-4-7'). Locks the cache to a model generation."
+    },
+    "sampled_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "template_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 of the LLM prompt template used. Invalidates cache when prompt changes."
+    },
+
+    "function_class": {
+      "enum": [
+        "auth", "rbac", "crud", "pricing", "routing", "transform", "io",
+        "persistence", "cache", "queue", "scheduler", "observability",
+        "config", "metric", "glue", "test_harness", "unknown"
+      ],
+      "description": "Closed enum per design §5.1.1. Gate-validatable."
+    },
+
+    "entry_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "detail", "handler_symbol", "evidence_edges"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "http_route", "grpc_method", "queue_consumer", "cron", "cli",
+              "rpc_server", "lib_api", "sdk_init", "event_handler"
+            ]
+          },
+          "detail": { "type": "string", "minLength": 1 },
+          "handler_symbol": { "type": "string", "minLength": 1 },
+          "framework": { "type": "string" },
+          "evidence_edges": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "semantic_type": { "type": "string" },
+          "source": { "type": "string" },
+          "nullable": { "type": "boolean" }
+        }
+      }
+    },
+
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "semantic_type": { "type": "string" },
+          "shape": { "type": "object" }
+        }
+      }
+    },
+
+    "side_effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "target", "evidence_edges"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "cache_write", "db_write", "network_io", "file_io", "log_emit",
+              "metric_emit", "env_mutation", "clipboard", "gpu_alloc"
+            ]
+          },
+          "target": { "type": "string", "minLength": 1 },
+          "evidence_edges": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "flows_participated": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["flow_id", "role"],
+        "additionalProperties": false,
+        "properties": {
+          "flow_id": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "intent": {
+      "type": "object",
+      "required": ["one_line", "confidence_level"],
+      "additionalProperties": false,
+      "properties": {
+        "one_line": { "type": "string", "minLength": 1 },
+        "confidence_level": {
+          "enum": ["grounded", "interpretive", "degraded"]
+        },
+        "responsibilities": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "pattern": "^R[0-9]+$" },
+              "text": { "type": "string", "minLength": 1 },
+              "evidence_files": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "confidence_level": {
+                "enum": ["grounded", "interpretive", "degraded"]
+              }
+            }
+          }
+        },
+        "interpretive_disagreement": { "type": "boolean" }
+      }
+    },
+
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "invariants": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "error_paths": {
+      "type": "array",
+      "description": "REQUIRED block; may be empty list. High-stakes — eligible for cross-cli-deliberation second opinion.",
+      "items": {
+        "type": "object",
+        "required": ["condition", "error_kind", "propagates_to", "evidence_edges"],
+        "additionalProperties": false,
+        "properties": {
+          "condition": { "type": "string", "minLength": 1 },
+          "error_kind": {
+            "enum": [
+              "raises", "returns_error", "http_status_5xx", "swallowed", "unhandled"
+            ]
+          },
+          "error_type": { "type": "string" },
+          "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+          "propagates_to": { "type": "string", "minLength": 1 },
+          "fallback": { "type": "string" },
+          "evidence_edges": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "test_seeds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seed_id", "scenario", "given", "when", "then"],
+        "additionalProperties": false,
+        "properties": {
+          "seed_id": {
+            "type": "string",
+            "pattern": "^S-[0-9]{3,}$",
+            "description": "Stable id for ever-test-gen citation."
+          },
+          "scenario": { "type": "string", "minLength": 1 },
+          "given": { "type": "string", "minLength": 1 },
+          "when": { "type": "string", "minLength": 1 },
+          "then": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "unknowns": {
+      "type": "array",
+      "description": "Load-bearing honesty field. Empty list is valid but discouraged — prefer explicit 'no unknowns detected'.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "determinism_class": {
+      "enum": ["deterministic", "cached_interpretive", "fresh_interpretive"]
+    },
+
+    "consistency_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Similarity vs prior cache hit; ≥0.95 is the regen threshold."
+    }
+  }
+}

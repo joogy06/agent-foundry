@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/evo-manifest.v1.json",
+  "title": "evo-manifest.v1",
+  "description": "S032 EVO run lifecycle anchor at .ledger/evo/runs/<run_id>/manifest.yaml. Written by evo at INIT; phase mutated on every state-machine transition; ttl_at enforces 72h auto-cleanup default; resume reads phase here.",
+  "type": "object",
+  "required": [
+    "schema_version", "run_id", "mode", "phase", "started_at", "ttl_at",
+    "sandbox_path", "claim_uuid", "wiring_hash", "dep_lock_hash",
+    "last_heartbeat_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "mode": {
+      "enum": ["intent-map-only", "version-upgrade", "cve-fix"]
+    },
+    "phase": {
+      "enum": [
+        "INIT", "CLONING", "ANALYZED", "INTENT_MAPPED", "DRIFT_SURFACED",
+        "PLANNED", "CONSULTED", "AWAITING_USER", "APPLYING", "TESTED",
+        "VERIFIED_OR_PARTIAL", "REPORTED", "DONE", "HALTED"
+      ]
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "ttl_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "sandbox_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "$HOME/.cache/evo/sessions/<id>/clone with mode 0700 (HARD-RULE 6). Never /tmp."
+    },
+    "claim_uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "wiring_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "dep_lock_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "last_heartbeat_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "target_package": {
+      "type": "string",
+      "description": "Mode-b only: the --target=<pkg> argument."
+    },
+    "severity_filter": {
+      "enum": ["critical", "high", "moderate", "low", "all"],
+      "description": "Mode-c only: --severity floor."
+    },
+    "language_target": {
+      "enum": ["python", "javascript", "typescript", "rust", "go", "ruby", "java", "shallow-multi"]
+    },
+    "project_root": { "type": "string", "minLength": 1 },
+    "halted_reason": {
+      "type": "string",
+      "description": "Set only when phase == HALTED. Mirrors evergreen-verdict.v1.status_reason."
+    },
+    "components_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "consult_decision_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "user_consult_timeout_hours": {
+      "type": "number",
+      "minimum": 0,
+      "description": "EVO_CONSULT_TIMEOUT_HOURS at run start; persisted so resumes use the same value."
+    }
+  }
+}

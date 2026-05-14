@@ -78,6 +78,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Evidence before assertions** — never claim "done" or "passing" without showing command output.
 - [ ] **Spot-check verification** — re-run at least one verification artifact independently.
 - [ ] **Performance dimension** — if change touches hot-path/API/DB, include performance measurement in evidence.
+- [ ] **Commit hygiene — no AI attribution** — never add `Co-Authored-By: Claude` (or any AI attribution) trailers to commit messages. Universal user preference across all projects. Inherited from `vs-code-personal-os` / `vs-code-foundry` AGENTS.md R6; promoted to global 2026-05-13.
 
 ### ROUTING (PA / CLAUDE.md)
 
