@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/lineage-manifest.v1.json",
+  "title": "lineage-manifest.v1",
+  "description": "Per-run metadata emitted to /tmp/lineage-extract-static-<session>/manifest.json at the end of every lineage-extract-static run. Captures provenance, costs, counters, and error log for auditability. Validated against this schema before the run terminates.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "started_at",
+    "completed_at",
+    "project_root",
+    "workspace_tree_hash",
+    "files_scanned",
+    "files_skipped",
+    "total_chunks",
+    "total_edges_emitted",
+    "by_confidence",
+    "duration_seconds",
+    "extractor_id",
+    "extractor_version",
+    "prompt_template_hash",
+    "model_id",
+    "openlineage_spec_version",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this run. Format: 'lineage-<unix_epoch>-<8-hex-rand>'."
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "completed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "project_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to the project being scanned."
+    },
+    "workspace_tree_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 over the sorted '<repo-rel-path>:<file-sha256>\\n' lines of in-scope files. Mirrors mypy incremental cache key. Same workspace + same prompts + same model = same cache hit."
+    },
+    "files_scanned": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of in-scope files actually analyzed (not skipped). Includes cache hits."
+    },
+    "files_skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": {
+            "enum": ["size_cap", "binary", "excluded", "permission_denied", "decode_error"]
+          }
+        }
+      }
+    },
+    "total_chunks": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sum of chunk_count across all in-scope files. Equal to files_scanned for inline-only runs."
+    },
+    "total_edges_emitted": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total edges across the openlineage.ndjson stream."
+    },
+    "by_confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grounded", "inferred", "speculative"],
+      "properties": {
+        "grounded": { "type": "integer", "minimum": 0 },
+        "inferred": { "type": "integer", "minimum": 0 },
+        "speculative": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total wall-clock duration of the run."
+    },
+    "llm_token_cost_estimate_usd": {
+      "type": "number",
+      "minimum": 0,
+      "description": "OPTIONAL estimated cost. Calculated as token count * model_pricing[model_id] when the in-session CLI exposes token counts; absent otherwise."
+    },
+    "extractor_id": { "const": "lineage-extract-static" },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "prompt_template_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 over the canonical concatenation of all prompts/*.md files at scan time. Invalidates cache when prompts change."
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Specific model id used by the in-session AI CLI (e.g. 'claude-opus-4-7', 'gpt-5.4', 'gemini-3.1-pro'). Locks the cache to a model generation."
+    },
+    "openlineage_spec_version": { "const": "2.0.2" },
+    "redaction_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OPTIONAL count of redactions applied by redact.py across all rollups. Surfaced for audit."
+    },
+    "cache_hit_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "OPTIONAL ratio of cache-hit files to total files. 1.0 = warm rerun. Absent when cache is disabled."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "stage", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "stage": { "enum": ["chunk", "merge", "redact", "emit", "render"] },
+          "message": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        }
+      }
+    },
+    "exit_status": {
+      "enum": ["SUCCESS", "PARTIAL", "FAILED"],
+      "description": "OPTIONAL final exit status. SUCCESS = all files processed cleanly. PARTIAL = some files skipped or some non-fatal errors. FAILED = fail-closed abort (redaction error, validation error)."
+    }
+  }
+}
