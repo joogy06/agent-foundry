@@ -1,6 +1,6 @@
 ---
 name: windows-cmd
-description: Use when writing CMD batch scripts or using Windows Command Prompt — batch file syntax (.bat/.cmd), environment variables, FOR loops, IF conditionals, pipes and redirection, common system commands (net, netsh, wmic, sfc, dism, robocopy, icacls, diskpart, bcdedit), file operations, networking diagnostics, and system administration from the command line. Part of the windows-* skill family.
+description: Use when writing CMD batch scripts or using Windows Command Prompt — batch file syntax (.bat/.cmd), CRLF line-ending requirements, .gitattributes last-match-wins traps, parser-error diagnostics ("X was unexpected at this time"), paren escaping inside IF/FOR blocks, environment variables, FOR loops, IF conditionals, pipes and redirection, common system commands (net, netsh, wmic, sfc, dism, robocopy, icacls, diskpart, bcdedit), file operations, networking diagnostics, and system administration from the command line. Part of the windows-* skill family.
 ---
 
 # Windows CMD / Batch Scripting
@@ -14,6 +14,72 @@ Never run destructive commands (`del /s /q`, `rd /s /q`, `format`, `diskpart cle
 <HARD-RULE>
 Always test batch scripts with `echo` prefixed to destructive lines (dry-run) before live execution. Remove `echo` only after confirming correctness.
 </HARD-RULE>
+
+<HARD-RULE>
+`.cmd` and `.bat` files MUST be checked into git with CRLF line endings. LF-only batch files silently fail with cryptic `X was unexpected at this time.` parser errors before any logic runs. See "Critical: Parsing Hazards & Line Endings" below.
+</HARD-RULE>
+
+---
+
+## Critical: Parsing Hazards & Line Endings (read first)
+
+Two failure modes account for the vast majority of `X was unexpected at this time.` errors from `cmd.exe`. Diagnose them BEFORE inspecting logic.
+
+### CRLF requirement
+
+`cmd.exe` requires **CR+LF (`\r\n`)** line endings to recognize line boundaries inside multi-line constructs (`IF (...) (...) ELSE (...)`, label blocks, parenthesized groups). LF-only files silently concatenate lines and trip the parser on the next token — usually a `.` from a path or filename — producing the cryptic `X was unexpected at this time.` error.
+
+PowerShell `.ps1` files tolerate both endings. Batch `.cmd` / `.bat` files do not.
+
+**Diagnostic** (run from Git Bash or WSL):
+```bash
+git ls-files --eol install.cmd
+# Healthy:  i/lf    w/crlf    attr/text eol=crlf      install.cmd
+# Broken:   i/lf    w/lf      attr/text=auto eol=lf   install.cmd
+```
+
+Or check the raw bytes:
+```bash
+head -c 200 install.cmd | xxd | head -5
+# Healthy ends each line with: ... 0d 0a
+# Broken ends with: ... 0a
+```
+
+### `.gitattributes` last-match-wins trap
+
+A common cross-platform `.gitattributes` includes a catch-all like:
+```
+* text=auto eol=lf
+```
+
+This forces EVERY text file — including `.cmd` and `.bat` — to LF on checkout. Add explicit overrides **AFTER** the catch-all (gitattributes evaluates rules in order, last match wins):
+
+```
+* text=auto eol=lf
+
+# Windows scripts MUST be CRLF — override the catch-all above
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+```
+
+After fixing `.gitattributes`, force the working tree to re-materialize the file:
+```bash
+rm install.cmd
+git checkout -- install.cmd
+git ls-files --eol install.cmd   # Verify w/crlf
+```
+
+`git add --renormalize install.cmd` is **NOT sufficient** — it updates the index but leaves the working-tree copy at the old EOL. `cmd.exe` reads the working copy, so the delete-and-checkout is mandatory.
+
+### "X was unexpected at this time" — diagnostic order
+
+When `cmd.exe` prints `. was unexpected at this time.` / `or was unexpected at this time.` / similar:
+
+1. **Check EOL first.** `git ls-files --eol script.cmd`. If `w/lf`, fix per above.
+2. **Check for unescaped `(` / `)` inside `echo` / `set` inside an `IF (...)` or `FOR (...)` body.** A bare `)` inside the body closes the outer block prematurely. See §3 IF Conditionals for the worked example.
+3. **Check for orphan `:` labels inside parenthesized blocks.** `:label` lines do not exist inside `(...)` groups; they're parsed differently.
+4. **Only after ruling out 1-3, suspect logic.** The error is almost never a logic bug.
 
 ---
 
@@ -256,6 +322,35 @@ if exist "config.ini" (
     call :UseDefaults
 )
 ```
+
+### Parens inside echo inside IF blocks — the silent killer
+
+`cmd.exe`'s parser treats an unescaped `)` inside an IF/FOR body as the closing paren of the **outer** block, exiting prematurely. This is one of the most frequent causes of `X was unexpected at this time.`
+
+**Broken** (real-world example):
+```bat
+if errorlevel 1 (
+    echo Try these workarounds:
+    echo   1. Ask IT to allow-list the script in AppLocker.
+    echo   2. Use the pure-batch installer pattern from process-assistent-ai
+    echo      (not currently shipped for smart-analyst — file an issue).
+    exit /b 1
+)
+```
+
+The `(` and `)` in `(not currently shipped ... file an issue)` close the outer IF at the inner `)`, leaving the trailing `.` as a stray token → `. was unexpected at this time.` The actual remediation message is never printed.
+
+**Fix A** — caret-escape the parens:
+```bat
+echo      ^(not currently shipped for smart-analyst -- file an issue^).
+```
+
+**Fix B** (preferred — more readable) — rephrase to remove parens:
+```bat
+echo      not currently shipped for smart-analyst -- file an issue.
+```
+
+The same hazard applies to `set` lines and any inner command containing literal `(` / `)`. When in doubt, caret-escape or rephrase.
 
 ### FOR Loops
 

@@ -1,6 +1,6 @@
 ---
 name: windows-powershell
-description: Use when writing or debugging PowerShell scripts — PowerShell 7.x and Windows PowerShell 5.1, pipeline and object manipulation, error handling (try/catch/ErrorAction), modules and package management (PSGallery), remoting (WinRM, SSH), Desired State Configuration (DSC), scheduled tasks, WMI/CIM queries, registry operations, file system operations, string/regex, JSON/XML/CSV handling, and cross-platform considerations. Parent skill for the windows-ps-* skill family.
+description: Use when writing or debugging PowerShell scripts — PowerShell 7.x and Windows PowerShell 5.1 (including PS 5.1 BOM-less script encoding hazards, mojibake on non-ASCII chars, Windows-1252 default), pipeline and object manipulation, error handling (try/catch/ErrorAction, native-stderr silencing under $ErrorActionPreference='Stop'), advanced-function common-parameter conflicts (-Verbose / -v collision, "specified more than once"), native-command splatting (empty-string arg drop on PS 5.1), modules and package management (PSGallery), remoting (WinRM, SSH), Desired State Configuration (DSC), scheduled tasks, WMI/CIM queries, registry operations, file system operations, string/regex, JSON/XML/CSV handling, process management (Start-Process PID-without-health, tree-kill via Win32_Process BFS), and cross-platform considerations (Linux→Windows primitive porting, nohup / kill / pgrep equivalents). Parent skill for the windows-ps-* skill family.
 ---
 
 # Windows PowerShell Administration
@@ -32,6 +32,55 @@ winget install Microsoft.PowerShell
 - **Use 5.1** for modules that require .NET Framework (older Exchange, SharePoint) or systems without PS 7.
 - **Use 7.x** for new scripts, cross-platform, modern language features.
 - Both coexist side by side.
+
+---
+
+## 1.5 Encoding Hazards (PS 5.1 BOM-less trap)
+
+The single most expensive parsing failure on Windows PowerShell 5.1: **PS 5.1 reads BOM-less `.ps1` files as Windows-1252, not UTF-8.** Any non-ASCII character (em-dash `—`, smart quotes `"" ''`, ellipsis `…`, non-breaking space) without a UTF-8 BOM produces mojibake and a cascade of parse errors:
+
+```
+Missing closing '}' in statement block
+Unexpected token ')'
+The string is missing the terminator: "
+```
+
+The actual root cause is hidden in the cascade noise — the FIRST error message names the right line; the parser then desyncs and reports 10+ irrelevant follow-ups. **Always look at the first error first.**
+
+PowerShell 7+ defaults to UTF-8 even without a BOM, so the same file runs fine on `pwsh.exe`. Only Windows PowerShell 5.1 is affected.
+
+### Diagnostic
+
+```bash
+# From Git Bash / WSL — find any non-ASCII bytes in your .ps1
+grep -nP '[^\x00-\x7F]' install_helper.ps1
+# Hit: 493:Write-Info "alembic stamp skipped (CLI not present yet — first boot ...
+#                                                                       ^-- em-dash
+```
+
+```powershell
+# From PowerShell itself — check for BOM
+(Get-Content install_helper.ps1 -AsByteStream -TotalCount 4 | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+# 'EF BB BF ...' → file has UTF-8 BOM; PS 5.1 reads as UTF-8
+# Anything else  → PS 5.1 reads as Windows-1252; any non-ASCII char will mojibake
+```
+
+### Recommended fix: ASCII-only
+
+**ASCII-everywhere is the cheaper invariant.** Replace non-ASCII characters with ASCII equivalents:
+
+```diff
+- Write-Info "alembic stamp skipped (CLI not present yet — first boot will auto-upgrade)."
++ Write-Info "alembic stamp skipped (CLI not present yet -- first boot will auto-upgrade)."
+```
+
+**Do not "fix" by adding a UTF-8 BOM.** That works on the current file but masks the constraint — the next edit lands in a different `.ps1` without a BOM and the bug returns. ASCII-everywhere is one constraint defended once; BOM-everywhere requires defending it on every file touched.
+
+### Probe ambiguity — "blocked by AppLocker" might be a parse error
+
+When a `-ProbeOnly` / `--check` mode returns errorlevel 1, do NOT assume AppLocker / WDAC denial. A parse error in the probed helper (caused by mojibake, an unterminated string, or any other syntax issue) also fails the probe. If your caller silently `>nul 2>&1`'s the probe and routes through "execution blocked" remediation, the user never sees the real error.
+
+When diagnosing a failed probe: temporarily drop `>nul 2>&1` and look at what the probed helper actually said. The first PS error message is the truth; the rest is desync noise.
 
 ---
 
@@ -218,6 +267,86 @@ Export-ModuleMember -Function Get-PublicFunction
 Get-ChildItem "$PSScriptRoot\Functions\*.ps1" | ForEach-Object { . $_.FullName }
 ```
 
+### Advanced functions and the `-Verbose` collision trap
+
+Adding `[Parameter()]` (or `[CmdletBinding()]`) to **any** parameter automatically promotes the script to an **advanced function**. PowerShell then auto-injects 11 common parameters:
+
+```
+-Verbose -Debug -ErrorAction -ErrorVariable -WarningAction -WarningVariable
+-InformationAction -InformationVariable -OutVariable -OutBuffer -PipelineVariable
+```
+
+Any short flag you define that partial-matches one of these will be intercepted **before** your parameter sees it. The error message is misleading:
+
+```
+Cannot bind parameter because parameter 'v' is specified more than once.
+```
+
+What's actually happening: `-v` partial-matches `-Verbose`, gets bound once silently, then PS refuses the second occurrence — making it look like the user typed `-v` twice when they only typed it once.
+
+**Unsafe custom flag names** (partial-match a common param):
+
+| Custom flag | Conflicts with |
+|---|---|
+| `-v` | `-Verbose` |
+| `-d` | `-Debug` |
+| `-ea` | `-ErrorAction` |
+| `-ev` | `-ErrorVariable` |
+| `-wa` | `-WarningAction` |
+| `-wv` | `-WarningVariable` |
+| `-ia` | `-InformationAction` |
+| `-iv` | `-InformationVariable` |
+| `-ov` | `-OutVariable` |
+| `-ob` | `-OutBuffer` |
+| `-pv` | `-PipelineVariable` |
+
+**Safe custom flag names** — pick names that don't prefix-match any common param: `-AppVerbose`, `-Quiet`, `-Loud`, `-DebugMode`, `-DryRun`, `-Strict`.
+
+There is no opt-out: once a function is advanced, the common-param set is part of its surface. Plan flag names accordingly, or do parsing in a thin batch wrapper:
+
+```batch
+:: app.cmd — translate user-friendly -v to PowerShell-safe -AppVerbose
+:parse_args
+if "%~1"=="" goto run
+if /I "%~1"=="-v"        ( set "PS_VERBOSE=-AppVerbose" & shift & goto parse_args )
+if /I "%~1"=="--verbose" ( set "PS_VERBOSE=-AppVerbose" & shift & goto parse_args )
+set "PS_REST=%PS_REST% %1"
+shift
+goto parse_args
+```
+
+### Empty-string arg drop on native splatting (PS 5.1)
+
+Windows PowerShell 5.1 **silently drops** empty-string arguments when splatting to a native executable. Cmdlet splatting (`Get-ChildItem @params`) is unaffected — this hits only native exes:
+
+```powershell
+$a = @('-x', '', '-y', 'foo')
+& cmd.exe /c echo @a
+# Prints: -x -y foo
+# Expected: -x  -y foo
+```
+
+PS 7+ does not have this bug. But if your script must run on PS 5.1 (and any installer script probably does), pass structured data via a **temp file**, not argv pairs:
+
+```powershell
+$tokens = @{
+    '__SSL_KEY_FILE__'  = ''
+    '__SSL_CERT_FILE__' = ''
+    '__BIND_HOST__'     = '0.0.0.0'
+}
+$tokensFile = New-TemporaryFile
+try {
+    ($tokens | ConvertTo-Json -Depth 2) | Out-File -LiteralPath $tokensFile -Encoding utf8
+    & $VenvPython -c $pyCode $ConfigTpl $ConfigFile $tokensFile.FullName
+} finally {
+    Remove-Item -LiteralPath $tokensFile -ErrorAction SilentlyContinue
+}
+```
+
+Python-side: read with `encoding='utf-8-sig'` to absorb the BOM that PS 5.1 may inject when writing UTF-8 via `Out-File -Encoding utf8`.
+
+Sidesteps both the empty-arg drop AND the ~32k argv-length ceiling on Windows.
+
 ---
 
 ## 5. Error Handling
@@ -257,6 +386,24 @@ throw "Critical failure"                          # Terminating
 Write-Error "Something failed but continues"      # Non-terminating
 # Use -ErrorAction Stop on cmdlets to convert non-terminating to terminating
 ```
+
+### Silencing native-command stderr under `$ErrorActionPreference = 'Stop'`
+
+Under `$ErrorActionPreference = 'Stop'`, any non-zero exit code or stderr write from a native command produces a `NativeCommandError` record that PowerShell promotes to a terminating error — aborting the script. This is correct most of the time, but hostile when calling a native tool whose stderr is noisy by design (e.g., `taskkill` writes to stderr even on successful kills).
+
+**`2>$null` is NOT sufficient.** It redirects the stderr TEXT but the `NativeCommandError` record is still emitted to PS's error stream and still terminates under `Stop`.
+
+The only reliable silencer in PS 5.1 is to **scope EAP locally AND redirect all streams to null**:
+
+```powershell
+&{
+    $ErrorActionPreference = 'SilentlyContinue'
+    & taskkill /F /PID $pid *>&1 | Out-Null
+}
+# Script continues here even if taskkill fails
+```
+
+The `&{...}` creates a temporary scope so the EAP change doesn't leak. `*>&1 | Out-Null` redirects EVERY stream (stdout, stderr, warning, info, debug, verbose) to the pipeline, then discards it. This is the canonical pattern for "I genuinely want to ignore this native tool's complaints."
 
 ---
 
@@ -601,6 +748,107 @@ $proc = Start-Process "ping.exe" -ArgumentList "8.8.8.8 -n 4" `
     -Wait -PassThru -NoNewWindow -RedirectStandardOutput "C:\output.txt"
 $proc.ExitCode
 ```
+
+### Detached `Start-Process` exit code is not a health signal
+
+`Start-Process` without `-Wait` returns as soon as the child has a **PID**. The child can crash microseconds later — exit code stays 0 and you never find out unless you check explicitly:
+
+```powershell
+$proc = Start-Process "myapp.exe" -PassThru -NoNewWindow
+Start-Sleep -Seconds 2
+if (-not (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue)) {
+    Write-Error "myapp exited within 2 seconds — check the log"
+}
+# For HTTP services, also probe the endpoint:
+try { Invoke-WebRequest "http://localhost:8080/health" -UseBasicParsing | Out-Null }
+catch { Write-Error "myapp PID alive but not serving HTTP" }
+```
+
+Pair detached `Start-Process` (no `-Wait`) with a status + health probe in any wrapper script. The exit code is "the OS launched the process," not "the process is healthy."
+
+### Killing a process tree on Windows
+
+Windows has no POSIX-style process group; `kill -9 -<pgid>` has no direct equivalent. `taskkill /T /PID <pid>` walks the tree but **bails on the first child it can't terminate** — leaving the chain partially alive.
+
+The reliable pattern is BFS over `Win32_Process` + bottom-up `Stop-Process -Force`:
+
+```powershell
+function Stop-ProcessTree {
+    param([Parameter(Mandatory)][int]$RootPid, [int]$GraceSeconds = 5)
+
+    # Phase 1: try the polite path first
+    &{ $ErrorActionPreference = 'SilentlyContinue'; & taskkill /PID $RootPid *>&1 | Out-Null }
+
+    # Phase 2: wait up to GraceSeconds for the root to exit
+    $deadline = (Get-Date).AddSeconds($GraceSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Get-Process -Id $RootPid -ErrorAction SilentlyContinue)) { return }
+        Start-Sleep -Milliseconds 200
+    }
+
+    # Phase 3: BFS the descendant tree, force-kill bottom-up
+    $queue = New-Object System.Collections.Queue
+    $queue.Enqueue($RootPid)
+    $toKill = New-Object System.Collections.Generic.List[int]
+    while ($queue.Count -gt 0) {
+        $p = $queue.Dequeue()
+        $toKill.Add($p) | Out-Null
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$p" |
+            ForEach-Object { $queue.Enqueue([int]$_.ProcessId) }
+    }
+    # Reverse so leaves die before their parents (prevents re-spawn during sweep)
+    $toKill.Reverse()
+    foreach ($p in $toKill) {
+        Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+    }
+}
+```
+
+**Canonical case**: Werkzeug's reloader (`debug=True`) runs 3-4 processes — re-launcher → supervisor → worker → optionally a debugger child. Any process-management design that assumes a single PID under the `.pid` file leaks processes on debug. Tree-walk is mandatory on Windows, not optional. `debug=False` runs as a single process; the tree-walk pattern handles both correctly.
+
+### Linux → Windows process primitive mapping
+
+When porting a `.sh` / cron-style script to Windows, the mapping is rarely 1:1. Common substitutions:
+
+| POSIX | Windows / PowerShell |
+|---|---|
+| `nohup foo &` | `Start-Process foo -WindowStyle Hidden` |
+| `kill -0 $pid` (existence probe) | `Get-Process -Id $pid -ErrorAction SilentlyContinue` |
+| `kill $pid` (TERM) | `taskkill /PID $pid` |
+| `kill -9 $pid` (KILL) | `taskkill /F /PID $pid` (then `Stop-Process -Id $pid -Force` if persistent) |
+| `pgrep -f 'pattern'` | `Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%pattern%'"` |
+| `kill -9 -<pgid>` (kill group) | BFS via `Win32_Process` + `ParentProcessId`; see `Stop-ProcessTree` above |
+| `source .env` | parse the file + `[Environment]::SetEnvironmentVariable($k, $v, 'Process')` |
+| `which foo` | `Get-Command foo -ErrorAction SilentlyContinue` |
+| `chmod +x foo` | n/a — Windows has no execute bit; file extension drives behavior |
+| `ln -s` | `New-Item -ItemType SymbolicLink` (requires admin or developer-mode) |
+| `xargs -P N` | `ForEach-Object -Parallel` (PS 7+ only) or `Start-Job` (PS 5.1) |
+
+Don't assume parity — smoke-test each mapping before relying on it in a stop / restart / health script.
+
+### Cross-language: `subprocess.Popen` and `.cmd` files
+
+Python's `subprocess.Popen([script.cmd, ...], shell=False)` fails on Windows with `OSError: [WinError 193] %1 is not a valid Win32 application`. `CreateProcess` requires a PE-format executable; batch files only run through `cmd.exe`.
+
+Two fixes:
+```python
+# Either (shell=True; convenient but shell-quoting hazards):
+subprocess.Popen([script_path, *args], shell=True)
+
+# Or (explicit; no shell-injection surface):
+subprocess.Popen(['cmd', '/c', script_path, *args])
+```
+
+The `cmd /c start "" /B` quoting trick is fragile — the first quoted arg is the window TITLE, not the executable:
+
+```batch
+cmd /c start "" /B ""C:\path\with spaces\app.cmd"" arg1 arg2
+::         ^^   ^^^^                                        ^^^^
+::         |    +-- DOUBLE double-quotes inside cmd /c "..."
+::         +-- empty title; without this, the path becomes the title and is swallowed
+```
+
+When the outer `cmd /c "..."` is itself quoted, embedded paths need **doubled** double-quotes to survive `cmd.exe`'s de-quoting pass. The `cmd /c start /B` pattern is the standard "spawn a detached grandchild" trick — useful when your own stop-walker would otherwise kill any direct child of your script.
 
 ---
 
