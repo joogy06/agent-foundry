@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/cross-project-mail/envelope.v1.json",
+  "title": "cross-project-mail envelope v1",
+  "description": "Frontmatter envelope for a single message in the cross-project-mail flat-file mailbox. Closed-set field whitelist.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "msg_id",
+    "sent_at",
+    "sender",
+    "recipient",
+    "subject",
+    "source_type",
+    "ack_state"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Schema version. Strict equality; bumps require migrator."
+    },
+    "msg_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID (26 chars, Crockford Base32, k-sortable, written by sender)."
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp, written by sender."
+    },
+    "sender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "agent"],
+      "properties": {
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,64}$",
+          "description": "Sending project slug (e.g. 'vs-code-foundry')."
+        },
+        "agent": {
+          "enum": [
+            "claude_code",
+            "codex_cli",
+            "gemini_cli",
+            "copilot_chat",
+            "copilot_cli",
+            "human",
+            "forge",
+            "bob",
+            "alf",
+            "pa",
+            "wiki",
+            "unknown"
+          ]
+        },
+        "host": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Sending hostname (advisory, not enforced)."
+        }
+      }
+    },
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,64}$"
+        },
+        "agent": {
+          "type": ["string", "null"],
+          "description": "Optional. null = any agent in project (v1 default)."
+        }
+      }
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "source_type": {
+      "enum": ["human", "ai_summary", "web_fetch_quoted", "tool_output"],
+      "description": "Provenance of the body content. Recipient applies trust calibration accordingly."
+    },
+    "reply_to": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "thread_id": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID of thread head. Defaults to msg_id for new threads."
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_-]{1,40}$"
+      },
+      "maxItems": 16,
+      "uniqueItems": true
+    },
+    "ack_state": {
+      "enum": ["unread", "read", "acked"],
+      "description": "Recipient-side state. Mutated in place via `cpmail ack`. Acked messages move to .acked/."
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": {
+            "enum": ["file_ref", "commit_sha", "url_quoted"]
+          },
+          "ref": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "sha256": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

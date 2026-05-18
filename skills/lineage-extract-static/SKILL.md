@@ -1,6 +1,6 @@
 ---
 name: lineage-extract-static
-description: Use when extracting data/process lineage from a codebase or file tree — Python/SQL/DSX/Control-M/dbt/COBOL/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Gemini CLI, Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on: "lineage report", "data flow extraction", "openlineage", "trace data through the codebase", "where does this dataset come from".
+description: "Use when extracting data/process lineage from a codebase or file tree — Python/SQL/DSX/Control-M/dbt/COBOL/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Gemini CLI, Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\"."
 ---
 
 # lineage-extract-static — Cross-System Data/Process Lineage Skill
