@@ -1,0 +1,630 @@
+#!/usr/bin/env python3
+"""cpmail — cross-project-mail CLI (v1, M1 walking skeleton).
+
+Flat-file mailbox at ~/.ai-mailbox/. Single file, stdlib + pyyaml only.
+No daemon, no MCP server, no upstream dependency. v1 trust model is
+single-user single-host; HMAC/quarantine/sender-allowlist deferred to v2 (M3).
+
+See skill: ~/.claude/skills/cross-project-mail/SKILL.md
+See design: docs/plans/2026-05-16-cross-project-mail-v1-design.md
+"""
+import argparse
+import datetime as _dt
+import hashlib
+import json
+import os
+import random
+import re
+import socket
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("cpmail: pyyaml required. Install: pip install --user pyyaml")
+
+SCHEMA_VERSION = "1"
+ULID_PAT = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+PROJECT_PAT = re.compile(r"^[a-z0-9_-]{1,64}$")
+LABEL_PAT = re.compile(r"^[a-z0-9_-]{1,40}$")
+SOURCE_TYPES = {"human", "ai_summary", "web_fetch_quoted", "tool_output"}
+ACK_STATES = {"unread", "read", "acked"}
+AGENTS = {"claude_code", "codex_cli", "gemini_cli", "copilot_chat", "copilot_cli",
+          "human", "forge", "bob", "alf", "pa", "wiki", "unknown"}
+BODY_CAP_BYTES = 16 * 1024
+SUBJECT_CAP = 200
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+# ---------------------------------------------------------------- ULID
+def ulid() -> str:
+    """Generate a Crockford-Base32 ULID (26 chars, 128 bits, k-sortable)."""
+    n = (int(time.time() * 1000) << 80) | random.getrandbits(80)
+    out = []
+    for _ in range(26):
+        out.append(CROCKFORD[n & 0x1F])
+        n >>= 5
+    return "".join(reversed(out))
+
+
+def ulid_from(seed: str) -> str:
+    """Deterministic ULID derived from seed (for idempotent migrator)."""
+    h = hashlib.sha256(seed.encode()).digest()
+    n = int.from_bytes(h[:16], "big")
+    out = []
+    for _ in range(26):
+        out.append(CROCKFORD[n & 0x1F])
+        n >>= 5
+    return "".join(reversed(out))
+
+
+# ---------------------------------------------------------------- Paths
+def mailbox_root() -> Path:
+    return Path(os.environ.get("AI_MAILBOX", str(Path.home() / ".ai-mailbox"))).expanduser()
+
+
+def inbox_dir(project: str) -> Path:
+    return mailbox_root() / "inbox" / project
+
+
+def acked_dir(project: str) -> Path:
+    return mailbox_root() / "inbox" / project / ".acked"
+
+
+def outbox_dir(project: str) -> Path:
+    return mailbox_root() / "outbox" / project
+
+
+def ensure_layout(project: str) -> None:
+    for p in (inbox_dir(project), acked_dir(project), outbox_dir(project)):
+        p.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------- Validation
+class ValidationError(Exception):
+    pass
+
+
+def validate(env: dict) -> None:
+    required = {"schema_version", "msg_id", "sent_at", "sender", "recipient",
+                "subject", "source_type", "ack_state"}
+    missing = required - env.keys()
+    if missing:
+        raise ValidationError(f"missing required fields: {sorted(missing)}")
+    if env["schema_version"] != SCHEMA_VERSION:
+        raise ValidationError(f"unsupported schema_version: {env['schema_version']}")
+    if not ULID_PAT.match(env["msg_id"] or ""):
+        raise ValidationError(f"invalid msg_id: {env['msg_id']!r}")
+    try:
+        _dt.datetime.fromisoformat(env["sent_at"].replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        raise ValidationError(f"invalid sent_at: {env['sent_at']!r}")
+
+    sender = env["sender"]
+    if not isinstance(sender, dict) or not PROJECT_PAT.match(sender.get("project") or ""):
+        raise ValidationError("invalid sender.project")
+    if sender.get("agent") not in AGENTS:
+        raise ValidationError(f"invalid sender.agent: {sender.get('agent')!r}")
+
+    recipient = env["recipient"]
+    if not isinstance(recipient, dict) or not PROJECT_PAT.match(recipient.get("project") or ""):
+        raise ValidationError("invalid recipient.project")
+    rec_agent = recipient.get("agent")
+    if rec_agent is not None and not isinstance(rec_agent, str):
+        raise ValidationError("invalid recipient.agent")
+
+    subj = env["subject"]
+    if not isinstance(subj, str) or not (1 <= len(subj) <= SUBJECT_CAP):
+        raise ValidationError(f"subject must be 1-{SUBJECT_CAP} chars")
+    if env["source_type"] not in SOURCE_TYPES:
+        raise ValidationError(f"invalid source_type: {env['source_type']!r}")
+    if env["ack_state"] not in ACK_STATES:
+        raise ValidationError(f"invalid ack_state: {env['ack_state']!r}")
+
+    for label in (env.get("labels") or []):
+        if not LABEL_PAT.match(label or ""):
+            raise ValidationError(f"invalid label: {label!r}")
+
+    for k in ("reply_to", "thread_id"):
+        v = env.get(k)
+        if v is not None and not ULID_PAT.match(v):
+            raise ValidationError(f"invalid {k}: {v!r}")
+
+    known = {"schema_version", "msg_id", "sent_at", "sender", "recipient",
+             "subject", "source_type", "reply_to", "thread_id", "labels",
+             "ack_state", "attachments"}
+    unknown = env.keys() - known
+    if unknown:
+        print(f"cpmail: warning: unknown envelope fields ignored: {sorted(unknown)}",
+              file=sys.stderr)
+
+
+# ---------------------------------------------------------------- Serialization
+def dump_message(env: dict, body: str) -> str:
+    fm = yaml.safe_dump(env, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    return f"---\n{fm}---\n\n{body}\n"
+
+
+def load_message(path: Path) -> tuple[dict, str]:
+    text = path.read_text(encoding="utf-8")
+    m = re.match(r"\A---\n(.*?\n)---\n+(.*)\Z", text, re.DOTALL)
+    if not m:
+        raise ValidationError(f"{path.name}: missing frontmatter")
+    env = yaml.safe_load(m.group(1)) or {}
+    return env, m.group(2)
+
+
+# ---------------------------------------------------------------- Project detect
+def detect_project(cwd: Optional[Path] = None) -> Optional[str]:
+    cwd = (cwd or Path.cwd()).resolve()
+
+    # Tier 1: ~/.ai-mailbox/.config.yaml project_aliases
+    cfg_path = mailbox_root() / ".config.yaml"
+    if cfg_path.exists():
+        try:
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            for path_pat, project in (cfg.get("project_aliases") or {}).items():
+                if str(cwd).startswith(str(Path(path_pat).expanduser().resolve())):
+                    if PROJECT_PAT.match(project or ""):
+                        return project
+        except (yaml.YAMLError, OSError):
+            pass
+
+    # Tier 2: PROJECT.md first heading (slug-cased)
+    p = cwd / "PROJECT.md"
+    if p.exists():
+        try:
+            for line in p.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if s.startswith("# "):
+                    name = s[2:].strip().lower().replace(" ", "_")
+                    if PROJECT_PAT.match(name):
+                        return name
+                    break
+        except OSError:
+            pass
+
+    # Tier 3: CWD basename if slug-shaped
+    base = cwd.name
+    if PROJECT_PAT.match(base):
+        return base
+    return None
+
+
+# ---------------------------------------------------------------- Commands
+def cmd_send(args: argparse.Namespace) -> int:
+    if not PROJECT_PAT.match(args.to):
+        print(f"cpmail: invalid --to project slug: {args.to!r}", file=sys.stderr)
+        return 2
+    if not args.subject or len(args.subject) > SUBJECT_CAP:
+        print(f"cpmail: --subject required, 1-{SUBJECT_CAP} chars", file=sys.stderr)
+        return 2
+
+    if args.from_ and args.from_.startswith("@"):
+        body = Path(args.from_[1:]).expanduser().read_text(encoding="utf-8")
+    else:
+        body = sys.stdin.read()
+    body = body.rstrip("\n")
+    if len(body.encode("utf-8")) > BODY_CAP_BYTES:
+        print(f"cpmail: body exceeds {BODY_CAP_BYTES} bytes", file=sys.stderr)
+        return 2
+
+    sender_project = args.from_project or detect_project()
+    if not sender_project:
+        print("cpmail: cannot detect sender project; pass --from-project", file=sys.stderr)
+        return 2
+
+    mid = ulid()
+    env = {
+        "schema_version": SCHEMA_VERSION,
+        "msg_id": mid,
+        "sent_at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sender": {"project": sender_project, "agent": args.sender_agent,
+                   "host": socket.gethostname()[:64]},
+        "recipient": {"project": args.to, "agent": args.agent},
+        "subject": args.subject,
+        "source_type": args.source_type,
+        "reply_to": args.reply_to,
+        "thread_id": args.thread_id or mid,
+        "labels": args.label or [],
+        "ack_state": "unread",
+        "attachments": [],
+    }
+    validate(env)
+
+    ensure_layout(args.to)
+    ensure_layout(sender_project)
+    out = inbox_dir(args.to) / f"{mid}.md"
+    if out.exists():
+        print(f"cpmail: msg_id collision: {mid}", file=sys.stderr)
+        return 1
+    out.write_text(dump_message(env, body), encoding="utf-8")
+    os.chmod(out, 0o600)
+
+    # outbox symlink (advisory; ignore failures on weird filesystems)
+    out_link = outbox_dir(sender_project) / f"{mid}.md"
+    if not out_link.exists():
+        try:
+            out_link.symlink_to(os.path.relpath(out, out_link.parent))
+        except (OSError, NotImplementedError):
+            pass
+
+    print(mid)
+    return 0
+
+
+def list_active(project: str) -> list[Path]:
+    d = inbox_dir(project)
+    if not d.exists():
+        return []
+    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix == ".md")
+
+
+def list_acked(project: str) -> list[Path]:
+    d = acked_dir(project)
+    if not d.exists():
+        return []
+    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix == ".md")
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    project = args.project or detect_project()
+    if not project:
+        print("cpmail: cannot detect project; pass --project", file=sys.stderr)
+        return 2
+
+    # Default to unread when no flag given
+    if args.acked:
+        state = "acked"
+    elif args.all:
+        state = "all"
+    else:
+        state = "unread"
+
+    if state == "unread":
+        files = list_active(project)
+    elif state == "acked":
+        files = list_acked(project)
+    else:
+        files = list_active(project) + list_acked(project)
+
+    since = None
+    if args.since:
+        try:
+            since = _dt.datetime.fromisoformat(args.since.replace("Z", "+00:00"))
+        except ValueError:
+            print(f"cpmail: invalid --since (use RFC3339): {args.since}", file=sys.stderr)
+            return 2
+
+    rows = []
+    for f in files:
+        try:
+            env, _ = load_message(f)
+        except (ValidationError, yaml.YAMLError):
+            continue
+        if since:
+            try:
+                sa = _dt.datetime.fromisoformat(env["sent_at"].replace("Z", "+00:00"))
+                if sa < since:
+                    continue
+            except (ValueError, KeyError):
+                continue
+        rows.append(env)
+        if args.limit and len(rows) >= args.limit:
+            break
+
+    for env in rows:
+        sender = env.get("sender") or {}
+        print(f"{env.get('msg_id', '?')}\t{env.get('ack_state', '?')}\t"
+              f"{env.get('sent_at', '?')}\t"
+              f"{sender.get('project', '?')}/{sender.get('agent', '?')}\t"
+              f"{env.get('source_type', '?')}\t{env.get('subject', '')}")
+    return 0
+
+
+def find_file(mid: str, project: Optional[str] = None) -> Optional[Path]:
+    if not ULID_PAT.match(mid or ""):
+        return None
+    root = mailbox_root() / "inbox"
+    if not root.exists():
+        return None
+    projects = [project] if project else sorted(p.name for p in root.iterdir() if p.is_dir())
+    for proj in projects:
+        for state_dir in (inbox_dir(proj), acked_dir(proj)):
+            p = state_dir / f"{mid}.md"
+            if p.exists():
+                return p
+    return None
+
+
+def cmd_read(args: argparse.Namespace) -> int:
+    p = find_file(args.msg_id)
+    if not p:
+        print(f"cpmail: message not found: {args.msg_id}", file=sys.stderr)
+        return 3
+    try:
+        env, body = load_message(p)
+    except (ValidationError, yaml.YAMLError) as e:
+        print(f"cpmail: corrupted message {args.msg_id}: {e}", file=sys.stderr)
+        return 1
+
+    # Auto-bump unread -> read on first read (preserves audit trail in body)
+    if env.get("ack_state") == "unread" and ".acked" not in p.parts:
+        env["ack_state"] = "read"
+        p.write_text(dump_message(env, body), encoding="utf-8")
+
+    print(f"--- message {env['msg_id']} ---")
+    for k in ("sent_at", "sender", "recipient", "subject", "source_type",
+              "reply_to", "thread_id", "labels", "ack_state"):
+        v = env.get(k)
+        if v is None or v == [] or v == {}:
+            continue
+        if isinstance(v, (dict, list)):
+            v = json.dumps(v, separators=(",", ":"))
+        print(f"{k}: {v}")
+    print()
+    print("<user_data>")
+    print(body)
+    print("</user_data>")
+    return 0
+
+
+def cmd_ack(args: argparse.Namespace) -> int:
+    p = find_file(args.msg_id)
+    if not p:
+        print(f"cpmail: message not found: {args.msg_id}", file=sys.stderr)
+        return 3
+    if ".acked" in p.parts:
+        print(f"cpmail: already acked: {args.msg_id}", file=sys.stderr)
+        return 0
+
+    try:
+        env, body = load_message(p)
+    except (ValidationError, yaml.YAMLError) as e:
+        print(f"cpmail: corrupted message {args.msg_id}: {e}", file=sys.stderr)
+        return 1
+
+    env["ack_state"] = "acked"
+    project = env["recipient"]["project"]
+    target = acked_dir(project) / p.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(dump_message(env, body), encoding="utf-8")
+    os.chmod(target, 0o600)
+    p.unlink()
+    print(f"acked: {args.msg_id}")
+    return 0
+
+
+def _extract_recipients(section_heading: str, sender_project: str) -> list[str]:
+    """From '## Outbound — skill_factory → vs-code-foundry (...)' return recipients.
+    Ignores Inbound sections (those are the receiving side's view, already
+    covered by the SENDING side's Outbound entry on the other end).
+    """
+    h = re.sub(r"^##\s*", "", section_heading or "")
+    if "outbound" not in h.lower():
+        return []
+    m = re.search(r"(?:→|->)\s*(.+)$", h)
+    if not m:
+        return []
+    rhs = m.group(1).strip().strip("[](){}")
+    out = []
+    for piece in re.split(r"[,/]+", rhs):
+        s = piece.strip().lower()
+        sm = re.match(r"^([a-z0-9_-]+)", s)
+        if sm:
+            slug = sm.group(1).rstrip("-_")
+            if slug and slug != sender_project and PROJECT_PAT.match(slug):
+                out.append(slug)
+    return out
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    src = Path(args.from_).expanduser().resolve()
+    if not src.exists():
+        print(f"cpmail: source not found: {src}", file=sys.stderr)
+        return 3
+
+    sender_project = args.sender_project or src.parent.name
+    if not PROJECT_PAT.match(sender_project):
+        print(f"cpmail: invalid sender project: {sender_project!r}", file=sys.stderr)
+        return 2
+
+    text = src.read_text(encoding="utf-8")
+    # Split on `^## ` headings to enumerate sections (Outbound/Inbound/Decisions)
+    sections = re.split(r"(?m)^(##\s.+)$", text)
+    section_pairs = []  # list[(heading, content_below)]
+    if len(sections) > 1:
+        for i in range(1, len(sections), 2):
+            content = sections[i + 1] if i + 1 < len(sections) else ""
+            section_pairs.append((sections[i], content))
+    else:
+        section_pairs.append(("", text))
+
+    written = 0
+    skipped_existing = 0
+
+    for heading, content in section_pairs:
+        recipients = _extract_recipients(heading, sender_project)
+        if not recipients:
+            continue
+
+        # Each entry begins at `^### YYYY-MM-DD`
+        # We capture date AND the full original header line for the subject
+        entry_pat = re.compile(r"(?m)^### (\d{4}-\d{2}-\d{2})([^\n]*)\n")
+        positions = [(m.start(), m.group(1), m.group(2)) for m in entry_pat.finditer(content)]
+        if not positions:
+            continue
+
+        for idx, (pos, date_str, title_rest) in enumerate(positions):
+            end = positions[idx + 1][0] if idx + 1 < len(positions) else len(content)
+            entry_body = content[pos:end]
+            # Drop the `### <date> <title>` line itself from body
+            entry_body = entry_pat.sub("", entry_body, count=1).strip()
+            title = (title_rest.strip(" —-") or date_str)[:SUBJECT_CAP]
+
+            for recipient in recipients:
+                seed = f"{src}::{date_str}::{recipient}::{sender_project}::{title}"
+                mid = ulid_from(seed)
+                if find_file(mid):
+                    skipped_existing += 1
+                    continue
+
+                env = {
+                    "schema_version": SCHEMA_VERSION,
+                    "msg_id": mid,
+                    "sent_at": f"{date_str}T00:00:00Z",
+                    "sender": {"project": sender_project, "agent": "human",
+                               "host": socket.gethostname()[:64]},
+                    "recipient": {"project": recipient, "agent": None},
+                    "subject": title,
+                    "source_type": "human",
+                    "reply_to": None,
+                    "thread_id": mid,
+                    "labels": ["cross-repo-review", "migrated"],
+                    "ack_state": "unread",
+                    "attachments": [{"kind": "file_ref", "ref": str(src), "sha256": None}],
+                }
+                validate(env)
+                wrapped = "<quoted_legacy_content>\n" + entry_body + "\n</quoted_legacy_content>"
+
+                if args.dry_run:
+                    print(f"DRY: {mid} sender={sender_project} recipient={recipient} "
+                          f"date={date_str} subject={title!r}")
+                else:
+                    ensure_layout(recipient)
+                    ensure_layout(sender_project)
+                    out = inbox_dir(recipient) / f"{mid}.md"
+                    out.write_text(dump_message(env, wrapped), encoding="utf-8")
+                    os.chmod(out, 0o600)
+                    out_link = outbox_dir(sender_project) / f"{mid}.md"
+                    if not out_link.exists():
+                        try:
+                            out_link.symlink_to(os.path.relpath(out, out_link.parent))
+                        except (OSError, NotImplementedError):
+                            pass
+                    print(f"wrote {mid} recipient={recipient} date={date_str}")
+                written += 1
+
+    print(f"migrate: wrote={written} skipped_existing={skipped_existing}", file=sys.stderr)
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    root = Path(args.mailbox).expanduser() if args.mailbox else mailbox_root()
+    issues = 0
+    if not root.exists():
+        print(f"doctor: mailbox does not exist: {root}")
+        return 0
+    inbox = root / "inbox"
+    if not inbox.exists():
+        print(f"doctor: no inbox/ at {root}")
+        return 0
+
+    for proj_dir in sorted(inbox.iterdir()):
+        if not proj_dir.is_dir():
+            continue
+        for state_dir in (proj_dir, proj_dir / ".acked"):
+            if not state_dir.exists():
+                continue
+            for f in sorted(state_dir.iterdir()):
+                if not (f.is_file() and f.suffix == ".md"):
+                    continue
+                try:
+                    env, _ = load_message(f)
+                    validate(env)
+                except (ValidationError, yaml.YAMLError) as e:
+                    print(f"BROKEN {f.relative_to(root)}: {e}")
+                    issues += 1
+                    continue
+                expected_acked = (state_dir.name == ".acked")
+                if expected_acked and env["ack_state"] != "acked":
+                    print(f"INCONSISTENT {f.relative_to(root)}: in .acked/ but ack_state={env['ack_state']}")
+                    issues += 1
+                elif not expected_acked and env["ack_state"] == "acked":
+                    print(f"INCONSISTENT {f.relative_to(root)}: ack_state=acked but in active inbox")
+                    issues += 1
+
+    print(f"doctor: {issues} issue(s)", file=sys.stderr)
+    return 0 if issues == 0 else 1
+
+
+def cmd_detect_project(args: argparse.Namespace) -> int:
+    cwd = Path(args.from_cwd).expanduser() if args.from_cwd else Path.cwd()
+    project = detect_project(cwd)
+    if project:
+        print(project)
+        return 0
+    return 1
+
+
+# ---------------------------------------------------------------- Main
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="cpmail",
+                                description="cross-project-mail v1 — flat-file mailbox")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("send", help="send a message")
+    s.add_argument("--to", required=True)
+    s.add_argument("--agent", default=None)
+    s.add_argument("--subject", required=True)
+    s.add_argument("--source-type", dest="source_type", default="human",
+                   choices=sorted(SOURCE_TYPES))
+    s.add_argument("--reply-to", dest="reply_to", default=None)
+    s.add_argument("--thread-id", dest="thread_id", default=None)
+    s.add_argument("--label", action="append", default=[])
+    s.add_argument("--from", dest="from_", default=None,
+                   help="'@path/to/file' or omit to read stdin")
+    s.add_argument("--from-project", dest="from_project", default=None)
+    s.add_argument("--sender-agent", dest="sender_agent", default="unknown",
+                   choices=sorted(AGENTS))
+
+    s = sub.add_parser("list", help="list messages")
+    s.add_argument("--project", default=None)
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--unread", action="store_true")
+    g.add_argument("--acked", action="store_true")
+    g.add_argument("--all", action="store_true")
+    s.add_argument("--limit", type=int, default=None)
+    s.add_argument("--since", default=None)
+
+    s = sub.add_parser("read", help="read a message")
+    s.add_argument("msg_id")
+
+    s = sub.add_parser("ack", help="acknowledge a message")
+    s.add_argument("msg_id")
+
+    s = sub.add_parser("migrate", help="migrate cross-repo-review.md -> mailbox")
+    s.add_argument("--from", dest="from_", required=True)
+    s.add_argument("--sender-project", dest="sender_project", default=None)
+    s.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    s = sub.add_parser("doctor", help="validate mailbox layout")
+    s.add_argument("--mailbox", default=None)
+
+    s = sub.add_parser("_detect-project", help="(internal) print detected project")
+    s.add_argument("--from-cwd", dest="from_cwd", default=None)
+
+    return p
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    dispatch = {
+        "send": cmd_send, "list": cmd_list, "read": cmd_read, "ack": cmd_ack,
+        "migrate": cmd_migrate, "doctor": cmd_doctor,
+        "_detect-project": cmd_detect_project,
+    }
+    return dispatch[args.cmd](args)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except ValidationError as e:
+        print(f"cpmail: {e}", file=sys.stderr)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit(130)
