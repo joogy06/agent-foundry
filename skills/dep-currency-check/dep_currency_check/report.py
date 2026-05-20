@@ -50,6 +50,7 @@ class Report:
     findings: tuple
     summary: dict
     advisories: tuple
+    meta: dict = field(default_factory=dict)
 
 
 def compute_blocks_build(finding_inputs: dict) -> bool:
@@ -78,6 +79,7 @@ def assemble_report(
     *,
     grounding_mode: GroundingMode = "full",
     advisories: Optional[list] = None,
+    meta: Optional[dict] = None,
 ) -> Report:
     """Assemble findings + manifests into a canonical Report."""
     manifests_scanned = tuple(m.path.relative_to(project_root)
@@ -111,6 +113,7 @@ def assemble_report(
         findings=tuple(findings),
         summary=summary,
         advisories=tuple(advisories or []),
+        meta=dict(meta or {}),
     )
 
 
@@ -172,7 +175,7 @@ def _recommend_action(gap_kind: str, cves: tuple) -> str:
 
 
 def _report_to_dict(report: Report) -> dict:
-    return {
+    out = {
         "schema_version": report.schema_version,
         "generated_at": report.generated_at.isoformat(),
         "project_root": str(report.project_root),
@@ -183,6 +186,12 @@ def _report_to_dict(report: Report) -> dict:
         "advisories": list(report.advisories),
         "osv_records": [_cve_to_dict(c) for f in report.findings for c in f.cves],
     }
+    # meta block (S035 degraded-scan advisory). Only emit when populated so
+    # the common case (clean scan) keeps the output stable for existing
+    # JSON-consuming downstream code.
+    if report.meta:
+        out["meta"] = dict(report.meta)
+    return out
 
 
 def render_json(report: Report) -> str:
