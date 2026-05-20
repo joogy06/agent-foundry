@@ -26,6 +26,19 @@ This is a **slim parent** — detailed protocols live in reference files. Read t
 </HARD-RULE>
 
 <HARD-RULE>
+**Hash-verified writes on shared mutable files.** For `index.md`, `_maintenance/link-index.md`, `WIKI.md`, and `log.md` — files that ANY agent or human may edit out-of-band — `.wiki.lock` is necessary but not sufficient (another session may write without acquiring it). Layer an optimistic hash check on top:
+
+1. **Snapshot before**: capture `sha256sum`, `wc -l`, `stat -c '%Y %s'` of the target file. Record the hash explicitly in the conversation/log.
+2. **Backup**: `cp -p <file> <file>.bak.YYYYMMDDTHHMMSSZ` with a UTC-style timestamp suffix. Backups stay in-place under the wiki root — they survive `cp -r` and are git-trackable.
+3. **Compose edits in memory** — Read the file, plan the modifications, but DO NOT write yet.
+4. **Re-check hash immediately before write**: `sha256sum` again and compare against the snapshot. If different → **abort the write**, alert the caller with the divergent hashes, do NOT silently overwrite. The backup remains for forensics; the new state may contain useful work that must not be lost.
+5. **Apply edits atomically**: prefer the harness's Edit tool (which does atomic replace) over `cat > file`. For larger rewrites, write to a sibling `<file>.new`, `fsync`, then `mv` to the final name.
+6. **Post-write confirmation**: capture the new `sha256sum` + line count and log it. This creates an audit trail.
+
+The protocol survives the "other session edited it without acquiring our lock" failure mode. The price is one extra `sha256sum` per write — negligible vs the cost of a silently-overwritten index.
+</HARD-RULE>
+
+<HARD-RULE>
 **Lint after batch ingest.** Mandatory. Single-source interactive ingests may skip. Batch mode must run `wiki/lint.md` protocol.
 </HARD-RULE>
 
