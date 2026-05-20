@@ -63,6 +63,8 @@ STAGING_DIR_DEFAULT = Path('/tmp') / f'claude-skills-public-{TIMESTAMP}'
 ALWAYS_EXCLUDE_PATTERNS = [
     '*.before-*',
     '*.bak',
+    '*.bak.*',                # timestamped forensic backups (e.g. file.bak.20260520T132009Z
+                              # produced by the wiki skill's hash-verified-writes HARD-RULE)
     '.DS_Store',
     'Thumbs.db',
     '__pycache__',
@@ -76,6 +78,7 @@ ALWAYS_EXCLUDE_PATTERNS = [
 GITIGNORE_DEFAULT = """# Private / local-only content — never publish
 **/*.before-*
 **/*.bak
+**/*.bak.*
 
 # OS noise
 .DS_Store

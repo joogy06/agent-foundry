@@ -44,9 +44,24 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot   = $PSScriptRoot
-$SkillsDir  = Join-Path $RepoRoot "skills"
-$AgentsDir  = Join-Path $RepoRoot "agents"
+
+# RepoRoot auto-detection:
+# - Bundled mode (public agent-foundry): install.ps1 lives next to skills/agents/commands.
+# - Dev mode (skill_factory/installer/): those siblings live in the parent directory.
+$_Here = $PSScriptRoot
+$_HereHasContent = @('skills','agents','commands') | Where-Object { Test-Path -LiteralPath (Join-Path $_Here $_) }
+$_ParentDir = Split-Path -Parent $_Here
+$_ParentHasContent = @('skills','agents','commands') | Where-Object { Test-Path -LiteralPath (Join-Path $_ParentDir $_) }
+if ($_HereHasContent.Count -gt 0) {
+    $RepoRoot = $_Here
+} elseif ($_ParentHasContent.Count -gt 0) {
+    $RepoRoot = $_ParentDir
+} else {
+    $RepoRoot = $_Here   # fall back; the "skills/ not found" check below will warn cleanly
+}
+
+$SkillsDir   = Join-Path $RepoRoot "skills"
+$AgentsDir   = Join-Path $RepoRoot "agents"
 $CommandsDir = Join-Path $RepoRoot "commands"
 
 function Write-Banner {
@@ -68,6 +83,11 @@ function Get-ClaudeCli {
     }
 }
 
+# Script-level flag: once a symlink fails with a privilege/unsupported error,
+# stop trying for the rest of the run and copy directly. Avoids a wall of 160
+# identical warnings on a non-admin Windows host without Developer Mode.
+$script:SymlinkDisabledForRun = $false
+
 function Place-Item {
     param(
         [Parameter(Mandatory)] [string]$Source,
@@ -80,13 +100,28 @@ function Place-Item {
         catch { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
     }
 
-    if ($Mode -eq "link") {
+    if ($Mode -eq "link" -and -not $script:SymlinkDisabledForRun) {
         try {
             $null = New-Item -ItemType SymbolicLink -Path $Destination -Target $Source -ErrorAction Stop
             return "link"
         } catch {
-            Write-Host ("    ⚠ symlink failed for " + (Split-Path -Leaf $Source) +
-                        ": " + $_.Exception.Message + "; copying instead") -ForegroundColor Yellow
+            $msg = $_.Exception.Message
+            $isPriv = ($msg -match "1314") -or ($msg -match "privilege is not held")
+            if ($isPriv) {
+                # First privilege failure: one actionable note, suppress the rest.
+                $script:SymlinkDisabledForRun = $true
+                Write-Host ""
+                Write-Host "    ⚠ Windows symlink privilege missing (WinError 1314)." -ForegroundColor Yellow
+                Write-Host "      Falling back to COPY for all remaining items." -ForegroundColor Yellow
+                Write-Host "      To enable symlinks, EITHER:"
+                Write-Host "        • run this installer from an elevated (Administrator) PowerShell, OR"
+                Write-Host "        • enable Developer Mode: Settings → Privacy & Security → For developers"
+                Write-Host "        • or just rerun with -Mode move to skip symlinks entirely"
+                Write-Host ""
+            } else {
+                Write-Host ("    ⚠ symlink failed for " + (Split-Path -Leaf $Source) +
+                            ": " + $msg + "; copying instead") -ForegroundColor Yellow
+            }
         }
     }
 

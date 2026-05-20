@@ -1,6 +1,7 @@
 # Private / local-only content — never publish
 **/*.before-*
 **/*.bak
+**/*.bak.*
 
 # OS noise
 .DS_Store

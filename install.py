@@ -30,7 +30,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+# REPO_ROOT auto-detection:
+# - Bundled mode (public agent-foundry): install.py lives next to skills/agents/commands.
+# - Dev mode (skill_factory/installer/): those siblings live in the parent directory.
+_HERE = Path(__file__).resolve().parent
+if any((_HERE / d).exists() for d in ("skills", "agents", "commands")):
+    REPO_ROOT = _HERE                  # bundled mode
+elif any((_HERE.parent / d).exists() for d in ("skills", "agents", "commands")):
+    REPO_ROOT = _HERE.parent           # dev mode (script lives in installer/)
+else:
+    REPO_ROOT = _HERE                  # fall back; the "nothing found" check below will warn cleanly
 
 TARGETS_HELP = """\
 Targets:
@@ -91,6 +100,30 @@ def ask(prompt: str, default: str | None = None, choices: list[str] | None = Non
         print(f"  invalid choice: {val!r}; expected one of {choices}")
 
 
+# Tokens that almost certainly mean "user thought this was a y/N prompt".
+# We refuse them as path overrides and re-prompt so we don't end up creating
+# directories named `y/`, `n/`, `yes/`, etc. (real bug report 2026-05-18).
+_NOT_A_PATH = frozenset({"y", "n", "yes", "no", "ok", "true", "false"})
+
+
+def _ask_path_override(label: str, default_path: Path) -> Path:
+    """Prompt for a path override; re-ask if the user types a y/N-style answer.
+
+    Empty input → keep the default (returned unchanged). A typed path is
+    expanded with `~`. If the user types `y`, `n`, `yes`, `no`, etc. we
+    show a hint and re-prompt rather than silently treating it as a path.
+    """
+    prompt = f"{label} config dir override (press Enter to KEEP {default_path}, or paste a NEW path)"
+    while True:
+        raw = ask(prompt, default="")
+        if not raw:
+            return default_path
+        if raw.lower() in _NOT_A_PATH:
+            print(f"  ⚠ {raw!r} isn't a path — press Enter to keep {default_path}, or type the new directory.")
+            continue
+        return Path(raw).expanduser()
+
+
 def confirm(prompt: str, default: bool = False) -> bool:
     suffix = "[Y/n]" if default else "[y/N]"
     while True:
@@ -141,22 +174,55 @@ def _replace_existing(dest: Path) -> None:
         dest.unlink()
 
 
+# Module-level state: once a symlink fails with a privilege/unsupported error
+# on this host, stop trying for the rest of the run and copy directly. This
+# turns a wall of 160 identical warnings into a single actionable note.
+_SYMLINK_DISABLED_FOR_RUN = False
+
+
+def _is_symlink_privilege_error(exc: BaseException) -> bool:
+    """Return True if the OSError looks like Windows symlink privilege missing.
+
+    WinError 1314 = SeCreateSymbolicLinkPrivilege not held by the process.
+    Triggered when not running as Administrator AND Developer Mode is OFF.
+    """
+    s = str(exc).lower()
+    if "1314" in s or "privilege is not held" in s:
+        return True
+    # POSIX EPERM on filesystems that don't support symlinks (rare).
+    if getattr(exc, "errno", None) == 1 and isinstance(exc, OSError):
+        return True
+    return False
+
+
 def link_or_copy(src: Path, dest: Path, mode: str) -> str:
     """Place src at dest. Returns 'link' / 'copy' / 'fallback-copy'."""
+    global _SYMLINK_DISABLED_FOR_RUN
     is_dir = src.is_dir()
-    if mode == "link":
+    if mode == "link" and not _SYMLINK_DISABLED_FOR_RUN:
         try:
             os.symlink(src, dest, target_is_directory=is_dir)
             return "link"
         except (OSError, NotImplementedError) as exc:
-            # Windows non-admin without dev mode + some enterprise filesystems
-            # refuse symlinks. Fall back to copy with a warning.
-            print(f"    ⚠ symlink failed for {src.name}: {exc}; copying instead")
-            if is_dir:
-                shutil.copytree(src, dest)
+            if _is_symlink_privilege_error(exc):
+                # First failure: print one actionable note, then suppress for the rest of the run.
+                _SYMLINK_DISABLED_FOR_RUN = True
+                print()
+                print("    ⚠ Windows symlink privilege missing (WinError 1314).")
+                print("      Falling back to COPY for all remaining items.")
+                print("      To enable symlinks, EITHER:")
+                print("        • run this installer from an elevated (Administrator) shell, OR")
+                print("        • enable Developer Mode: Settings → Privacy & Security → For developers")
+                print("        • or just rerun with --mode move to skip symlinks entirely")
+                print()
             else:
-                shutil.copy2(src, dest)
-            return "fallback-copy"
+                print(f"    ⚠ symlink failed for {src.name}: {exc}; copying instead")
+            # fall through to copy
+    if is_dir:
+        shutil.copytree(src, dest)
+    else:
+        shutil.copy2(src, dest)
+    return "fallback-copy" if mode == "link" else "copy"
     if is_dir:
         shutil.copytree(src, dest)
     else:
@@ -273,30 +339,48 @@ def install_gemini(
 
     Returns (installed, skipped, used_gemini_cli).
     """
-    has_gemini = shutil.which("gemini") is not None
+    gemini_cli = shutil.which("gemini")
+    has_gemini = gemini_cli is not None
+    # On Windows, `shutil.which` typically returns `gemini.cmd` / `gemini.bat`.
+    # `subprocess.run([...])` with a bare name fails (CreateProcess doesn't search
+    # for .cmd/.bat extensions), and even with the full path, batch files need
+    # cmd.exe to actually execute. Wrap accordingly.
+    needs_cmd_wrap = (
+        sys.platform == "win32"
+        and gemini_cli is not None
+        and gemini_cli.lower().endswith((".cmd", ".bat"))
+    )
     skills_target = gemini_home / "skills"
     skills_target.mkdir(parents=True, exist_ok=True)
 
     n = 0
     skipped = 0
+    gemini_cli_unusable = False  # flips True if the first invocation FileNotFoundErrors
 
     for skill in sorted((repo_root / "skills").iterdir()):
         if not skill.is_dir() or not (skill / "SKILL.md").exists():
             continue
-        if has_gemini:
-            r = subprocess.run(
-                ["gemini", "skills", "link", str(skill)],
-                capture_output=True,
-                text=True,
-            )
-            if r.returncode == 0:
-                n += 1
+        if has_gemini and not gemini_cli_unusable:
+            if needs_cmd_wrap:
+                cmd_args = ["cmd.exe", "/c", gemini_cli, "skills", "link", str(skill)]
             else:
-                stderr = (r.stderr or "").strip().splitlines()
-                first = stderr[0] if stderr else "(no stderr)"
-                print(f"    ⚠ gemini skills link {skill.name}: {first}")
-                skipped += 1
-            continue
+                cmd_args = [gemini_cli, "skills", "link", str(skill)]
+            try:
+                r = subprocess.run(cmd_args, capture_output=True, text=True)
+            except (FileNotFoundError, OSError) as exc:
+                # Gemini CLI is on PATH per shutil.which but unexecutable from here.
+                # Fall through to the direct-symlink branch for this and remaining skills.
+                print(f"    ⚠ gemini CLI present but unexecutable ({exc}); using direct {mode} fallback")
+                gemini_cli_unusable = True
+            else:
+                if r.returncode == 0:
+                    n += 1
+                else:
+                    stderr = (r.stderr or "").strip().splitlines()
+                    first = stderr[0] if stderr else "(no stderr)"
+                    print(f"    ⚠ gemini skills link {skill.name}: {first}")
+                    skipped += 1
+                continue
 
         dest = skills_target / skill.name
         if (dest.exists() or dest.is_symlink()) and not force:
@@ -306,7 +390,7 @@ def install_gemini(
         link_or_copy(skill, dest, mode)
         n += 1
 
-    return n, skipped, has_gemini
+    return n, skipped, has_gemini and not gemini_cli_unusable
 
 
 COPILOT_AGENTS_MD = """\
@@ -519,13 +603,9 @@ def main() -> int:
 
     if not args.noninteractive:
         if "claude" in targets:
-            override = ask(f"Claude config dir override (Enter to keep {claude_home})", default="")
-            if override:
-                claude_home = Path(override).expanduser()
+            claude_home = _ask_path_override("Claude", claude_home)
         if "gemini" in targets:
-            override = ask(f"Gemini config dir override (Enter to keep {gemini_home})", default="")
-            if override:
-                gemini_home = Path(override).expanduser()
+            gemini_home = _ask_path_override("Gemini", gemini_home)
 
     # ---- Confirm ----
     print()
