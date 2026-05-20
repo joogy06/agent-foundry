@@ -1,0 +1,129 @@
+schema_version: affordance.v1
+host_cli: gemini
+
+# Day-one entries derived from Gemini CLI 0.36.0+ (gemini --help).
+# See ~/.claude/skills/gemini-cli for full operational notes.
+
+affordances:
+  - id: gemini/worktree-isolated-workspace
+    command: "gemini -w"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-isolated-workspace
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Create or attach a fresh git worktree for the next chunk of work — keeps the
+      current workspace clean.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/plan-mode-readonly
+    command: "gemini --approval-mode plan"
+    risk_class: low
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - user-wants-readonly-planning
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Read-only planning mode — Gemini cannot mutate the tree. Mirror of Claude's
+      planning flow.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/yolo-auto-approve
+    command: "gemini -y"
+    risk_class: high
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - user-wants-yolo
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Auto-approve every tool call. Destructive default-off — only suggest when the
+      user has explicitly asked to skip approvals.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/resume-prior-session
+    command: "gemini -r latest"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - switching-back-to-prior-task
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Resume the most recent Gemini session — useful for context-switching back to a
+      half-done piece of work.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/hooks-migrate-from-claude
+    command: "gemini hooks migrate"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - claude-hooks-to-port
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      One-shot migration of Claude Code hook config into Gemini's hook format.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/skills-install-from-git
+    command: "gemini skills install"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - install-new-skill
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Install a Gemini skill from a git URL.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/skills-link-local
+    command: "gemini skills link"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - link-local-skill
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Dev-mode link of a local skill directory into Gemini's loaded skill set.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/mcp-server-management
+    command: "gemini mcp"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - manage-mcp-servers
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Add / remove / list MCP servers for the Gemini session.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md
+
+  - id: gemini/acp-agent-mode
+    command: "gemini --acp"
+    risk_class: medium
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - acp-mode-delegation
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Agent Communication Protocol mode — experimental A2A interop, suggest only when
+      the user is wiring up a multi-agent flow.
+    reference: ~/.claude/skills/gemini-cli/SKILL.md

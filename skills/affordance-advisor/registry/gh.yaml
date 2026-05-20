@@ -1,0 +1,171 @@
+schema_version: affordance.v1
+
+# gh is a UTILITY CLI usable from ANY host (Claude Code, Codex, Gemini, Copilot).
+# Activation gate is "tool on PATH" rather than "host_cli matches".
+# The advisor surfaces these hints when gh is installed, regardless of the active host.
+
+activation:
+  tool_on_path: gh
+
+affordances:
+  - id: gh/pr-create-from-commits
+    command: "gh pr create --fill --web"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - branch-ready-pr-follows
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Auto-fill a PR from the current branch's commits and open it in the browser
+      for review-and-submit.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/pr-list-local
+    command: "gh pr list"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - reviewing-prs
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      List open PRs on the current repo, locally formatted.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/pr-view-detail
+    command: "gh pr view"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - reviewing-prs
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Inspect a specific PR (description, comments, status checks) from the terminal.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/pr-checks-watch
+    command: "gh pr checks --watch"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - branch-ready-pr-follows
+        - watch-ci-on-pr
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Live-tail the CI status for an open PR — useful right after pushing.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/workflow-run-on-demand
+    command: "gh workflow run"
+    risk_class: medium
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - run-workflow-on-demand
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Trigger a GitHub Actions workflow manually. Side-effecting — confirm name first.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/run-list-recent
+    command: "gh run list"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - inspect-recent-ci-runs
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      List recent workflow runs to see what's green / red.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/run-view-detail
+    command: "gh run view"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - inspect-recent-ci-runs
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Inspect a specific workflow run (logs, conclusion, jobs) from the terminal.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/agent-task-cloud-delegate
+    command: "gh agent-task create"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [forge, bob]
+      completion_kind:
+        - delegate-to-cloud-agent
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Delegate a long-running task to GitHub Copilot's cloud agent (preview).
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/codespace-ssh
+    command: "gh codespace ssh"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - jump-into-codespace
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Open an SSH session into a named codespace — useful when local repro is hard.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/copilot-chat-via-gh
+    command: "gh copilot -p"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - one-shot-question
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Use Copilot Chat via the gh extension (downloads Copilot CLI if missing).
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: gh/api-call
+    command: "gh api"
+    risk_class: medium
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - custom-github-api-call
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Hit a raw GitHub REST endpoint. Risk depends on the endpoint — confirm method.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: gh/pr-merge
+    command: "gh pr merge"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - pr-ready-to-merge
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Merge an approved PR. Confirm strategy (merge / squash / rebase) first.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md

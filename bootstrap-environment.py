@@ -353,8 +353,24 @@ class Bootstrap:
             return
         codex_skills.mkdir(parents=True, exist_ok=True)
         added = 0
+        excluded = 0
         for skill in skills_src.iterdir():
             if not skill.is_dir():
+                continue
+            # Sentinel: a skill that contains .no-codex-symlink at its root is
+            # deliberately excluded from Codex mirroring. See
+            # ~/.claude/skills/affordance-advisor/.no-codex-symlink for the
+            # contamination rationale.
+            if (skill / ".no-codex-symlink").exists():
+                excluded += 1
+                # Ensure any prior symlink is removed so the exclusion is honoured
+                # on subsequent runs after the sentinel was added.
+                stale = codex_skills / skill.name
+                if stale.is_symlink() or stale.exists():
+                    try:
+                        stale.unlink()
+                    except OSError:
+                        pass
                 continue
             link = codex_skills / skill.name
             if link.is_symlink() and link.resolve() == skill.resolve():
@@ -366,7 +382,9 @@ class Bootstrap:
                 added += 1
             except OSError:
                 continue
-        self.out.ok(f"ensured {added} new Codex symlink(s); total: {sum(1 for _ in codex_skills.iterdir())}")
+        total = sum(1 for _ in codex_skills.iterdir())
+        suffix = f" (excluded by .no-codex-symlink: {excluded})" if excluded else ""
+        self.out.ok(f"ensured {added} new Codex symlink(s); total: {total}{suffix}")
 
     # ----- step 9 -----------------------------------------------------------
 
