@@ -79,33 +79,108 @@ def _classify_constraint(version: str) -> ConstraintType:
     return "unspecified"
 
 
-def _gitignored_paths(project_root: Path) -> set:
-    """Best-effort gitignore-respecting skip list. Falls back to a static list
-    if `git ls-files` is unavailable. Returns paths relative to project_root."""
-    static_skips = {
-        "node_modules", "vendor", ".venv", "venv", ".git",
-        "__pycache__", "target", "build", "dist", ".tox",
-    }
+# Module-level degraded-scan advisory flags (S035 fail-open fix).
+# Reset on every call to _walk_for_manifests. Read by the CLI to populate
+# meta.degraded + meta.degraded_reason in the JSON output. This prevents
+# fail-open silence: if .git/ exists but `git ls-files` errored, the user
+# sees a visible degraded-scan advisory instead of an empty result.
+_LAST_SCAN_DEGRADED: bool = False
+_LAST_SCAN_REASON: Optional[str] = None
+
+# Static skip set is applied on BOTH the git-enum path AND the rglob fallback.
+# Even if `node_modules/` isn't gitignored (rare, sometimes accidentally
+# tracked), scanning it would explode the dep graph with duplicate transitives.
+# Point the skill directly at <project>/node_modules if that's intended.
+_STATIC_SKIP_DIRS: set = {
+    "node_modules", "vendor", ".venv", "venv", ".git",
+    "__pycache__", "target", "build", "dist", ".tox",
+}
+
+
+def _gitignored_paths(project_root: Path) -> set:  # noqa: ARG001
+    """Thin alias for backward compatibility (S035 fail-open fix).
+
+    Previously returned a poisoned union of `git ls-files --others --ignored`
+    parents + static skip dirs — that union was the bug, because git reports
+    FILES (e.g. `app_deploy/logs/server.log`), and splitting on `/` turned
+    `app_deploy` into a skip entry, hiding the tracked `app_deploy/requirements.txt`.
+
+    Now returns the static skip set only. The actual gitignore-aware
+    enumeration moved to `_enumerate_via_git`. Kept as a public alias because
+    callers may import it; underscore-prefixed so this is best-effort
+    compatibility, not API contract.
+    """
+    return set(_STATIC_SKIP_DIRS)
+
+
+def _enumerate_via_git(project_root: Path) -> Optional[list]:
+    """Use `git ls-files` to enumerate candidate files.
+
+    Returns None if git is unavailable, the tree isn't a git repo, or git
+    errors out — so the caller can fall back to rglob+static-skip.
+
+    Sets module-level `_LAST_SCAN_DEGRADED` + `_LAST_SCAN_REASON` if a `.git/`
+    directory exists but the git probe failed, so the CLI can surface a
+    visible "degraded scan" advisory instead of silently fail-open.
+
+    Notes:
+      --cached:           tracked files (always relevant — we WANT to scan
+                          tracked manifests even if they're now gitignored).
+      --others:           untracked files.
+      --exclude-standard: respect .gitignore + .git/info/exclude + global
+                          excludes when listing --others.
+      -z:                 NUL-separated to survive filenames with newlines,
+                          spaces, `#`, brackets, etc.
+    """
+    global _LAST_SCAN_DEGRADED, _LAST_SCAN_REASON
+    git_dir = project_root / ".git"
+    has_git_dir = git_dir.exists()
     try:
         proc = subprocess.run(
-            ["git", "-C", str(project_root), "ls-files", "--others",
-             "--ignored", "--exclude-standard", "-z"],
-            capture_output=True, text=True, timeout=10,
+            ["git", "-C", str(project_root), "ls-files", "-z",
+             "--cached", "--others", "--exclude-standard"],
+            capture_output=True, text=True, timeout=15,
         )
-        if proc.returncode == 0:
-            ignored = set()
-            for line in proc.stdout.split("\0"):
-                if line:
-                    # Add top-level dir of ignored paths
-                    ignored.add(line.split("/")[0])
-            return ignored | static_skips
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
-    return static_skips
+    except FileNotFoundError:
+        # git binary missing entirely — not a degraded scan, just no-git mode
+        return None
+    except subprocess.TimeoutExpired:
+        if has_git_dir:
+            _LAST_SCAN_DEGRADED = True
+            _LAST_SCAN_REASON = "git ls-files timed out after 15s"
+        return None
+    except OSError as e:
+        if has_git_dir:
+            _LAST_SCAN_DEGRADED = True
+            _LAST_SCAN_REASON = f"git ls-files OSError: {e}"
+        return None
+    if proc.returncode != 0:
+        if has_git_dir:
+            stderr_first = (proc.stderr or "").splitlines()[0] if proc.stderr else ""
+            _LAST_SCAN_DEGRADED = True
+            _LAST_SCAN_REASON = (
+                f"git ls-files exited {proc.returncode}: {stderr_first}".strip()
+            )
+        return None
+    return [project_root / rel for rel in proc.stdout.split("\0") if rel]
 
 
 def _walk_for_manifests(project_root: Path) -> list:
-    """Walk project tree (gitignore-aware), return list of manifest file paths."""
+    """Walk project tree, return list of manifest file paths.
+
+    Preferred path: ask git directly via `git ls-files --cached --others
+    --exclude-standard`. Zero traversal of gitignored trees. Picks up
+    tracked-but-now-gitignored manifests (git keeps tracking them).
+
+    Fallback (non-git tree, or git error): rglob + static-skip-only.
+    NEVER poison the skip set from sub-path .gitignore entries (the
+    original bug).
+    """
+    global _LAST_SCAN_DEGRADED, _LAST_SCAN_REASON
+    # Reset advisory flags on EVERY call (idempotent per call).
+    _LAST_SCAN_DEGRADED = False
+    _LAST_SCAN_REASON = None
+
     targets = {
         "pyproject.toml", "setup.py", "setup.cfg", "Pipfile",
         "package.json",
@@ -115,16 +190,47 @@ def _walk_for_manifests(project_root: Path) -> list:
         "pom.xml", "build.gradle", "build.gradle.kts",
     }
     requirements_re = re.compile(r"^requirements[^/]*\.txt$")
-    skip_dirs = _gitignored_paths(project_root)
+
+    def _passes_static_skip(p: Path) -> bool:
+        """Drop files inside _STATIC_SKIP_DIRS or any dot-dir (except '.').
+        Applied on BOTH git-enum path and rglob fallback."""
+        try:
+            rel = p.relative_to(project_root)
+        except ValueError:
+            return False
+        for part in rel.parts[:-1]:
+            if part in _STATIC_SKIP_DIRS:
+                return False
+            if part.startswith(".") and part != ".":
+                return False
+        return True
+
+    # Preferred path: let git enumerate. Zero traversal of ignored trees.
+    git_files = _enumerate_via_git(project_root)
+    if git_files is not None:
+        return [
+            p for p in git_files
+            if p.is_file()
+            and (p.name in targets or requirements_re.match(p.name))
+            and _passes_static_skip(p)
+        ]
+
+    # Fallback: rglob + static skip ONLY. No gitignore-pollution.
     found = []
     for p in project_root.rglob("*"):
         try:
-            rel_parts = p.relative_to(project_root).parts
+            rel = p.relative_to(project_root)
         except ValueError:
             continue
-        if any(part in skip_dirs or part.startswith(".") and part not in (".",)
-               for part in rel_parts[:-1]):
-            # Skip files inside gitignored / dot dirs
+        skip = False
+        for part in rel.parts[:-1]:
+            if part in _STATIC_SKIP_DIRS:
+                skip = True
+                break
+            if part.startswith(".") and part != ".":
+                skip = True
+                break
+        if skip:
             continue
         if p.is_file() and (p.name in targets or requirements_re.match(p.name)):
             found.append(p)

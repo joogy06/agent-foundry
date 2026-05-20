@@ -26,6 +26,7 @@ from .community_wrappers import (
     query_via_osv_scanner,
 )
 from .compare import compare, Gap
+from . import manifests as _manifests_mod
 from .manifests import Dependency, Manifest, detect_manifests
 from .registry import Registry, VersionInfo
 from .report import (
@@ -153,6 +154,7 @@ def _filter_severity(report: Report, min_severity: str) -> Report:
         findings=tuple(out),
         summary=report.summary,
         advisories=report.advisories,
+        meta=report.meta,
     )
 
 
@@ -432,6 +434,18 @@ def main(argv: Optional[list] = None) -> int:
 
     # Detect manifests
     manifests = detect_manifests(project_root)
+    # Capture degraded-scan advisory (S035 fail-open fix). Read IMMEDIATELY
+    # after the walk — module-level flags are reset on every _walk call.
+    scan_meta: dict = {}
+    if getattr(_manifests_mod, "_LAST_SCAN_DEGRADED", False):
+        scan_meta["degraded"] = True
+        reason = getattr(_manifests_mod, "_LAST_SCAN_REASON", None)
+        if reason:
+            scan_meta["degraded_reason"] = reason
+        advisories.append(
+            f"manifest discovery DEGRADED: {scan_meta.get('degraded_reason', 'unknown reason')} "
+            f"— results may be incomplete"
+        )
     manifests = _filter_manifests(manifests, args.changed_manifests, project_root)
 
     # Ecosystem filter
@@ -445,6 +459,7 @@ def main(argv: Optional[list] = None) -> int:
             project_root, [], [],
             grounding_mode=grounding_mode,
             advisories=advisories or ["no recognized manifests found"],
+            meta=scan_meta,
         )
         _write_output(report, args)
         return 0
@@ -541,6 +556,7 @@ def main(argv: Optional[list] = None) -> int:
         project_root, manifests, all_findings,
         grounding_mode=grounding_mode,
         advisories=advisories,
+        meta=scan_meta,
     )
 
     # Filter to requested severity
@@ -550,7 +566,7 @@ def main(argv: Optional[list] = None) -> int:
     if args.emit_scope_delta and args.mode == "strict":
         requesting_wp = os.environ.get("REQUESTING_WP", "unknown")
         _emit_scope_deltas(report, project_root, requesting_wp, advisories)
-        # Re-assemble with updated advisories
+        # Re-assemble with updated advisories (preserve meta).
         report = Report(
             project_root=report.project_root,
             schema_version=report.schema_version,
@@ -560,6 +576,7 @@ def main(argv: Optional[list] = None) -> int:
             findings=report.findings,
             summary=report.summary,
             advisories=tuple(advisories),
+            meta=report.meta,
         )
 
     # Write output
