@@ -1,0 +1,130 @@
+schema_version: affordance.v1
+host_cli: codex
+
+# Day-one entries derived from Codex CLI 0.130.0 (codex --help).
+# See ~/.claude/skills/codex-orchestration for delegation patterns.
+
+affordances:
+  - id: codex/review-completed-work
+    command: "codex review"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - implementation-done
+        - design-finalized-medium-or-higher
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Run an independent code-review pass on what was just produced. Codex's view of
+      its own (or anyone's) output is useful as a second opinion.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/fork-stuck-attempt
+    command: "codex fork"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - stuck-after-retries
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Branch the current Codex session to try a different approach without losing the
+      original thread.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/resume-prior-session
+    command: "codex resume"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - switching-back-to-prior-task
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Pick a prior Codex session to resume — useful when context-switching back to a
+      half-done piece of work.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/sandbox-run
+    command: "codex sandbox"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-sandboxed-run
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Run a command inside Codex's controlled sandbox (read-only or write-tracked).
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/apply-diff
+    command: "codex apply"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - diff-produced-ready-to-apply
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Git-apply the latest Codex-produced diff to the working tree.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/doctor-health
+    command: "codex doctor"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - install-drift-suspected
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Local install health-check — runs config / auth / plugin sanity tests.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/cloud-delegate
+    command: "codex cloud"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [forge, bob]
+      completion_kind:
+        - user-wants-cloud-delegate
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Experimental cloud delegation to GPT-5.4 for long-running tasks. Billed.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/plugin-management
+    command: "codex plugin"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - manage-codex-plugins
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Manage Codex plugins (list / install / update / remove).
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/mcp-server-management
+    command: "codex mcp"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - manage-mcp-servers
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Add / remove / list MCP servers for the Codex session.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md

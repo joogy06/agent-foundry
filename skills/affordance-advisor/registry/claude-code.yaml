@@ -1,0 +1,236 @@
+schema_version: affordance.v1
+host_cli: claude-code
+
+# Day-one entries derived from Claude Code 2.1.x full command table
+# (see ~/.claude/skills/claude-code-cli for the full reference).
+# Restricted to workflow-completion suggestions, not interactive UI helpers.
+
+affordances:
+  - id: claude-code/run-ui-app
+    command: "/run"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - ui-change
+        - frontend-route-change
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Start the running app (npm run dev / dotnet run / etc.) so the next /verify pass
+      can drive the UI end-to-end.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/verify-ui
+    command: "/verify"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - ui-change
+        - frontend-route-change
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Drive the UI in the running app and confirm the change works end-to-end
+      (beyond unit tests). Pair with /run if the app isn't already up.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/diff-large-edit
+    command: "/diff"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - many-files-edited
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Quick visual confirmation of what bob actually changed across the file set.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/security-review-after-alf
+    command: "/security-review"
+    risk_class: low
+    workflow_match:
+      orchestrator: [alf]
+      completion_kind:
+        - security-high-findings
+    skip_when:
+      orchestrator_failed: false
+      already_suggested_this_session: true
+    hint: |
+      Run the host-native security review pass over the changed branch — only if alf
+      didn't already invoke an equivalent pipeline.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/ultrareview-before-pr
+    command: "/ultrareview"
+    risk_class: high
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - design-finalized-medium-or-higher
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Cloud-billed deep review of a finished PR. Suggest only if the user has signaled
+      interest in paid cloud review.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/ultraplan-for-complex-design
+    command: "/ultraplan"
+    risk_class: high
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - design-finalized-complex-uncertain
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Cloud-billed deep planning pass when the user is uncertain about the approach.
+      Suggest only with prior user signal.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/rewind-on-error
+    command: "/rewind"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - rollback-signal
+        - orchestrator-errored
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Conversational undo — roll back to the prior turn before the error.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/rewind-to-checkpoint
+    command: "/rewind"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - checkpoint-written
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Roll back to the bob checkpoint just written, if you want to re-try from there.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/loop-local-poll
+    command: "/loop"
+    risk_class: low
+    workflow_match:
+      orchestrator: [pa]
+      completion_kind:
+        - schedule-recurring-local
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Run a recurring check inside this terminal session. Cheap, stays in-context.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/schedule-cloud
+    command: "/schedule"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [pa]
+      completion_kind:
+        - schedule-recurring-cloud
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Cloud-scheduled recurring agent. Requires a claude.ai web session; outlasts this
+      terminal.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/compact-context
+    command: "/compact"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - context-window-pressure
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Compact the conversation to free up context budget before the next big task.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/simplify-spot-pass
+    command: "/simplify"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - small-quality-pass
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Lightweight quality / dedup pass over the files just touched (alf-lite).
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/insights-friction
+    command: "/insights"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - friction-question-cross-session
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Surface friction patterns recorded across recent sessions to answer a "where do
+      I keep getting stuck?" question.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/autofix-pr
+    command: "/autofix-pr"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - branch-ready-pr-follows
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Cloud-assisted auto-fix of CI failures on the open PR. Web account required.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/tasks-observe-agents
+    command: "/tasks"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob, agent-teams]
+      completion_kind:
+        - parallel-agents-in-flight
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Observe in-flight parallel agents from the agent-teams orchestration.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md
+
+  - id: claude-code/clear-fresh-start
+    command: "/clear"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - session-getting-long
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Start a fresh conversation while keeping project memory intact.
+    reference: ~/.claude/skills/claude-code-cli/SKILL.md

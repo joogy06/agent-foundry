@@ -210,6 +210,13 @@ do_check() {
     inv=$(printf '%s' "$inv" | jq --argjson tier "$tier" --arg tier_label "$tier_label" \
       '. + {tier: $tier, tier_label: $tier_label}')
 
+    # affordance-advisor: write the active host CLI as a manifest field.
+    # Detection script is stdlib-only and returns one of:
+    #   claude-code | codex | gemini | copilot-cli | copilot-chat | unknown
+    local current_cli
+    current_cli=$(timeout 3 python3 "$HOME/.claude/skills/affordance-advisor/scripts/detect_host_cli.py" 2>/dev/null || echo "unknown")
+    inv=$(printf '%s' "$inv" | jq --arg current_cli "$current_cli" '. + {current_cli: $current_cli}')
+
     # Write inventory
     mkdir -p "$(dirname "$INVENTORY_FILE")"
     printf '%s\n' "$inv" > "$INVENTORY_FILE"

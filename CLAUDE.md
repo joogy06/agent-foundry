@@ -111,6 +111,7 @@ This exists because AI models lose track of HARD-RULEs in long conversations. Th
 - Codex skills: `~/.codex/skills/` (119 skills, 112 symlinked from Claude + 7 native)
 - New skills MUST be symlinked to Codex (see `research-for-skills` skill for process)
 - Write skills in cross-model-compatible language (see tool mapping patterns in `research-for-skills`)
+- `affordance-advisor`: host-native command suggestions, single-CLI scope (gated, not symlinked to Codex/Gemini — drop a `.no-codex-symlink` sentinel for similar exceptions)
 
 ## Routing by Complexity
 

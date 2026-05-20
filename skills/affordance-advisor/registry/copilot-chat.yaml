@@ -1,0 +1,10 @@
+schema_version: affordance.v1
+host_cli: copilot-chat
+
+# VS Code Copilot Chat is in-IDE, panel-based, not a CLI. Detection signal
+# (VSCODE_PID + Copilot extension active) is reliable, but the workflow
+# overlap with our terminal-orchestrators is thin. Deferred to v1.1 unless
+# usage shows demand. Stub kept here so the registry is complete and the
+# advise.py path doesn't need a special case.
+
+affordances: []

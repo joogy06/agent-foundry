@@ -1,0 +1,8 @@
+This skill is the deliberate exception to the "all new skills MUST be
+symlinked to ~/.codex/skills/" rule. Its registry/*.yaml files contain
+host-native command strings that must never be loaded into a foreign
+host's skill corpus. See SKILL.md for the contamination rationale.
+
+The bootstrap installer (installer/bootstrap-environment.py step 8) and
+the publish pipeline (publish-to-github) MUST honour this sentinel and
+skip symlinking this directory.

@@ -1,0 +1,103 @@
+schema_version: affordance.v1
+host_cli: copilot-cli
+
+# Day-one entries derived from GitHub Copilot CLI 1.0.x (@github/copilot).
+# See ~/.claude/skills/gh-copilot-cli for the full operational reference.
+
+affordances:
+  - id: copilot-cli/headless-ask
+    command: "copilot -p"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - one-shot-question
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      One-shot prompt to Copilot without entering interactive mode — good for a quick
+      second opinion.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/repo-init-instructions
+    command: "copilot init"
+    risk_class: low
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - setup-per-repo-instructions
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Bootstrap a .github/copilot-instructions.md so Copilot reads project conventions
+      automatically.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/mcp-management
+    command: "copilot mcp"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - manage-mcp-servers
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Add / remove / list MCP servers for the Copilot CLI session.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/switch-model
+    command: "copilot --model"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - switch-model-on-the-fly
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Switch the backing model (Claude / GPT / Gemini variants) for this Copilot run.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/yolo-auto-approve
+    command: "copilot --yolo"
+    risk_class: high
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - user-wants-yolo
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Auto-approve every tool call. Dangerous default-off — only suggest when the
+      user has explicitly asked to skip approvals.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/no-custom-instructions
+    command: "copilot --no-custom-instructions"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - cleanroom-invocation
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Run Copilot without loading AGENTS.md / per-repo instructions — useful for
+      clean-room debugging.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
+
+  - id: copilot-cli/legacy-gh-extension
+    command: "gh copilot suggest"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - legacy-suggest-flow
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Use the legacy gh-copilot extension preview — distinct from the full Copilot
+      CLI, but useful when only the gh extension is installed.
+    reference: ~/.claude/skills/gh-copilot-cli/SKILL.md
