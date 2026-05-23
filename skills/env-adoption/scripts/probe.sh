@@ -166,6 +166,21 @@ do_check() {
     openssl_j=$(detect_tool openssl "version")
     bridge_j=$(detect_bridge)
 
+    # Security tools (S038 Batch A — alf finding F-C8). Downstream security
+    # skills (sast-tooling, secret-scanning, dep-currency-check, future
+    # G_SECURE gate) read these from inventory.json instead of inline
+    # `command -v` probing.
+    local bandit_j semgrep_j gitleaks_j trufflehog_j trivy_j pip_audit_j
+    local osv_scanner_j govulncheck_j
+    bandit_j=$(detect_tool bandit)
+    semgrep_j=$(detect_tool semgrep)
+    gitleaks_j=$(detect_tool gitleaks)
+    trufflehog_j=$(detect_tool trufflehog)
+    trivy_j=$(detect_tool trivy)
+    pip_audit_j=$(detect_tool pip-audit)
+    osv_scanner_j=$(detect_tool osv-scanner)
+    govulncheck_j=$(detect_tool govulncheck)
+
     # Build inventory JSON
     local inv
     inv=$(jq -n \
@@ -181,6 +196,14 @@ do_check() {
       --argjson yq "$yq_j" \
       --argjson openssl "$openssl_j" \
       --argjson bridge "$bridge_j" \
+      --argjson bandit "$bandit_j" \
+      --argjson semgrep "$semgrep_j" \
+      --argjson gitleaks "$gitleaks_j" \
+      --argjson trufflehog "$trufflehog_j" \
+      --argjson trivy "$trivy_j" \
+      --argjson pip_audit "$pip_audit_j" \
+      --argjson osv_scanner "$osv_scanner_j" \
+      --argjson govulncheck "$govulncheck_j" \
       --arg last_probed "$(now_iso)" \
       '{
         version: 1,
@@ -197,7 +220,15 @@ do_check() {
           jq: $jq_tool,
           yq: $yq,
           openssl: $openssl,
-          bridge: $bridge
+          bridge: $bridge,
+          bandit: $bandit,
+          semgrep: $semgrep,
+          gitleaks: $gitleaks,
+          trufflehog: $trufflehog,
+          trivy: $trivy,
+          "pip-audit": $pip_audit,
+          "osv-scanner": $osv_scanner,
+          govulncheck: $govulncheck
         }
       }')
 

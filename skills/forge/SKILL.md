@@ -156,6 +156,21 @@ The lead handles all user interaction:
     signals-map path + capacity answers into `shared_context` so design
     agents consume them as constraints.
   - If NO: skip. Existing performance-expectation questions still apply.
+- **Security / threat-model branch** (ask once, not a full questionnaire):
+  "Does this component process untrusted input, hold secrets/tokens, cross a
+  trust boundary, OR consume content the LLM agent will read (prompts, tool
+  results, wiki pages, mail, web)?"
+  - If YES: capture into `shared_context.security_model`:
+    (a) `trust_boundary` — what's inside vs outside the trust perimeter
+    (b) `attacker_model` — who's the adversary, what can they touch
+    (c) `sensitive_inputs` — PII / secrets / tokens / untrusted-from-network
+    (d) `egress_destinations` — external systems reached
+    Then delegate to `threat-modeling` skill for STRIDE / LINDDUN if high-stakes,
+    AND to `llm-security` skill if the component is part of an agentic chain
+    (prompt injection / OWASP LLM Top 10 defense — Dual LLM pattern where
+    consequential tool use meets untrusted text). Design agents consume the
+    security_model as constraints, the same way they consume capacity_answers.
+  - If NO: skip. (Pure refactors, internal-only changes, no new input surface.)
 - Determine complexity level
 
 ### Step 2: Approach Exploration
@@ -213,7 +228,26 @@ Version awareness (REQUIRED for every library / framework / service you propose)
   follow-up codex / web-research call rather than guessing.
 - Note any breaking changes / deprecations / new functionality that affect
   the approach. A version mismatch between your design and the installed
-  version is a HIGH risk — surface it explicitly."
+  version is a HIGH risk — surface it explicitly.
+
+Security CVE awareness (REQUIRED, parallel to version awareness):
+- If shared_context.dependency_health flags a CVE in any lib you propose
+  (look for `cves` / `vulnerabilities` / `advisories` keys in the dep-currency
+  finding), state explicitly: (a) the CVE id, (b) whether you're proposing an
+  upgrade past the fixed version OR a mitigation (input filter, sandbox,
+  removal of the vulnerable code path), (c) why the mitigation is acceptable
+  if you're NOT upgrading. Designing against a known-vulnerable version
+  without acknowledging the CVE is a HIGH risk and will be flagged in review.
+- If shared_context.security_model exists (set by Step 1 security branch),
+  treat its attacker_model / sensitive_inputs / egress_destinations as
+  constraints. A design that ignores them is structurally wrong, not just
+  insecure. Examples: trust_boundary='public API' means your approach MUST
+  include input validation at the boundary; sensitive_inputs containing
+  tokens/secrets means your approach MUST address storage hardening.
+- For agentic components (LLM consuming untrusted text + having tools):
+  reference Dual LLM architecture (Quarantined LLM processes untrusted data
+  without tool access, Privileged LLM uses only symbolic vars) as the
+  default-safe pattern. Deviations need explicit justification."
 
 # UX Agent (for UI-facing work)
 Agent(subagent_type="multi-platform-apps:ui-ux-designer"):
