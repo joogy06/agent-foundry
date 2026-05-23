@@ -11,20 +11,34 @@ Persistent across sessions. Re-probed when older than 24 hours or on `--force`.
   "version": 1,
   "last_probed": "2026-04-12T21:00:00Z",
   "tools": {
-    "claude":  { "installed": true,  "version": "2.1.96" },
-    "codex":   { "installed": true,  "version": "0.120.0" },
-    "gemini":  { "installed": true,  "version": "0.36.2" },
-    "copilot": { "installed": false, "version": null },
-    "gh":      { "installed": true,  "version": "2.87.0" },
-    "git":     { "installed": true,  "version": "2.47.1" },
-    "docker":  { "installed": true,  "version": "27.1.1" },
-    "python3": { "installed": true,  "version": "3.12.12" },
-    "bridge":  { "installed": true }
+    "claude":      { "installed": true,  "version": "2.1.96" },
+    "codex":       { "installed": true,  "version": "0.120.0" },
+    "gemini":      { "installed": true,  "version": "0.36.2" },
+    "copilot":     { "installed": false, "version": null },
+    "gh":          { "installed": true,  "version": "2.87.0" },
+    "git":         { "installed": true,  "version": "2.47.1" },
+    "docker":      { "installed": true,  "version": "27.1.1" },
+    "python3":     { "installed": true,  "version": "3.12.12" },
+    "jq":          { "installed": true,  "version": null },
+    "yq":          { "installed": true,  "version": "4.47.1" },
+    "openssl":     { "installed": true,  "version": "3.5.1" },
+    "bridge":      { "installed": true },
+
+    "bandit":      { "installed": false, "version": null },
+    "semgrep":     { "installed": false, "version": null },
+    "gitleaks":    { "installed": false, "version": null },
+    "trufflehog":  { "installed": false, "version": null },
+    "trivy":       { "installed": false, "version": null },
+    "pip-audit":   { "installed": true,  "version": "2.9.0" },
+    "osv-scanner": { "installed": false, "version": null },
+    "govulncheck": { "installed": false, "version": null }
   },
   "tier": 1,
   "tier_label": "standard"
 }
 ```
+
+The `bandit` / `semgrep` / `gitleaks` / `trufflehog` / `trivy` / `pip-audit` / `osv-scanner` / `govulncheck` entries were added by S038 Batch A (2026-05-22) for downstream security skills (`sast-tooling`, `secret-scanning`, `dep-currency-check`, the future `G_SECURE` gate). Read these from `inventory.json` instead of inline `command -v` probing.
 
 ### Field Reference
 
