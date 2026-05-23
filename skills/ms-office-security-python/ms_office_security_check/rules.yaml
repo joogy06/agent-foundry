@@ -1,0 +1,231 @@
+# ms_office_security_check rules manifest (msosec.v1)
+#
+# Bob narrowed from the validator design doc's 32-rule enumeration to exactly 17
+# Office-specific rules per master doc §8. All findings are advisory_only.
+# Stable rule_ids forever; tombstone retired rules (status: retired), never reuse IDs.
+#
+# Categories: auth, transport, scopes, deprecated, office_docs
+# Severities: critical, high, medium, info
+# Detection: ast | regex | manifest | config
+# Confidence: high | medium | low (strict mode never blocks on confidence: low)
+
+schema_version: msosec.v1
+manifest_version: "1.0.0"
+
+rules:
+
+  # ---------------------------------------------------------------------------
+  # Auth — Office/MS-specific patterns not covered by bandit / gitleaks
+  # ---------------------------------------------------------------------------
+  - rule_id: MSOSEC-A001
+    category: auth
+    severity: critical
+    confidence: high
+    detection: ast
+    message: "adal package imported — adal is end-of-life since June 2023."
+    fix_hint: "Migrate to msal. The msal API surface is similar but not identical; see ms-office-enterprise-sso-python §6 for canonical flows."
+    pattern_hint: "Detects `import adal` / `from adal import ...` anywhere."
+    references:
+      - "skill://ms-office-enterprise-sso-python#library-selection"
+      - "https://learn.microsoft.com/entra/msal/dotnet/maintenance/adal-migration"
+
+  - rule_id: MSOSEC-A002
+    category: auth
+    severity: high
+    confidence: medium
+    detection: manifest
+    message: "msal imported but msal[broker]/msal-broker not in pinned requirements (Windows-targeting context)."
+    fix_hint: "Add msal[broker] to pyproject.toml or requirements.txt for Conditional Access compliance on managed Windows endpoints."
+    pattern_hint: "Detects msal import without msal[broker] extra in manifest. Heuristic: only fires when code targets Windows (path hints, sys.platform checks)."
+    references:
+      - "skill://ms-office-enterprise-sso-python#flow-recipes"
+
+  - rule_id: MSOSEC-A003
+    category: auth
+    severity: high
+    confidence: high
+    detection: ast
+    message: "PublicClientApplication instantiated without enable_broker_on_windows=True."
+    fix_hint: "Pass enable_broker_on_windows=True to engage WAM broker on managed Windows endpoints. See ms-office-enterprise-sso-python §6.1."
+    pattern_hint: "Detects `msal.PublicClientApplication(...)` or `PublicClientApplication(...)` without the broker kwarg."
+    references:
+      - "skill://ms-office-enterprise-sso-python#hard-rule-1"
+
+  - rule_id: MSOSEC-A004
+    category: auth
+    severity: critical
+    confidence: high
+    detection: ast
+    message: "ConfidentialClientApplication instantiated with client_credential=<string literal> (plaintext secret in source)."
+    fix_hint: "Move the secret to a vault. On Azure compute use ManagedIdentityCredential; elsewhere use certificate auth via CertificateCredential. See ms-office-enterprise-sso-python §6.4-6.6."
+    pattern_hint: "Detects ConfidentialClientApplication(...) where client_credential is a Constant string node in AST."
+    references:
+      - "skill://ms-office-enterprise-sso-python#hard-rule-3"
+
+  - rule_id: MSOSEC-A009
+    category: auth
+    severity: critical
+    confidence: high
+    detection: ast
+    message: "jwt.decode called with options={'verify_signature': False} or verify=False — signature verification disabled."
+    fix_hint: "Remove the disable flag. Pass algorithms=['RS256'] and use PyJWKClient to fetch the signing key. See ms-office-enterprise-sso-python §9."
+    pattern_hint: "Detects jwt.decode(...) call where options.verify_signature == False or verify == False."
+    references:
+      - "skill://ms-office-enterprise-sso-python#hard-rule-4"
+
+  - rule_id: MSOSEC-A010
+    category: auth
+    severity: critical
+    confidence: high
+    detection: ast
+    message: "jwt.decode called WITHOUT explicit algorithms=[...] — algorithm pinning required."
+    fix_hint: "Pass algorithms=['RS256'] (or the specific algorithm your IdP signs with). Never accept 'none' or rely on default."
+    pattern_hint: "Detects jwt.decode(...) without an algorithms= keyword argument."
+    references:
+      - "skill://ms-office-enterprise-sso-python#hard-rule-4"
+
+  - rule_id: MSOSEC-A013
+    category: auth
+    severity: high
+    confidence: medium
+    detection: ast
+    message: "jwt.decode missing issuer= validation (and for multi-tenant code, missing tid claim validation)."
+    fix_hint: "Pass issuer=f'https://login.microsoftonline.com/{tenant_id}/v2.0' and add options={'require': ['exp', 'iat', 'nbf', 'iss', 'aud']}. For multi-tenant apps, validate claims['tid'] against an allowlist."
+    pattern_hint: "Detects jwt.decode(...) without issuer= kwarg."
+    references:
+      - "skill://ms-office-enterprise-sso-python#jwt-validation-patterns"
+
+  # ---------------------------------------------------------------------------
+  # Transport — Office-specific TLS surface
+  # ---------------------------------------------------------------------------
+  - rule_id: MSOSEC-B001
+    category: transport
+    severity: critical
+    confidence: high
+    detection: ast
+    message: "requests/httpx call to a Microsoft Graph URL with verify=False — TLS verification disabled on Graph traffic."
+    fix_hint: "Remove verify=False. If you legitimately need a custom CA bundle, set REQUESTS_CA_BUNDLE / SSL_CERT_FILE or pass verify=<path-to-bundle>, never verify=False."
+    pattern_hint: "Detects requests.<verb>(...) or httpx.<verb>(...) where URL matches graph.microsoft.* and verify=False."
+    references:
+      - "https://requests.readthedocs.io/en/latest/user/advanced/#ssl-cert-verification"
+
+  # ---------------------------------------------------------------------------
+  # Graph scopes — least-privilege Microsoft 365 consent
+  # ---------------------------------------------------------------------------
+  - rule_id: MSOSEC-C001
+    category: scopes
+    severity: high
+    confidence: medium
+    detection: regex+config
+    message: "Graph scope literal in code that is NOT in the project's declared scope allowlist."
+    fix_hint: "Add the scope to [tool.ms-office-security.scopes] in pyproject.toml OR ms-office-security.yaml. If the scope is unintentional, remove the literal."
+    pattern_hint: "Regex: \\b[A-Z][a-zA-Z]+\\.(Read|ReadWrite|ReadBasic|Send|Manage)(?:\\.(All|Shared))?\\b. Filtered by project allowlist."
+    references:
+      - "skill://ms-office-graph-python#delegated-vs-application-permissions"
+
+  - rule_id: MSOSEC-C002
+    category: scopes
+    severity: medium
+    confidence: high
+    detection: ast
+    message: ".default scope used with PublicClientApplication (delegated context) — .default is for client-credentials only."
+    fix_hint: "For PublicClientApplication, request explicit delegated scopes (e.g., 'Mail.Read', 'Files.Read'). Reserve .default for ConfidentialClientApplication client-credentials flows."
+    pattern_hint: "Detects '.default' string literal in close proximity to PublicClientApplication instantiation."
+    references:
+      - "https://learn.microsoft.com/entra/msal/python/scopes"
+
+  - rule_id: MSOSEC-C003
+    category: scopes
+    severity: high
+    confidence: medium
+    detection: regex+config
+    message: "Broad scope (.ReadWrite.All or .All) used without an explicit allow-rule — verify Application Access Policy is configured server-side."
+    fix_hint: "Add an entry to [tool.ms-office-security.scopes] declaring this scope, then confirm with the tenant admin that an Application Access Policy (PowerShell: New-ApplicationAccessPolicy) scopes the app to specific mailboxes/groups. See ms-office-graph-python HARD-RULE 2."
+    pattern_hint: "Regex matches scope literals ending in .ReadWrite.All / .All; filtered by config allowlist."
+    references:
+      - "skill://ms-office-graph-python#hard-rule-2"
+
+  # ---------------------------------------------------------------------------
+  # Deprecated APIs — Office-specific timelines
+  # ---------------------------------------------------------------------------
+  - rule_id: MSOSEC-E001
+    category: deprecated
+    severity: medium
+    confidence: high
+    detection: ast
+    message: "exchangelib imported in code path not marked as on-prem Exchange — EWS retires for Exchange Online (per Microsoft's announced schedule, disabled-by-default 2026-10-01 with permanent shutdown 2027-04-01; verify before treating as hard deadline)."
+    fix_hint: "For Exchange Online code, migrate to msgraph-sdk. See ms-office-graph-python §9 EWS-to-Graph migration map. For on-prem Exchange Server code, add a comment `# on-prem Exchange Server only` near the import to suppress this finding."
+    pattern_hint: "Detects `import exchangelib` / `from exchangelib import ...` where surrounding file content lacks an on-prem-marker comment."
+    references:
+      - "skill://ms-office-graph-python#hard-rule-1"
+      - "https://learn.microsoft.com/exchange/clients-and-mobile-in-exchange-online/ews-retirement"
+
+  - rule_id: MSOSEC-E002
+    category: deprecated
+    severity: info
+    confidence: high
+    detection: ast
+    suppressed_by: MSOSEC-A001
+    message: "(Suppressed-by-A001 duplicate marker. Kept in manifest for category alignment; the validator emits nothing when A001 fires on the same import site.)"
+    fix_hint: "See MSOSEC-A001."
+    pattern_hint: "Detects `import adal` / `from adal import ...`. Suppressed automatically when A001 fires."
+    references:
+      - "skill://ms-office-enterprise-sso-python#library-selection"
+
+  - rule_id: MSOSEC-E003
+    category: deprecated
+    severity: info
+    confidence: medium
+    detection: ast
+    message: "win32com.client.Dispatch('Outlook.Application') — COM automation is a deprecated approach for new code; prefer Graph."
+    fix_hint: "Migrate to msgraph-sdk for Outlook automation. COM automation in server contexts is fragile (Office prefers a desktop session). See ms-office-graph-python."
+    pattern_hint: "Detects win32com.client.Dispatch with 'Outlook.Application' literal arg. Heuristic; flag is INFO severity."
+    references:
+      - "skill://ms-office-graph-python"
+
+  - rule_id: MSOSEC-E004
+    category: deprecated
+    severity: high
+    confidence: high
+    detection: ast
+    message: "requests_kerberos imported — legacy library, superseded by requests-gssapi + pyspnego."
+    fix_hint: "Replace with requests-gssapi (Linux/macOS) + requests-negotiate-sspi (Windows), or use pyspnego directly. See ms-office-enterprise-sso-python §6.7."
+    pattern_hint: "Detects `import requests_kerberos` / `from requests_kerberos import ...`."
+    references:
+      - "skill://ms-office-enterprise-sso-python#library-selection"
+
+  - rule_id: MSOSEC-E005
+    category: deprecated
+    severity: high
+    confidence: high
+    detection: ast
+    message: "pymsteams imported — targets the retired O365 Connectors API. Use Power Automate Workflows OR Graph chatMessage POST for new code."
+    fix_hint: "Migrate webhook integrations to Power Automate Workflows (single requests.post to a Workflow URL) OR to Graph chatMessage POST via msgraph-sdk. See ms-office-graph-python §11."
+    pattern_hint: "Detects `import pymsteams` / `from pymsteams import ...`."
+    references:
+      - "skill://ms-office-graph-python#hard-rule-3"
+
+  # ---------------------------------------------------------------------------
+  # Office documents — XXE, macro handling
+  # ---------------------------------------------------------------------------
+  - rule_id: MSOSEC-OFFICE001
+    category: office_docs
+    severity: medium
+    confidence: low
+    detection: ast
+    message: "openpyxl.load_workbook called without keep_vba=False — silent macro behaviour when reading .xlsm files from untrusted contexts."
+    fix_hint: "If you do NOT intend to preserve macros, pass keep_vba=False explicitly. If you DO intend to preserve them, document the user-confirmed feature intent in a comment near the call site. See parent skill HARD-RULE re macro handling."
+    pattern_hint: "Detects openpyxl.load_workbook(...) without keep_vba= kwarg. Heuristic: confidence is low because not all load_workbook calls touch .xlsm; suppress on .xlsx-only paths via inline comment."
+    references:
+      - "skill://ms-office-excel-python#security-hardening"
+
+  - rule_id: MSOSEC-OFFICE002
+    category: office_docs
+    severity: high
+    confidence: medium
+    detection: ast
+    message: "lxml.etree.parse / xml.etree.ElementTree.parse called on Office file content without defusedxml — OOXML XXE / billion-laughs risk."
+    fix_hint: "Import from defusedxml: `from defusedxml.lxml import parse` or `from defusedxml.ElementTree import parse`. Defuses external-entity expansion and billion-laughs payloads."
+    pattern_hint: "Detects lxml.etree.parse / xml.etree.ElementTree.parse calls in files that also import openpyxl / python-docx / python-pptx."
+    references:
+      - "https://github.com/tiran/defusedxml"
