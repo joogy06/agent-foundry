@@ -37,6 +37,10 @@ Every design and implementation decision must account for real human behaviour �
 **Sandbox-Aware Routing**: For MEDIUM/COMPLEX tasks that call Gemini or Copilot (design exploration, challenger review, research analysis), compute `bridge-mode-detect.sh` output once at Step 4b and cache it for the session. In MODE=bridge, every downstream Gemini/Copilot call transparently routes through `bridge request`. Never mix modes within a single forge session — the caching is there precisely to prevent this. If the bridge is required but not initialized, halt Step 4b and tell the user to run `bridge init` first. See `git-cli-bridge` skill.
 </HARD-RULE>
 
+<HARD-RULE>
+**Multi-subsystem requests emit handoff docs, not inline decomposition** (S038 Batch G, 2026-05-25). When forge Step 1 detects that a request describes multiple independent subsystems (existing "Large Project Decomposition" pattern), instead of inline-spawning sub-forge cycles (depth+1), forge MUST invoke the `handoff` skill to emit one `/tmp/handoff-<sub>-<date>-<uuid>.md` per decomposed sub-project. Each handoff doc records the slice of context relevant to that sub-project and a "Suggested skills: forge (MEDIUM cycle on this sub)" directive. The user picks which sub-project to start first; forge does NOT recurse into all of them. Recursion limit (depth≥3 REFUSE per existing rule) remains in effect — handoff is the new exit, not a way around the limit.
+</HARD-RULE>
+
 <HARD-GATE>
 Do NOT write any code, scaffold any project, or take any implementation action until:
 1. A design has been presented and the user has approved it

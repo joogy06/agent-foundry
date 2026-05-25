@@ -24,6 +24,10 @@ Every state transition is logged via `pa_log_action()`. No silent transitions.
 Never store tokens or credentials. Sync configs reference env var NAMES only (e.g., `CONFLUENCE_TOKEN`), never values.
 </HARD-RULE>
 
+<HARD-RULE>
+**Tasks received that are out-of-scope for the current session's project context emit a handoff doc** (S038 Batch G, 2026-05-25). When pa receives a task whose project context differs from the current session's CWD/workspace, pa MUST invoke the `handoff` skill to emit `/tmp/handoff-<task>-<date>-<uuid>.md` BEFORE queueing the task in pa-server. The handoff captures the slice of current-session context that's relevant to the new project. Pa STILL queues the task (pa-server tracks it persistently); the handoff bundle lets a future fresh session in the OTHER project pick it up with full context. Without this, tasks lose their originating context the moment they cross a project boundary.
+</HARD-RULE>
+
 ## Startup Sequence
 
 Execute in order. Do not skip phases.

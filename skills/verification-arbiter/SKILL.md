@@ -58,9 +58,9 @@ One JSON object matching [`verdict_schema.json`](../_meta/verdict_schema.json). 
 
 Design §5.6: arbiter never writes `.ledger/`. On any failure it exits with code 4 and a single-line stderr diagnostic; bob is sole ledger writer.
 
-## Rubric (v1.0.0)
+## Rubric (v1.1.0)
 
-**Source of truth: this SKILL.md file itself, hashed.** Bump the rubric version (semver) when changes to this file affect verdict semantics. Phase 2A rubric covers:
+**Source of truth: this SKILL.md file itself, hashed.** Bump the rubric version (semver) when changes to this file affect verdict semantics. Current rubric covers:
 
 1. **Self-hash check.** The model MUST recompute the bundle hash from on-disk bytes using the canonical JSON form (sort_keys=True, separators=`(",", ":")`, ensure_ascii=False, exclude the `bundle_hash` field itself — imported from `skills/_meta/trusted_runner.py:canonical_bundle_bytes` / `bundle_hash_hex`). Result populates `self_hash_check.bundle_recomputed_hash` + `matches_input`. Mismatch forces `REJECTED`.
 
@@ -72,6 +72,17 @@ Design §5.6: arbiter never writes `.ledger/`. On any failure it exits with code
 3. **Plan-bundle shape checks.** Plan must be parseable against `test_plan_schema.json`; bundle must be parseable and contain test results. Parse failure on either → `REJECTED` with a `blocker` concern.
 
 4. **Tier awareness.** If the current inventory tier (from `inventory_hash`-referenced manifest) is below a requirement's `required_tier` AND the requirement declares `skip_if_tier_below`, skip declarations are valid. If not declared, the missing coverage is a `blocker` concern.
+
+5. **Security verdict (NEW in v1.1.0 — S038 Batch E, 2026-05-25).** Bundle MUST include a `security_status` field populated from the relevant gate outputs. The arbiter scores it into the verdict's `security_verdict` arm with values:
+   - `passed` — `G_SECURE` and `G_SECRETS_SCAN` (when configured) both PASS, OR the plan does not declare `security_required: true`. No `blocker` raised.
+   - `advisory` — gates ran but in advisory mode AND produced findings. Not a `blocker`, but emit a `concern` of severity `medium` so bob's report surfaces it.
+   - `not_applicable` — the frozen plan explicitly sets `security_required: false`. Skip-with-reason recorded.
+   - `failed` — `G_SECURE --sast-mode strict` OR `G_SECRETS_SCAN --secrets-mode strict` returned exit 2. Forces `REJECTED` with a `blocker`.
+   - `unavailable` — gates not configured for the project (no SAST runner, no scanner) AND `security_required: true` in plan. Emit a `concern` of severity `high` and `AUDIT_UNAVAILABLE` (exit 4), forcing bob to escalate. Never silently auto-approve.
+
+   **Plan flag.** `test_plan_schema.json` v1.1 (S038 Batch E) adds optional `security_required: bool` at plan-level (default `false` for backwards compat). When `true`, missing `security_status` field in the bundle = `unavailable`.
+
+   **Companion skills:** `sast-tooling` (G_SECURE), `secret-scanning` (G_SECRETS_SCAN), `dep-currency-check` (G_DEP_CURRENCY — referenced separately by bob, not part of arbiter rubric since dep-check runs at design-time not test-time).
 
 ## Env vars
 
