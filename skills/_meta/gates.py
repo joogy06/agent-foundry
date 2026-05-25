@@ -2714,6 +2714,366 @@ def check_G_INTENT_MAP_FRESH(
 
 
 # ---------------------------------------------------------------------------
+# G_SECURE — SAST gate (S038 Batch E, 2026-05-25)
+#
+# Wraps bandit (Python), semgrep (multi-language), eslint-security (JS/TS), or
+# CodeQL CLI as SAST runners. All emit SARIF 2.1.0; this gate aggregates
+# findings by severity.
+#
+# Runner selection (auto mode):
+#   1. semgrep (multi-language, fastest; auto-config)
+#   2. bandit  (if project is Python-only — pyproject.toml or *.py present)
+#   3. eslint-security (if project is JS/TS-only — package.json present)
+#   4. env_error if none available
+#
+# CLI: gates.py G_SECURE <project_root>
+#                          [--sast-mode advisory|strict]
+#                          [--runner semgrep|bandit|eslint|codeql|auto]
+#                          [--severity info|low|medium|high|critical]
+#                              (gate-level: minimum severity that blocks)
+#
+# Exit codes:
+#   0 = pass (no findings ≥severity OR advisory mode)
+#   2 = fail (strict AND findings ≥severity)
+#   3 = environmental error
+# ---------------------------------------------------------------------------
+
+
+def _g_secure_pick_runner(runner: str, project_root: Path) -> str:
+    """Pick a SAST runner from {semgrep, bandit, eslint, codeql, auto}."""
+    import shutil
+    has_py = (project_root / "pyproject.toml").is_file() or any(
+        project_root.glob("**/*.py")
+    )
+    has_js = (project_root / "package.json").is_file()
+    if runner == "auto":
+        if shutil.which("semgrep"):
+            return "semgrep"
+        if has_py and shutil.which("bandit"):
+            return "bandit"
+        if has_js and shutil.which("eslint"):
+            return "eslint"
+        if shutil.which("codeql"):
+            return "codeql"
+        env_error(
+            "G_SECURE: no SAST runner found "
+            "(checked: semgrep, bandit, eslint, codeql). "
+            "Install one or pass --runner explicitly."
+        )
+    if runner == "semgrep":
+        if not shutil.which("semgrep"):
+            env_error("semgrep not on PATH")
+    elif runner == "bandit":
+        if not shutil.which("bandit"):
+            env_error("bandit not on PATH")
+    elif runner == "eslint":
+        if not shutil.which("eslint"):
+            env_error("eslint not on PATH")
+    elif runner == "codeql":
+        if not shutil.which("codeql"):
+            env_error("codeql not on PATH")
+    else:
+        env_error(f"unknown --runner value: {runner}")
+    return runner
+
+
+_SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "moderate": 2, "high": 3, "critical": 4,
+                   "warning": 1, "error": 3, "note": 0, "none": 0}
+
+
+def _g_secure_count_sarif_findings(sarif_text: str, min_sev: str) -> int:
+    """Parse SARIF JSON, return count of findings whose severity >= min_sev."""
+    if not sarif_text or not sarif_text.strip():
+        return 0
+    try:
+        data = json.loads(sarif_text)
+    except json.JSONDecodeError:
+        return 0
+    threshold = _SEVERITY_RANK.get(min_sev.lower(), 2)
+    count = 0
+    for run in (data.get("runs") or []):
+        # Build rules → severity lookup
+        rule_sev: Dict[str, str] = {}
+        for rule in (run.get("tool", {}).get("driver", {}).get("rules", [])):
+            rid = rule.get("id", "")
+            sev = (rule.get("defaultConfiguration", {}).get("level", "")
+                    or rule.get("properties", {}).get("security-severity", "")
+                    or rule.get("properties", {}).get("severity", "")).lower()
+            rule_sev[rid] = sev
+        for r in (run.get("results") or []):
+            sev = (r.get("level") or "").lower()
+            if not sev:
+                # SARIF level may not be set; fall back to rule's default
+                sev = rule_sev.get(r.get("ruleId", ""), "warning")
+            rank = _SEVERITY_RANK.get(sev, 1)
+            if rank >= threshold:
+                count += 1
+    return count
+
+
+def check_G_SECURE(
+    project_root: Path,
+    *,
+    mode: str = "advisory",
+    runner: str = "auto",
+    severity: str = "high",
+) -> None:
+    """Run SAST runner; exit 0/2/3 per gate contract."""
+    import subprocess
+    if mode not in ("advisory", "strict"):
+        env_error(f"invalid --sast-mode: {mode}")
+    if severity.lower() not in _SEVERITY_RANK:
+        env_error(f"invalid --severity: {severity}")
+
+    picked = _g_secure_pick_runner(runner, project_root)
+
+    sarif_text = ""
+    if picked == "semgrep":
+        cmd = ["semgrep", "--config", "auto", "--sarif",
+                "--metrics", "off", "--quiet", str(project_root)]
+        timeout = 600
+    elif picked == "bandit":
+        cmd = ["bandit", "-r", str(project_root), "-ll", "-f", "sarif"]
+        timeout = 300
+    elif picked == "eslint":
+        cmd = ["eslint", "--format", "json", str(project_root)]
+        # Note: eslint json format isn't SARIF; we'd ideally use the SARIF
+        # formatter but it requires @microsoft/eslint-formatter-sarif as a
+        # project dependency. For the gate, we map ESLint's JSON to a
+        # minimal SARIF-shaped count by counting "errorCount" + severity 2.
+        timeout = 300
+    elif picked == "codeql":
+        # CodeQL requires a pre-built database; skip in auto mode unless
+        # the caller has set up the database. For v1, env_error.
+        env_error(
+            "G_SECURE: codeql runner requires a pre-built CodeQL database; "
+            "not supported in v1 of the gate. Use semgrep / bandit instead."
+        )
+        return  # unreachable
+    else:
+        env_error(f"unexpected runner: {picked}")
+        return
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=timeout, check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        env_error(f"G_SECURE subprocess failed: {e}")
+        return
+
+    findings = 0
+    if picked == "eslint":
+        # ESLint JSON: list of {filePath, messages: [{severity, ...}], ...}
+        # severity 2 = error, 1 = warn. Treat 2 as "high" equivalent.
+        try:
+            data = json.loads(proc.stdout or "[]")
+            for entry in data:
+                for msg in (entry.get("messages") or []):
+                    sev_num = msg.get("severity", 0)
+                    if sev_num >= 2 and _SEVERITY_RANK.get("high", 3) >= _SEVERITY_RANK.get(severity, 3):
+                        findings += 1
+                    elif sev_num == 1 and _SEVERITY_RANK.get("low", 1) >= _SEVERITY_RANK.get(severity, 3):
+                        findings += 1
+        except json.JSONDecodeError:
+            pass
+    else:
+        sarif_text = proc.stdout
+        findings = _g_secure_count_sarif_findings(sarif_text, severity)
+
+    if findings == 0:
+        ok("G_SECURE",
+            f"clean at severity≥{severity} (runner={picked}, mode={mode})")
+        return
+
+    if mode == "advisory":
+        sys.stdout.write(
+            f"G_SECURE: {findings} finding(s) at severity≥{severity} "
+            f"(runner={picked}, mode=advisory — not blocking)\n"
+        )
+        sys.exit(0)
+    else:  # strict
+        fail(
+            "G_SECURE",
+            f"{findings} finding(s) at severity≥{severity} "
+            f"(runner={picked}, mode=strict)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# G_SECRETS_SCAN — secrets-in-code gate (S038 Batch B, 2026-05-24)
+#
+# Wraps gitleaks (preferred), trufflehog (with --verified), or the in-house
+# scripts/secrets-scan.sh as a defense-in-depth secrets detection gate.
+#
+# Scanner selection (auto mode):
+#   1. gitleaks (pre-commit standard, fastest, regex-based)
+#   2. trufflehog (slower but does live-credential verification with --verified)
+#   3. <project>/scripts/secrets-scan.sh (in-house regex catalog)
+#   4. env_error if none available
+#
+# CLI: gates.py G_SECRETS_SCAN <project_root>
+#                                 [--secrets-mode advisory|strict]
+#                                 [--scanner gitleaks|trufflehog|inhouse|auto]
+#
+# Exit codes:
+#   0 = pass (no findings OR advisory mode)
+#   2 = fail (strict mode AND scanner detected findings)
+#   3 = environmental error (no scanner available)
+# ---------------------------------------------------------------------------
+
+
+def _g_secrets_scan_pick_scanner(scanner: str, project_root: Path) -> Tuple[str, Optional[Path]]:
+    """Pick a scanner: returns ('gitleaks'|'trufflehog'|'inhouse', script_path?).
+
+    `script_path` is only set for 'inhouse'.
+    Raises (via env_error) if no scanner is available in 'auto' mode and none
+    of the explicit modes is satisfied.
+    """
+    import shutil
+    if scanner == "auto":
+        if shutil.which("gitleaks"):
+            return ("gitleaks", None)
+        if shutil.which("trufflehog"):
+            return ("trufflehog", None)
+        inhouse = project_root / "scripts" / "secrets-scan.sh"
+        if inhouse.is_file():
+            return ("inhouse", inhouse)
+        env_error(
+            "G_SECRETS_SCAN: no scanner found "
+            "(checked: gitleaks, trufflehog, scripts/secrets-scan.sh). "
+            "Install gitleaks or trufflehog, or provide an in-house scanner."
+        )
+    if scanner == "gitleaks":
+        if not shutil.which("gitleaks"):
+            env_error("gitleaks not on PATH")
+        return ("gitleaks", None)
+    if scanner == "trufflehog":
+        if not shutil.which("trufflehog"):
+            env_error("trufflehog not on PATH")
+        return ("trufflehog", None)
+    if scanner == "inhouse":
+        inhouse = project_root / "scripts" / "secrets-scan.sh"
+        if not inhouse.is_file():
+            env_error(f"in-house scanner not found at {inhouse}")
+        return ("inhouse", inhouse)
+    env_error(f"unknown --scanner value: {scanner}")
+    return ("", None)  # unreachable
+
+
+def check_G_SECRETS_SCAN(
+    project_root: Path,
+    *,
+    mode: str = "advisory",
+    scanner: str = "auto",
+) -> None:
+    """Run secrets scanner; exit 0/2/3 per gate contract.
+
+    advisory mode: never blocks (always exit 0); reports findings to stdout
+    strict mode:   exit 2 if scanner detects ANY finding
+    """
+    import subprocess
+    if mode not in ("advisory", "strict"):
+        env_error(f"invalid --secrets-mode: {mode} (use advisory|strict)")
+
+    picked, script_path = _g_secrets_scan_pick_scanner(scanner, project_root)
+
+    if picked == "gitleaks":
+        # gitleaks dir <root> --no-banner --redact --exit-code 1 on finding
+        cmd = [
+            "gitleaks", "dir", str(project_root),
+            "--no-banner", "--redact",
+            "--exit-code", "1",
+        ]
+        timeout = 120
+    elif picked == "trufflehog":
+        # trufflehog filesystem --no-update --fail (exit 183 on finding)
+        # --only-verified eliminates triage noise per Gemini 2026-05-22 probe.
+        cmd = [
+            "trufflehog", "filesystem", str(project_root),
+            "--no-update", "--fail",
+            "--only-verified",
+        ]
+        timeout = 300  # trufflehog with --only-verified hits external APIs
+    elif picked == "inhouse":
+        cmd = ["bash", str(script_path), str(project_root)]
+        if mode == "strict":
+            cmd.append("--strict")
+        timeout = 60
+    else:
+        env_error(f"unexpected scanner pick: {picked}")
+        return  # unreachable
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=timeout, check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        env_error(f"G_SECRETS_SCAN subprocess failed: {e}")
+        return  # unreachable
+
+    rc = proc.returncode
+    findings_detected = False
+    if picked == "gitleaks":
+        # 0 = no findings; 1 = findings; >1 = error
+        if rc == 0:
+            findings_detected = False
+        elif rc == 1:
+            findings_detected = True
+        else:
+            env_error(
+                f"gitleaks rc={rc}: stderr={proc.stderr[:200]!r}"
+            )
+    elif picked == "trufflehog":
+        # 0 = no findings; 183 = findings; other = error
+        if rc == 0:
+            findings_detected = False
+        elif rc == 183:
+            findings_detected = True
+        else:
+            env_error(
+                f"trufflehog rc={rc}: stderr={proc.stderr[:200]!r}"
+            )
+    elif picked == "inhouse":
+        # in-house secrets-scan.sh: 0 = clean OR advisory-only in default mode
+        #                            1 = CRITICAL/HIGH OR --strict + any
+        #                            2 = script error
+        if rc == 0:
+            findings_detected = False
+        elif rc == 1:
+            findings_detected = True
+        else:
+            env_error(
+                f"in-house scanner rc={rc}: stderr={proc.stderr[:200]!r}"
+            )
+
+    if not findings_detected:
+        ok("G_SECRETS_SCAN",
+            f"clean (scanner={picked}, mode={mode})")
+        return
+
+    # Findings detected
+    if mode == "advisory":
+        # Print findings to stdout but do not fail
+        sys.stdout.write(
+            f"G_SECRETS_SCAN: findings detected (scanner={picked}, "
+            f"mode=advisory — not blocking)\n"
+        )
+        sys.stdout.write(
+            f"  stdout (first 500 chars): {proc.stdout[:500]}\n"
+        )
+        sys.exit(0)
+    else:  # strict
+        fail(
+            "G_SECRETS_SCAN",
+            f"secrets findings (scanner={picked}, mode=strict). "
+            f"stdout truncated: {proc.stdout[:300]}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
@@ -2723,7 +3083,7 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
         env_error(
             "usage: gates.py "
             "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
-            "G_INTENT_MAP_FRESH ..."
+            "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE ..."
         )
     gate = argv[1]
     positional: List[str] = []
@@ -2786,6 +3146,42 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
         if a == "--allow-deferred":
             flags["dep_currency_allow_deferred"] = "1"
             i += 1
+            continue
+        if a == "--scanner":
+            # G_SECRETS_SCAN: gitleaks|trufflehog|inhouse|auto (default auto)
+            if i + 1 >= len(argv):
+                env_error("--scanner requires a value")
+            flags["secrets_scan_scanner"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--secrets-mode":
+            # G_SECRETS_SCAN mode (advisory|strict). Use --secrets-mode
+            # to avoid colliding with --mode used by G_DEP_CURRENCY.
+            if i + 1 >= len(argv):
+                env_error("--secrets-mode requires a value")
+            flags["secrets_scan_mode"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--sast-mode":
+            # G_SECURE mode (advisory|strict)
+            if i + 1 >= len(argv):
+                env_error("--sast-mode requires a value")
+            flags["g_secure_mode"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--runner":
+            # G_SECURE runner pick
+            if i + 1 >= len(argv):
+                env_error("--runner requires a value")
+            flags["g_secure_runner"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--severity":
+            # G_SECURE severity threshold
+            if i + 1 >= len(argv):
+                env_error("--severity requires a value")
+            flags["g_secure_severity"] = argv[i + 1]
+            i += 2
             continue
         if a == "--lockfile":
             # G_INTENT_MAP_FRESH: explicit lockfile path override
@@ -2920,6 +3316,38 @@ def main(argv: Optional[List[str]] = None) -> None:
             project_root, mode=mode, changed_manifests=changed,
             allow_deferred=allow_deferred,
         )
+    elif gate == "G_SECRETS_SCAN":
+        # CLI: gates.py G_SECRETS_SCAN <project_root>
+        #                                 [--mode advisory|strict]
+        #                                 [--scanner gitleaks|trufflehog|inhouse|auto]
+        # Exit codes:
+        #   0 = pass (no findings, OR --mode advisory)
+        #   2 = fail (--mode strict AND findings detected by chosen scanner)
+        #   3 = environmental error (no scanner available)
+        # S038 Batch B (2026-05-24).
+        if len(positional) < 1:
+            env_error("G_SECRETS_SCAN requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        mode = flags.get("secrets_scan_mode", "advisory")
+        scanner = flags.get("secrets_scan_scanner", "auto")
+        check_G_SECRETS_SCAN(project_root, mode=mode, scanner=scanner)
+    elif gate == "G_SECURE":
+        # CLI: gates.py G_SECURE <project_root>
+        #                          [--sast-mode advisory|strict]
+        #                          [--runner semgrep|bandit|eslint|codeql|auto]
+        #                          [--severity info|low|medium|high|critical]
+        # Exit codes:
+        #   0 = pass (no findings ≥severity OR advisory mode)
+        #   2 = fail (strict AND findings ≥severity)
+        #   3 = environmental error
+        # S038 Batch E (2026-05-25).
+        if len(positional) < 1:
+            env_error("G_SECURE requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        mode = flags.get("g_secure_mode", "advisory")
+        runner = flags.get("g_secure_runner", "auto")
+        severity = flags.get("g_secure_severity", "high")
+        check_G_SECURE(project_root, mode=mode, runner=runner, severity=severity)
     else:
         env_error(f"unknown gate: {gate}")
 

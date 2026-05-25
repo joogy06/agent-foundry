@@ -64,6 +64,11 @@
       "type": "string",
       "minLength": 1
     },
+    "security_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "S038 Batch E (2026-05-25, rubric v1.1.0). When true, the verification-arbiter's security_verdict arm REQUIRES a security_status field in the bundle and treats absence as `unavailable` → AUDIT_UNAVAILABLE (forces bob escalation). When false or absent (back-compat default), the arm scores `not_applicable` and skips. Set true for components designed to handle untrusted input, secrets, or external trust boundaries (per forge Step 1 security branch / shared_context.security_model)."
+    },
     "requirements": {
       "type": "array",
       "minItems": 1,

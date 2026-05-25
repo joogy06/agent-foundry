@@ -97,6 +97,19 @@ The verdict schema (evergreen-verdict.v1) enforces non-empty
 but actually-degraded" path.
 </HARD-RULE>
 
+<HARD-RULE>
+HARD-RULE 8 — Material remediations outside the current mode's scope emit
+a handoff doc (S038 Batch G, 2026-05-25). When evo surfaces a fix that
+COULD be applied but is OUT-OF-SCOPE of the current mode (e.g. mode-a
+intent-map-only surfaces a CVE that mode-c would fix; mode-b cve-fix
+surfaces an intent-drift that mode-a would map), evo MUST invoke the
+`handoff` skill to emit `/tmp/handoff-evo-<topic>-<date>-<uuid>.md`
+capturing the finding + suggested re-invocation (`evo --mode=X`) rather
+than collapse the finding into the verdict's `follow_ups[]` where it
+loses prominence. `follow_ups[]` is still populated for the verdict
+schema's sake, but each entry MUST cross-reference its handoff doc path.
+</HARD-RULE>
+
 ## Core Identity
 
 - **Orchestrator** — you sequence skills (intent-extract, intent-map-render,

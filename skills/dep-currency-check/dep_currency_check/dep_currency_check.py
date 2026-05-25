@@ -192,7 +192,14 @@ def _orchestrate_one_ecosystem(
                            semver_distance=None, last_release_age_days=None)
                 reconciled.append(Finding(dep=d, gap=gap, cves=tuple(),
                                             blocks_build=False))
-            return reconciled
+            # S038 Batch C — enrich gap_kind=unknown findings with PyPI/npm/etc
+            # latest-version data. Wrappers (pip-audit, cargo-audit, govulncheck,
+            # osv-scanner) emit CVE info but NOT current-stable; this fills it
+            # in via the registry. Closes #87 + #104 (the latest=unknown bug).
+            return _enrich_findings_with_versions(
+                reconciled, registry,
+                no_cache=no_cache, offline=offline,
+            )
         advisories.append(
             f"osv-scanner unavailable or failed for {ecosystem}; falling back")
 
@@ -210,7 +217,10 @@ def _orchestrate_one_ecosystem(
                            semver_distance=None, last_release_age_days=None)
                 reconciled.append(Finding(dep=d, gap=gap, cves=tuple(),
                                             blocks_build=False))
-            return reconciled
+            return _enrich_findings_with_versions(
+                reconciled, registry,
+                no_cache=no_cache, offline=offline,
+            )
         advisories.append("pip-audit unavailable or failed for python; falling back")
     elif ecosystem == "rust" and wrappers_available.get("cargo-audit"):
         result = query_rust_via_cargo_audit(project_root)
@@ -225,7 +235,10 @@ def _orchestrate_one_ecosystem(
                            semver_distance=None, last_release_age_days=None)
                 reconciled.append(Finding(dep=d, gap=gap, cves=tuple(),
                                             blocks_build=False))
-            return reconciled
+            return _enrich_findings_with_versions(
+                reconciled, registry,
+                no_cache=no_cache, offline=offline,
+            )
         advisories.append("cargo-audit unavailable or failed for rust; falling back")
     elif ecosystem == "go" and wrappers_available.get("govulncheck"):
         result = query_go_via_govulncheck(project_root)
@@ -240,7 +253,10 @@ def _orchestrate_one_ecosystem(
                            semver_distance=None, last_release_age_days=None)
                 reconciled.append(Finding(dep=d, gap=gap, cves=tuple(),
                                             blocks_build=False))
-            return reconciled
+            return _enrich_findings_with_versions(
+                reconciled, registry,
+                no_cache=no_cache, offline=offline,
+            )
         advisories.append("govulncheck unavailable or failed for go; falling back")
 
     # 3. HTTP fallback
@@ -254,6 +270,56 @@ def _orchestrate_one_ecosystem(
         blocks = compute_blocks_build({"dep": d, "cves": cves})
         findings.append(Finding(dep=d, gap=gap, cves=cves, blocks_build=blocks))
     return findings
+
+
+def _enrich_findings_with_versions(
+    findings: list,
+    registry,
+    *,
+    no_cache: bool = False,
+    offline: bool = False,
+) -> list:
+    """Backfill latest_stable + gap_kind for wrapper-emitted findings.
+
+    Per-ecosystem wrappers (pip-audit, cargo-audit, govulncheck, osv-scanner)
+    return CVE info but NOT the current latest-stable version, so they emit
+    gap_kind="unknown" / latest_stable=None for every finding. This helper
+    runs a SECOND pass that queries the registry for each finding's latest
+    version and re-computes the gap via `compare()`.
+
+    S038 Batch C (2026-05-24) — closes tasks #87 + #104 which surfaced as
+    `latest column shows unknown for many deps even with pip-audit on PATH`.
+    Root cause per Gemini freshness probe 2026-05-22 is upstream pip-audit
+    not exposing latest-stable in its default JSON. Our wrapper path was
+    propagating that absence; the HTTP-fallback path (lines 246+) already
+    does both lookups. This helper closes the gap.
+
+    Idempotent: findings already with known gap_kind are returned unchanged.
+    Best-effort: if a registry lookup fails (offline / 404 / etc.), the
+    finding is returned as-is. Never raises.
+    """
+    out: list = []
+    for f in findings:
+        if f.gap.gap_kind != "unknown" or f.gap.latest_stable is not None:
+            out.append(f)
+            continue
+        try:
+            vi = registry.query_version_latest(
+                f.dep.ecosystem, f.dep.name,
+                no_cache=no_cache, offline=offline,
+            )
+        except Exception:
+            out.append(f)
+            continue
+        if vi is None:
+            out.append(f)
+            continue
+        new_gap = compare(f.dep, vi)
+        out.append(Finding(
+            dep=f.dep, gap=new_gap, cves=f.cves,
+            blocks_build=f.blocks_build,
+        ))
+    return out
 
 
 def _reconcile_findings(wrapper_findings: list,

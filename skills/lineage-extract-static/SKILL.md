@@ -187,3 +187,15 @@ Run `verify-skill-portability.sh` from `~/.claude/skills/cross-tool-portability/
 - `references/output-formats.md` — OL JSON + CSV + HTML + Mermaid contract
 - `references/chunking-strategy.md` — two-phase + boundary_status reconciliation
 - `references/anti-patterns.md` — synthetic Run, basename merge, scope creep
+
+## Security — XML / XHTML parsing
+
+<HARD-RULE>
+When parsing any XML or XHTML payload from a remote API, untrusted file, or user-supplied source, NEVER use stdlib `xml.etree.ElementTree`, `xml.dom.minidom`, or `lxml.etree.fromstring` without XXE protection. Use `defusedxml` (`pip install defusedxml`) and replace `xml.etree.ElementTree` → `defusedxml.ElementTree`, `lxml.etree` → `defusedxml.lxml`. Stdlib XML parsers expand external entities by default and are vulnerable to billion-laughs / XXE / DTD-retrieval / SSRF-via-entity attacks (CWE-611). Local skill applicability:
+- API payloads that may legitimately be XML (storage format, error responses)
+- Imported / exported workflow files
+- Bulk import / migration paths
+</HARD-RULE>
+
+For HTML/XHTML rendering of downstream output (storage format → display), sanitise with `bleach` or `nh3` BEFORE inserting into a browser context — never raw-render API-returned XHTML. See `llm-security` SKILL.md §4.4 for context-appropriate escaping rules.
+
