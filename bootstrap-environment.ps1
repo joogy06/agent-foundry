@@ -30,6 +30,8 @@ param(
     [switch]$SkipInstall,
     [switch]$SkipCodex,
     [switch]$SkipGemini,
+    [switch]$NoLog,
+    [string]$LogPath,
     [switch]$Help
 )
 
@@ -43,6 +45,46 @@ $ErrorActionPreference = 'Stop'
 # Resolve the Python orchestrator next to this script.
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $PyOrchestrator = Join-Path $ScriptDir 'bootstrap-environment.py'
+
+# --- §8b run-log (Start-Transcript) -----------------------------------------
+# This wrapper REQUIRES Python and delegates to bootstrap-environment.py, which
+# has its own tee-logger. To avoid double-logging we make the PS transcript the
+# single authoritative log for the PS-launched path and pass --no-log to the
+# Python child. NEVER break the bootstrap: transcript start is wrapped, with a
+# $env:TEMP fallback. -NoLog disables it.
+function Start-RunTranscript {
+    param([string]$Dir, [string]$Explicit)
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
+    $target = $null
+    if ($Explicit) {
+        $target = $Explicit
+    } else {
+        $logDir = Join-Path $Dir "logs"
+        try {
+            if (-not (Test-Path -LiteralPath $logDir)) {
+                New-Item -ItemType Directory -Path $logDir -Force -ErrorAction Stop | Out-Null
+            }
+            $target = Join-Path $logDir "bootstrap-$stamp.log"
+        } catch { $target = $null }
+    }
+    if (-not $target) {
+        try { $target = Join-Path $env:TEMP "agent-foundry-bootstrap-$stamp.log" } catch { return $null }
+    }
+    try {
+        Start-Transcript -Path $target -Force -ErrorAction Stop | Out-Null
+        return $target
+    } catch {
+        try {
+            $fb = Join-Path $env:TEMP "agent-foundry-bootstrap-$stamp.log"
+            Start-Transcript -Path $fb -Force -ErrorAction Stop | Out-Null
+            Write-Host ("  ! run-log: " + $target + " unwritable; logging to " + $fb) -ForegroundColor Yellow
+            return $fb
+        } catch {
+            Write-Host "  ! run-log: could not start a transcript; continuing without a log." -ForegroundColor Yellow
+            return $null
+        }
+    }
+}
 
 if (-not (Test-Path -LiteralPath $PyOrchestrator -PathType Leaf)) {
     Write-Error "ERROR: bootstrap-environment.py not found at $PyOrchestrator"
@@ -77,6 +119,16 @@ if ($null -eq $Python) {
     exit 1
 }
 
+# §8b: start the PS transcript (single authoritative log for this path) unless
+# -NoLog. We then pass --no-log to the Python child so it doesn't ALSO create a
+# file (the transcript already captures its stdout/stderr).
+$script:RunLogTarget = $null
+if (-not $NoLog) {
+    $script:RunLogTarget = Start-RunTranscript -Dir $ScriptDir -Explicit $LogPath
+}
+
+try {
+
 # Assemble args to forward to the Python script.
 $PyArgs = @($PyOrchestrator)
 if ($ClaudeHome) { $PyArgs += @('--claude-home', $ClaudeHome) }
@@ -85,6 +137,10 @@ if ($Force)      { $PyArgs += '--force' }
 if ($SkipInstall){ $PyArgs += '--skip-install' }
 if ($SkipCodex)  { $PyArgs += '--skip-codex' }
 if ($SkipGemini) { $PyArgs += '--skip-gemini' }
+# Always suppress the Python child's own log file when launched via this
+# wrapper: either the PS transcript above is the single log for this run, or
+# -NoLog was given (no log anywhere). Avoids two logs for one run.
+$PyArgs += '--no-log'
 
 # Compose full invocation: <exe> <launcher-args> <py-args>
 $FullArgs = $Python.args + $PyArgs
@@ -96,3 +152,11 @@ Write-Host "Running: $($Python.exe) $($FullArgs -join ' ')"
 $rc = $LASTEXITCODE
 
 exit $rc
+
+}
+finally {
+    if ($script:RunLogTarget) {
+        try { Stop-Transcript | Out-Null } catch { }
+        Write-Host ("`n" + [char]0x1F4DD + " Full log: " + $script:RunLogTarget)
+    }
+}

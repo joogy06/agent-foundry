@@ -5,7 +5,10 @@ agent-foundry installer — PowerShell fallback for Claude Code CLI install only
 .DESCRIPTION
 This script is invoked when Python isn't available on a Windows machine. It
 installs Claude Code skills + agents from the local agent-foundry clone into
-~/.claude/. For Gemini and Copilot bridges, install Python and run install.py.
+~/.claude/, after a LIMITED native scan (name-only PATH check, no version
+probes). The full adaptive scan (probed versions, agy host directive, Copilot/
+VS Code wiring, legacy Gemini bridge) is Python-canonical — install Python and
+run install.py for it. This asymmetry is intentional, not drift.
 
 The companion install.cmd already handles the ExecutionPolicy issue — it
 invokes this script with -ExecutionPolicy Bypass, so dot-sourcing isn't
@@ -28,6 +31,14 @@ Leave existing skills/agents/commands at the target untouched (old default).
 .PARAMETER NonInteractive
 Skip the confirmation prompt; use defaults.
 
+.PARAMETER NoLog
+Disable the run-log transcript (logging is on by default — see §8b). The
+transcript is written to installer\logs\install-<UTC-ts>.log.
+
+.PARAMETER LogPath
+Write the run-log transcript to this path instead of the default
+installer\logs\install-<UTC-ts>.log.
+
 .EXAMPLE
 .\install.ps1
 .EXAMPLE
@@ -40,10 +51,54 @@ param(
     [ValidateSet("link", "move")][string]$Mode = "link",
     [switch]$Force,
     [switch]$SkipExisting,
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [switch]$NoLog,
+    [string]$LogPath
 )
 
 $ErrorActionPreference = "Stop"
+
+# --- §8b run-log (Start-Transcript; the Python-absent equivalent of the tee) ---
+# NEVER break the install: transcript start is wrapped; an unwritable logs\ dir
+# falls back to $env:TEMP, and total failure just disables logging.
+function Start-RunTranscript {
+    param([string]$ScriptDir, [string]$Explicit)
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
+    $target = $null
+    if ($Explicit) {
+        $target = $Explicit
+    } else {
+        $logDir = Join-Path $ScriptDir "logs"
+        try {
+            if (-not (Test-Path -LiteralPath $logDir)) {
+                New-Item -ItemType Directory -Path $logDir -Force -ErrorAction Stop | Out-Null
+            }
+            $target = Join-Path $logDir "install-$stamp.log"
+        } catch {
+            $target = $null  # fall through to temp
+        }
+    }
+    if (-not $target) {
+        try {
+            $target = Join-Path $env:TEMP "agent-foundry-install-$stamp.log"
+        } catch { return $null }
+    }
+    try {
+        Start-Transcript -Path $target -Force -ErrorAction Stop | Out-Null
+        return $target
+    } catch {
+        # As a last resort try temp; if even that fails, give up on logging.
+        try {
+            $fb = Join-Path $env:TEMP "agent-foundry-install-$stamp.log"
+            Start-Transcript -Path $fb -Force -ErrorAction Stop | Out-Null
+            Write-Host ("  ! run-log: " + $target + " unwritable; logging to " + $fb) -ForegroundColor Yellow
+            return $fb
+        } catch {
+            Write-Host "  ! run-log: could not start a transcript; continuing without a log." -ForegroundColor Yellow
+            return $null
+        }
+    }
+}
 
 # RepoRoot auto-detection:
 # - Bundled mode (public agent-foundry): install.ps1 lives next to skills/agents/commands.
@@ -81,6 +136,33 @@ function Get-ClaudeCli {
     } catch {
         return @{ Found = $true; Version = "(version probe failed)" }
     }
+}
+
+function Show-DegradedScan {
+    # DEGRADED native probe — this PowerShell path is the Python-ABSENT fallback,
+    # so it CANNOT run the canonical Python scanner (scan_environment() in
+    # install.py). It does a name-only PATH check (NO version probes, NO known-
+    # location arrays) and tells the user to install Python for full detection +
+    # agy/Copilot wiring. This asymmetry is intentional, not drift: the full
+    # adaptive scan is Python-canonical (single source of truth).
+    Write-Host ("=" * 60)
+    Write-Host "Environment scan (LIMITED — Python absent)"
+    Write-Host ("=" * 60)
+    foreach ($tool in @('claude','agy','copilot','code','git')) {
+        $found = $null -ne (Get-Command $tool -ErrorAction SilentlyContinue)
+        $mark  = if ($found) { 'yes' } else { 'no ' }
+        Write-Host ("  {0,-9} {1}" -f $tool, $mark)
+    }
+    Write-Host ""
+    Write-Host "  Note: this is a LIMITED scan (Python not on PATH). For full detection"
+    Write-Host "  (probed versions, ~/.local/bin + npm-global + GUI-app shims, agy host"
+    Write-Host "  directive, Copilot/VS Code wiring), install Python and run install.py:"
+    Write-Host "      python install.py            # interactive, full adaptive scan"
+    Write-Host "      python install.py --auto     # install into all detected CLIs"
+    Write-Host ""
+    Write-Host "  This PowerShell fallback installs Claude skills/agents/commands only."
+    Write-Host ("=" * 60)
+    Write-Host ""
 }
 
 # Script-level flag: once a symlink fails with a privilege/unsupported error,
@@ -135,7 +217,17 @@ function Place-Item {
 
 # ---------- main ----------
 
+# §8b: start the run-log transcript (unless -NoLog). Wrapped so it never aborts.
+$script:RunLogTarget = $null
+if (-not $NoLog) {
+    $script:RunLogTarget = Start-RunTranscript -ScriptDir $_Here -Explicit $LogPath
+}
+
+try {
+
 Write-Banner
+
+Show-DegradedScan
 
 if (-not (Test-Path -LiteralPath $SkillsDir)) {
     Write-Host "⚠ skills/ not found at $SkillsDir." -ForegroundColor Red
@@ -257,6 +349,17 @@ Write-Host ("  ✓ " + $installed + " skills, " + $agentInstalled +
 Write-Host ""
 Write-Host "done."
 Write-Host ""
-Write-Host "Note: this PowerShell fallback installs Claude only. To install"
-Write-Host "the Gemini and Copilot bridges, install Python and run install.py."
+Write-Host "Note: this PowerShell fallback installs Claude only. For the full"
+Write-Host "adaptive install (agy host directive, Copilot/VS Code wiring, and the"
+Write-Host "legacy Gemini bridge), install Python and run install.py."
 exit 0
+
+}
+finally {
+    # §8b: always stop the transcript and echo the log path (mirrors the Python
+    # tee footer). Wrapped so cleanup never throws.
+    if ($script:RunLogTarget) {
+        try { Stop-Transcript | Out-Null } catch { }
+        Write-Host ("`n" + [char]0x1F4DD + " Full log: " + $script:RunLogTarget)
+    }
+}
