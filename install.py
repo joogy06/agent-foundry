@@ -2,32 +2,49 @@
 """
 agent-foundry installer.
 
-Moves or symlinks skills + agents + commands from a cloned agent-foundry repo
-into the config tree(s) of one or more AI CLIs you have installed:
+Scans the host, shows a findings report, and ADAPTS the install — placing
+skills + agents + commands from a cloned agent-foundry repo into the config
+tree(s) of whichever AI CLIs you actually have installed:
 
     - Claude Code CLI    (~/.claude/{skills,agents,commands}/)
-    - Gemini CLI         (~/.gemini/skills/  via `gemini skills link`)
-    - GitHub Copilot CLI (AGENTS.md bridge — Copilot has no skill concept)
+    - GitHub Copilot CLI (~/.claude/skills/ is auto-discovered by Copilot CLI
+                          and VS Code 1.123+; plus ~/.copilot/ instructions and
+                          an optional ~/.copilot/skills/ mirror)
+    - Antigravity CLI    (`agy` — host directive at ~/.gemini/agy.md)
+    - Gemini CLI         (LEGACY — ~/.gemini/skills/ via `gemini skills link`;
+                          the gemini CLI retires 2026-06-18, agy is primary)
+
+The scan uses OR'd detection (PATH lookup OR known install locations OR config
+dir) so it sees CLIs that aren't on the installer process's PATH (npm-global,
+~/.local/bin, GUI-app shims). Every probe is bounded (stdin closed + timeout);
+no version number is ever hard-coded — the installer PRINTS the probed version.
 
 Tested on Linux + macOS + Windows 10/11. Pure-stdlib Python 3.8+ — no
-dependencies. Works on enterprise machines without a Python virtualenv.
+dependencies. Works standalone in a fresh agent-foundry clone with no
+~/.claude/skills present and no env-adoption tooling.
 
 Usage
 -----
 
-    python3 install.py                                       # interactive
+    python3 install.py                                       # interactive (scans + adapts)
     python3 install.py --noninteractive                      # claude + link, no prompts
+    python3 install.py --auto                                # install into ALL detected CLIs
     python3 install.py --target claude --mode link
     python3 install.py --target claude,gemini --mode move --force
     python3 install.py --claude-home /opt/claude --target claude
+    python3 install.py --scan-only                           # show findings report and exit
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+import traceback
 from pathlib import Path
 
 # REPO_ROOT auto-detection:
@@ -41,16 +58,273 @@ elif any((_HERE.parent / d).exists() for d in ("skills", "agents", "commands")):
 else:
     REPO_ROOT = _HERE                  # fall back; the "nothing found" check below will warn cleanly
 
+# Bundled templates (agy.md host directive, etc.) live next to this script in
+# BOTH layouts (installer/templates/ in dev, <root>/templates/ when bundled).
+_TEMPLATES_DIR = _HERE / "templates"
+
 TARGETS_HELP = """\
 Targets:
   c = Claude Code CLI         (~/.claude/skills/, ~/.claude/agents/, ~/.claude/commands/)
-  g = Gemini CLI              (~/.gemini/skills/  — via `gemini skills link` if installed)
-  p = GitHub Copilot CLI      (AGENTS.md bridge — Copilot has no skill concept)
+  p = GitHub Copilot CLI      (~/.copilot/ instructions + optional ~/.copilot/skills/ mirror;
+                               note: ~/.claude/skills/ is already auto-discovered by Copilot CLI
+                               and VS Code 1.123+ — no bridge needed)
+  y = Antigravity CLI (agy)   (host directive at ~/.gemini/agy.md — primary delegate)
+  g = Gemini CLI              (LEGACY — ~/.gemini/skills/ via `gemini skills link`; retires 2026-06-18)
   a = All of the above
+  auto = install into every CLI the scan actually detected
 """
 
 DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
 DEFAULT_GEMINI_HOME = Path.home() / ".gemini"
+DEFAULT_COPILOT_HOME = Path.home() / ".copilot"
+
+# Overall wall-clock budget for the whole environment scan. Once exceeded,
+# remaining version probes are skipped (detection still reports found/not-found
+# from path/known-location/config-dir, which need no subprocess).
+SCAN_BUDGET_SECONDS = 25.0
+PROBE_TIMEOUT_SECONDS = 5
+
+
+# ---------------------------------------------------------------------------
+# Run-log (Tee) — §8b
+# ---------------------------------------------------------------------------
+#
+# A persistent debug log so a misbehaving run on a varied machine leaves a
+# debuggable artifact. The RunLogger TEES sys.stdout + sys.stderr (it does NOT
+# replace them), so every existing print() reaches the user UNCHANGED and is
+# also mirrored to installer/logs/install-<UTC-ts>.log.
+#
+# HARD: logging MUST NEVER break the install. Log-dir/file creation is wrapped
+# in try/except; an unwritable logs/ falls back to the OS temp dir with a
+# one-line warning, never aborting. NO secrets: only the already-printed scan
+# and step output are captured — os.environ is NEVER dumped.
+
+# Where installer/logs/ lives (next to the scripts, both layouts).
+DEFAULT_LOG_DIR = _HERE / "logs"
+
+
+def _utc_stamp() -> str:
+    """Filename-safe UTC timestamp, e.g. 2026-06-08T21-30-00Z."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return now.strftime("%Y-%m-%dT%H-%M-%SZ")
+
+
+def _git_sha(repo_root: Path) -> str | None:
+    """Best-effort short git sha of the installer repo; None if unavailable.
+    Bounded + stdin-closed; never raises."""
+    git = shutil.which("git")
+    if not git:
+        return None
+    try:
+        r = subprocess.run(
+            [git, "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if r.returncode != 0:
+        return None
+    sha = (r.stdout or "").strip()
+    return sha or None
+
+
+class _TeeStream:
+    """A write-through proxy: every write goes to the real stream AND the log
+    file. Failures writing to the log are swallowed (the user's stream must
+    never be impacted by a logging problem)."""
+
+    def __init__(self, real, logfile):
+        self._real = real
+        self._logfile = logfile
+
+    def write(self, data):
+        # The real stream first — the user's experience is sacred.
+        n = self._real.write(data)
+        try:
+            if self._logfile is not None:
+                self._logfile.write(data)
+        except Exception:
+            pass  # never let a logging failure surface to the caller
+        return n
+
+    def flush(self):
+        try:
+            self._real.flush()
+        except Exception:
+            pass
+        try:
+            if self._logfile is not None:
+                self._logfile.flush()
+        except Exception:
+            pass
+
+    # Pass-through niceties so libraries probing the stream don't choke.
+    def isatty(self):
+        try:
+            return self._real.isatty()
+        except Exception:
+            return False
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+class RunLogger:
+    """Tee sys.stdout + sys.stderr to a run-log file. Use as a context manager:
+
+        with RunLogger(sys.argv, log_path=args.log, enabled=not args.no_log,
+                       repo_root=REPO_ROOT, header_title="agent-foundry installer"):
+            ...                       # all print()/Out output is tee'd
+
+    `enabled=False` → a transparent no-op (no file, streams untouched, the
+    'Full log' footer is suppressed). The constructor NEVER raises.
+    """
+
+    def __init__(self, argv, log_path=None, enabled=True, repo_root=None,
+                 header_title="agent-foundry"):
+        self.argv = list(argv)
+        self.enabled = enabled
+        self.repo_root = Path(repo_root) if repo_root else _HERE
+        self.header_title = header_title
+        self.log_path: Path | None = None
+        self.fell_back = False
+        self._fallback_reason = ""
+        self._logfile = None
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+        self._orig_excepthook = sys.excepthook
+        self._active = False
+        if not enabled:
+            return
+        # Resolve + open, with the never-abort fallback chain.
+        self._open(log_path)
+
+    # ---- open / fallback -------------------------------------------------
+
+    def _open(self, log_path) -> None:
+        primary = Path(log_path).expanduser() if log_path else (
+            DEFAULT_LOG_DIR / f"install-{_utc_stamp()}.log")
+        try:
+            self._logfile = self._try_open(primary)
+            self.log_path = primary
+            return
+        except Exception as exc:  # unwritable dir / read-only clone / perm denied
+            self._fallback_reason = str(exc)
+        # Fallback: OS temp dir. Must not abort the install.
+        try:
+            fb = Path(tempfile.gettempdir()) / f"agent-foundry-install-{_utc_stamp()}.log"
+            self._logfile = self._try_open(fb)
+            self.log_path = fb
+            self.fell_back = True
+        except Exception:
+            # Even the temp dir failed — give up on logging entirely, but the
+            # install proceeds with un-tee'd streams.
+            self._logfile = None
+            self.log_path = None
+
+    @staticmethod
+    def _try_open(path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Probe writability explicitly so a read-only dir raises HERE (caught by
+        # _open) rather than later mid-run.
+        return open(path, "w", encoding="utf-8")
+
+    # ---- lifecycle -------------------------------------------------------
+
+    def __enter__(self) -> "RunLogger":
+        if not self.enabled:
+            return self
+        if self._logfile is not None:
+            sys.stdout = _TeeStream(self._orig_stdout, self._logfile)
+            sys.stderr = _TeeStream(self._orig_stderr, self._logfile)
+            sys.excepthook = self._excepthook
+            self._active = True
+        # Warn (to the user, and tee'd) if we fell back — one line, never fatal.
+        if self.fell_back:
+            print(f"  ! run-log: default logs dir unwritable "
+                  f"({self._fallback_reason or 'permission denied'}); "
+                  f"logging to {self.log_path} instead")
+        self._write_header()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        # If an exception is propagating and our excepthook didn't fire (it only
+        # fires for truly-uncaught exceptions at interpreter exit), record it.
+        if exc is not None and self._logfile is not None:
+            try:
+                self._logfile.write("\n--- exception ---\n")
+                traceback.print_exception(exc_type, exc, tb, file=self._logfile)
+            except Exception:
+                pass
+        self._write_footer()
+        self._restore()
+        return False  # never suppress exceptions
+
+    def _restore(self) -> None:
+        if self._active:
+            sys.stdout = self._orig_stdout
+            sys.stderr = self._orig_stderr
+            sys.excepthook = self._orig_excepthook
+            self._active = False
+        if self._logfile is not None:
+            try:
+                self._logfile.flush()
+                self._logfile.close()
+            except Exception:
+                pass
+
+    # ---- excepthook ------------------------------------------------------
+
+    def _excepthook(self, exc_type, exc, tb):
+        # Capture an otherwise-uncaught traceback into the log, then defer to the
+        # original hook so the user still sees it on the terminal.
+        if self._logfile is not None:
+            try:
+                self._logfile.write("\n--- uncaught exception ---\n")
+                traceback.print_exception(exc_type, exc, tb, file=self._logfile)
+                self._logfile.flush()
+            except Exception:
+                pass
+        self._orig_excepthook(exc_type, exc, tb)
+
+    # ---- header / footer -------------------------------------------------
+
+    def _write_header(self) -> None:
+        if self._logfile is None:
+            return
+        sha = _git_sha(self.repo_root)
+        # NOTE: argv ONLY — never os.environ (no secrets).
+        lines = [
+            "=" * 78,
+            f"{self.header_title} — run log",
+            "=" * 78,
+            f"UTC:      {datetime.datetime.now(datetime.timezone.utc).isoformat()}",
+            f"repo:     {self.repo_root}",
+            f"git-sha:  {sha or '(unavailable)'}",
+            f"OS:       {_os_release()}  ({sys.platform})",
+            f"python:   {sys.version.split()[0]}",
+            f"argv:     {' '.join(self.argv)}",
+            "=" * 78,
+            "",
+        ]
+        try:
+            self._logfile.write("\n".join(lines))
+            self._logfile.flush()
+        except Exception:
+            pass
+
+    def _write_footer(self) -> None:
+        # The 'Full log' line goes through sys.stdout (still tee'd here if active)
+        # so the USER sees the path at the very end AND it's recorded in the file.
+        if self.enabled and self.log_path is not None:
+            print(f"\n\U0001F4DD Full log: {self.log_path}")
+
+
+def add_log_args(parser: argparse.ArgumentParser) -> None:
+    """Register the shared run-log flags on an argparse parser (§8b)."""
+    parser.add_argument("--no-log", action="store_true",
+                        help="disable the run-log file (logging is on by default)")
+    parser.add_argument("--log", default=None, metavar="PATH",
+                        help="write the run-log to PATH (default: installer/logs/install-<UTC-ts>.log)")
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +434,263 @@ def detect(repo_root: Path) -> tuple[int, int, int]:
 
 
 # ---------------------------------------------------------------------------
+# Environment scan (scan → report → adapt)
+# ---------------------------------------------------------------------------
+#
+# scan_environment() is pure-stdlib and self-contained. It deliberately does
+# NOT call probe.sh (which needs jq+bash, writes inventory.json, and shells to
+# skills that are absent in a fresh agent-foundry clone). Detection always runs
+# inline so the installer works standalone.
+
+
+def _user_base_bin() -> Path:
+    """`<python user-base>/bin` (e.g. ~/.local/bin) — where `pip install --user`
+    drops console scripts. Cheap, no subprocess."""
+    try:
+        import site
+        return Path(site.getuserbase()) / ("Scripts" if sys.platform == "win32" else "bin")
+    except Exception:
+        return Path.home() / ".local" / "bin"
+
+
+def _appdata() -> Path | None:
+    val = os.environ.get("APPDATA")
+    return Path(val) if val else None
+
+
+def _localappdata() -> Path | None:
+    val = os.environ.get("LOCALAPPDATA")
+    return Path(val) if val else None
+
+
+def run_probe(argv: list[str], timeout: int = PROBE_TIMEOUT_SECONDS) -> tuple[int, str]:
+    """The ONE bounded runner for ALL version/identity probes.
+
+    Hardened against the failure modes the 3-model review flagged:
+      - stdin=DEVNULL  → never hangs on a CLI that reads stdin until EOF
+                         (the agy-headless-hang class).
+      - timeout        → bounded; a wedged probe can't stall the scan.
+      - .cmd/.bat wrap → on Windows, batch-file shims need cmd.exe to run
+                         (CreateProcess won't find/execute .cmd directly).
+
+    Returns (returncode, combined_stdout_or_stderr_first_line). On any failure
+    returns (-1, "") so callers degrade to "(version probe failed)" rather than
+    raising.
+    """
+    if not argv:
+        return -1, ""
+    exe = argv[0]
+    real_argv = argv
+    # Windows: a resolved .cmd/.bat path must be run via cmd.exe /c.
+    if sys.platform == "win32" and isinstance(exe, str) and exe.lower().endswith((".cmd", ".bat")):
+        real_argv = ["cmd.exe", "/c", *argv]
+    try:
+        r = subprocess.run(
+            real_argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return -1, ""
+    out = (r.stdout or r.stderr or "").strip().splitlines()
+    return r.returncode, (out[0] if out else "")
+
+
+# Tool catalog: name → (probe argv tail, known-location resolver, config dirs,
+# what installing/wiring it enables, whether it's legacy).
+def _known_locations(name: str) -> list[Path]:
+    """Platform-aware known install locations for a CLI, beyond PATH.
+
+    Mirrors the Homebrew/rustup/gh known-location precedent: `shutil.which`
+    only sees the installer process's PATH and false-negatives npm-global,
+    ~/.local/bin, and GUI-app shims."""
+    home = Path.home()
+    ub = _user_base_bin()
+    appdata = _appdata()
+    local = _localappdata()
+    locs: list[Path] = []
+    if name == "agy":
+        locs += [home / ".local" / "bin" / "agy", home / "bin" / "agy", ub / "agy"]
+        if sys.platform == "win32":
+            locs += [ub / "agy.exe", home / ".local" / "bin" / "agy.exe"]
+    elif name == "copilot":
+        locs += [home / ".npm-global" / "bin" / "copilot", Path("/usr/local/bin/copilot")]
+        if appdata:
+            locs += [appdata / "npm" / "copilot.cmd", appdata / "npm" / "copilot"]
+    elif name == "code":
+        # VS Code GUI-app CLI shims (macOS .app, Windows install dir).
+        locs += [Path("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code")]
+        if local:
+            locs += [local / "Programs" / "Microsoft VS Code" / "bin" / "code.cmd",
+                     local / "Programs" / "Microsoft VS Code" / "bin" / "code"]
+        locs += [Path("/usr/local/bin/code"), Path("/snap/bin/code")]
+    elif name == "gemini":
+        locs += [home / ".npm-global" / "bin" / "gemini", Path("/usr/local/bin/gemini")]
+        if appdata:
+            locs += [appdata / "npm" / "gemini.cmd"]
+    elif name == "claude":
+        locs += [home / ".local" / "bin" / "claude", Path("/usr/local/bin/claude")]
+    elif name == "codex":
+        locs += [home / ".local" / "bin" / "codex", home / ".npm-global" / "bin" / "codex",
+                 Path("/usr/local/bin/codex")]
+        if appdata:
+            locs += [appdata / "npm" / "codex.cmd"]
+    return locs
+
+
+def _config_dirs_for(name: str) -> list[Path]:
+    """Config-dir existence is a third detection signal (a tool can be
+    installed-then-removed-from-PATH but still leave its config)."""
+    home = Path.home()
+    mapping = {
+        "claude": [home / ".claude"],
+        "codex": [home / ".codex"],
+        "agy": [home / ".antigravity"],
+        "copilot": [home / ".copilot"],
+        "gemini": [home / ".gemini"],
+        "code": [home / ".vscode", home / ".config" / "Code"],
+        "gh": [home / ".config" / "gh"],
+        "docker": [home / ".docker"],
+    }
+    return mapping.get(name, [])
+
+
+def _detect_one(name: str, version_argv: list[str], enables: str, legacy: bool,
+                scan_deadline: float) -> dict:
+    """OR'd detection for a single tool. Returns the per-tool report dict.
+
+    Resolution order (first hit wins for `via`/`path`):
+      1. shutil.which(name)            → via "which"
+      2. known-location array exists   → via "path"
+      3. config-dir exists             → via "config-dir" (found, but no exe to probe)
+    Version is PROBED (never hard-coded) and only when we have an executable
+    path AND the overall scan budget hasn't been exhausted.
+    """
+    found_path: str | None = None
+    via: str | None = None
+
+    which_hit = shutil.which(name)
+    if which_hit:
+        found_path, via = which_hit, "which"
+    if found_path is None:
+        for loc in _known_locations(name):
+            try:
+                if loc.exists():
+                    found_path, via = str(loc), "path"
+                    break
+            except OSError:
+                continue
+    config_hit = None
+    for cd in _config_dirs_for(name):
+        try:
+            if cd.exists():
+                config_hit = cd
+                break
+        except OSError:
+            continue
+    if found_path is None and config_hit is not None:
+        via = "config-dir"
+
+    found = found_path is not None or config_hit is not None
+
+    version = None
+    if found_path is not None:
+        if version_argv is None:
+            version = "(installed)"
+        elif (time.monotonic() < scan_deadline):
+            rc, line = run_probe([found_path, *version_argv])
+            version = line if (rc == 0 and line) else "(version probe failed)"
+        else:
+            version = "(version probe skipped — scan budget)"
+    elif found:  # config-dir only
+        version = "(config present; CLI not on PATH)"
+
+    return {
+        "found": found,
+        "via": via,
+        "path": found_path,
+        "version": version,
+        "config_dir": str(config_hit) if config_hit else None,
+        "enables": enables,
+        "legacy": legacy,
+    }
+
+
+def scan_environment() -> dict:
+    """Scan the host for relevant AI CLIs / tools and return an EnvReport dict.
+
+    Pure-stdlib, bounded, standalone. Shape:
+        {
+          "os": {...},
+          "tools": { name: {found, via, path, version, config_dir, enables, legacy} },
+          "config_dirs": { "~/.claude": bool, ... },
+          "skills_consumers": [...],   # CLIs that natively read ~/.claude/skills
+        }
+    """
+    scan_deadline = time.monotonic() + SCAN_BUDGET_SECONDS
+
+    # (name, version_argv | None, enables, legacy)
+    catalog = [
+        ("claude", ["--version"], "Claude Code skills/agents/commands at ~/.claude/", False),
+        ("codex",  ["--version"], "Codex CLI skill mirror at ~/.codex/skills/", False),
+        ("agy",    ["--version"], "Antigravity CLI delegate (host directive ~/.gemini/agy.md)", False),
+        ("copilot", ["--version"], "Copilot CLI — auto-discovers ~/.claude/skills/; + ~/.copilot/", False),
+        ("code",   ["--version"], "VS Code — auto-discovers ~/.claude/skills/ (1.123+)", False),
+        ("gemini", ["--version"], "Gemini CLI (LEGACY; retires 2026-06-18)", True),
+        ("python3", ["--version"], "runs install.py / bootstrap-environment.py", False),
+        ("gh",     ["--version"], "GitHub CLI (publish, auth)", False),
+        ("docker", ["--version"], "containerized tooling", False),
+        ("git",    ["--version"], "clone / pull agent-foundry", False),
+    ]
+
+    tools: dict[str, dict] = {}
+    for name, vargv, enables, legacy in catalog:
+        # python3 may be registered as "python" on some hosts; detect both.
+        probe_name = name
+        if name == "python3" and shutil.which("python3") is None and shutil.which("python"):
+            probe_name = "python"
+        tools[name] = _detect_one(probe_name, vargv, enables, legacy, scan_deadline)
+
+    home = Path.home()
+    config_dirs = {
+        "~/.claude": (home / ".claude").exists(),
+        "~/.copilot": (home / ".copilot").exists(),
+        "~/.gemini": (home / ".gemini").exists(),
+        "~/.antigravity": (home / ".antigravity").exists(),
+        "~/.codex": (home / ".codex").exists(),
+    }
+
+    # CLIs that natively read ~/.claude/skills/ (research-verified): Copilot CLI
+    # and VS Code 1.123+. This corrects the stale "Copilot has no skill concept"
+    # premise — the skills ship for free to both once present.
+    skills_consumers = []
+    if tools["copilot"]["found"]:
+        skills_consumers.append("Copilot CLI")
+    if tools["code"]["found"]:
+        skills_consumers.append("VS Code")
+
+    return {
+        "os": {
+            "platform": sys.platform,
+            "release": _os_release(),
+        },
+        "tools": tools,
+        "config_dirs": config_dirs,
+        "skills_consumers": skills_consumers,
+    }
+
+
+def _os_release() -> str:
+    try:
+        import platform
+        return platform.platform(terse=True)
+    except Exception:
+        return sys.platform
+
+
+# ---------------------------------------------------------------------------
 # Filesystem ops
 # ---------------------------------------------------------------------------
 
@@ -223,11 +754,6 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
     else:
         shutil.copy2(src, dest)
     return "fallback-copy" if mode == "link" else "copy"
-    if is_dir:
-        shutil.copytree(src, dest)
-    else:
-        shutil.copy2(src, dest)
-    return "copy"
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +856,93 @@ def chmod_scripts(skills_root: Path) -> int:
     return changed
 
 
+# Fallback agy directive used ONLY if the bundled installer/templates/agy.md is
+# somehow missing (e.g. a partial clone). Keeps install_agy() self-sufficient
+# and publish-clean — generic, no host-specific paths.
+_AGY_TEMPLATE_FALLBACK = """\
+# agy — host directive (Antigravity CLI global context)
+
+You are `agy` (the Antigravity CLI): the PRIMARY second-opinion / challenger /
+research delegate for the primary coding agent. Invoked headlessly as
+`agy -p "<self-contained prompt>"`.
+
+- STDIN must be closed or piped: `timeout 600 agy -p "..." < /dev/null`
+  (headless agy reads non-TTY stdin until EOF and otherwise hangs).
+- No model flag by convention — use the Antigravity-account-configured model.
+- Account auth under ~/.antigravity/ — no API-key/env prefix needed.
+- Plain text out. Be a genuine challenger, not a rubber stamp. Stay on the
+  prompt. Be decision-grade and concise.
+"""
+
+
+def _agy_template_text() -> str:
+    """Read the bundled generic agy.md template; fall back to the inline copy."""
+    tpl = _TEMPLATES_DIR / "agy.md"
+    try:
+        if tpl.exists():
+            return tpl.read_text(encoding="utf-8")
+    except OSError:
+        pass
+    return _AGY_TEMPLATE_FALLBACK
+
+
+def _content_differs(target: Path, expected: str) -> bool:
+    """True if target exists with content != expected (the hash-skip signal)."""
+    try:
+        return target.read_text(encoding="utf-8") != expected
+    except (OSError, UnicodeDecodeError):
+        return True
+
+
+def install_agy(gemini_home: Path, force: bool = False, dry_run: bool = False) -> bool:
+    """Place the agy host directive at ~/.gemini/agy.md.
+
+    Idempotency mirrors the bootstrap CLAUDE.md pattern (CRITICAL data-loss fix):
+      - create-if-absent: write only if the file is missing.
+      - hash-skip:        if present and byte-identical to the template, skip.
+      - present+differs:  the user has CUSTOMISED it — SKIP unless --force.
+      - --force overwrite: write a .bak FIRST, then overwrite.
+
+    The user's live ~/.gemini/agy.md (which may be a hand-tuned host directive)
+    is NEVER silently clobbered. Returns True on success/no-op.
+    """
+    target = gemini_home / "agy.md"
+    expected = _agy_template_text()
+
+    if not target.exists():
+        if dry_run:
+            print(f"    would write {target} (create-if-absent)")
+            return True
+        gemini_home.mkdir(parents=True, exist_ok=True)
+        target.write_text(expected, encoding="utf-8")
+        print(f"    + wrote {target} (agy host directive)")
+        return True
+
+    if not _content_differs(target, expected):
+        print(f"    = {target} already at template content — skipping")
+        return True
+
+    # Present and DIFFERENT — user-customised or a different template version.
+    if not force:
+        print(f"    ⚠ {target} exists and differs (likely your customisation) — leaving as-is")
+        print(f"      (use --force to overwrite; a .bak will be written first)")
+        return True
+
+    if dry_run:
+        print(f"    would back up {target} -> {target}.bak and overwrite (--force)")
+        return True
+    backup = target.with_suffix(target.suffix + ".bak")
+    try:
+        shutil.copy2(target, backup)
+        print(f"    backup -> {backup}")
+    except OSError as exc:
+        print(f"    ⚠ could not write backup ({exc}); refusing to overwrite agy.md")
+        return False
+    target.write_text(expected, encoding="utf-8")
+    print(f"    + overwrote {target} (--force; previous saved to {backup.name})")
+    return True
+
+
 def install_gemini(
     repo_root: Path, gemini_home: Path, mode: str, force: bool
 ) -> tuple[int, int, bool]:
@@ -416,17 +1029,28 @@ Claude Code's canonical tree (this is also what `agent-foundry` ships):
 - Skills: `~/.claude/skills/<name>/SKILL.md`
 - Agents: `~/.claude/agents/<name>.md`
 
+**Agent Skills (SKILL.md) are native to Copilot now.** The Copilot CLI AND
+VS Code (1.123+) auto-discover skills from these locations — including
+`~/.claude/skills/`, so the agent-foundry skills are consumed for free once
+installed:
+
+- `~/.copilot/skills/`
+- `~/.claude/skills/`          ← agent-foundry installs here; Copilot reads it
+- `<repo>/.github/skills/`
+- `<repo>/.claude/skills/`
+
 | Tool        | Discovery                                                          |
 |-------------|--------------------------------------------------------------------|
 | Claude Code | auto, from `~/.claude/skills/`                                     |
-| Gemini CLI  | `gemini skills link <path>` per skill (or `~/.gemini/skills/`)     |
-| Copilot CLI | this file + per-repo `AGENTS.md` / `.github/copilot-instructions.md` |
+| Copilot CLI | auto, from `~/.claude/skills/` + `~/.copilot/skills/` + repo dirs  |
+| VS Code 1.123+ | auto, from `~/.claude/skills/` (+ `chat.agentSkillsLocations`)  |
 | Codex CLI   | symlinks under `~/.codex/skills/<name>/`                           |
+| Gemini CLI  | `gemini skills link <path>` per skill (LEGACY; retires 2026-06-18) |
 
-Skills are auto-discovered by Claude Code from frontmatter `description:`.
-For Copilot, you can reference specific skills inline by reading their
-`SKILL.md` files when relevant — Copilot has no native skill concept but
-will treat this file's content as system context.
+Skills are auto-discovered from each skill's frontmatter `description:`.
+This file (and per-repo `AGENTS.md` / `.github/copilot-instructions.md`)
+supplies cross-tool *instructions*; the skills themselves are discovered
+natively from the directories above.
 
 ## Useful Copilot CLI invocations
 
@@ -462,29 +1086,61 @@ ln -sfn ~/.copilot/copilot-instructions.md <project>/.github/copilot-instruction
 """
 
 
-def install_copilot(repo_root: Path, force: bool = False) -> bool:
-    """
-    Install GitHub Copilot CLI integration.
+def mirror_copilot_skills(repo_root: Path, copilot_home: Path, mode: str,
+                          force: bool = False) -> tuple[int, int]:
+    """OPT-IN mirror of skills into ~/.copilot/skills/ (same pattern as the
+    codex mirror). Copilot already auto-discovers ~/.claude/skills/, so this is
+    purely additive for users who keep Copilot's own skills dir authoritative.
 
-    Copilot CLI (`@github/copilot`) reads instructions from (precedence order):
+    Returns (installed, skipped).
+    """
+    skills_src = repo_root / "skills"
+    if not skills_src.exists():
+        print(f"    ⚠ {skills_src} missing — nothing to mirror")
+        return 0, 0
+    skills_target = copilot_home / "skills"
+    skills_target.mkdir(parents=True, exist_ok=True)
+    installed = skipped = 0
+    for skill in sorted(skills_src.iterdir()):
+        if not skill.is_dir() or not (skill / "SKILL.md").exists():
+            continue
+        dest = skills_target / skill.name
+        if (dest.exists() or dest.is_symlink()) and not force:
+            skipped += 1
+            continue
+        _replace_existing(dest)
+        link_or_copy(skill, dest, mode)
+        installed += 1
+    return installed, skipped
+
+
+def install_copilot(repo_root: Path, force: bool = False,
+                    mirror_skills: bool = False, mode: str = "link",
+                    copilot_home: Path | None = None) -> bool:
+    """
+    Install GitHub Copilot CLI / VS Code integration.
+
+    IMPORTANT (research-verified): Agent Skills (SKILL.md) are native to Copilot
+    CLI and VS Code 1.123+. Both auto-discover skills from ~/.claude/skills/ —
+    so the agent-foundry skills installed by the `claude` target are ALREADY
+    consumed by Copilot and VS Code with no bridge. The stale "Copilot has no
+    skill concept" premise no longer holds.
+
+    Copilot CLI (`@github/copilot`) reads *instructions* from (precedence order):
       1. .github/copilot-instructions.md  (per-repo; `copilot init` bootstraps it)
       2. AGENTS.md                        (per-repo, repo root)
       3. ~/.copilot/copilot-instructions.md  (user-global)
 
-    Per the verified `--no-custom-instructions` flag in `copilot --help`,
-    Copilot CLI loads AGENTS.md natively (no bridge or import syntax needed).
+    We write the user-global instructions file (create-if-absent) so Copilot has
+    cross-tool context regardless of project. Per-project `.github` setup is left
+    to `copilot init` (Copilot's own read-only repo bootstrap).
 
-    We write the user-global file so Copilot has cross-tool context regardless
-    of which project you're in. Per-project setup is left to `copilot init`
-    (Copilot's own bootstrap, runs read-only repo analysis).
-
-    Note: Copilot CLI supports `--model <model>` (Claude / GPT / Gemini
-    variants depending on subscription). Instructions in this file apply
-    across every backend.
+    Optionally (`mirror_skills=True`) also mirror skills into ~/.copilot/skills/
+    — opt-in, additive, same pattern as the codex mirror.
     """
-    copilot_dir = Path.home() / ".copilot"
-    copilot_dir.mkdir(parents=True, exist_ok=True)
-    target = copilot_dir / "copilot-instructions.md"
+    copilot_home = copilot_home or DEFAULT_COPILOT_HOME
+    copilot_home.mkdir(parents=True, exist_ok=True)
+    target = copilot_home / "copilot-instructions.md"
 
     if target.exists() and not force:
         print(f"    ⚠ {target} already exists — leaving as-is (use --force to overwrite)")
@@ -492,14 +1148,131 @@ def install_copilot(repo_root: Path, force: bool = False) -> bool:
         target.write_text(COPILOT_AGENTS_MD)
         print(f"    + wrote {target}")
 
-    has_copilot = shutil.which("copilot") is not None
+    has_copilot = shutil.which("copilot") is not None or any(
+        loc.exists() for loc in _known_locations("copilot"))
+    has_code = shutil.which("code") is not None or any(
+        loc.exists() for loc in _known_locations("code"))
+    if has_copilot or has_code:
+        consumers = " + ".join(
+            ([f"Copilot CLI"] if has_copilot else []) + (["VS Code"] if has_code else []))
+        print(f"    ✓ {consumers} natively auto-discover ~/.claude/skills/ — agent-foundry")
+        print(f"      skills are already available there (install the `claude` target).")
     if not has_copilot:
-        print(f"    ⚠ `copilot` not found on PATH; install via:")
-        print(f"      npm install -g @github/copilot")
+        print(f"    ⚠ `copilot` not found; install via: npm install -g @github/copilot")
+
+    if mirror_skills:
+        ins, sk = mirror_copilot_skills(repo_root, copilot_home, mode, force=force)
+        print(f"    + mirrored {ins} skill(s) into {copilot_home/'skills'} (skipped {sk})")
+
     print(f"    Per-project setup: cd <project> && copilot init")
     print(f"      (or copy/symlink {target.name} → <project>/AGENTS.md)")
     print(f"    Model selection:   copilot --model <name>   (Claude / GPT / Gemini)")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Findings report + adapted plan
+# ---------------------------------------------------------------------------
+
+# Which tools map to an installable target (used by --auto / adapt pre-select).
+_TARGET_FOR_TOOL = {
+    "claude": "claude",
+    "copilot": "copilot",
+    "agy": "agy",
+    "gemini": "gemini",
+}
+
+
+def _fmt_cell(s: str | None, width: int) -> str:
+    s = s if s is not None else "-"
+    if len(s) > width:
+        s = s[: width - 1] + "…"
+    return s.ljust(width)
+
+
+def render_findings(report: dict) -> None:
+    """Print the findings table: tool | found? | via | version | what it enables."""
+    print("=" * 78)
+    print("Environment scan — findings")
+    print("=" * 78)
+    print(f"OS: {report['os']['release']}  ({report['os']['platform']})")
+    print()
+    hdr = (_fmt_cell("tool", 9) + _fmt_cell("found", 7) + _fmt_cell("via", 11)
+           + _fmt_cell("version", 22) + "enables")
+    print(hdr)
+    print("-" * 78)
+    for name, t in report["tools"].items():
+        label = name + (" *legacy" if t.get("legacy") and t.get("found") else "")
+        found = "yes" if t["found"] else "no"
+        ver = t["version"] or "-"
+        row = (_fmt_cell(label, 9) + _fmt_cell(found, 7) + _fmt_cell(t["via"], 11)
+               + _fmt_cell(ver, 22) + (t["enables"] or ""))
+        print(row)
+    print("-" * 78)
+    existing = [k for k, v in report["config_dirs"].items() if v]
+    print("Existing config dirs: " + (", ".join(existing) if existing else "(none)"))
+    print()
+
+
+def adapted_targets(report: dict) -> list[str]:
+    """Targets pre-selected because the scan DETECTED their tool (interactive
+    default only — the user still confirms; --noninteractive ignores this)."""
+    out: list[str] = []
+    for tool, target in _TARGET_FOR_TOOL.items():
+        if report["tools"].get(tool, {}).get("found"):
+            if target not in out:
+                out.append(target)
+    if "claude" not in out:
+        out.insert(0, "claude")  # claude is always the floor
+    return out
+
+
+def render_adapted_plan(report: dict, preselected: list[str]) -> None:
+    """Print the adapted plan + recommendations (the 'adapt' surface)."""
+    print("Adapted plan (detected → pre-selected; you confirm):")
+    tools = report["tools"]
+
+    def status(tool: str) -> str:
+        t = tools.get(tool, {})
+        if not t.get("found"):
+            return "not detected"
+        v = t.get("version") or ""
+        via = t.get("via") or ""
+        return f"detected (via {via}{', ' + v if v and 'fail' not in v else ''})"
+
+    print(f"  • claude   → {status('claude')} — install skills/agents/commands [pre-selected]")
+    # copilot / VS Code
+    cp = tools.get("copilot", {}); vs = tools.get("code", {})
+    if cp.get("found") or vs.get("found"):
+        consumers = report.get("skills_consumers") or []
+        print(f"  • copilot  → {status('copilot')}; VS Code {status('code')}")
+        if consumers:
+            print(f"               {' + '.join(consumers)} already auto-discover ~/.claude/skills/")
+        print(f"               → optional ~/.copilot/skills mirror (use --mirror-copilot-skills)")
+    else:
+        print(f"  • copilot  → not detected")
+    # agy
+    if tools.get("agy", {}).get("found"):
+        print(f"  • agy      → {status('agy')} — primary delegate; wire ~/.gemini/agy.md [pre-selected]")
+    else:
+        print(f"  • agy      → not detected (install Antigravity CLI to enable the primary delegate)")
+    # gemini legacy
+    if tools.get("gemini", {}).get("found"):
+        print(f"  • gemini   → {status('gemini')} — LEGACY, retires 2026-06-18; agy is primary")
+    else:
+        print(f"  • gemini   → not detected (legacy; agy is the primary delegate)")
+    print()
+    print("Recommendations:")
+    if tools.get("agy", {}).get("found"):
+        print("  - agy is your primary second-opinion/challenger delegate; its host directive")
+        print("    (~/.gemini/agy.md, distinct from the gemini CLI) is created if absent.")
+    if tools.get("gemini", {}).get("found"):
+        print("  - gemini CLI is detected but is LEGACY (retires 2026-06-18) — prefer agy.")
+    if report.get("skills_consumers"):
+        print("  - " + " and ".join(report["skills_consumers"]) +
+              " consume ~/.claude/skills/ for free; install the claude target.")
+    print(f"  - pre-selected targets (interactive default): {', '.join(preselected)}")
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -516,7 +1289,8 @@ def main() -> int:
     parser.add_argument(
         "--target",
         help="comma-separated single-letter codes or names "
-             "(e.g. 'c,g' or 'claude,gemini'); 'a' or 'all' = everything",
+             "(e.g. 'c,p' or 'claude,copilot'); 'a'/'all' = everything; "
+             "'auto' = every CLI the scan detected",
         default=None,
     )
     parser.add_argument("--mode", choices=["link", "move"], default=None,
@@ -526,65 +1300,106 @@ def main() -> int:
     parser.add_argument("--gemini-home", default=None,
                         help=f"override Gemini config dir (default {DEFAULT_GEMINI_HOME})")
     parser.add_argument("--force", action="store_true",
-                        help="(no-op; replace-existing is now the default — kept for backward compat)")
+                        help="(no-op for skills/agents — replace-existing is the default; "
+                             "DOES force agy.md + copilot-instructions.md overwrite, with .bak)")
     parser.add_argument("--skip-existing", action="store_true",
                         help="leave existing skills/agents/commands at the target untouched (old --force=False behavior)")
     parser.add_argument("--noninteractive", action="store_true",
-                        help="use defaults — claude + link mode — without prompting")
+                        help="use defaults — claude + link mode — without prompting (back-compat: unchanged)")
+    parser.add_argument("--auto", action="store_true",
+                        help="install into ALL detected CLIs (equivalent to --target auto)")
+    parser.add_argument("--scan-only", action="store_true",
+                        help="run the environment scan, print the findings report, and exit")
+    parser.add_argument("--mirror-copilot-skills", action="store_true",
+                        help="also mirror skills into ~/.copilot/skills/ (opt-in; additive)")
+    add_log_args(parser)
     args = parser.parse_args()
 
+    # §8b: tee all output to a run-log (on by default; --no-log opts out;
+    # --log overrides the path). The logger NEVER aborts the install.
+    with RunLogger(sys.argv, log_path=args.log, enabled=not args.no_log,
+                   repo_root=REPO_ROOT, header_title="agent-foundry installer"):
+        return _run(args)
+
+
+def _run(args) -> int:
     banner()
     print()
 
     skill_n, agent_n, command_n = detect(REPO_ROOT)
-    has_claude, claude_version = check_claude_cli()
     print(f"Repo root:      {REPO_ROOT}")
-    print(f"Platform:       {sys.platform}")
     print(f"Python:         {sys.version.split()[0]}")
-    print(f"Claude CLI:     {claude_version if has_claude else 'NOT FOUND on PATH'}")
     print(f"Skills found:   {skill_n}")
     print(f"Agents found:   {agent_n}")
     print(f"Commands found: {command_n}")
     print()
+
+    # ---- Scan → findings report (always; this is the 'scan' surface) ----
+    report = scan_environment()
+    render_findings(report)
+    preselected = adapted_targets(report)
+    render_adapted_plan(report, preselected)
+
+    has_claude = report["tools"]["claude"]["found"]
     if not has_claude:
-        print("⚠ `claude` CLI not on PATH — install with:")
+        print("⚠ `claude` CLI not detected — install with:")
         print("    curl -fsSL https://claude.ai/install.sh | bash")
         print("  (or see https://docs.claude.com/en/docs/claude-code/setup)")
         print("  Continuing — files will land at ~/.claude/ and be picked up once `claude` is installed.")
         print()
+
+    if args.scan_only:
+        return 0
 
     if skill_n == 0 and agent_n == 0 and command_n == 0:
         print("⚠ no skills, agents, or commands found in this directory.")
         print(f"  expected: {REPO_ROOT / 'skills'}, {REPO_ROOT / 'agents'}, or {REPO_ROOT / 'commands'}")
         return 1
 
-    # ---- Targets ----
+    # ---- Targets (adapt = pre-select interactive defaults; explicit flags win) ----
+    # back-compat floor: --noninteractive with no --target is ALWAYS claude only.
     target_str = args.target
+    if args.auto and target_str is None:
+        target_str = "auto"
+
     if target_str is None and not args.noninteractive:
         print(TARGETS_HELP)
-        target_str = ask("Choose targets", choices=["c", "g", "p", "a"], default="c")
+        # Adapt: pre-select the detected targets as the interactive DEFAULT.
+        default_choice = ",".join(preselected)
+        print(f"Detected → pre-selected default: {default_choice}")
+        print("  (press Enter to accept, or type targets: c/p/y/g/a/auto, comma-separated)")
+        target_str = ask("Choose targets", default=default_choice)
     elif target_str is None:
-        target_str = "claude"
+        target_str = "claude"  # --noninteractive floor (UNCHANGED)
 
-    target_map = {"c": "claude", "g": "gemini", "p": "copilot",
-                  "a": "all", "all": "all",
-                  "claude": "claude", "gemini": "gemini", "copilot": "copilot"}
+    target_map = {"c": "claude", "p": "copilot", "y": "agy", "g": "gemini",
+                  "a": "all", "all": "all", "auto": "auto",
+                  "claude": "claude", "copilot": "copilot", "agy": "agy",
+                  "gemini": "gemini"}
     raw = [t.strip().lower() for t in target_str.split(",") if t.strip()]
     targets: list[str] = []
     for t in raw:
         if t not in target_map:
-            print(f"⚠ unknown target {t!r}; expected one of {list(target_map)}")
+            print(f"⚠ unknown target {t!r}; expected one of {sorted(set(target_map))}")
             return 1
         mapped = target_map[t]
         if mapped == "all":
-            targets = ["claude", "gemini", "copilot"]
+            targets = ["claude", "copilot", "agy", "gemini"]
+            break
+        if mapped == "auto":
+            # auto = every detected target (explicit user opt-in to adapt).
+            targets = list(preselected)
             break
         if mapped not in targets:
             targets.append(mapped)
 
+    if not targets:
+        targets = ["claude"]
+
     # ---- Mode ----
     mode = args.mode
-    if mode is None and any(t in targets for t in ("claude", "gemini")):
+    needs_mode = any(t in targets for t in ("claude", "gemini", "copilot", "agy"))
+    if mode is None and needs_mode:
         if args.noninteractive:
             mode = "link"
         else:
@@ -604,8 +1419,8 @@ def main() -> int:
     if not args.noninteractive:
         if "claude" in targets:
             claude_home = _ask_path_override("Claude", claude_home)
-        if "gemini" in targets:
-            gemini_home = _ask_path_override("Gemini", gemini_home)
+        if "gemini" in targets or "agy" in targets:
+            gemini_home = _ask_path_override("Gemini/agy", gemini_home)
 
     # ---- Confirm ----
     print()
@@ -615,15 +1430,24 @@ def main() -> int:
         print(f"  Claude  ({mode}): {REPO_ROOT/'skills'}   → {claude_home/'skills'}")
         print(f"                    {REPO_ROOT/'agents'}   → {claude_home/'agents'}")
         print(f"                    {REPO_ROOT/'commands'} → {claude_home/'commands'}")
-    if "gemini" in targets:
-        gemini_via = "via `gemini skills link`" if shutil.which("gemini") else "direct symlink (no `gemini` on PATH)"
-        print(f"  Gemini  ({mode}, {gemini_via}): {REPO_ROOT/'skills'} → {gemini_home/'skills'}")
     if "copilot" in targets:
-        print(f"  Copilot: write {Path.home()/'.copilot'/'copilot-instructions.md'} (user-global; native AGENTS.md format; supports --model Claude/GPT/Gemini)")
+        extra = " + ~/.copilot/skills mirror" if args.mirror_copilot_skills else ""
+        print(f"  Copilot: write {DEFAULT_COPILOT_HOME/'copilot-instructions.md'}{extra}")
+        print(f"           (~/.claude/skills already auto-discovered by Copilot CLI + VS Code 1.123+)")
+    if "agy" in targets:
+        print(f"  agy:     {gemini_home/'agy.md'} (host directive; create-if-absent, hash-skip, .bak on --force)")
+    if "gemini" in targets:
+        if report["tools"]["gemini"]["found"]:
+            gemini_via = "via `gemini skills link`" if shutil.which("gemini") else "direct symlink"
+            print(f"  Gemini  ({mode}, {gemini_via}, LEGACY — retires 2026-06-18): "
+                  f"{REPO_ROOT/'skills'} → {gemini_home/'skills'}")
+        else:
+            print(f"  Gemini  (LEGACY): requested but `gemini` not detected — "
+                  f"will use direct {mode} fallback into {gemini_home/'skills'}")
     if args.skip_existing:
-        print("  Existing entries at the targets will be KEPT (--skip-existing).")
+        print("  Existing skills/agents/commands at the targets will be KEPT (--skip-existing).")
     else:
-        print("  Existing entries at the targets will be REPLACED. Pass --skip-existing to keep them.")
+        print("  Existing skills/agents/commands at the targets will be REPLACED. Pass --skip-existing to keep them.")
     print("=" * 60)
 
     if not args.noninteractive:
@@ -632,9 +1456,10 @@ def main() -> int:
             return 0
 
     # ---- Execute ----
-    # Default: replace existing entries. `--skip-existing` keeps them.
-    # `--force` is preserved as a no-op for backward compat (replacement is now the default).
+    # Default: replace existing skills/agents/commands. `--skip-existing` keeps them.
+    # `--force` forces agy.md / copilot-instructions.md overwrite (with .bak).
     skip_existing = bool(args.skip_existing)
+    force = bool(args.force)
     print()
     if "claude" in targets:
         print("[Claude]")
@@ -643,16 +1468,20 @@ def main() -> int:
         print(f"  ✓ {sc} skills, {ac} agents, {cc} commands installed ({te} {verb} existing)")
         if chm:
             print(f"    + chmod +x on {chm} skill scripts")
+    if "copilot" in targets:
+        print("[Copilot / VS Code]")
+        install_copilot(REPO_ROOT, force=force, mirror_skills=args.mirror_copilot_skills,
+                        mode=mode)
+    if "agy" in targets:
+        print("[agy]")
+        install_agy(gemini_home, force=force)
     if "gemini" in targets:
-        print("[Gemini]")
-        # install_gemini still uses `force`-style semantics; pass not-skip to mean replace.
+        print("[Gemini — LEGACY]")
+        # install_gemini uses `force`-style semantics; pass not-skip to mean replace.
         n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, mode, not skip_existing)
         if not used_cli:
             print(f"  ⚠ `gemini` CLI not found on PATH; used direct {mode} fallback")
-        print(f"  ✓ {n} skills (skipped {sk})")
-    if "copilot" in targets:
-        print("[Copilot]")
-        install_copilot(REPO_ROOT, force=not skip_existing)
+        print(f"  ✓ {n} skills (skipped {sk}) — note: gemini CLI retires 2026-06-18; agy is primary")
 
     print()
     print("done.")

@@ -14,7 +14,8 @@ Steps (in order):
   6. policy-limits.json    — enterprise hard-cap defaults (mode 0600)
   7. claude-observe bin    — symlink convenience for process-observation
   8. Codex skill symlinks  — ~/.codex/skills/* parity (if codex installed)
-  9. Gemini model pin      — ~/.gemini/settings.json (if file exists)
+  8.5 agy host directive   — ~/.gemini/agy.md (create-if-absent; PRIMARY delegate)
+  9. Gemini model pin      — ~/.gemini/settings.json (LEGACY; only if gemini on PATH)
  10. Next-step summary     — /setup skill, pre-push hooks, MCP wiring
 
 Usage:
@@ -22,6 +23,7 @@ Usage:
     python3 bootstrap-environment.py --dry-run             # preview only
     python3 bootstrap-environment.py --skip-install        # skip step 1
     python3 bootstrap-environment.py --skip-codex          # skip step 8
+    python3 bootstrap-environment.py --skip-agy            # skip step 8.5
     python3 bootstrap-environment.py --skip-gemini         # skip step 9
     python3 bootstrap-environment.py --force               # overwrite existing
     python3 bootstrap-environment.py --claude-home /custom # alt config dir
@@ -31,6 +33,7 @@ Exit codes: 0 OK, 1 fatal error, 2 partial (some steps skipped/failed).
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -48,6 +51,78 @@ elif (_HERE.parent / "CLAUDE.md").exists() or (_HERE.parent / "skills").exists()
     REPO_ROOT = _HERE.parent                  # dev mode (script lives in installer/)
 else:
     REPO_ROOT = _HERE                         # fall back; steps will warn cleanly
+
+
+def _resolve_install_py() -> "Path | None":
+    """Locate install.py. It ALWAYS sits next to this bootstrap script
+    (both in installer/ in dev, both at the repo root when bundled), so
+    `_HERE/install.py` is canonical. `REPO_ROOT/install.py` is only a
+    fallback for unusual layouts.
+
+    Fixes the dev-layout bug where REPO_ROOT == _HERE.parent (skill_factory/)
+    made `REPO_ROOT / "install.py"` point at a nonexistent path while the
+    real script was at installer/install.py.
+    """
+    for cand in (_HERE / "install.py", REPO_ROOT / "install.py"):
+        if cand.exists():
+            return cand
+    return None
+
+
+def _load_run_logger():
+    """Import RunLogger + add_log_args from the sibling install.py (§8b).
+
+    The run-log machinery is defined once in install.py (canonical, pure-stdlib)
+    and reused here to avoid drift. If install.py is missing (partial clone),
+    return (None, None) so bootstrap degrades to no-logging — NEVER aborts.
+    """
+    inst = _resolve_install_py()
+    if inst is None:
+        return None, None
+    try:
+        spec = importlib.util.spec_from_file_location("af_install_for_log", inst)
+        if not spec or not spec.loader:
+            return None, None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return getattr(mod, "RunLogger", None), getattr(mod, "add_log_args", None)
+    except Exception:
+        return None, None
+
+
+# A no-op context manager fallback so main() can `with _logger_ctx(...)` even
+# when install.py (hence RunLogger) is unavailable.
+class _NullRunLogger:
+    def __init__(self, *a, **k):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+# Bundled templates (agy.md host directive) live next to this script in both
+# layouts: installer/templates/ in dev, <root>/templates/ when bundled.
+_TEMPLATES_DIR = _HERE / "templates"
+
+# Generic, publish-clean fallback if the bundled installer/templates/agy.md is
+# missing (partial clone). Mirrors the shipped template's essentials.
+_AGY_TEMPLATE_FALLBACK = """\
+# agy — host directive (Antigravity CLI global context)
+
+You are `agy` (the Antigravity CLI): the PRIMARY second-opinion / challenger /
+research delegate for the primary coding agent. Invoked headlessly as
+`agy -p "<self-contained prompt>"`.
+
+- STDIN must be closed or piped: `timeout 600 agy -p "..." < /dev/null`
+  (headless agy reads non-TTY stdin until EOF and otherwise hangs).
+- No model flag by convention — use the Antigravity-account-configured model.
+- Account auth under ~/.antigravity/ — no API-key/env prefix needed.
+- Plain text out. Be a genuine challenger, not a rubber stamp. Stay on the
+  prompt. Be decision-grade and concise.
+"""
 
 # Canonical SessionStart hook entries that bootstrap ensures are present.
 # Bootstrap MERGES these into existing settings.json; it does NOT remove
@@ -124,9 +199,10 @@ class Bootstrap:
 
     def step_1_install_skills(self):
         self.out.step(1, "skills / agents / commands placement (install.py)")
-        installer = REPO_ROOT / "install.py"
-        if not installer.exists():
-            self.out.fail(f"install.py not found at {installer}")
+        installer = _resolve_install_py()
+        if installer is None:
+            self.out.fail(
+                f"install.py not found next to bootstrap ({_HERE}) or at repo root ({REPO_ROOT})")
             return
         cmd = [sys.executable, str(installer), "--noninteractive",
                "--target", "claude", "--claude-home", str(self.claude_home),
@@ -386,10 +462,76 @@ class Bootstrap:
         suffix = f" (excluded by .no-codex-symlink: {excluded})" if excluded else ""
         self.out.ok(f"ensured {added} new Codex symlink(s); total: {total}{suffix}")
 
+    # ----- step 8.5 ---------------------------------------------------------
+
+    def step_8_5_agy_directive(self):
+        """Place the agy host directive at ~/.gemini/agy.md (create-if-absent).
+
+        Mirrors the CLAUDE.md idempotency pattern (step 2):
+          - create-if-absent
+          - hash-skip if byte-identical to the template
+          - present+differs → SKIP unless --force (user customisation protected)
+          - --force overwrite → write .bak first
+
+        The agy directive (~/.gemini/agy.md) is DISTINCT from the gemini CLI's
+        settings.json (step 9). agy is the primary delegate; this step runs
+        regardless of whether the gemini CLI is installed.
+        """
+        self.out.step("8.5", "place ~/.gemini/agy.md (agy host directive; create-if-absent)")
+        tpl = _TEMPLATES_DIR / "agy.md"
+        try:
+            expected = tpl.read_text(encoding="utf-8") if tpl.exists() else _AGY_TEMPLATE_FALLBACK
+        except OSError:
+            expected = _AGY_TEMPLATE_FALLBACK
+        target = Path.home() / ".gemini" / "agy.md"
+
+        if target.exists():
+            try:
+                current = target.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                current = None
+            if current == expected:
+                self.out.skip("agy.md already at template content")
+                return
+            if not self.force:
+                self.out.skip(f"agy.md exists and differs (likely your customisation) — "
+                              f"pass --force to overwrite (.bak written) ({target})")
+                return
+            if self.dry_run:
+                self.out.skip(f"would back up {target} -> {target}.bak and overwrite (--force)")
+                return
+            backup = target.with_suffix(target.suffix + ".bak")
+            try:
+                shutil.copy2(target, backup)
+                self.out.info(f"backup -> {backup}")
+            except OSError as exc:
+                self.out.fail(f"could not write backup ({exc}); refusing to overwrite agy.md")
+                return
+            target.write_text(expected, encoding="utf-8")
+            self.out.ok(f"overwrote {target} (--force; previous saved to {backup.name})")
+            return
+
+        # create-if-absent
+        if self.dry_run:
+            self.out.skip(f"would write {target} (create-if-absent)")
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(expected, encoding="utf-8")
+        self.out.ok(f"wrote {target} (agy host directive)")
+
     # ----- step 9 -----------------------------------------------------------
 
     def step_9_gemini_settings(self):
-        self.out.step(9, "pin Gemini model in ~/.gemini/settings.json")
+        self.out.step(9, "pin Gemini model in ~/.gemini/settings.json (LEGACY — retires 2026-06-18)")
+        # Gate behind "gemini actually on PATH": the gemini CLI is LEGACY (agy is
+        # the primary delegate). Don't touch ~/.gemini/settings.json unless the
+        # gemini CLI is genuinely installed — otherwise this is dead config on a
+        # host that only uses agy (whose directive lives at ~/.gemini/agy.md, a
+        # DIFFERENT file managed by step 8.5 / install.py, not the gemini CLI).
+        if shutil.which("gemini") is None:
+            self.out.skip("gemini CLI not on PATH — LEGACY, skipping model pin "
+                          "(agy is the primary delegate; the gemini CLI retires 2026-06-18)")
+            return
         path = Path.home() / ".gemini" / "settings.json"
         if not path.exists():
             self.out.skip("~/.gemini/settings.json not present — install gemini-cli first")
@@ -466,12 +608,49 @@ def main() -> int:
                    help="Skip step 1 (install.py).")
     p.add_argument("--skip-codex", action="store_true",
                    help="Skip step 8 (Codex symlinks).")
+    p.add_argument("--skip-agy", action="store_true",
+                   help="Skip step 8.5 (agy host directive ~/.gemini/agy.md).")
     p.add_argument("--skip-gemini", action="store_true",
-                   help="Skip step 9 (Gemini model pin).")
+                   help="Skip step 9 (Gemini model pin — LEGACY).")
     p.add_argument("--install-arg", action="append", default=[],
                    help="Pass-through arg to install.py (repeatable).")
+    # §8b run-log flags. If install.py is present, reuse its registrar so the
+    # help text stays in one place; otherwise register minimal equivalents.
+    _RunLogger, _add_log_args = _load_run_logger()
+    if _add_log_args is not None:
+        _add_log_args(p)
+    else:
+        p.add_argument("--no-log", action="store_true",
+                       help="disable the run-log file (logging is on by default)")
+        p.add_argument("--log", default=None, metavar="PATH",
+                       help="write the run-log to PATH (default: installer/logs/install-<UTC-ts>.log)")
     args = p.parse_args()
 
+    # §8b: tee all bootstrap output to a run-log (on by default; never aborts).
+    log_dir_hint = _HERE / "logs"
+    if _RunLogger is not None:
+        log_target = (args.log if args.log
+                      else str(log_dir_hint / ("bootstrap-" + _bootstrap_stamp() + ".log")))
+        logger_ctx = _RunLogger(
+            sys.argv,
+            log_path=log_target,
+            enabled=not args.no_log,
+            repo_root=REPO_ROOT,
+            header_title="agent-foundry bootstrap")
+    else:
+        logger_ctx = _NullRunLogger()
+
+    with logger_ctx:
+        return _run_bootstrap(args)
+
+
+def _bootstrap_stamp() -> str:
+    """Filename-safe UTC stamp for the bootstrap run-log."""
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+
+
+def _run_bootstrap(args) -> int:
     boot = Bootstrap(
         claude_home=Path(args.claude_home),
         dry_run=args.dry_run,
@@ -496,6 +675,8 @@ def main() -> int:
     boot.step_7_claude_observe_bin()
     if not args.skip_codex:
         boot.step_8_codex_symlinks()
+    if not args.skip_agy:
+        boot.step_8_5_agy_directive()
     if not args.skip_gemini:
         boot.step_9_gemini_settings()
     boot.step_10_next_steps()
