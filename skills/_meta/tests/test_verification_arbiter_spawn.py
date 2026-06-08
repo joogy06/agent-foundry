@@ -110,6 +110,8 @@ def valid_verdict_for(bundle_hash: str, request_id: str = HEX32, attempt_id: str
             "bundle_recomputed_hash": bundle_hash,
             "matches_input": True,
         },
+        # S048 / #116 R-B2: evidence_map is now a REQUIRED top-level key.
+        "evidence_map": {"REQ-1": ["tests/test_x.py::test_a"]},
     }
 
 
@@ -300,6 +302,55 @@ class TestSchemaValidation(unittest.TestCase):
             self.assertIn("schema_error", payload)
 
 
+class TestEvidenceMapContract(unittest.TestCase):
+    """S048 / #116 R-B2 — the LOAD-BEARING proof: the arbiter must ACCEPT its
+    OWN evidence_map output (else validate_verdict rejects every verdict -> bob
+    halts). Also: a post-cutover verdict missing evidence_map is rejected, and a
+    malformed evidence_map is rejected."""
+
+    def test_validate_verdict_accepts_its_own_evidence_map(self):
+        # The exact shape the bumped prompt asks the model to emit.
+        v = valid_verdict_for("b" * 64)
+        v["evidence_map"] = {"REQ-1": ["tests/test_x.py::test_a",
+                                       "tests/test_x.py::test_b"]}
+        validated, err = vas.validate_verdict(v)
+        self.assertIsNone(err, f"arbiter rejected its own evidence_map: {err}")
+        self.assertIsNotNone(validated)
+        self.assertIn("evidence_map", validated)
+
+    def test_evidence_map_in_required_top_keys(self):
+        self.assertIn("evidence_map", vas.REQUIRED_TOP_KEYS)
+
+    def test_verdict_without_evidence_map_rejected(self):
+        v = valid_verdict_for("b" * 64)
+        del v["evidence_map"]
+        validated, err = vas.validate_verdict(v)
+        self.assertIsNone(validated)
+        self.assertIn("evidence_map", err)
+
+    def test_empty_evidence_map_is_valid(self):
+        # A degraded/jest bundle legitimately yields {} -> still valid shape.
+        v = valid_verdict_for("b" * 64)
+        v["evidence_map"] = {}
+        validated, err = vas.validate_verdict(v)
+        self.assertIsNone(err, err)
+        self.assertIsNotNone(validated)
+
+    def test_malformed_evidence_map_value_rejected(self):
+        v = valid_verdict_for("b" * 64)
+        v["evidence_map"] = {"REQ-1": "not-a-list"}
+        validated, err = vas.validate_verdict(v)
+        self.assertIsNone(validated)
+        self.assertIn("evidence_map", err)
+
+    def test_evidence_map_nonstring_nodeid_rejected(self):
+        v = valid_verdict_for("b" * 64)
+        v["evidence_map"] = {"REQ-1": [123]}
+        validated, err = vas.validate_verdict(v)
+        self.assertIsNone(validated)
+        self.assertIn("evidence_map", err)
+
+
 class TestSubprocessFailures(unittest.TestCase):
     def test_nonzero_returncode_exits_4(self):
         import io, tempfile
@@ -443,7 +494,7 @@ class TestTimeoutFlag(unittest.TestCase):
             bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
             verdict_body = valid_verdict_for(bhash, plan_hash=phash)
 
-            def fake_runner(prompt, timeout_s):
+            def fake_runner(prompt, timeout_s, usage_out=None):
                 captured["timeout_s"] = timeout_s
                 return verdict_body, None
 
@@ -463,7 +514,7 @@ class TestTimeoutFlag(unittest.TestCase):
             bundle_path, bhash, plan_path, phash = write_bundle_and_plan(tmp)
             verdict_body = valid_verdict_for(bhash, plan_hash=phash)
 
-            def fake_runner(prompt, timeout_s):
+            def fake_runner(prompt, timeout_s, usage_out=None):
                 captured["timeout_s"] = timeout_s
                 return verdict_body, None
 

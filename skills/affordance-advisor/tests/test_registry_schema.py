@@ -19,14 +19,14 @@ def test_registry_parses_and_validates(registry_path):
 
 
 def test_all_five_host_registries_present():
-    """Day-one registries: claude-code, codex, gemini, copilot-cli, copilot-chat, gh."""
+    """Day-one registries: claude-code, codex, antigravity-cli, copilot-cli, copilot-chat, gh."""
     names = {p.name for p in _REGISTRY_FILES}
-    assert "claude-code.yaml"   in names
-    assert "codex.yaml"          in names
-    assert "gemini.yaml"         in names
-    assert "copilot-cli.yaml"    in names
-    assert "copilot-chat.yaml"   in names
-    assert "gh.yaml"             in names
+    assert "claude-code.yaml"      in names
+    assert "codex.yaml"            in names
+    assert "antigravity-cli.yaml"  in names
+    assert "copilot-cli.yaml"      in names
+    assert "copilot-chat.yaml"     in names
+    assert "gh.yaml"               in names
 
 
 def test_copilot_chat_stub_has_empty_affordances():

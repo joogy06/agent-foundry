@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:agent-foundry:schemas:component-partition.v1",
+  "title": "component-partition.v1",
+  "description": "Output of code-comprehension/partition.py: a bounded synthetic component partition over an arbitrary code repo. Schema-compatible with progress/contract-map.yaml on exactly the fields downstream consumers read (components[].{id, source_paths}); carries partition-specific extras (canonical file inventory, per-component cost report, provenance). NEVER written under progress/ (collision hazard). UNSIGNED.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provenance",
+    "partition_version",
+    "generated_at",
+    "project_dir",
+    "config",
+    "components"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "provenance": {
+      "const": "synthetic-unsigned",
+      "description": "Marks this map as auto-synthesized + unsigned. A real signed contract-map carries no such marker. Downstream tooling must refuse to treat a synthetic-unsigned map as a gate-bearing contract-map."
+    },
+    "partition_version": {
+      "type": "string",
+      "description": "partition.py algorithm version"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC. NOT hashed into partition_hash (cosmetic only)."
+    },
+    "project_dir": {
+      "type": "string"
+    },
+    "partition_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 over the canonical (id, sorted source_files) projection of components[]. Excludes generated_at. The C5 canonical inventory is the hashed surface."
+    },
+    "tree_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "C12 \u2014 explicit working-tree state at partition time, so freshness reflects the real tree (not just the git index).",
+      "properties": {
+        "tree_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "git write-tree if available, else null"
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "uncommitted changes present"
+        },
+        "untracked_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The tunable thresholds in effect for this run (one config block bob can tune). Recorded for reproducibility.",
+      "required": [
+        "cap",
+        "fragment_pct_threshold",
+        "max_files",
+        "max_bytes",
+        "per_component_token_budget"
+      ],
+      "properties": {
+        "cap": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "max component count (default 12; long tail collapses into 'misc')"
+        },
+        "fragment_pct_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "over-partition trigger: fraction of candidate components resolving to <=1 file (default 0.40)"
+        },
+        "max_files": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "under-partition (giant-component) trigger: files per component (default 40)"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "under-partition trigger: bytes per component (default 512000)"
+        },
+        "per_component_token_budget": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "aggregate est-token cap fed to intent-extract per component before auto-degrade (factors in 2x two-arm)"
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Auto-resolution log (\u00a713 no-pause): every cap/split/collapse-tail/degrade decision the partitioner made WITHOUT a user pause. Post-hoc inspectable.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "component",
+          "detail"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "collapse_tail",
+              "auto_split",
+              "auto_degrade",
+              "cap_applied",
+              "fragment_observed",
+              "giant_observed",
+              "budget_exceeded"
+            ]
+          },
+          "component": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "source_paths",
+          "source_files"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]+$",
+            "description": "component id. Consumed by wiring resolver + intent-extract (must match)."
+          },
+          "source_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Directory-prefix globs (consumed by wiring's prefix-matching resolver AND intent-extract's glob loader). For determinism these are project-relative."
+          },
+          "source_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "C5 CANONICAL EXPANDED FILE INVENTORY \u2014 explicit project-relative file paths, exactly one component per file. Consumed identically by wiring resolution, partitioning, hashing, and intent-extract. This is the authoritative member set; source_paths is the glob view for the resolver."
+          },
+          "method": {
+            "enum": [
+              "directory",
+              "entry_point",
+              "misc_tail",
+              "split"
+            ],
+            "description": "how this component was formed"
+          },
+          "entry_points": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "detected entry-point markers seeding this component (reused from static.jsonl, never re-detected)"
+          },
+          "intent_mode": {
+            "enum": [
+              "llm",
+              "structural-only",
+              "degraded"
+            ],
+            "description": "llm = full intent-extract pass; structural-only = unsupported language (no LLM); degraded = over-budget auto-degrade (LLM skipped, confidence badge)"
+          },
+          "cost": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "pre-flight visible cost (before any LLM spend)",
+            "properties": {
+              "file_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "byte_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "est_tokens": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "rough est (bytes/4) doubled for two-arm"
+              }
+            }
+          },
+          "inputs": {
+            "type": "array",
+            "description": "empty on a synthetic map (no typed contract on a legacy repo)"
+          },
+          "outputs": {
+            "type": "array",
+            "description": "empty on a synthetic map"
+          },
+          "dependencies": {
+            "type": "array",
+            "description": "empty on a synthetic map"
+          },
+          "integration_points": {
+            "type": "array",
+            "description": "empty on a synthetic map"
+          }
+        }
+      }
+    }
+  }
+}

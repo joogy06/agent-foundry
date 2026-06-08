@@ -1,6 +1,9 @@
 schema_version: affordance.v1
+validated_against:
+  cli_version: "2.87.3"
+  date: "2026-06-05"
 
-# gh is a UTILITY CLI usable from ANY host (Claude Code, Codex, Gemini, Copilot).
+# gh is a UTILITY CLI usable from ANY host (Claude Code, Codex, Antigravity (agy), Copilot).
 # Activation gate is "tool on PATH" rather than "host_cli matches".
 # The advisor surfaces these hints when gh is installed, regardless of the active host.
 

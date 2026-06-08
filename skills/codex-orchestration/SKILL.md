@@ -1,11 +1,11 @@
 ---
 name: codex-orchestration
-description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Gemini CLI (Google Gemini 3) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, Gemini MCP tools (ask-gemini, brainstorm), and gemini -p headless mode. Triple-model orchestration for Claude + Codex + Gemini. Sandbox-aware: routes Gemini/Copilot calls through git-cli-bridge when local CLIs are unreachable."
+description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
 ---
 
-# Cross-Model Orchestration — Claude + Codex + Gemini
+# Cross-Model Orchestration — Claude + Codex + Antigravity (agy)
 
-Delegate tasks to **Codex CLI (GPT-5.4)** and **Gemini CLI (Gemini 3)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
+Delegate tasks to **Codex CLI (GPT-5.4)** and the **Antigravity CLI (`agy`)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
 
 <HARD-RULE>
 Always check Codex availability before delegating. Read `tools.codex.installed` from `~/.claude/state/inventory.json` (written by `env-adoption` skill). If the inventory is missing, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check --inventory-only --silent` first. If `tools.codex.installed` is false, fall back to Claude Code agents.
@@ -20,7 +20,7 @@ Always use `--ephemeral` for orchestration tasks to avoid polluting Codex sessio
 </HARD-RULE>
 
 <HARD-RULE>
-When delegating to Gemini or Copilot, check `bridge-mode-detect.sh` first. If it reports "bridge", route the call through `bridge request` instead of calling the local CLI. Explicit `AI_BRIDGE_MODE=1` forces bridge; explicit `AI_BRIDGE_DISABLE=1` forces local; otherwise auto-detection with 3-failure hysteresis. See `git-cli-bridge` skill.
+When delegating to agy or Copilot, check `bridge-mode-detect.sh` first. If it reports "bridge", route the call through `bridge request` instead of calling the local CLI. Explicit `AI_BRIDGE_MODE=1` forces bridge; explicit `AI_BRIDGE_DISABLE=1` forces local; otherwise auto-detection with 3-failure hysteresis. See `git-cli-bridge` skill.
 </HARD-RULE>
 
 ---
@@ -53,59 +53,58 @@ The **Codex plugin** (`codex@openai-codex`) provides first-class slash commands 
 
 ---
 
-## Gemini MCP Tools (Primary Interface)
+## Antigravity CLI (`agy`) — Primary Interface
 
-The **gemini-mcp-tool** MCP server wraps the Gemini CLI binary, using your AI Pro subscription (OAuth). No API key needed.
+The **Antigravity CLI** (`agy`) is this host's second-opinion / challenger / research delegate. It authenticates itself via the Antigravity account — no API key or env prefix needed. There is no MCP server: call `agy` directly via Bash. See the `antigravity-cli` skill for the full reference.
 
-| MCP Tool | Purpose | Use For |
-|----------|---------|---------|
-| `mcp__gemini-cli__ask-gemini` | Send any prompt to Gemini | Research, analysis, code review, large file analysis (1M context) |
-| `mcp__gemini-cli__brainstorm` | Structured brainstorming with methodology frameworks | Idea generation (SCAMPER, Design Thinking, Divergent, Convergent, Lateral) |
-| `mcp__gemini-cli__fetch-chunk` | Retrieve cached chunks from large responses | Paginated results from changeMode |
-
-**Key parameters for `ask-gemini`:**
-- `prompt` (required) — the task. Use `@filename` syntax to reference files for Gemini's 1M context
-- `model` — default `gemini-2.5-pro`, auto-falls back to `gemini-2.5-flash` on quota exceeded
-- `sandbox` — run in sandbox mode (read-only)
-- `changeMode` — structured edit suggestions (OLD/NEW blocks)
-
-### When to Use Gemini MCP vs Raw `gemini -p`
-
-| Use MCP Tools | Use Raw `gemini -p` |
-|---------------|---------------------|
-| Single analysis tasks (`ask-gemini`) | Parallel batch tasks via Bash `&` and `wait` |
-| Structured brainstorming (`brainstorm`) | Piped input (`cat file \| gemini -p "..."`) |
-| Integrated Claude Code workflow | Scripted automation with `--output-format json` |
-| File analysis with `@` syntax | Batch processing loops |
-
-### Raw Gemini CLI (Fallback / Parallel)
+**Headless single-prompt mode** is the direct analogue of the old `gemini -p`:
 
 ```bash
-# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
-export GOOGLE_CLOUD_PROJECT=
-export GEMINI_API_KEY=
+timeout 600 agy -p "<prompt>" < /dev/null
+```
 
-# Basic headless mode
-gemini -p "Review this code for security issues" --output-format json --yolo
+- **STDIN RULE (mandatory, #135):** `< /dev/null` on every headless agy call — agy reads
+  non-TTY stdin until EOF before the model call; background/harness shells never EOF → infinite
+  hang at 0 bytes (`--print-timeout` does not protect; it guards only the print phase). Piped
+  input (`cat file | agy -p`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same
+  behavior class as `codex exec`'s stdin-block.
+- Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself remains an available fallback until Google retires it on 2026-06-18, but route new delegation through agy.)
+- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5 a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
+- For long-running prompts raise the wait timeout: `agy -p --print-timeout 15m "<prompt>"` (default `5m0s`).
+- Append a `served_by` probe line to the prompt if you need provenance — self-reported model identity is unreliable, so capture it at the call layer.
+
+**Use cases** (all via a single `agy -p` call): research, analysis, code review, large-file analysis, and brainstorming (frame the methodology — SCAMPER, Design Thinking, Divergent, Convergent, Lateral — directly inside the prompt text, since there is no dedicated brainstorm tool).
+
+### `agy -p` invocation patterns
+
+```bash
+# Basic headless mode (plain-text stdout — no JSON output mode)
+agy -p "Review this code for security issues" < /dev/null
 
 # With piped context
-cat src/main.py | gemini -p "Find N+1 query problems" --output-format json
+cat src/main.py | agy -p "Find N+1 query problems"
+
+# Reference a workspace directory instead of piping (repeatable)
+agy -p --add-dir "$PROJECT_DIR" "Review for security issues in this project" < /dev/null
+
+# Structured brainstorming — frame the methodology inside the prompt
+agy -p "Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately." < /dev/null
 
 # Parallel with Codex (triple-model validation)
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
-GEMINI_WORK=$(mktemp -d /tmp/gemini-XXXXXXXXXX)
+AGY_WORK=$(mktemp -d /tmp/agy-XXXXXXXXXX)
 
 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/review.md" "Review for security issues" &
-gemini -p "Review for security issues in $PROJECT_DIR" \
-  --output-format json --yolo > "$GEMINI_WORK/review.json" &
+agy -p --add-dir "$PROJECT_DIR" "Review for security issues in this project" \
+  > "$AGY_WORK/review.txt" &
 wait
 ```
 
-### Gemini Availability Check
+### `agy` Availability Check
 
 ```bash
-GEMINI_AVAILABLE=$(gemini --version 2>/dev/null && echo "yes" || echo "no")
+AGY_AVAILABLE=$(agy --version 2>/dev/null && echo "yes" || echo "no")
 ```
 
 Cache for the session like the Codex check. Both can be checked in parallel at session start.
@@ -114,11 +113,11 @@ Cache for the session like the Codex check. Both can be checked in parallel at s
 
 ## Sandbox-Aware Routing via git-cli-bridge
 
-In sandboxed environments where `gemini` or `copilot` CLIs are unreachable locally, route delegation through the `git-cli-bridge` skill. It pushes requests via git to a dedicated `ai-bridge-<user>` repo and executes the CLI on GitHub Actions runners.
+In sandboxed environments where `agy` or `copilot` CLIs are unreachable locally, route delegation through the `git-cli-bridge` skill. It pushes requests via git to a dedicated `ai-bridge-<user>` repo and executes the CLI on GitHub Actions runners.
 
 ### Routing matrix
 
-| AI_BRIDGE_MODE | AI_BRIDGE_DISABLE | Local gemini --version | Local copilot --version | Effective mode |
+| AI_BRIDGE_MODE | AI_BRIDGE_DISABLE | Local agy --version | Local copilot --version | Effective mode |
 |---|---|---|---|---|
 | unset | unset | ok | ok | local |
 | unset | unset | fail | ok | local (1-2 fails) -> bridge (3+ fails) |
@@ -133,22 +132,24 @@ In sandboxed environments where `gemini` or `copilot` CLIs are unreachable local
 MODE=$("$HOME/.claude/skills/git-cli-bridge/scripts/bridge-mode-detect.sh")
 if [ "$MODE" = "bridge" ]; then
   # Submit via bridge. Requires `bridge init` to have been run already in this session.
+  # TODO(agy): verify the bridge exposes an `agy` tool target — the git-cli-bridge tool
+  # registry / workflow that ran the gemini CLI on the runner must be updated to run `agy`.
   BRIDGE_CALLER=codex-orchestration \
   bridge request \
-    --tool gemini --kind review \
+    --tool agy --kind review \
     --context "$CONTEXT_FILE" \
     --wait --timeout 720 \
     "$PROMPT_BODY"
 else
-  # Local path
-  mcp__gemini-cli__ask-gemini(prompt: "$PROMPT_BODY")
+  # Local path — agy returns plain text on stdout
+  agy -p "$PROMPT_BODY" < /dev/null
 fi
 ```
 
 ### Latency expectations
 
-- Local Gemini call: ~2-5 seconds.
-- Bridge Gemini call: ~90 seconds cold (workflow install + run), ~40 seconds warm (runner cache). This is the price of sandboxed operation. If latency is unacceptable, the user can switch back with `AI_BRIDGE_DISABLE=1`.
+- Local agy call: ~2-5 seconds.
+- Bridge agy call: ~90 seconds cold (workflow install + run), ~40 seconds warm (runner cache). This is the price of sandboxed operation. If latency is unacceptable, the user can switch back with `AI_BRIDGE_DISABLE=1`.
 
 ### When bridge mode is wrong
 
@@ -166,31 +167,30 @@ For COMPLEX tasks, run all three models for maximum coverage:
 
 | Model | Role | Strength |
 |-------|------|----------|
-| Claude (Opus 4.6) | Orchestrator, architect | 1M context, skills/agents, MCP, conversation memory |
+| Claude (Opus 4.8) | Orchestrator, architect | 1M context, skills/agents, MCP, conversation memory |
 | Codex (GPT-5.4) | Challenger, code review | Independent perspective, web search, structured review output |
-| Gemini (Gemini 3) | Analyst, research | 1M context, multimodal, Google Search grounding, brainstorming |
+| Antigravity (`agy`) | Analyst, research | Independent third-model perspective, headless `agy -p` delegation, brainstorming |
 
 **Diverge → Challenge → Converge:**
 1. Claude explores approaches (via forge design team)
 2. Codex challenges (via `/codex:adversarial-review` or raw exec)
-3. Gemini independently analyzes (via `ask-gemini` MCP or raw `gemini -p`)
+3. agy independently analyzes (via `agy -p`)
 4. Claude synthesizes — flag agreements (high confidence) and disagreements (investigate)
 
 ---
 
-## Current State (April 2026)
+## Current State (verified 2026-06-05)
 
 | Component | Version / Value |
 |---|---|
-| Codex CLI | v0.116.0 (`codex-cli`) |
+| Codex CLI | v0.137.0 (`codex-cli`) |
 | Codex Plugin | v1.0.2 (`@openai/codex-plugin-cc`) |
-| Gemini CLI | v0.36.0 |
-| Gemini MCP | v1.1.4 (`gemini-mcp-tool`) — wraps CLI binary, uses OAuth |
+| Antigravity CLI | v1.0.5 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
 | Default Codex model | GPT-5.4 (migrated from GPT-5.2) |
-| Default Gemini model | gemini-2.5-pro (auto-fallback to gemini-2.5-flash) |
+| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5 (no short `-m`), but omit `--model` unless explicitly needed |
 | Reasoning effort | xhigh |
 | Multi-agent | enabled |
-| Claude Code model | Claude Opus 4.6 (1M context) |
+| Claude Code model | Claude Opus 4.8 (1M context) |
 | Handover mechanism | Plugin commands (preferred) OR session-scoped temp dirs + `codex exec -o` |
 
 ### System Configuration
@@ -220,9 +220,9 @@ codex exec --oss ...              # local open-source (Ollama/LMStudio)
 
 ### Cross-Model Advantage
 
-Claude Opus 4.6 (1M context) and GPT-5.4 have different strengths. Use both:
+Claude Opus 4.8 (1M context) and GPT-5.4 have different strengths. Use both:
 
-| Strength | Claude Opus 4.6 | GPT-5.4 via Codex |
+| Strength | Claude Opus 4.8 | GPT-5.4 via Codex |
 |---|---|---|
 | Context window | 1M tokens | ~256K tokens |
 | Tool ecosystem | MCP, skills, agents, Read/Edit/Grep | Shell, file I/O, web search |
@@ -231,6 +231,23 @@ Claude Opus 4.6 (1M context) and GPT-5.4 have different strengths. Use both:
 | Unique value | Skill library, conversation memory | Independent perspective, web search |
 
 **Key principle**: Use Codex for tasks where a *different model's perspective* adds value — challenger reviews, second opinions, independent research. Don't use it as a replacement for Claude's tool ecosystem.
+
+### New since 0.118 (subcommands added through 0.137.0)
+
+The Codex CLI grew several subcommands between 0.118 and 0.137. Most are experimental backend
+services, not day-to-day delegation entry points — `codex exec` and the plugin commands remain
+the orchestration surface. Confirm any of these with `codex <sub> --help` before relying on it.
+
+| Subcommand | What it is | Relevance to orchestration |
+|---|---|---|
+| `codex exec-server` | [EXPERIMENTAL] Run the standalone exec-server service | Persistent backend that serves repeated `codex exec` requests without per-call spawn — relevant only if you orchestrate many non-interactive runs and want to amortise startup. |
+| `codex app-server` | [experimental] Run the app server / related tooling | Backend for an app/IDE integration. Not used by headless delegation; ignore unless wiring Codex into an app. |
+| `codex remote-control` | [experimental] Manage the app-server daemon with remote control enabled | Drives an app-server daemon out-of-process. Niche; not part of the `codex exec` path. |
+| `codex cloud` | [EXPERIMENTAL] Browse Codex Cloud tasks and apply changes locally | Cloud delegation of long-running tasks (billed). Surfaced as an affordance; treat as opt-in. |
+| `codex features` | Inspect feature flags | Read which feature flags are active (pairs with the `--enable`/`--disable` / `-c features.<name>=…` overrides). Handy when a capability is gated. |
+
+(Also present but already documented elsewhere in this skill: `archive` / `unarchive` for saved
+sessions, `mcp-server` to run Codex itself as an MCP server, `completion` for shell completions.)
 
 ---
 
@@ -352,7 +369,7 @@ Never use `--dangerously-bypass-approvals-and-sandbox` or `danger-full-access` u
 | Parallel background research | Interactive user dialogue |
 | Stress-testing with different model perspective | Tasks needing Claude's agent spawning |
 | Domain-specific review (with skill injection) | Multi-step orchestration (forge, agent-teams) |
-| Gemini delegation in sandboxed env | Via git-cli-bridge (see Sandbox-Aware Routing) |
+| agy delegation in sandboxed env | Via git-cli-bridge (see Sandbox-Aware Routing) |
 
 ---
 
@@ -406,7 +423,7 @@ For advanced patterns, templates, and examples, see:
 | Large file analysis (cross-agent) | `large-file-analysis` |
 | Code review methodology | `qa-reviewer` |
 | Claude Code CLI reference | `claude-code-cli` |
-| Gemini CLI reference (full) | `gemini-cli` |
+| Antigravity CLI reference (full) | `antigravity-cli` |
 | GitHub Copilot CLI reference | `gh-copilot-cli` |
 | Cross-tool skill authoring rules | `research-for-skills/cross-tool-portability/cross-tool-portability.md` |
 | GCP Workstations deployment | `gcp-workstations` |
@@ -414,18 +431,26 @@ For advanced patterns, templates, and examples, see:
 
 ---
 
-## Verified facts (April 2026)
+## Verified facts (verified 2026-06-05)
 
 | Fact | Status |
 |---|---|
-| Gemini A2A GA | **VERIFIED** — `@google/gemini-cli-a2a-server@0.36.0` published on npm 2026-04-07, matches gemini-cli version. (Closes the previously-open backlog item asking whether A2A was GA.) |
 | `codex exec --search` flag | **DOES NOT EXIST**. Codex web search is automatic via GPT-5.4 tool use when the sandbox allows. |
-| Codex CLI version | 0.118.0 (verified locally 2026-04-08 via `codex --version`) |
+| Codex CLI version | 0.137.0 (verified locally 2026-06-05 via `codex --version`; prompt-as-arg and `echo … \| codex exec -` patterns both re-confirmed working with `-o`) |
 
 ## Gotchas
 
 | Gotcha | Mitigation |
 |---|---|
+| **`codex exec` blocks reading stdin in non-interactive shells.** If you invoke `codex exec` with no prompt argument (or with the explicit `-` stdin form) from a background / non-interactive shell, it hangs waiting on stdin instead of erroring out (observed 2026-06-04). | Always supply the prompt explicitly: either as the trailing arg (`codex exec "…"`) or piped (`echo "…" \| codex exec -` / `cat brief.md \| codex exec -`). Never leave stdin dangling in a background job; wrap with `timeout` so a hang is bounded. |
 | **Long-running Codex tasks may exit non-zero before writing synthesis** even when the research itself completes successfully. The `-o` output file may contain useful results despite a non-zero exit code. | Always check the output file before treating non-zero exit as fatal failure. Pattern: `codex exec ... -o "$OUT"; if [ -s "$OUT" ]; then echo "got result"; fi` |
 | `codex exec` with `--ephemeral` does NOT pollute history but the prompt is still in the running process — avoid secrets | Use env vars or file references. See HARD-RULE at top of file. |
 | Background Codex jobs via `/codex:review --background` need explicit polling | Use `/codex:status` and `/codex:result` to retrieve when done. |
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: tool_version
+    subject: codex
+    verified_against: "0.137.0"
+    verified_on: "2026-06-05"
+-->

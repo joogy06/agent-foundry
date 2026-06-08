@@ -17,7 +17,8 @@
     "rubric_version",
     "coverage",
     "concerns",
-    "self_hash_check"
+    "self_hash_check",
+    "evidence_map"
   ],
   "properties": {
     "verdict": {
@@ -127,6 +128,15 @@
           "type": "boolean",
           "description": "Convenience: bundle_recomputed_hash == bundle_hash. Bob still re-checks; this field exists so a downstream consumer can fail fast on mismatch."
         }
+      }
+    },
+    "evidence_map": {
+      "type": "object",
+      "description": "S048 / #116 R-B2/R-I3 — the citation map: for each covered success-criterion / REQ-ID, the verbatim passing-test nodeid(s) the arbiter cites as satisfying it. Bob's deterministic arm (claims.py R6 via deterministic_arm.corroborate_citations) verifies every cited nodeid EXISTS in the bundle's results[].tests[] AND has outcome=='passed', and REJECTS the INTEGRATED->VERIFIED transition if any cited nodeid is absent or non-passing (an invented/misattributed-evidence tell — a correlated-hallucination signal). REQUIRED key as of the rubric cutover (>=1.2.0): adding it to the required set is the load-bearing fix so the arbiter's hand-rolled validate_verdict accepts its OWN output. Empty {} is allowed (degraded/jest bundle with no per-test records, or a component covered only by skips-with-reason). Honest residual: catches invented evidence, NOT irrelevant-but-real citations.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1},
+        "description": "Verbatim passing-test nodeids (e.g. 'tests/test_x.py::test_a') cited as covering this REQ-ID."
       }
     }
   }

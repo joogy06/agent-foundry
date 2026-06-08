@@ -3,7 +3,7 @@
 
 Reads environment variables in a fixed precedence order and prints exactly one
 of:
-    claude-code | codex | gemini | copilot-cli | copilot-chat | unknown
+    claude-code | codex | antigravity-cli | copilot-cli | copilot-chat | unknown
 
 The probe is deliberately simple — env vars are the only signal. We do NOT
 walk the process tree or inspect PATH, because those signals leak across
@@ -48,10 +48,13 @@ _DETECTION_RULES = [
     # Codex CLI — CODEX_VERSION populated by the codex binary on launch
     ("CODEX_VERSION",           None, "codex",       "CODEX_VERSION set"),
 
-    # Gemini CLI — interactive sessions get a session-id env var; headless
-    # runs typically still have GEMINI_CLI_BINARY or process parent set,
-    # but env-only detection prioritises GEMINI_CLI_SESSION_ID.
-    ("GEMINI_CLI_SESSION_ID",   None, "gemini",      "GEMINI_CLI_SESSION_ID set"),
+    # Antigravity CLI (agy) — replaces the retired Gemini CLI for orchestration.
+    # TODO(agy): confirm agy host env var. The Antigravity CLI 1.0.4 `agy --help`
+    # exposes no documented session/host marker env var, and the antigravity-cli
+    # skill does not name one. The entry below is a placeholder name kept so the
+    # detection structure is intact; replace "ANTIGRAVITY_CLI_SESSION_ID" with the
+    # real marker once verified (check `agy` runtime env, e.g. `agy -p "env | sort"`).
+    ("ANTIGRAVITY_CLI_SESSION_ID", None, "antigravity-cli", "ANTIGRAVITY_CLI_SESSION_ID set (TODO(agy): confirm)"),
 
     # Copilot CLI — set by `copilot` on launch (newer @github/copilot)
     ("COPILOT_CLI_VERSION",     None, "copilot-cli", "COPILOT_CLI_VERSION set"),

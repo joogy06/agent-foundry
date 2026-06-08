@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "tools": {
+    "codex": {"installed": true, "version": "0.137.0"},
+    "claude": {"installed": true, "version": "2.1.163"},
+    "agy": {"installed": true, "version": "1.0.5"}
+  }
+}

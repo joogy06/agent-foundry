@@ -60,7 +60,7 @@ Required structure:
 
 The orchestrator verifies by **reading the source**, confirming the quote is accurate, and confirming the artifact does in fact violate it. If the quote is paraphrased, fabricated, or misapplied, the ballot is nullified.
 
-Use when the violation is a known rule (CLAUDE.md constraint, GEMINI.md directive, project policy, declared invariant, prior decision recorded in MEMORY.md, etc.).
+Use when the violation is a known rule (CLAUDE.md constraint, AGENTS.md directive, project policy, declared invariant, prior decision recorded in MEMORY.md, etc.).
 
 ## Class 3: Efficiency regression
 

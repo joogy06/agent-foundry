@@ -5,7 +5,7 @@ Beyond the SKILL.md tabletop summary, these are the deeper anti-patterns that ca
 | Don't | Why | Better |
 |---|---|---|
 | Add `requests` / `httpx` / `pydantic` to make the HTTP layer "nicer" | Skill MUST work in the global skills library without virtualenv. Stdlib is the contract. | Stick with `urllib.request` + `ssl.create_default_context()`. Verbose but adequate. |
-| Block on the LLM fallback | Codex/Gemini can hang or wait. | 30s subprocess timeout, hard. On timeout, treat as "couldn't interpret" and continue with raw text. |
+| Block on the LLM fallback | Codex/agy can hang or wait. | 30s subprocess timeout, hard. On timeout, treat as "couldn't interpret" and continue with raw text. |
 | Skip lockfile scanning ("manifest-only is enough") | Gemini's "As-Declared Fallacy" — majority of CVEs hide in transitive deps. | Read lockfiles for direct + first-level transitive minimum. |
 | Wrap `npm audit` | FP rate too high (Gemini research). | Use OSV-direct for npm. NO `npm_audit_wrapper`. |
 | Treat the cache TTL as a hard rule | 24h is the floor for AUTOMATIC refresh. Vulns get 2h TTL. | `--no-cache` always bypasses. Stale cache on offline mode is expected. |

@@ -4,26 +4,26 @@ Issues raised by the Wave 1 challenger review of the cross-tool design that the 
 
 ## Concern 1: Skill name collisions across tools
 
-**Concern**: A skill named `my-skill` could collide with a built-in Gemini skill of the same name, or a Copilot agent of the same name.
+**Concern**: A skill named `my-skill` could collide with a built-in skill of the same name on another tool, or a Copilot agent of the same name.
 
 **Current state**:
 
-- **Gemini built-in skills** (verified locally): `skill-creator`, plus extension-bundled skills like `nanobanana`. None of the four new skills (`claude-code-cli`, `gemini-cli`, `gh-copilot-cli`, `gcp-workstations`) collide.
+- **Strict-loader built-in skills** (verified locally on the retired gemini-cli, indicative of the convention): `skill-creator`, plus extension-bundled skills like `nanobanana`. None of the four new skills (`claude-code-cli`, `antigravity-cli`, `gh-copilot-cli`, `gcp-workstations`) collide.
 - **Copilot built-in agents** (UNVERIFIED): unknown set. Default agent uses no specific name.
 - **Codex built-in skills**: 7 native + 112 mirrored from Claude. Includes `codex-claude-bridge`, `brainstorming-ideas`, `challenger-review`. None collide with the new four.
 
 **Mitigation**:
 
 1. Document the rule in `common-mistakes.md`: pick names that don't collide with built-ins
-2. Verify before publishing: `gemini skills list --all` and check the new name doesn't appear
+2. Verify before publishing: list the target tool's skills and check the new name doesn't appear. TODO(agy): verify the agy command to list built-in/imported skills (`agy plugin list` lists plugins).
 3. For Copilot, since there's no skills concept, name collisions don't apply at the skills level
 4. The four new skills in this design are all clear
 
-**Open question**: As Gemini ships more built-in skills in future versions, future cross-tool skills may need to be renamed. Add a quarterly check to alf to scan for new name collisions.
+**Open question**: As tools ship more built-in skills in future versions, future cross-tool skills may need to be renamed. Add a quarterly check to alf to scan for new name collisions.
 
 ## Concern 2: Hook re-entrancy across CLIs
 
-**Concern**: A hook in Claude that invokes `gemini` triggers Gemini's hooks; if Gemini's hook invokes `claude`, you have a recursive loop.
+**Concern**: A hook in Claude that invokes another AI CLI (e.g. `agy`) could recurse if the called tool also runs hooks and that hook invokes `claude`. (agy's hooks support is unverified — TODO(agy): verify equivalent — but the guard is cheap insurance.)
 
 **Current state**: Convention only — no tool enforces a recursion limit. The `AI_CLI_CALL_DEPTH` env var pattern (documented in `hooks-portability.md` and `claude-code-cli/references/cross-tool-integration.md`) requires hook authors to manually add the guard.
 
@@ -38,7 +38,7 @@ if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
   exit 0
 fi
 export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
-# ... call claude / codex / gemini ...
+# ... call claude / codex / agy ...
 ```
 
 **Why convention is fragile**:
@@ -66,23 +66,26 @@ export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
 **If multi-user is needed in future**:
 
 - Each user gets their own workstation (cheaper than dealing with auth isolation)
-- Or: per-user `~/.claude/`, `~/.gemini/`, `~/.copilot/` with strict file permissions (`chmod 700`)
+- Or: per-user `~/.claude/`, `~/.antigravity/`, `~/.copilot/` with strict file permissions (`chmod 700`)
 - Or: per-user service accounts with separate IAM bindings
 - Out of scope for this design.
 
-## Concern 4: Symlink fragility
+## Concern 4: Symlink / import currency
 
-**Concern**: `gemini skills install <git-url>` may overwrite a symlinked skill with a real directory copy. The next edit to the canonical source doesn't propagate.
+**Concern**: The Codex symlink can be overwritten by a per-file install, and the agy import can go stale if agy copies rather than symlinks. The next edit to the canonical Claude source then doesn't propagate.
 
-**Current state**: Use `gemini skills link <path>` (not `install`) for the cross-tool symlink pattern. The `link` command preserves the symlink and tracks live edits.
+**Current state**:
+
+- **Codex**: use a directory-level `ln -sfn ~/.claude/skills/<name> ~/.codex/skills/<name>` symlink — it tracks live edits. Never do per-file symlinks under the Codex path (see `common-mistakes.md` § Per-file symlinks).
+- **agy**: `agy plugin import claude` is the verified bulk-import path. TODO(agy): verify equivalent — whether agy symlinks (live edits) or copies (needs re-import). Until verified, re-import after substantial canonical-source edits.
 
 **Mitigation**:
 
-1. Documented in `install-matrix.md`: always use `link`, never `install`, for cross-tool skills
-2. Verify after every install/upgrade: `readlink ~/.gemini/skills/<name>` should show the canonical path
-3. If the symlink gets replaced, run `gemini skills link <canonical-path>` again
+1. Documented in `install-matrix.md`: canonical source is `~/.claude/skills/<name>/`; Codex symlinks to it; agy imports from it.
+2. Verify the Codex symlink after every upgrade: `readlink ~/.codex/skills/<name>` should show the canonical path.
+3. TODO(agy): verify the command to confirm an imported agy skill still points at / matches the canonical source.
 
-**Future backlog item**: A periodic alf check that all cross-tool skill symlinks still resolve to the canonical source.
+**Future backlog item**: A periodic alf check that all cross-tool skill symlinks/imports still resolve to the canonical source.
 
 ## Concern 5: AGENTS.md not natively read by Claude Code
 
@@ -124,18 +127,19 @@ export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
 | # | Item | Priority |
 |---|---|---|
 | 1 | Tool-level enforcement of `AI_CLI_CALL_DEPTH` (replace convention) | Medium |
-| 2 | Quarterly alf check for new built-in skill name collisions in Gemini | Low |
+| 2 | Quarterly alf check for new built-in skill name collisions across tools | Low |
 | 3 | First-boot G2 test: confirm Claude AGENTS.md native support | Medium |
 | 4 | Multi-user workstation auth design (future expansion) | Low |
-| 5 | Periodic check that all cross-tool skill symlinks resolve | Low |
-| 6 | Fractional L4 GPU availability on GCP Workstations | Low (separate from cross-tool concerns) |
+| 5 | Periodic check that all cross-tool skill symlinks/imports resolve | Low |
+| 6 | TODO(agy): verify agy's instruction-file, hooks, skill-list and import-currency contracts | Medium |
+| 7 | Fractional L4 GPU availability on GCP Workstations | Low (separate from cross-tool concerns) |
 
 ## Anti-patterns
 
 | Don't | Why |
 |---|---|
 | Trust the recursion convention without manual review | Convention is fragile; verify hook scripts have the guard |
-| Pick a skill name without checking Gemini built-ins | Collision is silent — your skill loses |
-| Use `gemini skills install` for symlinked skills | Replaces the symlink; edits don't propagate |
+| Pick a skill name without checking each tool's built-ins | Collision is silent — your skill loses |
+| Do per-file symlinks under the Codex skill path | Overwrites content via self-referential links (see common-mistakes.md) |
 | Assume Claude reads AGENTS.md natively | UNVERIFIED. Set up the symlink workaround until G2 confirms. |
 | Skip the validator because "the rules are obvious" | They're not. The five hard rules are easy to break. |

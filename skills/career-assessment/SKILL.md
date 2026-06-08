@@ -38,6 +38,10 @@ Child of `career-coach`. This skill handles self-assessment, situational diagnos
 **Use "professional development" not "skills development."** Consistent with the career-coach family terminology. Say "competency," "capability," "expertise," or "professional development" — never "skill" or "skills" when discussing career growth.
 </HARD-RULE>
 
+<HARD-RULE>
+**Hedge contested market claims.** Where the evidence is genuinely split (e.g., the entry-level / AI-displacement debate), present it as contested — both signals, hedged — and steer the user to assess *their own function's* demand, not the headline. Never state a contested market claim as settled fact. Volatile figures live in `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`.
+</HARD-RULE>
+
 ---
 
 ## Structured Interaction Pattern
@@ -151,6 +155,8 @@ Ask the user to answer each of these:
 **Threats (External, Negative)**
 
 - "Is your current function at risk of cost-cutting, offshoring, or automation?"
+- "Which of your day-to-day tasks could a capable AI assistant do most of today? (This is the AI-displacement prompt — be honest; see Framework 6.)"
+- "Are you competing in a flooded market? (Application volume is at record highs — see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md` — so 'I'll just apply around' is a weaker fallback than it used to be.)"
 - "Are there organizational changes (mergers, reorgs, leadership changes) that could affect your role?"
 - "Is your technology stack becoming obsolete? Would your current expertise still be in demand in 3 years?"
 - "Are there more junior people developing the same capabilities faster or cheaper?"
@@ -281,6 +287,8 @@ Use when the user has a specific target role or grade and needs to know exactly 
   - **Evidence of closure** (how will you prove the gap is closed? Certification? Delivered project? Manager feedback?)
 - Hand off the closing plan to `career-planning` for detailed roadmap creation.
 
+**Gaps vs AI-Era Expectations.** For technical roles, **AI-tooling fluency is now a first-class competency**, not a "nice to have" — being able to build with and govern AI-augmented workflows is increasingly an expectation at every level. Assess it as you would any core competency (where are you 1-5? where does the target role need you?), and close it via `career-planning`'s AI-fluency track. *(Implementer note: "AI-tooling fluency" is the competency framing; avoid "AI skills" for the user's growth.)*
+
 ---
 
 ### 5. Career Stage Diagnosis
@@ -308,6 +316,33 @@ Use when the user is unsure where they fall in the career hierarchy, or when the
    - **Impact without influence:** Delivering massive value but invisible to decision-makers
    - **Influence without impact:** Well-networked but lacking concrete deliverables to point to
 4. Ask: "Which misalignment, if any, describes your situation? This is the single most important thing to fix before pursuing advancement."
+
+---
+
+### 6. AI-Exposure Assessment
+
+Use to diagnose how exposed the user's current role is to AI/automation — and where the premium is moving. Triage the user's task-mix into three buckets and estimate the % of their working week in each:
+
+| Bucket | What it is | Examples |
+|---|---|---|
+| **(a) Automatable-now** | Tasks a capable AI assistant could largely do today | routine reporting, boilerplate code, first-draft docs, simple data wrangling |
+| **(b) AI-augmented** | Tasks where AI makes you faster/better but judgment is yours | design under constraints, reviewing AI output, framing problems, stakeholder translation |
+| **(c) AI-resistant** | Tasks anchored in judgment, accountability, relationships | regulatory ownership, hard trade-off decisions, trust-based influence, novel problem framing |
+
+**Reading the result:**
+- High **(a)** share → the role is exposed; route to `career-planning`'s AI-fluency track (move tasks into (b)) or to `career-transition` for a pivot toward (c)-heavy work.
+- The **premium accrues in (b) and (c)** — being the person who *directs and is accountable for* AI-augmented work, not the person doing the automatable middle.
+- **"AI exposure ≠ doom."** Exposure is a signal to move up the judgment/accountability ladder, not a verdict. Most roles are a mix; the goal is to shift the mix.
+
+---
+
+### Honest Market Framing (CONTESTED)
+
+When the user asks "is the market good or bad right now?", give the honest, hedged answer rather than a headline:
+
+- **The entry-level / AI-displacement debate runs both ways.** Some series show junior hiring contracting as AI absorbs entry tasks; others show resilient demand in specific functions. The evidence is genuinely split (CONTESTED — see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`).
+- **Assess YOUR function's demand, not the headline.** "Tech hiring is down/up" is too coarse to act on. What matters is demand for *your* specific competency mix in *your* market.
+- Hedge contested claims explicitly (HARD-RULE); never present a contested market reading as settled.
 
 ---
 

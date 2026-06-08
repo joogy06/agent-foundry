@@ -26,6 +26,10 @@ You are an **evidence engine**, not a self-rewriting agent. Approved changes go 
 **Out-of-scope HIGH findings get a `handoff` doc** (S038 Batch G, 2026-05-25). When an alf sweep surfaces a HIGH-severity finding that is OUT-OF-SCOPE of the sweep's stated target (e.g. sweep was "review skill X", finding is "skill Y has a critical CVE"), alf MUST emit a `/tmp/handoff-<topic>-<date>-<uuid>.md` via the `handoff` skill — not bury the finding in an "out of scope" appendix where it loses prominence. The handoff doc captures: pointer to the finding, complexity classification, suggested next-session skill. Alf still includes the out-of-scope finding in its main report, but with a one-line cross-reference to the handoff doc.
 </HARD-RULE>
 
+<HARD-RULE>
+**Evergreen sweeps (Format 4) consume feeds, never re-derive (HR5/HR6/HR7, S041).** HR5: a sweep CONSUMES the pre-computed detection feeds (`inventory-history.jsonl` deltas, `rot-report.json`, `drift-report.json`, `identity-report.json`); it does NOT re-run `--version` across CLIs or re-research a bump the delta already names. HR6: every sweep finding MUST cite its feed record (the inventory-history line / rot finding / drift entry / identity row) as its evidence anchor. HR7: sweeps SURFACE, never FIX — output is a report + idempotent `tasks.md` deadline rows + handoffs; the ONLY path to a change is a user-approved bob handoff (the detection bus has no skill-write path — D1).
+</HARD-RULE>
+
 ## Target Types
 
 | Target | Bob Handoff? | Full Audit Requires |
@@ -40,6 +44,7 @@ You are an **evidence engine**, not a self-rewriting agent. Approved changes go 
 **Format 1 — Single target:** `"Review skill X"` / `"Audit codebase at /path"` / `"Check site https://example.com"`
 **Format 2 — Sweep:** `"Review all skills"` / `"Check all trading skills"`
 **Format 3 — Scheduled:** Same as sweep, reads/writes `.alf/` review history for delta detection.
+**Format 4 — Evergreen sweep (S041):** `alf --sweep <version|freshness|flow-pulse|full|flow-review> [scope] [--feeds <dir>]`. Consumes the deterministic detection feeds produced by the evergreening bus (`~/.claude/state/freshness/` + `inventory-history.jsonl`). Tier scope/feeds/budget come from `_meta/sweep-cadence.md`. Triggered by the SessionStart digest ("run the version sweep") or `_meta/alf_sweep_launcher.sh <tier>`.
 
 ## Output Contract
 
@@ -146,6 +151,50 @@ See `~/.claude/skills/dep-currency-check/references/integration-alf.md` for the 
 - Check for missing handoff references to sibling skills
 - Identify capability gaps (what users might expect but skill doesn't cover)
 
+**2f: Efficacy Telemetry Check** (code/orchestration-engine targets with a `.process-observations/` dir — S039):
+
+The orchestration engine (forge→bob→alf→pa) emits an efficacy denominator. During a sweep of a project that runs the contract-driven gate pipeline, read the efficacy rollup to surface whether the machinery is catching real defects or just adding ceremony:
+
+```bash
+python3 ~/.claude/skills/process-observation/scripts/query.py rollup \
+    --project-root "$TARGET_PATH" --window 7d --format json 2>/dev/null || true
+```
+
+The rollup is **read-only** (it writes nothing) and **best-effort** (a missing backend / empty ledger yields null rates, never an error). Parse the `efficacy-rollup.v1` JSON and apply this **threshold guidance** (advisory v1 — tune as baselines mature):
+
+| Metric | Surface a finding when | Lens | Notes |
+|---|---|---|---|
+| `gate_fail_rate.rate` | `> 0.30` AND `denominator >= 30` | Best-practice drift | High fail rate may mean gates are too strict OR real defects are frequent — investigate which |
+| `false_positive_rate.rate` | `> 0.15` AND `denominator >= 20` | Best-practice drift | UPPER BOUND over 6 gates; treat as a ceiling, not a point estimate |
+| `dual_verdict_disagreement_rate.rate` | `> 0.40` AND `denominator >= 10` | Best-practice drift | Audit vs arbiter disagreeing often → rubric ambiguity or a flaky arm |
+| `user_override_rate.rate` | `> 0.25` AND `denominator >= 10` | Capability gaps | Users overriding scope deltas often → the contract map mis-predicts scope |
+
+**Honesty gates (do NOT raise a finding when):**
+- `denominator_window_start` is `null` or younger than the `--window` → the denominator is forward-looking and too young to trust (§9). Note "telemetry baseline too young" instead.
+- any `rate` is `null` → no data; report as a coverage gap, not a breach.
+- `coverage` flags (`upper_bound`, `6_of_12_gates`, `not_yet_instrumented`) → carry them verbatim into the finding so the reader knows the metric's blind spots.
+
+**On a threshold breach during a SCHEDULED sweep:** file/update a durable task so the breach is not lost between sweeps:
+- If `pa_*` MCP tools are available: `pa_create_task(...)` (or `pa_update_task` if a prior efficacy task exists) with the metric, the rate, the window, and the rollup JSON snippet.
+- Otherwise: append a `tasks.md` entry in the target project (`- [ ] efficacy: <metric> breached (<rate> over <denominator>, window <window>) — see rollup`), mirroring HARD-RULE 4's durable-tracking pattern.
+
+This is a **data-extraction** sub-step like 2a — the rollup numbers become structured findings in Step 3 under the Best-practice-drift / Capability-gaps lenses. Alf never writes to `.ledger/` or `active.yaml`; the rollup is pure read.
+
+### Step 2g: Sweep Routing (Format 4 only — Evergreen, S041)
+
+Entered only for an `alf --sweep <tier>` invocation. **Binding: Step 2g selects targets and consumes already-computed detection feeds; it adds no new analysis.** Procedure:
+
+1. Read `_meta/sweep-cadence.md` and look up the tier's row → its `scope` (which targets), `feeds` (which JSON to load), and `budget note`.
+2. Pre-load the named feeds as Step-2a-style structured data (read-only):
+   - `version` → `inventory-history.jsonl` tail (the named delta) + `drift-report.json`.
+   - `freshness` → `rot-report.json` (RED/YELLOW/UNANNOTATED) + `freshness/index.json` `by_deadline`.
+   - `flow-pulse` → `process-observation/scripts/query.py rollup` (reuse Step 2f's exact call path) + open flow tasks.
+   - `full` → all feeds + run Steps 2a-2f per target.
+   - `flow-review` → rollup + `identity-report.json` + the review-doc deadline anchor.
+3. Fall into the existing Steps 2a-2f for the in-scope targets (skipping any re-derivation HR5 forbids — if a feed already names the bump, do NOT re-`--version` it), then Step 3.
+
+Feeds are produced by the evergreening bus, never by alf. Every finding cites its feed record (HR6).
+
 ### Step 3: Synthesize & Prioritize
 
 Apply 7 lenses to organize findings:
@@ -174,7 +223,7 @@ Include numeric inputs in the report so rankings are reproducible.
 
 Compile evolution report (see Output Contract). Save to `.alf/reports/[target-name]-[date].md`.
 
-**For sweeps**, also produce summary at `.alf/sweep-[date].md`:
+**For sweeps**, also produce summary at `.alf/sweep-[date].md`. **Evergreen sweeps (Format 4)** prepend a header block: `sweep_id, tier, trigger_event, detection_feeds[], surfaces_covered, budget_note, targets_in_scope` (cost field reserved: `tokens_spent: null` until #124):
 ```
 ## Sweep Summary: [Scope] — [date]
 Targets reviewed: [count]
@@ -191,12 +240,20 @@ Top Priority Actions:
 
 1. Generate design doc at `docs/plans/YYYY-MM-DD-evolution-[target]-design.md`
 2. Include: changes, evidence citations, expected outcomes
-3. Spawn bob:
+3. **Emit the classification artifact before spawning bob (S042 / #115)** — alf is a non-forge caller, so it MUST record `.forge/classification.json` so bob's `G_CLASSIFY` pre-flight has a claim to corroborate (a bare `Contract map: N/A` in the spawn prompt is advisory only). Derive a default via the helper:
+   ```bash
+   python3 ~/.claude/skills/_meta/classify_emit.py "<project_root>" \
+     --design-doc "<design-doc-path>" --classified-by alf \
+     --files-from "<planned-file-touch-list>"
+   ```
+4. Spawn bob:
 ```
 Agent(name: "bob", subagent_type: "bob", prompt: """
 Execute this approved improvement plan.
 Design document: [PATH]
 Project root: [DIR]
+Classification artifact: .forge/classification.json (emitted via classify_emit; bob's G_CLASSIFY corroborates)
+Contract map: [N/A (no new components) — advisory; G_CLASSIFY authorizes the skip | paths if components]
 Context: Evolution task from alf. Evidence citations in the design doc.
 """)
 ```
@@ -255,6 +312,7 @@ Targets: skills/agents (bob handoff), code (bob handoff), products (report-only)
 Priority: Impact x Exposure x Confidence x Urgency / Effort
 Evidence: local observations (file-based) vs external findings (sourced + tiered)
 Skills used: challenger, web-research, research-for-skills
+Efficacy telemetry (S039): query.py rollup --window 7d → efficacy-rollup.v1 (read-only; 4 metrics; honesty-gated thresholds in Step 2f)
 Codex plugin: /codex:adversarial-review (challenger), /codex:rescue (research)
 Gemini MCP: ask-gemini (large file analysis, research), brainstorm (ideation)
 History: .alf/reports/ + .alf/ledger.md

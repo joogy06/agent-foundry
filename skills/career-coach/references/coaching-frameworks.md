@@ -35,6 +35,14 @@ Maps all frameworks to their primary sub-skill. Frameworks may be used by multip
 | Career Portfolio (Barbell Strategy) | career-transition | career-planning |
 | Personal Board of Directors | career-leadership | career-assessment |
 | Network Mapping | career-positioning | career-leadership |
+| AI-Exposure Assessment | career-assessment | career-planning |
+| AI-Fluency Competency Track | career-planning | career-leadership |
+| Semantic ATS Tailoring | career-application-writer | career-positioning |
+| Anti-Slop Humanization | ai-tells-catalog.md (canonical) | career-application-writer / career-storytelling / career-positioning / human-voice-writing |
+| Cover-Letter 4-Beat | career-application-writer | -- |
+| Referral-First Job-Search Math | career-transition | career-planning |
+| AI-Search Findability for People | career-online-presence | career-positioning |
+| Cross-Document Consistency | career-application-writer | career-online-presence |
 
 ## Framework Quick Reference
 
@@ -79,3 +87,16 @@ Maps all frameworks to their primary sub-skill. Frameworks may be used by multip
 - Your BATNA = what you do if this offer/promotion doesn't meet expectations
 - Higher BATNA = more negotiation leverage
 - Always know your BATNA before entering any negotiation
+
+### Anti-Slop Humanization (Application Writer / Storytelling / Positioning)
+- Goal is human-quality writing, NOT a detector score — detectors are unreliable and biased (see `market-snapshot-2026-06.md`).
+- The signal is a *cluster* (over-used focal words + uniform rhythm + formulaic scaffolding), never a single word — do not run a find-and-replace blocklist.
+- The pass: read-aloud → focal-word sweep → restore burstiness → inject true lived specifics → register-check against the author's own voice sample.
+- Canonical catalog + voice-capture protocol: `ai-tells-catalog.md`. Operate on HOW true content is told; never invent WHAT is claimed.
+
+### Cover-Letter 4-Beat (Application Writer)
+- **Beat 1 — Hook:** one specific reason this company / role, not a generic opener.
+- **Beat 2 — Fit:** one quantified result that maps to their top scorecard criterion.
+- **Beat 3 — Why this company:** one concrete, current detail showing you actually looked.
+- **Beat 4 — CTA:** brief, confident close.
+- Keep it short (see `career-application-writer` for the craft norms); a letter never restates the CV. Read-rates are contested but rejection-on-letter is real (see `market-snapshot-2026-06.md`) — never the deciding asset, never sloppy.

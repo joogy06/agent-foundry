@@ -12,13 +12,13 @@ OS-aware install instructions for each tool in the env-adoption inventory. Detec
 
 Post-install: `codex --version` to verify. Configure at `~/.codex/config.toml`.
 
-## Gemini CLI
+## Antigravity CLI (agy)
 
 | OS Family | Install Command |
 |-----------|----------------|
-| All | `npm install -g @anthropic-ai/gemini-cli` |
+| All | `agy install` / `agy update` (binary at `~/.local/bin/agy`) — see the `antigravity-cli` skill for the full procedure |
 
-Auth: `gemini auth` (OAuth flow, uses AI Pro subscription). Set `GOOGLE_CLOUD_PROJECT=""` (empty string) to force subscription mode.
+Auth: via the Antigravity account; config lives under `~/.antigravity/`. `agy` authenticates itself — there is NO API-key env var and NO `GOOGLE_CLOUD_PROJECT` prefix at the call layer. Headless single-prompt usage is `agy -p "<prompt>"` (plain-text stdout); see the `antigravity-cli` skill.
 
 ## GitHub CLI (gh)
 

@@ -52,8 +52,8 @@ esac
 
 # tool enum
 case "$tool" in
-  gemini|copilot) ;;
-  *) echo "validate-request: tool=$tool not in {gemini,copilot}" >&2; exit 1 ;;
+  agy|copilot) ;;
+  *) echo "validate-request: tool=$tool not in {agy,copilot}" >&2; exit 1 ;;
 esac
 
 # max_runtime_sec range

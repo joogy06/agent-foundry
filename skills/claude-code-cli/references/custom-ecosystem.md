@@ -26,7 +26,7 @@ This file documents the custom forge/bob/alf/pa/wiki/agent-teams stack layered o
 - **Purpose**: Design exploration with dual challengers (Claude + Codex). Creative work, system design, feature ideation.
 - **Inputs**: User intent, domain context.
 - **Outputs**: Approved design doc → handed to bob.
-- **Hard rule**: Never implements directly — delegates to bob after approval. For MEDIUM/COMPLEX tasks, must run Codex AND Gemini in parallel with Claude challengers.
+- **Hard rule**: Never implements directly — delegates to bob after approval. For MEDIUM/COMPLEX tasks, must run Codex AND Antigravity (agy) in parallel with Claude challengers.
 - **Routing**: TRIVIAL/SIMPLE bypass forge entirely (handled directly or via single-skill invocation). MEDIUM and COMPLEX go through forge.
 
 ### `bob`
@@ -65,13 +65,13 @@ The file `~/.claude/skills/_meta/hard-rules-checklist.md` is a compact nudge fil
 
 Critical rules summarised in the checklist:
 
-- **DESIGN**: Codex + Gemini in parallel for MEDIUM/COMPLEX. Never code before design approval. Performance expectations questions for hot-path tasks. Gap detection before design.
+- **DESIGN**: Codex + Antigravity (agy) in parallel for MEDIUM/COMPLEX. Never code before design approval. Performance expectations questions for hot-path tasks. Gap detection before design.
 - **EXECUTION**: Bob does NOT orchestrate teams (agent-teams does). Bob direct-execute for small jobs. Test discovery before "run tests". Caller-aware output. Structured checkpoints for 7+ WPs.
 - **REVIEW**: Evidence before assertions. Spot-check verification. Performance dimension if hot-path.
 - **ROUTING**: Complexity pre-filter — TRIVIAL/SIMPLE bypass forge. PA is optional. Forge is a skill (inline), not a subagent.
 - **GAP DETECTION**: Never block active task. Use policy matrix (score 0-4). Dedup gaps. Inline notice for CRITICAL.
 - **TEMP FILES**: Always `mktemp -d`. Session-scoped. No hardcoded `/tmp/` paths.
-- **CROSS-MODEL**: Timeout all `codex exec` (`timeout 120`). Escalation terminates. Session-scoped Codex availability check. Gemini for COMPLEX only. Verify `mcp__gemini-cli__ping()` before Gemini work. Gemini 1M context for large files.
+- **CROSS-MODEL**: Timeout all `codex exec` (`timeout 120`). Escalation terminates. Session-scoped Codex availability check. Antigravity (agy) for COMPLEX only. Verify `command -v agy` before agy work; delegate via `agy -p "..."` (plain-text output — parse text, not JSON). Use agy for large-codebase / large-file analysis.
 - **WIKI**: Cite every claim. Raw is immutable. Single-writer lock. Lint after batch ingest. Index-first navigation.
 
 ## Memory system
@@ -137,7 +137,7 @@ If both yes, the assistant runs autonomously and routes everything that touches 
 | TRIVIAL | Direct (config change, typo fix, single edit) |
 | SIMPLE | Single skill invocation, no forge |
 | MEDIUM | Forge (Simple complexity, single-agent + optional Codex) |
-| COMPLEX | Full forge cycle (design team, dual challengers, Codex + Gemini, bob delegation) |
+| COMPLEX | Full forge cycle (design team, dual challengers, Codex + Antigravity (agy), bob delegation) |
 
 ## Plugins integrated
 
@@ -156,7 +156,7 @@ If both yes, the assistant runs autonomously and routes everything that touches 
 
 ## See also
 
-- `cross-tool-integration.md` — how Claude Code talks to Codex CLI and Gemini CLI
+- `cross-tool-integration.md` — how Claude Code talks to Codex CLI and Antigravity CLI (agy)
 - `upgrades-since-jan-2026.md` — delta vs the upstream superpowers snapshot
 - `~/.claude/skills/_meta/hard-rules-checklist.md` — actual checklist file
 - `~/.claude/skills/research-for-skills/cross-tool-portability/` — cross-CLI authoring rules

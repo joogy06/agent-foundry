@@ -50,7 +50,7 @@ from plugin_loader import (  # noqa: E402
     augment_plugins_for_language,
     LoadedPlugin,
 )
-from component_resolver import make_resolver, ComponentResolver  # noqa: E402
+from component_resolver import make_resolver, make_resolver_for_path, ComponentResolver  # noqa: E402
 from heartbeat import HeartbeatThread  # noqa: E402
 
 
@@ -317,15 +317,37 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="wiring-extract-static.run")
     parser.add_argument("--project-dir", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--claim-uuid", required=True)
+    parser.add_argument("--claim-uuid", required=False, default=None,
+                        help="bob-issued claim UUID; REQUIRED unless --standalone")
     parser.add_argument("--config", default=None)
     parser.add_argument("--target-stage", default="SCAFFOLDED", help="ledger stage to advance to on success")
     parser.add_argument("--no-heartbeat", action="store_true", help="disable heartbeat (for local smoke runs without bob)")
+    # --- code-comprehension standalone mode (CB4: claims structurally impossible) ---
+    # In --standalone: no claim required, HeartbeatThread NEVER constructed,
+    # transition-request emission UNREACHABLE, output root configurable, and the
+    # orchestrator (not bob) is the single creator of the wiring root. Additive:
+    # the normal bob-driven path is byte-identical when --standalone is off.
+    parser.add_argument("--standalone", action="store_true",
+                        help="claimless read-only mode for code-comprehension")
+    parser.add_argument("--contract-map-path", default=None,
+                        help="contract-map path (default progress/contract-map.yaml); "
+                             "the literal 'none' means NO resolution (clean unmapped_path:* "
+                             "first pass; fallback to progress/ PROHIBITED).")
+    parser.add_argument("--wiring-root", default=None,
+                        help="output root for .wiring/ (standalone runs put it under "
+                             ".comprehension/). Default: <project-dir>/.wiring")
+    parser.add_argument("--no-transition-request", action="store_true",
+                        help="skip writing the transition request (testing only)")
     ns = parser.parse_args(argv)
 
     project_dir = Path(ns.project_dir).resolve()
     if not project_dir.is_dir():
         sys.stderr.write(f"project-dir not found: {project_dir}\n")
+        return 1
+
+    # Claim is REQUIRED unless --standalone (CB4 structural guard).
+    if not ns.standalone and not ns.claim_uuid:
+        sys.stderr.write("--claim-uuid is required unless --standalone\n")
         return 1
 
     # Validate run_id looks like a uuid
@@ -335,9 +357,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stderr.write(f"--run-id not a UUID: {ns.run_id}\n")
         return 1
 
-    # .wiring/ root MUST exist (bob creates it). We only own runs/<run_id>/.
-    wiring_root = project_dir / ".wiring"
-    if not wiring_root.is_dir():
+    # .wiring/ root location. Normal mode: <project>/.wiring (bob is the single
+    # creator — we refuse if absent). Standalone mode: the orchestrator owns the
+    # root (it plays the single-creator role for the non-bob run), so we accept a
+    # configurable --wiring-root and CREATE it if absent (the orchestrator passes a
+    # path under .comprehension/). This preserves the single-creator invariant:
+    # exactly one creator (the orchestrator) per standalone run.
+    if ns.wiring_root:
+        wiring_root = Path(ns.wiring_root).resolve()
+    else:
+        wiring_root = project_dir / ".wiring"
+    if ns.standalone:
+        wiring_root.mkdir(parents=True, exist_ok=True)
+    elif not wiring_root.is_dir():
         sys.stderr.write(f"{wiring_root} missing — bob must create .wiring/ before extractor runs\n")
         return 1
 
@@ -353,10 +385,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stderr.write(f"tree hash failure: {e}\n")
         return 1
 
-    # Heartbeat
+    # Heartbeat — in --standalone the HeartbeatThread is NEVER constructed
+    # (structural CB4 guard: no object exists that could touch a claim file). The
+    # pipeline path is byte-identical when --standalone is off.
     stop_event = threading.Event()
     hb: Optional[HeartbeatThread] = None
-    if not ns.no_heartbeat:
+    if not ns.standalone and not ns.no_heartbeat:
         hb = HeartbeatThread(ns.claim_uuid, project_dir, stop_event)
         hb.start()
         # Abort if first beat failed
@@ -395,9 +429,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             "languages_detected": langs,
             "frameworks_detected": fws,
         }
-        # contract_map_hash (if the file exists — strict pattern enforced only if set)
-        cm_path = project_dir / "progress" / "contract-map.yaml"
-        if cm_path.is_file():
+        # contract_map_hash (if the file exists — strict pattern enforced only if set).
+        # Respect --contract-map-path: 'none' => stamp nothing (do NOT touch the stale
+        # progress/ map); explicit PATH => hash that; default => progress/contract-map.yaml.
+        if ns.contract_map_path == "none":
+            cm_path = None
+        elif ns.contract_map_path:
+            cm_path = Path(ns.contract_map_path)
+        else:
+            cm_path = project_dir / "progress" / "contract-map.yaml"
+        if cm_path is not None and cm_path.is_file():
             initial_manifest["contract_map_hash"] = sha256_file(cm_path)
         atomic_write_json(manifest_path, initial_manifest)
 
@@ -406,9 +447,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             sys.stderr.write("claim no longer ok; aborting\n")
             return 1
 
-        # Load plug-ins and resolve components
+        # Load plug-ins and resolve components. --contract-map-path selects the
+        # resolver: default (progress/contract-map.yaml), 'none' (NullResolver — clean
+        # unmapped first pass, no progress/ fallback), or an explicit synthetic map.
         plugins = discover_plugins()
-        resolver = make_resolver(project_dir)
+        resolver = make_resolver_for_path(project_dir, ns.contract_map_path)
         config_dict: Dict[str, Any] = {}
         if ns.config:
             try:
@@ -502,15 +545,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             sys.stderr.write(f"final manifest schema error: {e.message}\n")
             return 1
 
-        # Emit transition request
-        req_path = emit_transition_request(
-            project_dir=project_dir,
-            claim_uuid=ns.claim_uuid,
-            run_id=ns.run_id,
-            manifest_path=manifest_path,
-            static_jsonl_path=static_jsonl_path,
-            target_stage=ns.target_stage,
-        )
+        # Emit transition request — UNREACHABLE in --standalone (CB4: a claimless run
+        # must be provably unable to drive a real ledger transition). The standalone
+        # guard short-circuits BEFORE any .ledger/requests/ write.
+        req_path = None
+        if not ns.standalone and not ns.no_transition_request:
+            req_path = emit_transition_request(
+                project_dir=project_dir,
+                claim_uuid=ns.claim_uuid,
+                run_id=ns.run_id,
+                manifest_path=manifest_path,
+                static_jsonl_path=static_jsonl_path,
+                target_stage=ns.target_stage,
+            )
         sys.stdout.write(
             f"extraction ok run_id={ns.run_id} edges={len(ctx.edge_lines)} "
             f"sources={len(final_manifest['sources'])} request={req_path}\n"

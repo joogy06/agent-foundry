@@ -91,12 +91,12 @@ compute_tier() {
   # $1 = inventory JSON string
   local inv="$1"
 
-  local git_ok python3_ok gh_ok codex_ok gemini_ok copilot_ok docker_ok bridge_ok
+  local git_ok python3_ok gh_ok codex_ok agy_ok copilot_ok docker_ok bridge_ok
   git_ok=$(printf '%s' "$inv" | jq -r '.tools.git.installed')
   python3_ok=$(printf '%s' "$inv" | jq -r '.tools.python3.installed')
   gh_ok=$(printf '%s' "$inv" | jq -r '.tools.gh.installed')
   codex_ok=$(printf '%s' "$inv" | jq -r '.tools.codex.installed')
-  gemini_ok=$(printf '%s' "$inv" | jq -r '.tools.gemini.installed')
+  agy_ok=$(printf '%s' "$inv" | jq -r '.tools.agy.installed')
   copilot_ok=$(printf '%s' "$inv" | jq -r '.tools.copilot.installed')
   docker_ok=$(printf '%s' "$inv" | jq -r '.tools.docker.installed')
   bridge_ok=$(printf '%s' "$inv" | jq -r '.tools.bridge.installed')
@@ -108,14 +108,14 @@ compute_tier() {
   fi
 
   # Tier 2: full — all of tier 1 + copilot + docker + bridge
-  if [ "$gh_ok" = "true" ] && [ "$codex_ok" = "true" ] && [ "$gemini_ok" = "true" ] \
+  if [ "$gh_ok" = "true" ] && [ "$codex_ok" = "true" ] && [ "$agy_ok" = "true" ] \
      && [ "$copilot_ok" = "true" ] && [ "$docker_ok" = "true" ] && [ "$bridge_ok" = "true" ]; then
     printf '2\nfull'
     return
   fi
 
-  # Tier 1: standard — git + python3 + gh + codex + gemini
-  if [ "$gh_ok" = "true" ] && [ "$codex_ok" = "true" ] && [ "$gemini_ok" = "true" ]; then
+  # Tier 1: standard — git + python3 + gh + codex + agy
+  if [ "$gh_ok" = "true" ] && [ "$codex_ok" = "true" ] && [ "$agy_ok" = "true" ]; then
     printf '1\nstandard'
     return
   fi
@@ -151,11 +151,11 @@ do_check() {
     inv=$(cat "$INVENTORY_FILE")
   else
     # Probe all tools
-    local claude_j codex_j gemini_j copilot_j gh_j git_j docker_j python3_j bridge_j
+    local claude_j codex_j agy_j copilot_j gh_j git_j docker_j python3_j bridge_j
     local jq_j yq_j openssl_j
     claude_j=$(detect_tool claude)
     codex_j=$(detect_tool codex)
-    gemini_j=$(detect_tool gemini)
+    agy_j=$(detect_tool agy)
     copilot_j=$(detect_tool copilot)
     gh_j=$(detect_tool gh)
     git_j=$(detect_tool git)
@@ -186,7 +186,7 @@ do_check() {
     inv=$(jq -n \
       --argjson claude "$claude_j" \
       --argjson codex "$codex_j" \
-      --argjson gemini "$gemini_j" \
+      --argjson agy "$agy_j" \
       --argjson copilot "$copilot_j" \
       --argjson gh "$gh_j" \
       --argjson git "$git_j" \
@@ -211,7 +211,7 @@ do_check() {
         tools: {
           claude: $claude,
           codex: $codex,
-          gemini: $gemini,
+          agy: $agy,
           copilot: $copilot,
           gh: $gh,
           git: $git,
@@ -248,9 +248,22 @@ do_check() {
     current_cli=$(timeout 3 python3 "$HOME/.claude/skills/affordance-advisor/scripts/detect_host_cli.py" 2>/dev/null || echo "unknown")
     inv=$(printf '%s' "$inv" | jq --arg current_cli "$current_cli" '. + {current_cli: $current_cli}')
 
-    # Write inventory
+    # Write inventory.
+    # Evergreening v1 (S041): on a REAL probe (this cache-miss/--force branch),
+    # snapshot the *previous* inventory to inventory-prev.json BEFORE overwriting,
+    # then let inventory_history.py diff prev→new, collect plugins{}/mcp_servers[],
+    # and append one inventory-history.v1 change-record per change. The emitter is
+    # best-effort-never-raise (gate_runs.py discipline): a history failure must not
+    # break the probe, so it is guarded and its exit code is ignored.
     mkdir -p "$(dirname "$INVENTORY_FILE")"
+    if [ -f "$INVENTORY_FILE" ]; then
+      cp -f "$INVENTORY_FILE" "$(dirname "$INVENTORY_FILE")/inventory-prev.json" 2>/dev/null || true
+    fi
     printf '%s\n' "$inv" > "$INVENTORY_FILE"
+    # History writer: merges plugins/mcp into inventory.json + appends change-records.
+    if command -v python3 >/dev/null 2>&1; then
+      timeout 5 python3 "$HOME/.claude/skills/env-adoption/scripts/inventory_history.py" >/dev/null 2>&1 || true
+    fi
   fi
 
   # Session state (unless --inventory-only)
@@ -288,20 +301,22 @@ do_check() {
       codex_plugin_ready=true
     fi
 
-    # Gemini MCP responding — we cannot call MCP from bash, so check if gemini binary works
-    local gemini_mcp=false
-    if command -v gemini >/dev/null 2>&1; then
-      if timeout 2 gemini --version >/dev/null 2>&1; then
-        gemini_mcp=true
+    # agy (Antigravity CLI) responding — check if the agy binary works.
+    # (The old gemini-cli MCP server has been removed; agy is invoked directly
+    #  via `agy -p` and returns plain text — there is no MCP layer to probe.)
+    local agy_responding=false
+    if command -v agy >/dev/null 2>&1; then
+      if timeout 2 agy --version >/dev/null 2>&1; then
+        agy_responding=true
       fi
     fi
 
     # Compute capabilities from inventory + session
     local inv_data
     inv_data=$(cat "$INVENTORY_FILE")
-    local codex_installed gemini_installed copilot_installed docker_installed bridge_installed
+    local codex_installed agy_installed copilot_installed docker_installed bridge_installed
     codex_installed=$(printf '%s' "$inv_data" | jq -r '.tools.codex.installed')
-    gemini_installed=$(printf '%s' "$inv_data" | jq -r '.tools.gemini.installed')
+    agy_installed=$(printf '%s' "$inv_data" | jq -r '.tools.agy.installed')
     copilot_installed=$(printf '%s' "$inv_data" | jq -r '.tools.copilot.installed')
     docker_installed=$(printf '%s' "$inv_data" | jq -r '.tools.docker.installed')
     bridge_installed=$(printf '%s' "$inv_data" | jq -r '.tools.bridge.installed')
@@ -311,12 +326,12 @@ do_check() {
     yq_installed=$(printf '%s' "$inv_data" | jq -r '.tools.yq.installed')
     openssl_installed=$(printf '%s' "$inv_data" | jq -r '.tools.openssl.installed')
 
-    local triple_model=false codex_challenger=false gemini_analyst=false bridge_fallback=false container_workflows=false contract_pipeline=false
-    if [ "$codex_installed" = "true" ] && [ "$gemini_mcp" = "true" ]; then
+    local triple_model=false codex_challenger=false agy_analyst=false bridge_fallback=false container_workflows=false contract_pipeline=false
+    if [ "$codex_installed" = "true" ] && [ "$agy_responding" = "true" ]; then
       triple_model=true
     fi
     [ "$codex_installed" = "true" ] && codex_challenger=true
-    [ "$gemini_mcp" = "true" ] && gemini_analyst=true
+    [ "$agy_responding" = "true" ] && agy_analyst=true
     [ "$bridge_mode" = "bridge" ] && bridge_fallback=true
     [ "$docker_installed" = "true" ] && container_workflows=true
     # Contract pipeline needs: jq + yq + openssl + python3 (for gates.py/claims.py/audit_spawn.py)
@@ -328,13 +343,13 @@ do_check() {
       --arg session_id "$(session_id)" \
       --arg created "$(now_iso)" \
       --arg bridge_mode "$bridge_mode" \
-      --argjson gemini_mcp_responding "$gemini_mcp" \
+      --argjson agy_responding "$agy_responding" \
       --argjson gh_authenticated "$gh_auth" \
       --argjson gh_user "$gh_user" \
       --argjson codex_plugin_ready "$codex_plugin_ready" \
       --argjson triple_model "$triple_model" \
       --argjson codex_challenger "$codex_challenger" \
-      --argjson gemini_analyst "$gemini_analyst" \
+      --argjson agy_analyst "$agy_analyst" \
       --argjson bridge_fallback "$bridge_fallback" \
       --argjson container_workflows "$container_workflows" \
       --argjson contract_pipeline "$contract_pipeline" \
@@ -342,14 +357,14 @@ do_check() {
         session_id: $session_id,
         created: $created,
         bridge_mode: $bridge_mode,
-        gemini_mcp_responding: $gemini_mcp_responding,
+        agy_responding: $agy_responding,
         gh_authenticated: $gh_authenticated,
         gh_user: $gh_user,
         codex_plugin_ready: $codex_plugin_ready,
         capabilities: {
           triple_model: $triple_model,
           codex_challenger: $codex_challenger,
-          gemini_analyst: $gemini_analyst,
+          agy_analyst: $agy_analyst,
           bridge_fallback: $bridge_fallback,
           container_workflows: $container_workflows,
           contract_pipeline: $contract_pipeline
@@ -385,7 +400,7 @@ do_check() {
 
     # List installed tools
     local tools_line=""
-    for tool in claude codex gemini copilot gh git docker python3 jq yq openssl bridge; do
+    for tool in claude codex agy copilot gh git docker python3 jq yq openssl bridge; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       local version
@@ -402,7 +417,7 @@ do_check() {
 
     # List missing tools
     local missing=""
-    for tool in claude codex gemini copilot gh git docker python3 jq yq openssl bridge; do
+    for tool in claude codex agy copilot gh git docker python3 jq yq openssl bridge; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       if [ "$installed" != "true" ]; then
@@ -497,7 +512,7 @@ do_setup() {
 
   # Check each tool and show install instructions for missing ones
   local any_missing=0
-  for tool in codex gemini copilot gh docker; do
+  for tool in codex agy copilot gh docker; do
     local installed
     installed=$(printf '%s' "$inv" | jq -r ".tools.${tool}.installed")
     if [ "$installed" != "true" ]; then
@@ -508,9 +523,9 @@ do_setup() {
           printf '  Install: npm install -g @openai/codex-cli\n'
           printf '  Docs: https://github.com/openai/codex\n'
           ;;
-        gemini)
-          printf '  Install: npm install -g @anthropic-ai/gemini-cli  (or npx -y @anthropic-ai/gemini-cli auth)\n'
-          printf '  Docs: https://github.com/google-gemini/gemini-cli\n'
+        agy)
+          printf '  Install: see the antigravity-cli skill for the install/update procedure (agy install / agy update)\n'
+          printf '  Auth: via the Antigravity account; config under ~/.antigravity/. agy authenticates itself (no API-key env var).\n'
           ;;
         copilot)
           case "$os_family" in

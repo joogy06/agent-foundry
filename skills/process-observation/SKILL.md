@@ -1,6 +1,6 @@
 ---
 name: process-observation
-description: Use when emitting, querying, or rotating process-level friction observations from any skill, agent, gate, or external tool. Provides the `claude-observe` CLI one-liner, Python API `claude_observe()`, and query/sweep/compaction primitives over a two-file ledger (`active.yaml` aggregate + `events.jsonl` truth log). BEST-EFFORT writes - never raise to the caller. 13-category closed-set taxonomy. Ships with 14-day active retention, indefinite compressed stale retention, 180-day hashed event summaries, and write-time anonymization for the cross-project global rollup.
+description: Use when emitting, querying, or rotating process-level friction observations from any skill, agent, gate, or external tool. Provides the `claude-observe` CLI one-liner, Python API `claude_observe()`, and query/sweep/compaction primitives over a two-file ledger (`active.yaml` aggregate + `events.jsonl` truth log). BEST-EFFORT writes - never raise to the caller. 13-category closed-set taxonomy. Ships with 14-day active retention, indefinite compressed stale retention, 180-day hashed event summaries, and write-time anonymization for the cross-project global rollup. S039 efficacy-telemetry extension - a gate-run denominator writer (`gate-runs.jsonl` sidecar) plus a read-only `query.py rollup` op that computes the four orchestration-efficacy metrics (gate-fail / false-positive / dual-verdict-disagreement / user-override) for alf sweeps.
 ---
 
 # Process Observation - Feedback Ledger
@@ -23,6 +23,11 @@ Cold storage:
 - `stale.yaml` - demoted (14d aged OR resolved), compressed, indefinite retention
 - `summaries/<YYYY-MM>.jsonl` - hashed monthly summary of raw events older than 30 days, retained 180 days
 - `~/.claude/state/observations.jsonl` - write-time anonymized cross-project rollup
+
+Efficacy-telemetry sidecar (S039 extension — separate from the friction ledger):
+
+- `gate-runs.jsonl` - append-only gate-run denominator log (one bump + one outcome record per gate invocation). NEVER `active.yaml` — the 13-category friction taxonomy is untouched, zero schema bump.
+- `.telemetry_window` - sentinel recording `denominator_window_start` (first-bump ISO timestamp; forward-looking, never backfilled).
 
 ## When to Use
 
@@ -86,6 +91,8 @@ python3 ~/.claude/skills/process-observation/scripts/query.py subject:bob
 python3 ~/.claude/skills/process-observation/scripts/query.py category:gate_false_block
 python3 ~/.claude/skills/process-observation/scripts/query.py session:<id>
 python3 ~/.claude/skills/process-observation/scripts/query.py since:2026-04-01
+python3 ~/.claude/skills/process-observation/scripts/query.py rollup \
+    --project-root=<dir> --window=7d --format=json|text
 ```
 
 Output is canonical JSON (sorted keys, compact). Severity thresholds for `hot`
@@ -166,8 +173,59 @@ Walks up from `$CWD`:
 Session id: `$CLAUDE_SESSION_ID` -> `$FORGE_SESSION_ID` -> cached
 `$XDG_RUNTIME_DIR/claude/session` -> `ppid-<PPID>` fallback.
 
+## Efficacy Telemetry (S039 extension)
+
+A pure extension that measures whether the `forge→bob→alf→pa` orchestration
+machinery catches real defects or just adds ceremony. Two parts:
+
+### 1. Gate-run denominator writer (`scripts/gate_runs.py`)
+
+Loaded by `_meta/gates.py` via a fail-open loader (no-op stubs on ImportError,
+mirrors the existing `claude_observe` loader). In `gates.py main()`: a
+PRE-dispatch `bump_gate_run(gate)` (never-raises) plus a `try/except SystemExit`
+that records the terminal exit code and **re-raises the identical SystemExit** —
+gate control flow and exit code are provably unchanged. Both helpers wrap their
+entire body in `try/except BaseException`. The denominator lands in the
+`gate-runs.jsonl` sidecar, NEVER `active.yaml` (zero friction pollution).
+
+Record shape (lock-free `O_APPEND`, like `events.jsonl`):
+```json
+{"ts":"2026-06-03T10:00:00Z","gate":"G1","run_id":"<uuid4>","code":0}
+```
+`code` is the **raw normalized exit code** (int) the `SystemExit` carried, or
+`null` (a run killed before the terminal exit was caught — counted in the
+denominator, excluded from outcome tallies). The bump writes `code:null`; the
+outcome appends a second record with the same `run_id` carrying the real code.
+Classification happens at READ time in the rollup — the writer never derives a
+label, so changing a gate's exit semantics only updates the rollup's policy
+table, never the write path.
+
+### 2. Read-only rollup (`scripts/rollup.py`, op `query.py rollup`)
+
+```bash
+python3 ~/.claude/skills/process-observation/scripts/query.py rollup \
+    --project-root <dir> --window 7d [--format json|text]
+```
+
+Pure read — writes NOTHING under `.ledger/` or `.process-observations/`.
+Computes four metrics into an `efficacy-rollup.v1` object; every metric prints
+`{numerator, denominator, rate, ...}` plus `denominator_window_start` and
+coverage flags:
+
+| Metric | Source | Honesty caveat surfaced |
+|---|---|---|
+| `gate_fail_rate` | `gate-runs.jsonl` | fail = exit **2 only**; exit 3 (advisory/env-error) and 4 (skip) broken out as separate tallies, NOT counted as fail (§6.1 policy table) |
+| `false_positive_rate` | `events.jsonl` `gate_false_block` / `gate-runs.jsonl` | UPPER BOUND ("blocked", not "blocked AND human-accepted"); numerator exists for only **6 of 12 gates** — others report null + `no_false_block_numerator` |
+| `dual_verdict_disagreement_rate` | `.ledger/verdicts/*.verdict.yaml` | reads **`audit_arm.result` + `arbiter_arm.verdict` ONLY** (asymmetric canonical keys); ignores the `claude_verdict`/`codex_verdict` decoy sub-vocabulary; never substring-greps for `AUDIT_UNAVAILABLE` (it can appear in a free-text rerun-history field while the canonical result is `REJECTED`). AUDIT_UNAVAILABLE on a canonical key → indeterminate, excluded from denominator (N1) |
+| `user_override_rate` | `.ledger/scope-deltas/*.yaml` | counts `status ∈ {amended, excluded}`; `--no-verify` (git layer) and escalation-override have no code hook → reported `not_yet_instrumented`, never faked |
+
+The denominator is **forward-looking only** (no backfill) — `denominator_window_start`
+is surfaced so a too-young baseline is self-evident. alf reads this rollup during
+sweeps (alf Step 2f) with honesty-gated thresholds.
+
 ## References
 
 - Design: `docs/plans/2026-04-23-ecosystem-keystone-design.md` section 4 (all subsections)
 - Decisions: D12 (retention), D13 (dedup), D14 (closed-set taxonomy), D15 (anonymization), D16 (best-effort)
 - Contract: `progress/contract-map.yaml` (`process-observation` component, TS-OBS-01..07)
+- Efficacy extension (S039): `docs/plans/2026-06-03-efficacy-telemetry-v1-design.md` (§5 store layout, §6 metrics, §7 gate hook, §8 rollup CLI, §9 honest limits). Tests: `tests/test_gate_run_telemetry.py` (WP1 exit-code-invariance ship-gate), `tests/test_efficacy_rollup.py` (WP2 four metrics + N1 + parse guards).

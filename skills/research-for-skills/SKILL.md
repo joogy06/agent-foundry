@@ -70,7 +70,10 @@ Delegate to `web-research` — do NOT duplicate research methodology here.
 Optional: dispatch Codex `docs_verifier` sidecar for API/version claims:
 
 
-**Gemini MCP for freshness checks:** Use `mcp__gemini-cli__ask-gemini` with Google Search grounding to verify latest versions, deprecation status, and current best practices. Particularly useful for fast-moving domains where cached knowledge may be stale. Complements Codex verification — run both in parallel when accuracy is critical.
+**Antigravity (agy) for freshness checks:** Use a direct `agy -p "..."` Bash call to verify latest versions, deprecation status, and current best practices. Particularly useful for fast-moving domains where cached knowledge may be stale. `agy` returns plain text on stdout (parse text, not JSON fields). Complements Codex verification — run both in parallel when accuracy is critical. See the `antigravity-cli` skill for the invocation pattern.
+```bash
+agy -p "Verify current as of 2026: latest stable version, deprecation status, and current best practices for [DOMAIN/LIBRARY]. List sources." < /dev/null
+```
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 codex exec --ephemeral -s read-only \
@@ -103,6 +106,8 @@ Write using rules in `authoring-rules.md`. Key gates:
 - Word count: <500 frequent, <1200 standard
 - Cross-model compatible language
 - Specific data with sources, no vendor marketing as fact
+- **Ambiguity gate — REQUIRED for generation-type skills** (skills whose primary output is an artifact: documents, images, pages, decks, code, posts). The SKILL.md must include a short "ask before generating" gate naming the 2-4 request dimensions that change the output materially, with the instruction to ask ONE compact clarifying question when they're missing rather than silently generating a guessed version. (Pattern precedent: forge Step 3 one-at-a-time questions, career-coach "No advice without context", career-application-writer Stage-0 intake + cold-start rule. Rationale: LLMs confidently answer the version of the question they think was meant; the cheapest quality lever is resolving ambiguity before generation.)
+- **FRESHNESS:v1 anchor (Evergreening v1, S041) — MANDATORY for new skills** that carry any version/date/model-ID anchor. Add an HTML-comment `<!-- FRESHNESS:v1 ... -->` block (NEVER frontmatter — works in SKILL.md AND frontmatter-less references) declaring the tool/date/model you verified against, so the evergreen rot scanner can grade the skill instead of treating it as UNANNOTATED. Validate with `python3 ~/.claude/skills/_meta/freshness.py lint <file>` (advisory). Convention spec: `docs/plans/2026-06-04-evergreening-design.md` §6.5. (Same convention applies when the superpowers `writing-skills` plugin authors a skill — the FRESHNESS block is host-agnostic.)
 
 ### Step 8: Review Gates
 
@@ -172,7 +177,7 @@ See `authoring-rules.md` for full guidelines. Key rule: use tool-agnostic langua
 
 ## Cross-tool portability
 
-When authoring a skill that must work across multiple AI CLIs (Claude Code, Gemini CLI, Codex CLI, GitHub Copilot CLI), read `cross-tool-portability/cross-tool-portability.md` first. It contains strict rules for frontmatter (only `name + description`), naming (`^[a-z0-9-]+$`, ≤64 chars), body length (<500 lines), install symlink pattern, AGENTS.md canonicalisation, hooks portability, and the 5 most common breaking mistakes.
+When authoring a skill that must work across multiple AI CLIs (Claude Code, Antigravity CLI (agy), Codex CLI, GitHub Copilot CLI), read `cross-tool-portability/cross-tool-portability.md` first. It contains strict rules for frontmatter (only `name + description`), naming (`^[a-z0-9-]+$`, ≤64 chars), body length (<500 lines), install symlink pattern, AGENTS.md canonicalisation, hooks portability, and the 5 most common breaking mistakes.
 
 Validate any new cross-tool skill against `cross-tool-portability/scripts/verify-skill-portability.sh` before publishing:
 
@@ -189,10 +194,10 @@ The sub-skill files:
 |---|---|
 | `cross-tool-portability.md` | Top-level rulebook — read first |
 | `frontmatter-rules.md` | Authoring SKILL.md frontmatter |
-| `install-matrix.md` | Setting up symlinks across `~/.claude/`, `~/.gemini/`, `~/.codex/` |
-| `agents-md-canonical.md` | Designing AGENTS.md / CLAUDE.md / GEMINI.md content |
-| `hooks-portability.md` | Authoring hooks that must work in both Claude and Gemini |
-| `headless-invocation.md` | Translating `claude -p` patterns to `gemini -p` and `copilot -p` |
+| `install-matrix.md` | Setting up symlinks across `~/.claude/`, `~/.codex/` (and agy plugin import) |
+| `agents-md-canonical.md` | Designing AGENTS.md / CLAUDE.md content |
+| `hooks-portability.md` | Authoring hooks (Claude-native; agy equivalent unverified) |
+| `headless-invocation.md` | Translating `claude -p` patterns to `agy -p` and `copilot -p` |
 | `verification-first-boot.md` | Validating a new skill on first install |
 | `common-mistakes.md` | The five most common breaking mistakes |
 | `challenger-concerns.md` | Hook re-entrancy, name collisions, multi-user auth |

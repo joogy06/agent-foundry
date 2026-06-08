@@ -1,23 +1,23 @@
 ---
 name: git-cli-bridge
-description: Use when a sandboxed environment (GCP Workstation, corporate egress allowlist, air-gapped host) cannot reach Gemini CLI or GitHub Copilot CLI endpoints locally but CAN reach GitHub via git. Provides a git-as-RPC bridge that pushes request files to a dedicated `ai-bridge-<user>` repo, triggers GitHub Actions to run the CLI on the runner, and pulls responses back on a per-session orphan branch. Covers client scripts, workflow templates, security model (prompt injection, supply chain, exfiltration), first-boot setup (WIF + Secret Manager), and integration with `codex-orchestration` / `forge` Step 4b.
+description: Use when a sandboxed environment (GCP Workstation, corporate egress allowlist, air-gapped host) cannot reach the Antigravity CLI (agy) or GitHub Copilot CLI endpoints locally but CAN reach GitHub via git. Provides a git-as-RPC bridge that pushes request files to a dedicated `ai-bridge-<user>` repo, triggers GitHub Actions to run the CLI on the runner, and pulls responses back on a per-session orphan branch. Covers client scripts, workflow templates, security model (prompt injection, supply chain, exfiltration), first-boot setup (WIF + Secret Manager), and integration with `codex-orchestration` / `forge` Step 4b.
 ---
 
-# git-cli-bridge — Sandbox-aware git-as-RPC bridge for Gemini and Copilot CLI
+# git-cli-bridge — Sandbox-aware git-as-RPC bridge for agy and Copilot CLI
 
 ## Overview
 
-`git-cli-bridge` lets a sandboxed developer environment invoke `@google/gemini-cli` and `@github/copilot` **indirectly** via GitHub Actions. The workstation pushes a `request.md` file on a per-session orphan branch to a dedicated `ai-bridge-<user>` repo. A workflow triggers on the push, runs the CLI on the runner, commits a `response.md` back to the same branch, and the client polls via `git fetch`. This restores full triple-model validation (Claude + Codex + Gemini) and second-opinion review flows in environments where only `git` to GitHub is reachable.
+`git-cli-bridge` lets a sandboxed developer environment invoke the Antigravity CLI (`agy`) and `@github/copilot` **indirectly** via GitHub Actions. The workstation pushes a `request.md` file on a per-session orphan branch to a dedicated `ai-bridge-<user>` repo. A workflow triggers on the push, runs the CLI on the runner, commits a `response.md` back to the same branch, and the client polls via `git fetch`. This restores full triple-model validation (Claude + Codex + Antigravity (agy)) and second-opinion review flows in environments where only `git` to GitHub is reachable.
 
-**Scope (v1)**: three job kinds — `review`, `research`, `prompt` — for both Gemini and Copilot in parity. Agentic sub-task delegation (`kind: agent`) is deferred to v2.3 with schema forward-compatibility reserved.
+**Scope (v1)**: three job kinds — `review`, `research`, `prompt` — for both agy and Copilot in parity. Agentic sub-task delegation (`kind: agent`) is deferred to v2.3 with schema forward-compatibility reserved.
 
 **Not in v1**: Cloud Run execution venue (deferred to v2.1, see `references/v2-bucket.md`), streaming responses, multi-user / team bridge, fallback for GitHub itself being unreachable.
 
 ## When to Use
 
-- GCP Workstation / corporate allowlist where `gemini --version` or `copilot --version` fails but `git ls-remote github.com` works.
+- GCP Workstation / corporate allowlist where `agy --version` or `copilot --version` fails but `git ls-remote github.com` works.
 - `forge` Step 4b detecting local CLIs unreachable after 3 consecutive probe failures.
-- `codex-orchestration` Gemini/Copilot delegation in sandboxed environments.
+- `codex-orchestration` agy/Copilot delegation in sandboxed environments.
 - Explicit opt-in via `AI_BRIDGE_MODE=1` even when local CLIs are reachable (testing, consistency, auditability).
 
 **Do NOT use when**: local CLIs work (3x slower), bridge repo is public (enforced refusal at `bridge init`), credentials would need to leave the host, or the workflow would be triggered from cron/CI (runaway cost risk).
@@ -39,7 +39,7 @@ AI_BRIDGE_MODE=1       ----------> request.md
                                    1. checkout session branch
                                    2. auth@v2 (WIF -> GCP)
                                    3. get-secretmanager-secrets
-                                   4. run-gemini-cli OR
+                                   4. run agy OR
                                       npm i @github/copilot
                                    5. invoke with --policy / --allow-tool scoping
                                    6. scrub + canary check
@@ -56,7 +56,7 @@ See `references/architecture.md` for the full eight-pillar breakdown and `refere
 bridge init                                              # clones ai-bridge repo, creates session branch
 
 # Daily use
-bridge request --tool gemini --kind review \
+bridge request --tool agy --kind review \
   --context auth-diff.patch --wait \
   "Review this JWT validator for security issues."
 
@@ -78,11 +78,11 @@ For first-boot setup including GCP Workload Identity Federation, Secret Manager 
 </HARD-RULE>
 
 <HARD-RULE>
-**NEVER store long-lived credentials in the bridge repo.** Use Workload Identity Federation for GCP access (Gemini) and GCP Secret Manager for the Copilot PAT. GitHub repository secrets are NOT acceptable storage. The WIF pool binding must pin `assertion.repository` to this one `ai-bridge-<user>` repo. See `references/auth-and-secrets.md`.
+**NEVER store long-lived credentials in the bridge repo.** Use GCP Secret Manager for the Copilot PAT (fetched via Workload Identity Federation). GitHub repository secrets are NOT acceptable storage. The WIF pool binding must pin `assertion.repository` to this one `ai-bridge-<user>` repo. TODO(agy): verify equivalent — the former Gemini path used WIF→Vertex AI; agy authenticates via the Antigravity account (config under `~/.antigravity/`), so the runner needs a verified way to supply Antigravity credentials without storing long-lived secrets in the repo. See `references/auth-and-secrets.md`.
 </HARD-RULE>
 
 <HARD-RULE>
-**NEVER use `@latest` for npm packages or mutable tags for GitHub Actions.** Pin `@google/gemini-cli@0.36.0`, `@github/copilot@1.0.21`, `google-github-actions/auth@<commit-sha>`. Supply-chain hijacks (Sept 2025 npm wave, `tj-actions/changed-files` CVE-2025-30066) proved mutable references are dangerous. Dependency bumps MUST go through `bump-bridge-deps.sh` (updates the integrity lock) and a reviewed PR.
+**NEVER use `@latest` for npm packages or mutable tags for GitHub Actions.** Pin `@github/copilot@1.0.21`, `google-github-actions/auth@<commit-sha>`. Supply-chain hijacks (Sept 2025 npm wave, `tj-actions/changed-files` CVE-2025-30066) proved mutable references are dangerous. Dependency bumps for npm packages MUST go through `bump-bridge-deps.sh` (updates the integrity lock) and a reviewed PR. TODO(agy): verify equivalent — agy (Antigravity CLI) is NOT an npm package, so the integrity-lock pin does not cover it; establish a pinned, verifiable install channel for agy on the runner.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -107,15 +107,15 @@ Full flag documentation lives in `references/client-scripts.md`.
 
 ## Integration with Other Skills
 
-- **`codex-orchestration`** — patched at five points to route Gemini/Copilot delegation through `bridge-mode-detect.sh`. When mode is `bridge`, callers invoke `bridge request` instead of the local CLI. See `references/integration.md` and the patched `codex-orchestration/SKILL.md` HARD-RULE.
-- **`forge`** — Step 4b is sandbox-aware. On MEDIUM/COMPLEX tasks, forge computes `bridge-mode-detect.sh` output once and caches it for the session. Bridge mode keeps the Gemini analyst and Copilot challenger in the design loop over the git transport. See the patched `forge/SKILL.md`.
+- **`codex-orchestration`** — patched at five points to route agy/Copilot delegation through `bridge-mode-detect.sh`. When mode is `bridge`, callers invoke `bridge request` instead of the local CLI. See `references/integration.md` and the patched `codex-orchestration/SKILL.md` HARD-RULE.
+- **`forge`** — Step 4b is sandbox-aware. On MEDIUM/COMPLEX tasks, forge computes `bridge-mode-detect.sh` output once and caches it for the session. Bridge mode keeps the agy analyst and Copilot challenger in the design loop over the git transport. See the patched `forge/SKILL.md`.
 - **`bob`, `alf`, `pa`** — unchanged. They inherit sandbox awareness transparently via `codex-orchestration`.
 
 ## Security Model Summary
 
 The full threat model (T1-T15) and the twelve security invariants (SEC-1 through SEC-12) live in `references/security-model.md`. Headline controls:
 
-- **Prompt injection (T1)** — `<user_data>` delimiter wrapping, narrow tool whitelisting (`--allow-tool=shell(git:status)` on Copilot, `--approval-mode plan` on Gemini), no tool execution in v1.
+- **Prompt injection (T1)** — `<user_data>` delimiter wrapping, narrow tool whitelisting (`--allow-tool=shell(git:status)` on Copilot; for agy, TODO(agy): verify equivalent — the former Gemini path used `--approval-mode plan`, and agy's closest coarse control is `--sandbox`), no tool execution in v1.
 - **Exfiltration (T2)** — regex scrubber pre-commit, canary env var check, response size cap at 500 KB.
 - **Supply chain (T3)** — pinned exact npm versions, `--ignore-scripts` on install, integrity hash verification against `workflows/bridge-integrity.lock`, pinned Action commit SHAs.
 - **Terminal escapes (T4)** — ANSI strip on client display, UTF-8 validation, hash cache for history-rewrite detection.
@@ -155,10 +155,10 @@ The full threat model (T1-T15) and the twelve security invariants (SEC-1 through
 
 | Topic | Skill |
 |---|---|
-| Cross-model orchestration (Codex + Gemini) — sandbox-aware after patch | `codex-orchestration` |
+| Cross-model orchestration (Codex + agy) — sandbox-aware after patch | `codex-orchestration` |
 | Forge design workflow — Step 4b sandbox-aware after patch | `forge` |
 | GCP Workstations provisioning (host environment) | `gcp-workstations` |
-| Gemini CLI reference | `gemini-cli` |
+| Antigravity CLI (agy) reference | `antigravity-cli` |
 | GitHub Copilot CLI reference | `gh-copilot-cli` |
 | Claude Code CLI reference | `claude-code-cli` |
 | Cross-tool skill authoring rules (Codex symlink, portability) | `research-for-skills/cross-tool-portability` |

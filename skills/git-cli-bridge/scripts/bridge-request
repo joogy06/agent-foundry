@@ -2,9 +2,12 @@
 # bridge-request — submit a request on the current session.
 #
 # Usage:
-#   bridge request --tool gemini|copilot --kind review|research|prompt \
+#   bridge request --tool agy|copilot --kind review|research|prompt \
 #     [--model NAME] [--context PATH]... [--max-runtime SEC] [--max-tokens-out N] \
 #     [--wait] [--timeout SEC] [--caller NAME] [--caller-task-id ID] "prompt body"
+#
+# Note: --model is accepted for forward-compat but agy (Antigravity CLI) has no
+# per-call model selector; it is ignored for the agy tool.
 #
 # Behavior:
 #   1. Rate-limit check (10/60s per session) -> exit 7 on violation.
@@ -61,8 +64,8 @@ done
 
 # -------- validation --------
 case "$TOOL" in
-  gemini|copilot) ;;
-  *) bridge_err "--tool must be gemini or copilot"; exit 1 ;;
+  agy|copilot) ;;
+  *) bridge_err "--tool must be agy or copilot"; exit 1 ;;
 esac
 case "$KIND" in
   review|research|prompt) ;;

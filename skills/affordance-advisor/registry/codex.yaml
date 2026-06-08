@@ -1,7 +1,12 @@
 schema_version: affordance.v1
+validated_against:
+  cli_version: "0.137.0"
+  date: "2026-06-05"
 host_cli: codex
 
 # Day-one entries derived from Codex CLI 0.130.0 (codex --help).
+# 2026-06-05 (S041): exec-server / remote-control / features / app-server rows added
+#   from codex 0.137.0 (cloud was already present). validated_against bumped to 0.137.0.
 # See ~/.claude/skills/codex-orchestration for delegation patterns.
 
 affordances:
@@ -127,4 +132,63 @@ affordances:
       already_suggested_this_session: true
     hint: |
       Add / remove / list MCP servers for the Codex session.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/exec-server
+    command: "codex exec-server"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-persistent-exec-backend
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Run a long-lived exec backend that serves repeated `codex exec` requests without
+      re-spawning per call — useful when orchestrating many non-interactive runs.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/remote-control
+    command: "codex remote-control"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-remote-control
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Drive a Codex session remotely (control channel for an out-of-process client).
+      Newer surface — confirm semantics with `codex remote-control --help` before relying.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/features-flags
+    command: "codex features"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - inspect-codex-features
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Inspect / toggle Codex feature flags — handy when a capability is gated behind
+      a feature switch.
+    reference: ~/.claude/skills/codex-orchestration/SKILL.md
+
+  - id: codex/app-server
+    command: "codex app-server"
+    risk_class: medium
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-app-server
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Run the Codex application server (backend for an app/IDE integration). Newer
+      surface — confirm with `codex app-server --help` before relying.
     reference: ~/.claude/skills/codex-orchestration/SKILL.md

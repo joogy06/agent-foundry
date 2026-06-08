@@ -7,6 +7,6 @@
 .github/                              @<user>
 .github/workflows/                    @<user>
 .github/scripts/                      @<user>
-.github/bridge-gemini-policy.json     @<user>
+.github/bridge-agy-policy.json        @<user>
 .github/bridge-integrity.lock         @<user>
 CODEOWNERS                            @<user>

@@ -138,7 +138,7 @@ Other reference docs:
 | Don't | Why |
 |---|---|
 | Add `requests` / `httpx` / `pydantic` to make the HTTP layer "nicer" | Skill MUST work in the global skills library without virtualenv. Stdlib is the contract. |
-| Block on the LLM fallback | Codex/Gemini can hang. 30s subprocess timeout, hard. On timeout, treat as "couldn't interpret" and continue. |
+| Block on the LLM fallback | Codex/agy can hang. 30s subprocess timeout, hard. On timeout, treat as "couldn't interpret" and continue. |
 | Skip lockfile scanning ("manifest-only is enough") | Majority of CVEs hide in transitive deps. Read lockfiles for direct + first-level transitive minimum. |
 | Wrap `npm audit` | FP rate too high (Gemini research). Use OSV-direct for npm. |
 | Treat the 24h cache TTL as a hard rule | 24h is the FLOOR for AUTOMATIC refresh. `--no-cache` always bypasses. Vulns get 2h TTL. |

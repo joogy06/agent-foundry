@@ -1,11 +1,11 @@
 ---
 name: gcp-workstations
-description: Use when provisioning, configuring, or operating Google Cloud Workstations as a single-developer AI/dev environment with Claude Code, Gemini CLI, GitHub Copilot CLI, and supporting tooling. Covers cluster/config/workstation lifecycle, custom images, persistent home semantics, per-tool authentication strategies, networking, cost optimization, and security gotchas.
+description: Use when provisioning, configuring, or operating Google Cloud Workstations as a single-developer AI/dev environment with Claude Code, Antigravity CLI (agy), GitHub Copilot CLI, and supporting tooling. Covers cluster/config/workstation lifecycle, custom images, persistent home semantics, per-tool authentication strategies, networking, cost optimization, and security gotchas.
 ---
 
 # GCP Workstations for AI Dev
 
-Single-developer Google Cloud Workstations playbook. Provisions a workstation that runs Claude Code 2.1, Gemini CLI 0.36, GitHub Copilot CLI 1.0, and supporting tooling, with sensible auth and cost defaults.
+Single-developer Google Cloud Workstations playbook. Provisions a workstation that runs Claude Code 2.1, Antigravity CLI (agy) 1.0, GitHub Copilot CLI 1.0, and supporting tooling, with sensible auth and cost defaults.
 
 This is **not** a multi-tenant guide. Single-dev assumptions apply throughout.
 
@@ -25,7 +25,7 @@ This is **not** a multi-tenant guide. Single-dev assumptions apply throughout.
 | Base image | `us-central1-docker.pkg.dev/cloud-workstations-images/predefined/code-oss:latest` |
 | Node.js | 22 LTS (for the AI CLIs) |
 | Claude Code | 2.1.x via `@anthropic-ai/claude-code` |
-| Gemini CLI | 0.36.x via `@google/gemini-cli` |
+| Antigravity CLI (agy) | 1.0.4 (`agy` binary at `~/.local/bin/agy`). TODO(agy): confirm agy install + auth on GCP Workstation |
 | GitHub Copilot CLI | 1.0.x via `@github/copilot` |
 
 ## Quick task index
@@ -35,7 +35,7 @@ This is **not** a multi-tenant guide. Single-dev assumptions apply throughout.
 | Provision a new cluster/config/workstation | `references/provision.md` |
 | Build the custom Dockerfile (AI CLIs preinstalled) | `references/custom-image.md` + `scripts/Dockerfile.ai-dev` |
 | Push image to Artifact Registry | `references/custom-image.md` (Push section) |
-| Pick auth per tool (Claude / Gemini / Copilot) | `references/auth-per-tool.md` |
+| Pick auth per tool (Claude / agy / Copilot) | `references/auth-per-tool.md` |
 | Understand `$HOME` vs `/var`/`/tmp` persistence | `references/persistent-home.md` |
 | Manage secrets (Secret Manager + use-time fetch) | `references/secrets-and-security.md` |
 | Configure networking (public/private, IAP, egress) | `references/networking.md` |
@@ -83,7 +83,7 @@ gcloud workstations create my-station \
 
 This means:
 
-- `~/.claude/`, `~/.gemini/`, `~/.copilot/`, `~/.config/gh/`, `~/.npm/`, `~/.cargo/`, `~/.npm-global/` all persist
+- `~/.claude/`, `~/.antigravity/`, `~/.gemini/` (agy config lives under `~/.antigravity/` and `~/.gemini/antigravity-cli/`), `~/.copilot/`, `~/.config/gh/`, `~/.npm/`, `~/.cargo/`, `~/.npm-global/` all persist
 - Anything you `apt install` is gone after restart unless it's baked into the image
 - Build a custom image (`scripts/Dockerfile.ai-dev`) for everything that should survive
 
@@ -92,7 +92,7 @@ This means:
 | Tool | Recommended on GCP Workstation | Why |
 |---|---|---|
 | Claude Code | Vertex AI ADC (`CLAUDE_CODE_USE_VERTEX=1`) | Metadata server provides ADC; no key file; same region as Vertex |
-| Gemini CLI | Vertex AI ADC | Same. Set `GOOGLE_GENAI_USE_VERTEXAI=1`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` |
+| Antigravity CLI (agy) | Antigravity account login | agy authenticates via its own Antigravity account (config under `~/.antigravity/`), NOT Vertex ADC. TODO(agy): confirm agy install + auth on GCP Workstation |
 | GitHub Copilot CLI | Device flow with TCP tunnel fallback | OAuth opens a browser; use `gcloud workstations start-tcp-tunnel` to forward localhost to your laptop |
 | Codex CLI | OpenAI account login | No GCP integration; works on cloud VM with copy-paste device code |
 
@@ -139,6 +139,6 @@ See `references/cost-optimization.md` for detail.
 - `scripts/Dockerfile.ai-dev` — the actual Dockerfile (ready to `docker build`)
 - `scripts/create-workstation.sh` — idempotent lifecycle script
 - `assets/startup-script.sh` — workstation startup template with use-time secret fetch
-- `claude-code-cli`, `gemini-cli`, `gh-copilot-cli` — per-tool docs
+- `claude-code-cli`, `antigravity-cli`, `gh-copilot-cli` — per-tool docs
 - `docker-fundamentals`, `docker-security` — for Dockerfile review and hardening
 - `ubuntu-server-admin` — for OS-level tuning if you switch from code-oss to a base image

@@ -10,15 +10,15 @@ These are the cross-tool portability mistakes that bite even experienced skill a
 ---
 name: my-skill
 description: Use when ...
-allowed-tools: [Bash, Read]   # ❌ BREAKS GEMINI
-model: claude-opus            # ❌ BREAKS GEMINI
-tags: [api, rest]             # ❌ BREAKS GEMINI
+allowed-tools: [Bash, Read]   # ❌ BREAKS STRICT LOADERS
+model: claude-opus            # ❌ BREAKS STRICT LOADERS
+tags: [api, rest]             # ❌ BREAKS STRICT LOADERS
 ---
 ```
 
-**Symptom**: Skill works on Claude. On Gemini, `gemini skills list` doesn't show it. Trying to use it fails silently — the model never knows it exists.
+**Symptom**: Skill works on Claude. On a strict-loading tool, the skill listing doesn't show it. Trying to use it fails silently — the model never knows it exists.
 
-**Cause**: Gemini's hard rule (verbatim from local `skill-creator`): *"Do not include any other fields in YAML frontmatter."* Extra fields are silently rejected.
+**Cause**: The skill-creator convention's hard rule: *"Do not include any other fields in YAML frontmatter."* Extra fields are silently rejected by strict loaders.
 
 **Fix**:
 
@@ -41,7 +41,7 @@ name: my_cool_skill # ❌
 name: my.cool.skill # ❌
 ```
 
-**Symptom**: Skill rejected by validator. May appear to work in Claude (which is more lenient) but fail in Gemini.
+**Symptom**: Skill rejected by validator. May appear to work in Claude (which is more lenient) but fail in a strict-loading tool.
 
 **Cause**: All four tools require `^[a-z0-9-]+$`. Hyphens only.
 
@@ -78,9 +78,9 @@ See `agents-md-canonical.md` for the full pattern.
 
 **Mistake**: A SKILL.md with 800 lines of content all in the main body.
 
-**Symptom**: On Gemini, the body is truncated or rejected. On Claude, the body loads but consumes massive context budget. Cross-tool portability breaks.
+**Symptom**: On a strict-loading tool, the body is truncated or rejected. On Claude, the body loads but consumes massive context budget. Cross-tool portability breaks.
 
-**Cause**: Gemini's hard limit: `<500` lines per SKILL.md body. Claude is more lenient but still wastes context.
+**Cause**: The skill-creator hard limit: `<500` lines per SKILL.md body. Claude is more lenient but still wastes context.
 
 **Fix**: Use progressive disclosure:
 
@@ -97,23 +97,19 @@ The model loads SKILL.md first, then loads `references/<file>.md` only when need
 
 Rule of thumb: SKILL.md is the **navigation index**. Content lives in `references/`.
 
-## #5: Sharing one hooks file across Claude and Gemini
+## #5: Assuming hooks port to other CLIs
 
-**Mistake**:
+**Mistake**: Authoring hooks in Claude's `settings.json` and assuming another CLI (e.g. `agy`) will run them, or symlinking `settings.json` across tools.
 
 ```bash
-ln -sfn ~/.claude/settings.json ~/.gemini/settings.json
+ln -sfn ~/.claude/settings.json ~/.antigravity/settings.json   # ❌ unverified contract
 ```
 
-Or manually copy-paste the hooks block between the two files.
+**Symptom**: Hooks fire on Claude but the other tool ignores them (or errors). Hard to debug because there is no shared hooks contract.
 
-**Symptom**: Some hooks fire on one tool but not the other. Some fire twice. Some produce errors. Hard to debug because the schemas are similar but not identical.
+**Cause**: Hooks are a **Claude Code-native** mechanism. Only Claude's hooks system is verified. The retired Gemini CLI had `gemini hooks migrate`; that tool is gone, and **agy has no verified hooks system** (TODO(agy): verify equivalent).
 
-**Cause**: Schemas differ. Event names may differ. Matcher syntax may differ.
-
-**Fix**: Author hooks in Claude's `settings.json`. Run `gemini hooks migrate` once. Commit both files. Treat Gemini's as a generated artifact. Re-run migration after Claude-side edits.
-
-For portable hook **logic**, put it in standalone scripts that both tools' settings reference via `command:`. The script is portable; the inline definitions are not.
+**Fix**: Keep hook **logic** in standalone scripts that Claude's settings reference via `command:`. Run the hook on the Claude side. Do not assume any other CLI runs lifecycle hooks without verifying `agy help` first.
 
 See `hooks-portability.md`.
 
@@ -219,11 +215,11 @@ grep -oE 'references/[a-z0-9-]+\.md' "$SKILL_DIR/SKILL.md" \
 
 | Don't | Why |
 |---|---|
-| Add `allowed-tools` to frontmatter for "convenience" | Breaks Gemini. The whole skill becomes invisible there. |
+| Add `allowed-tools` to frontmatter for "convenience" | Breaks strict loaders. The whole skill becomes invisible there. |
 | Use uppercase or underscores in `name` | Rejected by validator |
 | Symlink skills to a non-existent Copilot skills directory | Copilot doesn't have one. Use AGENTS.md instead. |
-| Inline 1000 lines in SKILL.md | Gemini truncates; Claude wastes context |
-| Share `settings.json` between Claude and Gemini | Schemas differ subtly |
+| Inline 1000 lines in SKILL.md | Strict loaders truncate; Claude wastes context |
+| Share `settings.json` / hooks across tools | Hooks are Claude-native; agy's hooks contract is unverified |
 | Use tool-specific language in the body | Cross-model compat broken |
 | Skip the Codex symlink | Codex won't find the skill |
 | Vague description | Skill never triggers |

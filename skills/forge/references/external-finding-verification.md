@@ -4,7 +4,7 @@ Reference doc for forge Step 8b (Spec Review, Stage 1.5). S030-quickwins #37.
 
 ## Why this exists
 
-Codex and Gemini, when asked to adversarially review a forge design doc,
+Codex and agy, when asked to adversarially review a forge design doc,
 hallucinate findings at a meaningfully high rate. Two cases of record:
 
 - **DLP pilot (2026-04-09)**: Codex flagged 11 critical issues in a forge
@@ -30,7 +30,7 @@ report. Applies to ALL findings produced by external models, regardless of
 which model produced them:
 
 - Codex (`/codex:review`, `/codex:adversarial-review`, `codex exec` direct)
-- Gemini (`mcp__gemini-cli__ask-gemini`, bridge-mode Gemini analyst)
+- agy (`agy -p "..."` direct Bash call, bridge-mode agy analyst)
 - Any future model added to the forge multi-model pipeline
 
 It does NOT apply to Claude-internal findings — those run in the same
@@ -110,7 +110,7 @@ quotes attached is sufficient evidence; no design change required.
 
 ## Worked example: a real bug (illustrative)
 
-**Gemini finding (HIGH):**
+**agy finding (HIGH):**
 
 > The `claims.issue_claim()` function in `_meta/claims.py` calls
 > `purge_claims_for_wp()` BEFORE checking that all dependencies are at
@@ -149,7 +149,7 @@ consolidated review and let the user decide whether to fix.
   that it lies)
 - **Skipping verification because Codex sounds confident** (it always sounds
   confident; that's a stylistic feature, not evidence)
-- **Treating Gemini findings as more authoritative than Codex** (both
+- **Treating agy findings as more authoritative than Codex** (both
   hallucinate at similar rates; neither has earned a free pass)
 - **Discarding the model's findings entirely on first false positive** (the
   ~35% verified findings are still worth surfacing)

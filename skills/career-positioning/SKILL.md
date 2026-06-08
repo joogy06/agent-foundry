@@ -1,29 +1,13 @@
 ---
 name: career-positioning
-description: >
-  Use when the user needs to optimize a resume/CV, improve LinkedIn profile, build personal
-  brand, manage recruiter relationships, increase internal visibility, prepare for conference
-  speaking, or map their professional network. Part of the career-* skill family.
-triggers:
-  - resume
-  - CV
-  - LinkedIn
-  - personal brand
-  - recruiter
-  - headhunter
-  - job search
-  - visibility strategy
-  - networking
-  - thought leadership
-  - conference speaking
-  - internal visibility
+description: "Use when the user needs positioning strategy — what to emphasize on a resume/CV, LinkedIn profile and content strategy, personal brand narrative, recruiter relationships, internal visibility, conference speaking, or network mapping. Strategy and emphasis only - to WRITE or tailor the CV/cover-letter document itself use career-application-writer; to build online presence beyond LinkedIn (website, GitHub, social, newsletters, AI findability) use career-online-presence. Trigger on - position myself, CV strategy, what should my resume emphasize, LinkedIn profile, personal brand, recruiter, visibility, thought leadership. Part of the career-* skill family."
 ---
 
 # Career Positioning
 
-Child of `career-coach`. This skill handles all aspects of **packaging and presenting career evidence to external and internal audiences** — turning accomplishments into positioning assets that open doors.
+Child of `career-coach`. This skill handles **positioning strategy** — what to emphasize and how you're seen by external and internal audiences. It owns strategy and emphasis; the actual document and your off-platform presence live in sibling skills.
 
-Siblings: `career-coach` (parent — career strategy, promotion, negotiation, leadership), other `career-*` skills as they exist.
+Siblings: `career-coach` (parent), `career-application-writer` (writes the CV/letter), `career-online-presence` (website/GitHub/social/AI findability), other `career-*` skills.
 
 ---
 
@@ -32,22 +16,25 @@ Siblings: `career-coach` (parent — career strategy, promotion, negotiation, le
 | Need | Redirect to |
 |---|---|
 | Career strategy, promotion planning, performance reviews | `career-coach` |
-| Salary/compensation negotiation | `career-coach` |
-| Interview preparation, behavioural questions | `career-coach` |
-| Leadership development, managing up | `career-coach` |
-| Technical skill gap analysis | `career-coach` or domain-specific skill |
+| Salary/compensation negotiation | `career-coach` / `career-transition` |
+| Interview preparation, behavioural questions | `career-storytelling` |
+| Leadership development, managing up | `career-leadership` |
+| Technical competency gap analysis | `career-assessment` or domain-specific skill |
+| Building online presence beyond LinkedIn (website, GitHub, social, AI findability) | `career-online-presence` |
+| Writing or tailoring the CV / cover-letter document itself | `career-application-writer` |
 
-Use this skill when the deliverable is a **positioning asset** (CV, LinkedIn profile, brand narrative, visibility plan, recruiter brief, speaking proposal).
+Use this skill when the deliverable is **positioning strategy** (what to emphasize, brand narrative, LinkedIn strategy, visibility plan, recruiter approach, speaking strategy, network map).
 
 ---
 
 ## HARD RULES
 
 1. **Always read user profile first** — tailor every recommendation to their actual seniority, domain, and goals.
-2. **CV must lead with business outcomes, not technology names** — "Reduced manual processing by 73%" beats "Built Python automation."
+2. **Emphasize business outcomes, not technology names** — "reduced manual processing by 73%" beats "built Python automation." (Document construction of these bullets lives in `career-application-writer`.)
 3. **LinkedIn content must reinforce target positioning, not scatter across random topics.**
-4. **Never use generic advice** — everything is tailored to the finance/banking IT context.
-5. **Use "professional development" not "skills development."**
+4. **Apply the right vertical lens** — banking/finance dynamics when the user is in that world; generalize the principle otherwise (the worked examples here use banking).
+5. **PDF default for CVs** — PDF is the safe default for semantic ATS (the older "ATS can't read PDF" caution has largely reversed; see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). Document format details live in `career-application-writer`.
+6. **Use "professional development" / "competency", not "skills development"** for the user's growth.
 
 ---
 
@@ -61,97 +48,44 @@ Use this skill when the deliverable is a **positioning asset** (CV, LinkedIn pro
 
 ---
 
-## 1. Resume/CV Strategy for Banking IT
+## 1. CV / Résumé Strategy (what to emphasize)
 
-### Lead with Regulated Outcomes, Not Tools
+> **Generation lives in `career-application-writer`.** This section is the *strategic skeleton* — what to foreground. To actually write or tailor the document, route to the writer.
 
-Every bullet point should answer: *What business outcome did this produce in a regulated environment?*
+- **Lead with outcomes, not tools** — every bullet answers "what business outcome did this produce?" "Reduced manual processing by 73% with auditable exception handling" beats "built Python automation." Outcome before tool.
+- **Make scope legible** — team size (direct + dotted-line), budget, data/transaction scale, number of business lines, and the regulatory frameworks you operated within (banking worked example: MiFID II, Basel III/IV, BCBS 239, SOX, GDPR, PRA/FCA, DORA).
+- **Title + grade** — where banking grade and functional title differ, show both ("Vice President — Head of AI Engineering"); note equivalences across institutions.
+- **Emphasis maps to the scorecard** — foreground the competencies the target role actually evaluates against (semantic-ATS rewards concept alignment, not keyword repetition).
 
-- GOOD: "Reduced manual processing by 73%, embedded auditable exception handling across 4 business lines"
-- BAD: "Built automation using Python and Airflow"
-- GOOD: "Designed real-time fraud detection pipeline processing 2.4M transactions/day with <50ms latency, reducing false positives by 60%"
-- BAD: "Implemented ML model for fraud detection"
+### Semantic ATS (strategy summary)
 
-### Title and Grade
+Modern ATS uses semantic (vector-embedding) matching, not keyword counting — so keyword-stuffing *lowers* scores, and the real automated filter is the eligibility/knockout gate, not content scoring (see `market-snapshot-2026-06.md`). **For how matching works and how to align a document to it, see `career-application-writer`'s ATS section.**
 
-- Include **both banking grade AND functional title** if they differ. Example: "Vice President — Head of AI Engineering" or "Director (AVP equivalent) — Platform Engineering Lead."
-- If moving between banks, note grade equivalences where useful.
+### Digital-Footprint Consistency
 
-### Quantify Scope Ruthlessly
-
-Every role should make clear:
-- **Team size** managed or influenced (direct reports AND dotted-line)
-- **Budget** owned or influenced
-- **Transaction volume / data scale** touched
-- **Number of business lines** served
-- **Regulatory frameworks** operated within (MiFID II, Basel III, SOX, GDPR, PRA/FCA, OCC)
-
-### ATS Optimization
-
-- Extract keywords directly from target job descriptions and weave them naturally into achievement bullets.
-- Use standard section headers: Professional Experience, Education, Technical Skills, Certifications. Avoid creative headers that ATS cannot parse.
-- Do not use tables, columns, or graphics — they break most ATS parsers.
-
-### Format Rules
-
-| Level | Max Pages | Notes |
-|---|---|---|
-| VP and below | 2 pages | Tight, outcome-focused |
-| ED / SVP | 2-3 pages | More scope for strategic narrative |
-| MD / C-suite | 3 pages | Include board/committee/industry roles |
-
-Always reverse chronological. No functional or hybrid formats for banking.
-
-### Banking-Specific Sections to Consider
-
-- **Regulatory Exposure**: List frameworks you have operated within or delivered against (MiFID II, Basel III/IV, BCBS 239, SOX, GDPR, PRA/FCA supervisory expectations, DORA).
-- **Technology Leadership**: Platforms, architectures, and transformation programmes led — not just tools used.
-- **Stakeholder Management**: Name the functions you partner with (Trading, Risk, Compliance, Operations, Front Office, COO office) and the seniority level of your regular stakeholders.
+Your CV, LinkedIn, and public footprint are increasingly cross-checked by screening tools — titles, dates, and headline metrics must agree across all of them. Authoring the consistent documents lives in `career-application-writer`; building the off-platform footprint lives in `career-online-presence`. (Current screening figures: `market-snapshot-2026-06.md`.)
 
 ---
 
 ## 2. LinkedIn Optimization
 
-### Headline
+### How LinkedIn Ranks Content Now
 
-Your headline is a **value proposition**, not a job title.
+LinkedIn's feed and search appear to be driven by an LLM ranking engine ("360Brew", **LIKELY** — hedge this) over an Interest Graph rather than a simple chronological/engagement feed (see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). Practical implications:
 
-- GOOD: "AI/Automation Leader in Financial Services | Driving $XM+ Operational Efficiency"
-- BAD: "VP at Bank X"
-- GOOD: "Engineering Director | Building Resilient Trading Platforms for Tier-1 Banks"
-- BAD: "Technology Professional"
+- **Write in your own voice** — AI-generated posts appear to be de-rewarded. Author genuinely; if you draft with assistance, run a voice pass (see `~/.claude/skills/career-coach/references/ai-tells-catalog.md`). Never optimize against a detector — write to sound like you because that is what reads as credible.
+- **Saves and Sends are high-weight signals** — content people save or DM to a colleague outranks content that just gets a like. Write things worth keeping.
+- **Carousels (document posts) and newsletters are favored** formats — use them where the content fits.
+- **Profile ↔ posts topic consistency matters** — the Interest Graph reads your profile and your posting as one entity; keep them on the same few topics.
+- **AI people-search implications** — your profile copy is also read by AI answer engines resolving "who is <name>"; write it as the canonical statement of what you do (off-LinkedIn findability lives in `career-online-presence`).
 
-### About Section
+### Profile Sections
 
-This is a **strategic positioning document**, not a biography.
-
-- Open with the business problem you solve, not your career history.
-- Include 2-3 quantified impact statements.
-- Close with what you are looking for or interested in (if job-searching) or what you care about (if not).
-- Write in first person. Keep it under 2,000 characters.
-
-### Experience Section
-
-- Mirror your CV's outcome-focused bullets.
-- Each role: 3-5 bullets with clear, measurable outcomes.
-- "Led 45-person AI engineering team delivering $12M annual cost savings across 3 business lines" — not "Managed team."
-
-### Featured Section
-
-Pin your best evidence:
-- Published articles or blog posts
-- Conference presentations or recordings
-- Project case studies or summaries
-- Media mentions or podcast appearances
-
-### Recommendations
-
-- Target **8-12 recommendations** from diverse sources:
-  - Direct reports (shows you develop people)
-  - Peers (shows you collaborate)
-  - Managers (shows you deliver)
-  - Clients / business stakeholders (shows you create value)
-- Request specific recommendations ("Could you speak to the impact of the X programme?"), not generic ones.
+- **Headline** — a value proposition, not a job title. "Engineering Director | Building Resilient Trading Platforms for Tier-1 Banks", not "VP at Bank X".
+- **About** — a strategic positioning document, not a biography: open with the business problem you solve, include 2-3 quantified impact statements, close with what you want (if searching) or care about; first person, under 2,000 characters.
+- **Experience** — mirror your CV's outcome-focused bullets (3-5 per role, measurable). "Led 45-person AI engineering team delivering $12M annual savings across 3 business lines", not "Managed team."
+- **Featured** — pin your best evidence: published articles, conference recordings, case studies, media mentions.
+- **Recommendations** — target 8-12 from diverse sources (direct reports, peers, managers, business stakeholders); request *specific* ones ("Could you speak to the impact of the X programme?"), not generic.
 
 ### Content Strategy — 5 Durable Pillars
 
@@ -169,36 +103,12 @@ All LinkedIn content should map to one of these pillars:
 
 ## 3. Personal Brand Architecture
 
-### Target Narrative
+> **Boundary:** this section covers brand *strategy* (narrative, topic ownership). Building the off-platform surface that carries the brand — personal site, GitHub, newsletters, AI findability — lives in `career-online-presence`. Cadence figures here are a strategic guide; current platform-specific mechanics live in `career-online-presence` and the market snapshot.
 
-Define a single sentence that captures your professional identity:
-
-- TARGET: "Credible operator who makes AI safe, useful, and commercially meaningful in regulated finance."
-- NOT: "AI enthusiast" or "Technology leader" or "Passionate about innovation."
-
-The narrative must be **specific enough to be memorable** and **credible enough to withstand scrutiny**.
-
-### Topic Ownership
-
-Pick **2-3 specific topics** to own. Not broad categories — sharp angles:
-
-- NOT "AI" — YES "AI governance in regulated financial services"
-- NOT "Automation" — YES "Automating compliance workflows in real-time trading"
-- NOT "Leadership" — YES "Building high-performing engineering teams in banking's regulatory environment"
-
-### Content Cadence
-
-| Format | Frequency | Purpose |
-|---|---|---|
-| LinkedIn posts | 1-2 per week | Visibility, thought leadership, network engagement |
-| Long-form articles | 1 per month | Depth, credibility, searchability |
-| Speaking engagements | 2-4 per year | Authority, network expansion, brand reinforcement |
-
-### Engagement Rules
-
-- **Comment substantively** on others' posts — add insight, share experience, respectfully challenge. "Great post!" does nothing for your brand.
-- Engage with people you want to be associated with: industry leaders, regulators, senior practitioners.
-- Share and add commentary rather than just resharing silently.
+- **Target narrative** — one sentence that captures your professional identity; specific enough to be memorable and credible enough to withstand scrutiny. "Credible operator who makes AI safe, useful, and commercially meaningful in regulated finance" — not "AI enthusiast" / "passionate about innovation."
+- **Topic ownership** — pick 2-3 *sharp* topics, not broad categories: "AI governance in regulated financial services", not "AI".
+- **Cadence (strategic guide)** — LinkedIn posts ~1-2/week; long-form ~1/month; speaking ~2-4/year. Consistency over volume.
+- **Engagement** — comment substantively (add insight, respectfully challenge — "Great post!" does nothing); engage with people you want to be associated with; add commentary rather than resharing silently.
 
 ---
 
@@ -228,6 +138,10 @@ Pick **2-3 specific topics** to own. Not broad categories — sharp angles:
 | Contingency | VP, Director | Recruiter paid only on placement. Multiple firms may work the same role. Speed matters. | Be responsive. You are one of many candidates. |
 | Retained | ED, MD, C-suite | Firm paid upfront to conduct exclusive search. Thorough, slower process. | Relationship-driven. They come to you. Build trust over years. |
 
+> **The named firms are a banking worked example.** The general principle — build relationships with 3–5 specialist recruiters in *your* sector before you need them — applies everywhere.
+
+> **Apply-early under the flood.** Application volume is at record highs and cold-application response is very low; applying early in a posting's window measurably helps, and referrals + direct outreach beat the cold-apply channel by a wide margin (see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`; full job-search strategy in `career-transition`).
+
 ### Relationship Rules
 
 1. **Build relationships BEFORE you need them.** Connect with 3-5 specialists in finance IT recruitment now, while you are not looking.
@@ -241,56 +155,20 @@ Pick **2-3 specific topics** to own. Not broad categories — sharp angles:
 
 ## 5. Internal Visibility Strategy
 
-### Cross-Functional Exposure
-
-- **Volunteer for cross-functional initiatives.** Every cross-silo project is reputation-building. Steering committees, working groups, transformation programmes — say yes.
-- **Present to other departments.** Offer to brief Risk, Compliance, Operations, or Front Office on what your team does and why it matters. Bridge-building is rare and valued.
-- **Join or create communities of practice**: AI/ML forums, architecture review boards, automation guilds, innovation councils.
-
-### Internal Content
-
-- **Monthly team updates** — visible to leadership, showing progress and impact.
-- **Conference takeaways** — attend an external event, write up 3 key insights for internal distribution.
-- **Knowledge-sharing sessions** — lunch-and-learns, tech talks, demo days.
-
-### Relationship Architecture
-
-- **Build relationships 2 levels up** — your skip-level and their peers. These are the people who discuss your promotion in calibration.
-- **Build relationships 2 levels down** — shows you develop talent and are connected to the ground truth.
-- **Become a cultural broker** — the person who connects IT and business silos. This is disproportionately valued in banking where silos are deep.
+- **Cross-functional exposure** — say yes to cross-silo projects (steering committees, working groups, transformation programmes); offer to brief Risk / Compliance / Operations / Front Office; join or create communities of practice. Bridge-building is rare and valued.
+- **Internal content** — monthly team updates visible to leadership; conference takeaways written up for internal distribution; knowledge-sharing sessions (lunch-and-learns, tech talks, demo days).
+- **Relationship architecture** — build 2 levels up (skip-level + peers, who discuss your promotion in calibration) and 2 levels down (shows you develop talent); become the cultural broker connecting IT and business silos (disproportionately valued in banking).
 
 ---
 
 ## 6. Conference Speaking & Thought Leadership
 
-### Progression Path
+> **Scope = positioning only** (which stages to target, how to progress, how to pitch). Drafting the article/abstract/talk → `content-writer` (+ `human-voice-writing` for voice). Choosing/running distribution channels (newsletter, YouTube, social) → `career-online-presence`.
 
-1. **Internal**: Tech forums, team demos, lunch-and-learns, internal innovation showcases.
-2. **Semi-external**: Vendor roundtables, private industry dinners, invite-only practitioner groups.
-3. **External**: Meetups, webinars, podcasts, panel discussions.
-4. **Keynote-track**: Industry conferences, published research, advisory boards.
-
-### Write First, Speak Second
-
-Published material (articles, blog posts, whitepapers) is the best conference application. Conference organisers want speakers who have **demonstrated they can articulate ideas clearly**. Build a written portfolio before pitching to speak.
-
-### Key Finance Technology Conferences
-
-- **Sibos** (SWIFT) — global financial services, payments, securities
-- **Money20/20** — fintech, payments, banking innovation
-- **Innovate Finance** — UK fintech ecosystem
-- **Finextra** — banking technology news and events
-- **Risk.net** — risk management, regulation, quantitative finance
-- **TradeTech** — trading technology and electronic markets
-- **AI & Big Data Expo** — cross-industry but strong financial services track
-
-### Proposal Tips
-
-Propose **specific outcomes**, not broad topics:
-- GOOD: "How We Reduced False Positive Fraud Alerts by 60% Using ML Automation"
-- BAD: "AI in Banking"
-- GOOD: "Building a Regulatory-Compliant LLM Deployment Pipeline: Lessons from a Tier-1 Bank"
-- BAD: "Using LLMs in Financial Services"
+- **Progression path** — internal (tech forums, demos) → semi-external (vendor roundtables, practitioner groups) → external (meetups, webinars, podcasts, panels) → keynote-track (industry conferences, published research, advisory boards).
+- **Write first, speak second** — published material is the best conference application; organisers want speakers who have demonstrably articulated ideas clearly. Build the written portfolio before pitching.
+- **Key finance-tech conferences (banking worked example)** — Sibos, Money20/20, Innovate Finance, Finextra, Risk.net, TradeTech, AI & Big Data Expo.
+- **Proposal tips** — propose *specific outcomes*, not broad topics: "How We Cut False-Positive Fraud Alerts by 60% Using ML", not "AI in Banking".
 
 ---
 
@@ -344,3 +222,5 @@ Depending on the positioning need, this skill produces:
 | Using the same CV for every application | Generic CVs get filtered out; each role has different keyword triggers and priority signals | Tailor the top third of your CV (summary, key achievements) for each target role or role category |
 | Networking only when job hunting | Relationships take months to warm up — cold outreach during active search feels transactional | Maintain your Three-Circle network year-round with quarterly touchpoints |
 | Listing responsibilities instead of achievements on CV | Calibration committees and hiring managers scan for impact, not job descriptions | Use STAR/SOAR format: Situation, Task/Opportunity, Action, Result with quantified metrics |
+| Keyword-stuffing the CV to game semantic ATS | Semantic ATS *lowers* scores for keyword repetition — stuffing now hurts, not helps | Express each concept + natural synonyms once; map to the scorecard (generation in `career-application-writer`) |
+| CV, LinkedIn, and public footprint that disagree on titles/dates/metrics | Screening tools cross-check documents; inconsistency reads as a red flag | Reconcile all surfaces before publishing (consistency owned by `career-application-writer` + `career-online-presence`) |

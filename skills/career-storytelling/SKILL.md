@@ -21,21 +21,28 @@ triggers:
 Child of `career-coach`. This skill focuses exclusively on converting raw experience into structured, compelling evidence — whether spoken (interviews, presentations) or written (CV bullets, self-assessments, promotion documents). It does NOT cover job search strategy, salary negotiation, or career path planning.
 
 **Sibling cross-references:**
-- For career path planning, progression strategy, and promotion timing: invoke `career-coach` directly
-- For CV/resume structure, LinkedIn optimization, and personal branding: invoke `career-coach` (or a future `career-branding` sibling if available)
-- For salary negotiation, offer evaluation, and compensation strategy: invoke `career-coach`
+- Career path planning, progression strategy, promotion timing → `career-planning`
+- Positioning strategy, LinkedIn profile, personal brand → `career-positioning`
+- Salary negotiation, offer evaluation, job-search strategy → `career-transition`
+- Leadership development, managing up → `career-leadership`
+- Self-assessment / direction → `career-assessment`
+
+> **Boundary:** storytelling supplies the raw quantified stories (the achievement bank); `career-application-writer` assembles them into the CV / cover-letter document.
 
 ---
 
 ## When NOT to Use This Skill
 
-| If the user needs...                        | Redirect to...         |
-|---------------------------------------------|------------------------|
-| Career path planning or progression strategy | `career-coach`        |
-| Salary/compensation negotiation              | `career-coach`        |
-| Job search strategy or recruiter engagement  | `career-coach`        |
-| LinkedIn profile optimization                | `career-coach`        |
-| Leadership development or managing up        | `career-coach`        |
+| If the user needs...                        | Redirect to...               |
+|---------------------------------------------|------------------------------|
+| Career path planning or progression strategy | `career-planning`           |
+| Salary/compensation negotiation              | `career-transition`         |
+| Job search strategy or recruiter engagement  | `career-transition`         |
+| LinkedIn profile / positioning strategy      | `career-positioning`        |
+| Leadership development or managing up        | `career-leadership`         |
+| Self-assessment, "where am I?"               | `career-assessment`         |
+| **Writing/tailoring the CV or cover letter** | `career-application-writer`  |
+| **Building online presence / findability**   | `career-online-presence`     |
 
 ---
 
@@ -105,6 +112,8 @@ When storytelling for banking roles, always try to include at least two of:
 
 A personal library of 15-20 achievement stories, organized by competency, ready to deploy at a moment's notice.
 
+> **The bank is your antidote to generic-slop perception.** Recruiters increasingly perceive AI-generated, generic applications and answers (see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). The defense is concrete, verifiable, *yours-only* detail — the exact number, the specific constraint, the real decision. The STAR bank is where that lived specificity lives; it is also the evidence source `career-application-writer` draws on. Keep it true and keep it specific.
+
 ### Competency Categories for Banking IT
 Organize stories across these categories (aim for 2-3 stories per category):
 1. **Technical Leadership** — architecture decisions, platform builds, tech strategy
@@ -115,6 +124,9 @@ Organize stories across these categories (aim for 2-3 stories per category):
 6. **Regulatory Engagement** — working with compliance, audit responses, regulatory change programs
 7. **Cost Optimization** — budget management, vendor negotiation, efficiency programs
 8. **Crisis Management** — incident command, production outages, business continuity
+
+### Generic (non-banking) categories
+The same structure generalizes to any sector — pick the 6-8 competencies your target roles evaluate. A generalist set: Technical Leadership, Stakeholder Management, Delivery, Innovation, Team Building, Customer/User Impact, Cost/Efficiency, Incident/Crisis. (Banking is the worked example above; the principle — 2-3 true, quantified stories per competency — is universal.)
 
 ### Maintenance Cadence
 - **Update monthly**: Add new achievements as they happen. If you wait until review season, you will forget critical details.
@@ -222,14 +234,40 @@ Common banking case study themes:
 
 ---
 
+## Framework 7: AI-Interview & One-Way-Screen Prep
+
+AI / one-way video interviews have risen sharply and agentic screeners now sit early in many funnels (qualitative trend; figures in `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). Preparing your STAR delivery for a machine-mediated first round:
+
+- **State your numbers explicitly and verbally.** A one-way screen can't read your CV's formatting — say "we cut processing from four hours to thirty minutes" out loud, in the answer.
+- **Structured, self-contained 60–90s answers.** Treat each prompt as a standalone STAR; don't rely on follow-up questions that a one-way format won't ask.
+- **Natural delivery.** A human reviews the shortlist — rehearsed-robotic reads poorly. Clear, calm, specific beats performatively polished.
+- **One prompt = one complete STAR.** Open with the situation, land the quantified result; don't trail off.
+
+This is **clear-communication** guidance, not gaming — the goal is to be understood accurately by a constrained format, never to stuff keywords or manipulate a score.
+
+**Candidate-side ethics (integrity).** Practicing *with* AI is fine and encouraged. **Live AI-ghosting of interview answers** (reading model-generated answers in a live or one-way interview) is a misrepresentation risk — your consistency duty extends to your live answers matching your documents and your real experience. Rehearse with AI; answer as yourself.
+
+---
+
+## Framework 8: Work-Sample & Live-Assessment Era
+
+Skills-based hiring and live, proctored work-samples are increasingly replacing unsupervised take-homes (qualitative trend; see `market-snapshot-2026-06.md`). *(Implementer note: "skills-based hiring" is an industry term of art, quoted — not the family's competency usage.)*
+
+- **Prep = rehearse doing the work live**, not memorizing answers. If the assessment is a live design or coding exercise, practice the actual activity under time and observation.
+- **Your achievement bank is the source of reproducible patterns** — the approaches that worked before are what you reach for live. Mine it for the *method*, not a script.
+- **Narrate your reasoning** as you work; assessors score how you think, not just the final artifact.
+
+---
+
 ## HARD RULES
 
 1. **Always read the user profile first** — Understand their current role, level, industry, and goals before crafting any story.
-2. **Never fabricate or exaggerate** — Framing and emphasis only. Every claim must be truthful. Help the user find the best true version of their story.
-3. **Always quantify** — "Led a team" is unacceptable. "Led a 12-person team delivering $2.3M in annual savings" is the standard.
-4. **For banking: frame in committee language** — Revenue, risk, controls, compliance. These are the words that move calibration committees.
-5. **Use "professional development" not "skills development"** — Aligns with corporate HR language in banking.
-6. **When helping with interview prep, always ask what level/grade the target role is** — A VP behavioral answer is structured differently from an AVP answer.
+2. **No detector-gaming.** Detectors are unreliable and biased (see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`); never coach toward "passing" or "fooling" an AI screen or detector. The goal is truthful, specific, human storytelling that reads as credible.
+3. **Never fabricate or exaggerate** — Framing and emphasis only. Every claim must be truthful. Help the user find the best true version of their story.
+4. **Always quantify** — "Led a team" is unacceptable. "Led a 12-person team delivering $2.3M in annual savings" is the standard.
+5. **For banking: frame in committee language** — Revenue, risk, controls, compliance. These are the words that move calibration committees.
+6. **Use "professional development" not "skills development"** — Aligns with corporate HR language in banking.
+7. **When helping with interview prep, always ask what level/grade the target role is** — A VP behavioral answer is structured differently from an AVP answer.
 
 ---
 
@@ -242,3 +280,4 @@ Common banking case study themes:
 | Preparing stories about what the team did without personal contribution | Panel interviews probe for individual impact — "we" answers get scored as unclear contribution | Use "I led/designed/decided/escalated" for your specific actions; acknowledge team context but be precise about your role |
 | Fabricating or inflating achievements | One inconsistency under probing destroys credibility for the entire interview | Frame and emphasize truthfully — find the best true version of the story, never a fictional one |
 | Skipping the Lessons Learned in STAR-L format | Missing the reflection component signals you execute but do not grow from experience | Always close with what you learned and how you applied it subsequently — this separates VP-level answers from AVP |
+| Submitting AI-drafted answers or CV bullets verbatim | Reads as generic; recruiters perceive it, and live AI-ghosting is a misrepresentation risk | Use AI to rehearse, then deliver in your own voice with your own true specifics (Framework 7 ethics) |

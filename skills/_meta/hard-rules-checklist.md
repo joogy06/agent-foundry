@@ -38,7 +38,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 
 ### DESIGN PHASE (forge)
 
-- [ ] **Codex + Gemini in parallel for MEDIUM/COMPLEX** — ALWAYS run Codex AND Gemini alongside Claude agents. Three models, not one. If either is unavailable, note the gap explicitly. Check Gemini via `mcp__gemini-cli__ping()`.
+- [ ] **Codex + Antigravity (agy) in parallel for MEDIUM/COMPLEX** — ALWAYS run Codex AND agy alongside Claude agents. Three models, not one. If either is unavailable, note the gap explicitly. Check agy availability via `command -v agy` (then a `agy -p "ping"` smoke call); agy returns plain text on stdout, not structured fields.
 - [ ] **Never code before design approval** — no implementation until design is presented and user approves.
 - [ ] **Performance expectations** — if task touches endpoints/queries/UI, ask about concurrency, latency, hot-path.
 - [ ] **Gap detection** — check if needed skills exist before design exploration. Follow gap-detection.md protocol.
@@ -98,15 +98,15 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Always mktemp -d** — never hardcode /tmp/ paths. `$(mktemp -d /tmp/<prefix>-XXXXXXXXXX)`.
 - [ ] **Session-scoped** — each invocation gets its own temp dir. No cross-session collisions.
 
-### CROSS-MODEL (Codex + Gemini)
+### CROSS-MODEL (Codex + Antigravity (agy))
 
 - [ ] **env-adoption session state** — verify `~/.claude/state/inventory.json` exists and is <24h old. If missing or stale, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` once. Read capabilities from session state, not inline probing.
 - [ ] **Timeout all codex exec** — wrap with `timeout 600`. Fallback on timeout.
 - [ ] **Escalation terminates** — Claude 2x → Codex 1x → user. Never loop.
 - [ ] **Session-scoped Codex availability** — read `tools.codex.installed` from inventory. Don't re-probe every invocation.
-- [ ] **Gemini for COMPLEX tasks** — MEDIUM = Codex only. COMPLEX = Codex + Gemini. Don't use Gemini for simple tasks (quota waste).
-- [ ] **Gemini availability check** — read `capabilities.gemini_analyst` from session state. Fallback to Codex-only if false.
-- [ ] **Gemini 1M context** — use Gemini for large file analysis, codebase-wide reviews, and research where context size matters. Codex for focused code review and challenger work.
+- [ ] **agy for COMPLEX tasks** — MEDIUM = Codex only. COMPLEX = Codex + agy. Don't use agy for simple tasks (quota waste).
+- [ ] **agy availability check** — read `tools.agy.installed` (or the equivalent capability flag) from session state. Fallback to Codex-only if false.
+- [ ] **agy large-context analysis** — use agy for large file analysis, codebase-wide reviews, and research where context size matters. Codex for focused code review and challenger work. agy is invoked headless via `agy -p "..."` (plain-text stdout; no `-m`/model flag, no env-key prefix — see the `antigravity-cli` skill).
 
 ---
 

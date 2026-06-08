@@ -1,6 +1,6 @@
 ---
 name: env-adoption
-description: Use when checking tool availability (Codex, Gemini, Copilot, gh, Docker, bridge), determining environment tier, reading cached inventory or session state, setting up missing tools, or when any skill needs to know what capabilities are available in the current environment.
+description: Use when checking tool availability (Codex, Antigravity CLI (agy), Copilot, gh, Docker, bridge), determining environment tier, reading cached inventory or session state, setting up missing tools, or when any skill needs to know what capabilities are available in the current environment.
 ---
 
 # Environment Adoption — Centralized Capability Registry
@@ -12,7 +12,7 @@ Single source of truth for tool detection, version tracking, and capability rout
 ## When to Use
 
 - Session start — probe environment, report tier
-- Before delegating to Codex/Gemini — check `tools.codex.installed` / `capabilities.gemini_analyst`
+- Before delegating to Codex/agy — check `tools.codex.installed` / `capabilities.agy_analyst`
 - Before bridge routing — read `session.bridge_mode`
 - When a skill needs to branch on tool availability — use `get` subcommand
 - After installing a new tool — run `probe.sh check --force` to update inventory
@@ -53,7 +53,7 @@ probe.sh get tier_label               # minimal, standard, full
 probe.sh get session.bridge_mode           # local/bridge/unknown
 probe.sh get capabilities.triple_model     # true/false
 probe.sh get capabilities.codex_challenger # true/false
-probe.sh get capabilities.gemini_analyst   # true/false
+probe.sh get capabilities.agy_analyst      # true/false
 ```
 
 ## Tier Model
@@ -61,7 +61,7 @@ probe.sh get capabilities.gemini_analyst   # true/false
 | Tier | Label | Requirements | What works |
 |------|-------|-------------|------------|
 | 0 | **minimal** | git + python3 | All skills as reference, wiki agent |
-| 1 | **standard** | + gh + codex + gemini | forge/bob/alf with multi-model reviews |
+| 1 | **standard** | + gh + codex + agy | forge/bob/alf with multi-model reviews |
 | 2 | **full** | + copilot + docker + bridge | Everything incl. bridge fallback, containers |
 
 ## State Files

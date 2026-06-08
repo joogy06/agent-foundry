@@ -369,9 +369,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--claim-uuid", required=True)
+    parser.add_argument("--claim-uuid", required=False, default=None,
+                        help="bob-issued claim UUID; REQUIRED unless --standalone")
     parser.add_argument("--workspace-tree-hash", required=True,
                         help="40-hex git write-tree hash")
+    # --- code-comprehension standalone mode (CB4: claims structurally impossible) ---
+    # In --standalone the claim is NOT required, the HeartbeatThread is NEVER
+    # constructed, and transition-request emission is UNREACHABLE. Additive: the
+    # normal bob-driven path is byte-identical (no --standalone => unchanged).
+    parser.add_argument("--standalone", action="store_true",
+                        help="claimless read-only mode for code-comprehension; "
+                             "no claim required, no heartbeat thread, no transition request")
+    parser.add_argument("--contract-map-path", default=None,
+                        help="path to the contract-map (default progress/contract-map.yaml); "
+                             "the literal 'none' means NO contract map (clean run). "
+                             "Fallback to progress/contract-map.yaml when 'none' is PROHIBITED.")
+    parser.add_argument("--static-jsonl-path", default=None,
+                        help="explicit static.jsonl path (standalone runs locate it under "
+                             "a configurable output root, not .wiring/runs/<id>/)")
     parser.add_argument("--components", required=True,
                         help="comma-separated component ids")
     parser.add_argument("--model-id", default="claude-opus-4-7")
@@ -398,15 +413,40 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stderr.write(f"ENV_ERROR: project_root not a directory: {project_root}\n")
         return 3
 
-    contract_map_path = project_root / "progress" / "contract-map.yaml"
-    if not contract_map_path.is_file():
-        sys.stderr.write(f"ENV_ERROR: contract-map not found at {contract_map_path}\n")
+    # Claim is REQUIRED unless --standalone (CB4 structural guard: a standalone run
+    # cannot heartbeat or emit a transition request, so a claim is meaningless there).
+    if not args.standalone and not args.claim_uuid:
+        sys.stderr.write("ENV_ERROR: --claim-uuid is required unless --standalone\n")
         return 3
-    contract_map = _load_yaml(contract_map_path)
 
-    static_jsonl = (
-        project_root / ".wiring" / "runs" / args.run_id / "static.jsonl"
-    )
+    # Resolve the contract map. --contract-map-path semantics:
+    #   (unset)  → progress/contract-map.yaml (default, byte-identical to old behavior)
+    #   'none'   → NO contract map (clean run); fallback to progress/ is PROHIBITED
+    #   <PATH>   → that exact path
+    cmp_arg = args.contract_map_path
+    if cmp_arg is None:
+        contract_map_path = project_root / "progress" / "contract-map.yaml"
+        if not contract_map_path.is_file():
+            sys.stderr.write(f"ENV_ERROR: contract-map not found at {contract_map_path}\n")
+            return 3
+        contract_map = _load_yaml(contract_map_path)
+    elif cmp_arg == "none":
+        # Clean run — no contract map. Components must be addressable some other way
+        # (e.g. a synthetic map passed explicitly). Fallback to progress/ is prohibited.
+        contract_map = {"components": []}
+    else:
+        contract_map_path = Path(cmp_arg)
+        if not contract_map_path.is_file():
+            sys.stderr.write(f"ENV_ERROR: contract-map not found at {contract_map_path}\n")
+            return 3
+        contract_map = _load_yaml(contract_map_path)
+
+    if args.static_jsonl_path:
+        static_jsonl = Path(args.static_jsonl_path)
+    else:
+        static_jsonl = (
+            project_root / ".wiring" / "runs" / args.run_id / "static.jsonl"
+        )
     # static.jsonl may not exist on first run if evo has not invoked
     # wiring-extract-static yet. We continue with empty edges; the
     # extraction will be lower-quality but not crash.
@@ -426,9 +466,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         backend = llm_call.default_backend()
 
-    # Heartbeat
+    # Heartbeat — in --standalone mode the HeartbeatThread is NEVER constructed
+    # (structural CB4 guard, not --no-heartbeat sugar: there is no object that could
+    # touch a claim file). The pipeline path is byte-identical when --standalone is off.
     heartbeat: Optional[HeartbeatThread] = None
-    if not args.no_heartbeat:
+    if not args.standalone and not args.no_heartbeat:
         claims_module = Path.home() / ".claude" / "skills" / "_meta" / "claims.py"
         if not claims_module.is_file():
             claims_module = (
@@ -474,7 +516,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         manifest_mod.write_manifest(project_root, args.run_id, manifest)
 
-        if not args.no_transition_request:
+        # Transition-request emission is UNREACHABLE in --standalone mode (CB4: a
+        # claimless run must be provably unable to drive a real ledger transition).
+        # The standalone guard short-circuits BEFORE any .ledger/requests/ write.
+        if not args.standalone and not args.no_transition_request:
             emit_transition_request(
                 project_root,
                 claim_uuid=args.claim_uuid,

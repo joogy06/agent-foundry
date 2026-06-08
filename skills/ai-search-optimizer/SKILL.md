@@ -9,6 +9,8 @@ description: Use when creating content, updating schema markup, configuring prod
 
 Be the answer AI gives, not just a result it lists. AI search platforms synthesise answers and cite sources — your content must be crawlable, extractable, authoritative, and fresh. This skill covers **HOW** AI finds and recommends your products. It does NOT cover human conversion psychology (see `conversion-psychology`) or page structure (see `ecommerce-growth`).
 
+> **Boundary:** product / page AI visibility → here; a *person's* AI findability (how ChatGPT/Perplexity/Gemini answer "who is <name>") → `career-online-presence`.
+
 ## Top 5 Essentials
 
 1. **Allow AI search bots, block AI training bots** in robots.txt

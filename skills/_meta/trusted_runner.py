@@ -49,6 +49,12 @@ SANITIZED_ENV_KEYS = (
     "PYTHONPATH", "VIRTUAL_ENV", "NODE_PATH", "PYTEST_CURRENT_TEST",
 )
 
+# S048 / #116 R-B1 — the env-adoption inventory the tier decision is stamped
+# from. The bundle records the inventory_tier + inventory_hash so a sub-tier
+# host's sanctioned tier-skip is reproducible from the hash (and R6 reads the
+# stamp from the bundle, staying bundle-only at transition time).
+DEFAULT_INVENTORY_PATH = Path.home() / ".claude" / "state" / "inventory.json"
+
 
 # ---------------------------------------------------------------------------
 # Fail-open claude_observe loader (for bundle_write rollback emission)
@@ -173,6 +179,104 @@ def canonical_json(obj: Any) -> str:
 
 def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# S048 / #116 R-B1 — tier-decision stamping (the bundle carries the signal;
+# R6 stays bundle-only)
+# ---------------------------------------------------------------------------
+#
+# A tier-gated component legitimately produces an all-skipped/empty suite below
+# its required_tier ("without penalty") and VERIFIES today. The naive
+# GREEN-needs->=1-passed rule would false-block it on sub-tier hosts with a
+# non-converging rerun loop. Fix: the trusted runner STAMPS the tier decision
+# into the bundle so the deterministic arm (deterministic_arm.classify_bundle_
+# evidence) can grant GREEN-by-sanctioned-skip — reading ONLY the hash-addressed
+# bundle (no new test-plan dependency at transition time; the sanction is
+# hash-bound into the evidence).
+#
+# Stamp shape:
+#   bundle["tier_decision"] = {"inventory_tier": <int>, "inventory_hash": <hex>}
+#   per-test: result["tests"][i]["required_tier"]       (echoed from bob's map)
+#             result["tests"][i]["sanctioned_tier_skip"] = True
+#                 iff the test was skipped AND required_tier > inventory_tier
+#
+# `required_tiers` is a {nodeid: required_tier} map bob derives from the FROZEN
+# test plan (test_plan_schema.requirements[].required_tier) and passes in. The
+# runner does not parse the plan itself — it only applies the map to the test
+# outcomes it actually observed. Reproducible from inventory_hash + the map.
+
+
+def inventory_tier_and_hash(
+    inventory_path: Optional[Path] = None,
+) -> Tuple[Optional[int], Optional[str]]:
+    """Return (tier, sha256-hex) of the env-adoption inventory.
+
+    Reads the inventory.json bytes, hashes them (so the tier decision is
+    reproducible), and extracts the integer `tier`. Returns (None, None) on a
+    missing/unreadable/malformed inventory — the caller stamps a None tier and
+    NO sanction is granted (fail-safe: an unknowable tier never sanctions a
+    skip, so it falls through to INDETERMINATE, never a false GREEN).
+    """
+    path = Path(inventory_path) if inventory_path is not None else DEFAULT_INVENTORY_PATH
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None, None
+    inv_hash = hashlib.sha256(raw).hexdigest()
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, inv_hash
+    tier = doc.get("tier") if isinstance(doc, dict) else None
+    if not isinstance(tier, int):
+        return None, inv_hash
+    return tier, inv_hash
+
+
+def stamp_tier_decision(
+    bundle: Dict[str, Any],
+    required_tiers: Optional[Dict[str, int]] = None,
+    *,
+    inventory_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Stamp the bundle-level `tier_decision` + per-test `sanctioned_tier_skip`.
+
+    MUST be called BEFORE bundle_hash is computed so the sanction is hash-bound
+    into the evidence. Mutates and returns `bundle`.
+
+    A per-test record gets `sanctioned_tier_skip: True` iff:
+      - its outcome is "skipped" (it did not run), AND
+      - its required_tier (from `required_tiers[nodeid]`) > inventory_tier.
+    "Should-have-run-but-didn't" (a test whose tier IS met but is skipped, or a
+    skip with no required_tier mapping) gets NO sanction stamp -> the
+    deterministic arm classifies it INDETERMINATE/veto (R-B1).
+    """
+    inv_tier, inv_hash = inventory_tier_and_hash(inventory_path)
+    bundle["tier_decision"] = {
+        "inventory_tier": inv_tier,
+        "inventory_hash": inv_hash,
+    }
+    req = required_tiers or {}
+    for res in bundle.get("results", []):
+        if not isinstance(res, dict):
+            continue
+        for t in res.get("tests", []) or []:
+            if not isinstance(t, dict):
+                continue
+            nodeid = t.get("nodeid")
+            rt = req.get(nodeid) if isinstance(nodeid, str) else None
+            if rt is not None:
+                t["required_tier"] = rt
+            # Sanction ONLY a genuine skip whose required tier exceeds the host.
+            if (
+                t.get("outcome") == "skipped"
+                and isinstance(rt, int)
+                and isinstance(inv_tier, int)
+                and rt > inv_tier
+            ):
+                t["sanctioned_tier_skip"] = True
+    return bundle
 
 
 # ---------------------------------------------------------------------------
@@ -989,11 +1093,22 @@ def run_trusted_test_suite(
     test_paths: List[Path],
     runner: str = "pytest",
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    *,
+    required_tiers: Optional[Dict[str, int]] = None,
+    inventory_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Bob runs the test runner directly. Skills NEVER call this.
 
     Returns a sanitized audit bundle tagged `produced_by: bob-trusted-runner`.
     The bundle is what audit_spawn.py consumes — never raw skill stdout.
+
+    S048 / #116 R-B1: when `required_tiers` (a {nodeid: required_tier} map bob
+    derives from the frozen test plan) is supplied, the bundle is stamped with a
+    `tier_decision` block + per-test `sanctioned_tier_skip` BEFORE bundle_hash is
+    computed, so the deterministic verification arm can grant GREEN-by-sanctioned-
+    skip on sub-tier hosts without false-blocking. The stamp is hash-bound into
+    the evidence (reproducible from inventory_hash). Default (no map) preserves
+    the exact prior bundle shape — additive and back-compatible.
     """
     bundle: Dict[str, Any] = {
         "component_id": component_id,
@@ -1016,6 +1131,12 @@ def run_trusted_test_suite(
                 "failed_tests": [{"nodeid": "?", "outcome": f"unknown_runner:{runner}"}],
             }
         bundle["results"].append(res)
+    # R-B1: stamp the tier decision BEFORE hashing so the sanction is hash-bound.
+    # Only stamp when bob actually supplies a tier map (keeps the default bundle
+    # shape byte-identical for callers that don't pass one — the hash is computed
+    # over whatever the bundle then contains, exactly as before).
+    if required_tiers is not None:
+        stamp_tier_decision(bundle, required_tiers, inventory_path=inventory_path)
     bundle["bundle_hash"] = sha256_hex(canonical_json(bundle))
     return bundle
 

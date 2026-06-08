@@ -6,15 +6,21 @@ Implements G1 (contract map exists, signed, bound to ledger),
 G2 (schema validation V1-V15 + semantic type registry + technical closed list),
 G3 (bob-owned leased claim verification — delegates to claims.py).
 
+Gates: G1, G2, G3, G4, G_V, G_XR, G_SCOPE, G_CONTRACT_SCOPE, G_DEP_CURRENCY,
+G_INTENT_MAP_FRESH, G_SECRETS_SCAN, G_SECURE, G_SECURITY, G_CLASSIFY, G_IDENTITY.
+
 Exit codes:
     0 = pass
     2 = fail (gate violation)
     3 = environmental error (file missing, parse error not attributable to a violation)
+        — for G_CLASSIFY, 3 = ESCALATE (ambiguous classification band)
 
 Usage:
     python -m gates G1 <design_dir> [--no-ledger-binding]
     python -m gates G2 <contract-map-path> [--project-root <dir>]
     python -m gates G3 <wp_id> <invoking_skill> [--project-root <dir>]
+    python -m gates G_CLASSIFY <project_root> [--design-doc <path>]
+        [--asserted N/A|provided] [--files-from <list>] [--verify-diff]
 
 This module is invoked from bash via:
     python3 ~/.claude/skills/_meta/gates.py G1 .
@@ -995,6 +1001,70 @@ def _load_claude_observe_for_gates():
 claude_observe = _load_claude_observe_for_gates()
 
 
+# ---------------------------------------------------------------------------
+# Efficacy-telemetry gate-run denominator hook (S039 WP1).
+#
+# The ONLY new write into the gate path. `_bump_gate_run` fires PRE-dispatch in
+# main() (before any sys.exit); `_record_gate_outcome` fires from a
+# try/except SystemExit that re-raises the IDENTICAL SystemExit. Both are
+# loaded via a fail-open loader that returns no-op stubs on ImportError
+# (mirrors `_load_claude_observe_for_gates()` above) so a missing
+# process-observation backend cannot perturb any gate's exit code. The
+# denominator lands in a SEPARATE sibling file `gate-runs.jsonl`, never
+# active.yaml (zero friction-ledger pollution, design §4 constraint #5).
+#
+# Determinism guarantee: no branch is added to or removed from the dispatch
+# body; ok()/env_error()/fail()/check_* are untouched; the captured SystemExit
+# is re-raised unchanged. See the exit-code-invariance regression test in
+# process-observation/tests/test_gate_run_telemetry.py.
+# ---------------------------------------------------------------------------
+
+
+def _load_gate_run_telemetry():
+    """Fail-open loader for the gate-run denominator helpers; returns no-op
+    stubs if the process-observation backend is unavailable. Mirrors
+    `_load_claude_observe_for_gates()` so gates.py runs correctly in minimal
+    environments and the exit-code invariance holds under forced ImportError.
+    """
+    # Test-only escape hatch: the WP1 exit-code-invariance regression test sets
+    # GATES_TELEMETRY_FORCE_IMPORTERROR=1 to simulate the missing-backend path
+    # (fail-open -> no-op stubs) without uninstalling the real module, so it can
+    # assert byte-identical exit codes with vs without telemetry. Production
+    # never sets this var.
+    if os.environ.get("GATES_TELEMETRY_FORCE_IMPORTERROR") == "1":
+        _noop = lambda *args, **kwargs: None  # noqa: E731
+        return _noop, _noop
+    try:
+        from process_observation.scripts.gate_runs import (  # type: ignore
+            bump_gate_run as _b,
+            record_gate_outcome as _r,
+        )
+        return _b, _r
+    except ImportError:
+        pass
+    try:
+        _scripts_dir = (
+            Path(__file__).resolve().parent.parent
+            / "process-observation" / "scripts"
+        )
+        if _scripts_dir.is_dir():
+            _scripts_str = str(_scripts_dir)
+            if _scripts_str not in sys.path:
+                sys.path.insert(0, _scripts_str)
+            from gate_runs import (  # type: ignore
+                bump_gate_run as _b,
+                record_gate_outcome as _r,
+            )
+            return _b, _r
+    except Exception:
+        pass
+    _noop = lambda *args, **kwargs: None  # noqa: E731
+    return _noop, _noop
+
+
+_bump_gate_run, _record_gate_outcome = _load_gate_run_telemetry()
+
+
 _GATE_FALSE_BLOCK_SET = frozenset({"G1", "G2", "G3", "G4", "G_V", "G_XR"})
 
 
@@ -1050,6 +1120,203 @@ def exit_with_observation(
     # Print the fail line to stderr in the same shape the existing S014 gates use.
     sys.stderr.write(f"{gate_name}_FAIL: {what_happened}\n")
     sys.exit(exit_code)
+
+
+# ---------------------------------------------------------------------------
+# G_CLASSIFY — deterministic component-classification gate (S042 / #115)
+# ---------------------------------------------------------------------------
+#
+# Invoked by bob at Step 1 -> 1.5 BEFORE routing, and again at the final
+# INTEGRATED -> VERIFIED / DONE checkpoint via `--verify-diff`. Replaces the
+# bob.md:180 prose heuristic + makes `Contract map: N/A` a CORROBORATED decision
+# (bob.md:176). The classifier logic lives in the sibling `classify.py`
+# (deterministic, stdlib-only); this wrapper maps the corroboration matrix
+# (design §3.4 / §12 R3) to exit codes.
+#
+# Corroboration matrix (§3.4):
+#   asserted | scan verdict | outcome                          | exit
+#   N/A      | no           | PASS (N/A corroborated)          | 0
+#   N/A      | ambiguous    | ESCALATE (evidence bundle)       | 3
+#   N/A      | yes          | BLOCK (the CRITICAL hole)        | 2
+#   provided | yes/ambiguous| PASS -> Step 1.5                 | 0
+#   provided | no           | ADVISORY-PASS (over-declare safe)| 0
+#   (nothing)| yes          | BLOCK -> HALT                    | 2
+#   (nothing)| no           | PASS (treat as N/A)              | 0
+#   (nothing)| ambiguous    | ESCALATE                         | 3
+#
+# R4: exit-3 (escalate) MUST NOT route through exit_with_observation's default
+# (gate_false_pass) — that pollutes the alf FP metric. Use a distinct
+# best-effort `classification_escalation` observation (or plain stderr). Only
+# exit-2 (BLOCK) emits gate_false_block.
+
+
+def _load_classify_module():
+    """Import the sibling classify.py. Mirrors the lazy-import discipline used
+    elsewhere so module-load (and the S039 telemetry wrapper) is unperturbed."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import classify  # type: ignore
+    return classify
+
+
+def _classify_escalate(subject_id: str, message: str) -> None:
+    """Exit 3 (ambiguous/escalate). R4 (BINDING): exit-3 must NOT emit
+    `gate_false_pass` (it would pollute the alf FP-rate metric). The
+    process-observation taxonomy is a CLOSED 13-category set with no
+    "escalation" member, so per R4's explicit allowance ("simply `print` to
+    stderr + exit 3 with no friction-observation") this path emits NO observation
+    at all — it prints the evidence to stderr and exits 3. The user is the
+    decider on the ambiguous band; the evidence bundle is also persisted to
+    `progress/.classify/verdict.json` by the caller. `_classify_escalate` is
+    allow-listed in test_gates_keystone's _BARE_EXIT_ALLOWLIST as a deliberate,
+    R4-mandated structured-exit helper (peer of env_error/fail/ok)."""
+    sys.stderr.write(f"G_CLASSIFY_ESCALATE: {message}\n")
+    sys.exit(3)
+
+
+def check_G_CLASSIFY(
+    project_root: Path,
+    *,
+    design_doc: Optional[Path],
+    asserted: Optional[str],
+    files_from: Optional[str],
+    verify_diff: bool,
+) -> None:
+    """Run the corroboration matrix (§3.4) and exit 0/2/3.
+
+    asserted ∈ {"N/A", "provided", None}. None means "nothing about contract
+    map" in the spawn prompt (the bare row of the matrix).
+
+    verify_diff=True runs the §6.4 / R3 final checkpoint instead of the
+    classification matrix: compares the ACTUAL git diff against the artifact's
+    component-evidence envelope.
+    """
+    classify = _load_classify_module()
+    subject = f"classify-{project_root.name}"
+
+    # File profile: explicit --files-from (planned/pre-flight) OR git diff.
+    if files_from:
+        file_profile = classify.read_files_from(files_from, project_root)
+    else:
+        file_profile = classify.git_changed_files(project_root)
+
+    # ---- --verify-diff final checkpoint (R3 / §6.4) ----------------------
+    if verify_diff:
+        artifact_path = project_root / ".forge" / "classification.json"
+        if not artifact_path.is_file():
+            # No artifact at the final checkpoint = the skip was never
+            # authorized. BLOCK.
+            exit_with_observation(
+                "G_CLASSIFY", 2, subject,
+                "no .forge/classification.json at --verify-diff checkpoint; "
+                "the Step-1.5 skip was never authorized by a green G_CLASSIFY",
+            )
+        try:
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            _classify_escalate(
+                subject,
+                f"unreadable/malformed classification.json: {e}",
+            )
+            return
+        # Validate structure (free-text reason etc. -> escalate, not silent).
+        try:
+            from classify_emit import validate_artifact  # type: ignore
+            problems = validate_artifact(artifact)
+        except Exception:
+            problems = []
+        if problems:
+            _classify_escalate(
+                subject,
+                "classification.json failed validation: " + "; ".join(problems),
+            )
+            return
+        introduces = artifact.get("introduces_components", "no")
+        ext_globs = artifact.get("existing_extension_globs") or []
+        # If reason_code is existing_component_extension, planned_globs whitelist
+        # the declared component-evidence paths.
+        if artifact.get("reason_code") == "existing_component_extension":
+            ext_globs = list(ext_globs) + list(artifact.get("planned_globs", []))
+        violations = classify.verify_diff_violations(
+            project_root, introduces,
+            existing_extension_globs=ext_globs,
+            file_profile_override=(file_profile if files_from else None),
+        )
+        if violations:
+            exit_with_observation(
+                "G_CLASSIFY", 2, subject,
+                "--verify-diff: declared N/A but the diff contains "
+                f"component-evidence paths outside the envelope: {violations}",
+            )
+        ok("G_CLASSIFY", f"--verify-diff clean ({introduces}); no out-of-envelope "
+           "component-evidence")
+        return
+
+    # ---- classification matrix (§3.4) ------------------------------------
+    result = classify.classify(
+        project_root, design_doc=design_doc, file_profile=file_profile,
+    )
+    verdict = result["verdict"]  # yes | no | ambiguous
+
+    # Write the audit verdict.json (best-effort, replace-on-write). Include the
+    # asserted value + the matrix outcome so the artifact is self-describing.
+    audit_payload = dict(result)
+    audit_payload["asserted"] = asserted if asserted is not None else "(none)"
+    classify.write_verdict(project_root, audit_payload)
+
+    norm_asserted = (asserted or "").strip().lower()
+    is_na = norm_asserted in ("n/a", "na")
+    is_provided = norm_asserted == "provided"
+
+    # Row dispatch.
+    if is_na:
+        if verdict == "no":
+            ok("G_CLASSIFY", "N/A corroborated (scan=no); Step 1.5 skip authorized")
+        elif verdict == "ambiguous":
+            _classify_escalate(
+                subject,
+                "asserted N/A but scan is AMBIGUOUS (score in escalate band); "
+                f"score={result['score']}; human glance required. "
+                f"prose_only={[s['id'] for s in result['evidence']['prose_only']]}",
+            )
+        else:  # yes — THE CRITICAL HOLE
+            contradicting = result["decision_trace"]["confirmed_positive_signals"]
+            exit_with_observation(
+                "G_CLASSIFY", 2, subject,
+                "asserted Contract map: N/A but scan verdict is YES — this is "
+                "the #115 CRITICAL hole. Contradicting CONFIRMED signals: "
+                f"{contradicting} (score={result['score']}, "
+                f"rule={result['decision_trace']['rule_fired']}). A real "
+                "typed-I/O contract map is required; you cannot N/A out of it.",
+            )
+    elif is_provided:
+        # Over-declaring is safe. yes/ambiguous -> Step 1.5; no -> advisory pass.
+        if verdict == "no":
+            ok("G_CLASSIFY", "asserted 'provided' but scan=no — ADVISORY-PASS "
+               "(over-declaring is safe; G1/G2 will enforce the map)")
+        else:
+            ok("G_CLASSIFY", f"asserted 'provided', scan={verdict} -> proceed to "
+               "Step 1.5 (G1/G2 enforce)")
+    else:
+        # Nothing asserted (the bare row).
+        if verdict == "no":
+            ok("G_CLASSIFY", "no assertion, scan=no -> treat as N/A (PASS)")
+        elif verdict == "ambiguous":
+            _classify_escalate(
+                subject,
+                "no contract-map assertion AND scan is AMBIGUOUS "
+                f"(score={result['score']}); human glance required.",
+            )
+        else:  # yes
+            contradicting = result["decision_trace"]["confirmed_positive_signals"]
+            exit_with_observation(
+                "G_CLASSIFY", 2, subject,
+                "no contract-map assertion but scan verdict is YES — this design "
+                f"introduces components (CONFIRMED signals: {contradicting}, "
+                f"score={result['score']}). Generate a contract map (forge "
+                "Step 8a) or re-spawn with an explicit, corroborated N/A.",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1112,6 +1379,187 @@ def _load_current_skeleton_version(project_root: Path) -> Optional[str]:
     if not isinstance(sv, str) or not sv:
         return None
     return sv
+
+
+def _load_identity_check_module():
+    """Import the sibling identity_check.py. Same lazy-import discipline as
+    _load_classify_module so module-load (and the S039 telemetry wrapper) is
+    unperturbed. G_IDENTITY delegates ALL comparison logic here — no dup."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import identity_check  # type: ignore
+    return identity_check
+
+
+def check_G_IDENTITY(
+    project_root: Path,
+    *,
+    pair: str,
+    foundry_root: Optional[str],
+) -> None:
+    """G_IDENTITY (S043 / #119 remediation half) — thin wrapper over the FIXED
+    identity_check `--strict`. Delegates every comparison decision to
+    identity_check (C1: presence-required strict mode); maps its verdict to the
+    gate exit-code contract. Joins its OWN CRITICAL set — gates.py IS in
+    identity_check.CRITICAL_FILES, so the gate that enforces identity is itself
+    watched (no self-exclusion; design §7 bootstrap risk).
+
+    pair ∈ {prod-shadow, prod-foundry, all}:
+      - prod-shadow  : the continuous (commit-boundary) invariant — default for
+                       the skill_factory pre-commit hook (C4).
+      - prod-foundry : the publish gate — the published _meta CRITICAL subset
+                       must be byte-identical to prod (C2; reconcile-before-commit
+                       lives in stage-to-public.sh, this gate asserts it).
+      - all          : all three trees.
+
+    Exit codes (delegated):
+      0 = identical (strict match)
+      2 = drift: a differing file, a MISSING safety file, or a missing required
+          tree (the C1 fix — a missing file is no longer invisible)
+      3 = environmental: strict --pair prod-foundry/all with no agent-foundry
+          clone and no --foundry-root / PUBLIC_REPO_ROOT (C6 — never silent-pass)
+
+    `project_root` is accepted for CLI symmetry with the other gates and for
+    future per-project tree overrides; the tree set itself is resolved by
+    identity_check from the pair (the three trees are host-fixed paths).
+    """
+    ic = _load_identity_check_module()
+
+    # Build the argv for identity_check.main so it owns resolution + the C6
+    # missing-clone environmental exit. --strict is mandatory for the gate.
+    ic_argv = ["--pair", pair, "--strict"]
+    if foundry_root:
+        ic_argv += ["--foundry-root", foundry_root]
+
+    rc = ic.main(ic_argv)
+
+    # identity_check.main already printed the human-readable per-file drift to
+    # stdout/stderr. Translate to the gates.py PASS/FAIL/ENV vocabulary and exit
+    # with the IDENTICAL code (0/2/3) so the telemetry wrapper records it.
+    if rc == 0:
+        ok("G_IDENTITY",
+           f"3-tree identity verified (pair={pair}, strict) — "
+           f"CRITICAL _meta subset byte-identical")
+    elif rc == 3:
+        # identity_check already wrote setup guidance to stderr.
+        sys.stderr.write(
+            f"G_IDENTITY_ENV: cannot run pair={pair} — see guidance above\n")
+        sys.exit(3)
+    else:
+        sys.stderr.write(
+            f"G_IDENTITY_FAIL: tree drift on the CRITICAL _meta subset "
+            f"(pair={pair}) — drifted/missing files named above\n")
+        sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# G_DUAL_VERDICT — read-only pre-flight wrapper over R6 (S044 / #118)
+# ---------------------------------------------------------------------------
+#
+# bob runs this as the Step-4.5 pre-flight BEFORE applying INTEGRATED->VERIFIED
+# (design §10 G_DUAL_VERDICT + §10 final scope item 4). It is a thin, READ-ONLY
+# delegate to `claims.assert_verified_preconditions` — the ENFORCEMENT is the
+# engine precondition (claims.apply_request_idempotent dispatch); this gate is
+# the visible pre-flight + the S039-telemetry rider.
+#
+# HONESTY (design §10): "strong protocol enforcement, NOT literally-unskippable"
+# — bob retains filesystem write access; a truly unskippable check needs a
+# host-owned broker. State it; do not overclaim.
+#
+# Exit codes:
+#   0 = PASS  (R6 satisfied: both arms present + passing + versioned envelope +
+#              cross-binding intact)
+#   2 = FAIL  (any VerifiedPreconditionError — emits gate_false_block via
+#              exit_with_observation, fingerprint 'dual-verdict-precondition')
+#   3 = ENV   (missing --bundle-hash / unreadable project root)
+#
+# Exit discipline (test_gates_keystone): routes through ok()/env_error()/
+# exit_with_observation() ONLY — NO new bare sys.exit literal (the
+# _BARE_EXIT_ALLOWLIST is capped at 6 and is full).
+
+
+def check_G_DUAL_VERDICT(bundle_hash: str, project_root: Path) -> None:
+    """Read-only diagnostic over the SAME `assert_verified_preconditions`
+    validator the transition engine dispatches (design §10 A7 / final scope 4).
+
+    Reads bob's persisted `.ledger/verdicts/<bundle_hash>.verdict.yaml`. NEVER
+    writes to `.ledger/` (CB4 preserved — bob is the sole writer). On any R6
+    failure, exits 2; on success exits 0.
+
+    S048 / #116 belt-and-suspenders: R6 now ALSO derives a deterministic (non-LLM)
+    verdict from the hash-addressed bundle + corroborates the arbiter's
+    evidence_map citations. This gate makes that visible — and when the
+    deterministic arm is RED/INDETERMINATE while BOTH LLM arms reported pass,
+    it emits a `gate_false_pass`-class observation (the empirically-caught
+    correlated-LLM-error: the LLMs approved evidence that on-disk does not
+    support). Any OTHER R6 failure stays `gate_false_block`.
+    """
+    # Lazy import keeps gates.py module-load (and the S039 telemetry wrapper)
+    # unperturbed — mirrors `_load_classify_module`.
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import claims  # type: ignore
+
+    # Belt-and-suspenders pre-classify: read the two LLM-arm canonical axes and
+    # the deterministic arm SEPARATELY so a deterministic veto AGAINST passing
+    # LLM arms is reported as a correlated-error (gate_false_pass), distinct from
+    # an ordinary precondition block. This is read-only; the authoritative
+    # enforcement is the R6 call below (and the engine dispatch under-lock).
+    correlated_error = False
+    try:
+        archive = claims._read_verdict_archive(  # read-only helper
+            claims._verdict_path(Path(project_root).resolve(), bundle_hash)
+        )
+        if isinstance(archive, dict):
+            audit_arm = archive.get("audit_arm") or {}
+            arbiter_arm = archive.get("arbiter_arm") or {}
+            llm_both_pass = (
+                isinstance(audit_arm, dict)
+                and isinstance(arbiter_arm, dict)
+                and audit_arm.get("result") in claims.VERIFIED_PASS_SET
+                and arbiter_arm.get("verdict") in claims.VERIFIED_PASS_SET
+            )
+            if llm_both_pass:
+                det = claims._import_deterministic_arm()
+                dv = det.classify_bundle_evidence(
+                    str(archive.get("component_id")), bundle_hash, Path(project_root)
+                )
+                if dv.get("state") != det.GREEN:
+                    correlated_error = True
+    except Exception:  # pragma: no cover - diagnostic only; R6 below is truth
+        correlated_error = False
+
+    try:
+        claims.assert_verified_preconditions(bundle_hash, project_root)
+    except claims.VerifiedPreconditionError as e:
+        if correlated_error:
+            exit_with_observation(
+                "G_DUAL_VERDICT",
+                2,
+                bundle_hash,
+                f"CORRELATED-LLM-ERROR caught: both LLM arms reported pass but "
+                f"the deterministic evidence arm vetoes: {e}",
+                severity="blocking",
+                category="gate_false_pass",
+                fingerprint="dual-verdict-deterministic-veto",
+            )
+        exit_with_observation(
+            "G_DUAL_VERDICT",
+            2,
+            bundle_hash,
+            f"dual-arm VERIFIED precondition failed: {e}",
+            severity="blocking",
+            category="gate_false_block",
+            fingerprint="dual-verdict-precondition",
+        )
+    ok(
+        "G_DUAL_VERDICT",
+        f"both LLM arms + deterministic evidence (GREEN) + citations corroborated "
+        f"for bundle_hash={bundle_hash} (R6 satisfied; strong protocol "
+        f"enforcement, not literally-unskippable)",
+    )
 
 
 def check_G_V(impl_hash: str, project_root: Path) -> None:
@@ -2714,6 +3162,203 @@ def check_G_INTENT_MAP_FRESH(
 
 
 # ---------------------------------------------------------------------------
+# security_scope — git-diff-derived security scope (S045 / #120, §9 D1/D4)
+#
+# The DEFAULT-on universal security checkpoint (G_SECURITY) keys off the ACTUAL
+# git diff, NOT G_CLASSIFY and NOT a bob-supplied file list. This is the §9
+# critical correction: G_CLASSIFY exempts `_meta/*.py` (this session's own
+# code), so it must NOT scope security — a prose-only `_meta`.py cycle STILL
+# gets SAST. `security_scope` is a pure, testable function over the diff:
+#   - SAST scope (code detection): extension allowlist + known filenames
+#     (Dockerfile, Makefile, CI YAML) + shebang line + executable bit.
+#   - secrets scope (text detection): any changed non-binary file.
+#   - indeterminate: True when the diff could not be collected (failed-diff-
+#     collection → escalate, NOT silent-skip per D1).
+# G_CLASSIFY=yes is only an ADDITIONAL positive SAST signal; =no is NEVER
+# treated as proof-of-prose (it exempts _meta code).
+# ---------------------------------------------------------------------------
+
+
+# Code-extension allowlist for SAST scope (lower-cased suffix incl. dot).
+_SECURITY_CODE_EXTENSIONS = frozenset({
+    ".py", ".pyw", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx",
+    ".go", ".rb", ".java", ".kt", ".scala", ".php", ".rs",
+    ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".cs",
+    ".sh", ".bash", ".zsh", ".ksh",
+    ".pl", ".pm", ".lua", ".groovy", ".swift", ".m", ".mm",
+    ".sql", ".ps1", ".psm1",
+})
+
+# Known code-bearing filenames (no/ambiguous extension) → SAST scope.
+_SECURITY_CODE_FILENAMES = frozenset({
+    "Dockerfile", "Containerfile", "Makefile", "GNUmakefile",
+    "Jenkinsfile", "Vagrantfile", "Rakefile", "Gemfile", "Procfile",
+    ".gitlab-ci.yml", ".gitlab-ci.yaml",
+})
+
+# Known code-bearing filename suffixes (e.g. service.Dockerfile, db.sql.j2).
+_SECURITY_CODE_FILENAME_SUFFIXES = (".dockerfile",)
+
+# Path prefixes whose YAML/code is CI/automation (executable intent).
+_SECURITY_CI_PATH_PREFIXES = (".github/workflows/", ".github/actions/")
+
+
+def _security_collect_diff(project_root: Path) -> Tuple[Optional[List[str]], Optional[str]]:
+    """Collect the FULL changed-path set from the git diff, independent of
+    classify.py and of any caller-supplied list (§9 D1).
+
+    Union of:
+      - `git diff --name-only` (working tree vs index — unstaged edits)
+      - `git diff --name-only --cached` (staged edits)
+      - `git ls-files --others --exclude-standard` (new/untracked files)
+
+    Returns (paths, None) on success (paths de-duped, stable order) or
+    (None, error_message) on ANY git failure. A None return is the
+    failed-diff-collection signal → the caller marks the scope indeterminate
+    and escalates (NEVER silent-skip).
+    """
+    import subprocess
+
+    def _run(args: List[str]) -> List[str]:
+        proc = subprocess.run(
+            ["git", "-C", str(project_root), *args],
+            capture_output=True, text=True, timeout=15,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"git {' '.join(args)} exit {proc.returncode}: "
+                f"{proc.stderr.strip()[:200]}"
+            )
+        return [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+
+    try:
+        unstaged = _run(["diff", "--name-only"])
+        staged = _run(["diff", "--name-only", "--cached"])
+        untracked = _run(["ls-files", "--others", "--exclude-standard"])
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as e:
+        return None, f"git diff collection failed: {e}"
+
+    seen: set = set()
+    result: List[str] = []
+    for p in (*unstaged, *staged, *untracked):
+        if p not in seen:
+            seen.add(p)
+            result.append(p)
+    return result, None
+
+
+def _security_is_binary(path: Path) -> bool:
+    """Best-effort binary sniff: read up to 8 KiB; a NUL byte ⇒ binary.
+    Unreadable/missing files are treated as NON-binary (a deleted or
+    permission-denied path is conservatively kept in the secrets/text scope
+    rather than silently dropped). Pure read-only.
+    """
+    try:
+        with path.open("rb") as fh:
+            chunk = fh.read(8192)
+    except OSError:
+        return False
+    return b"\x00" in chunk
+
+
+def _security_has_shebang(path: Path) -> bool:
+    """True if the file's first two bytes are `#!` (a shebang ⇒ executable
+    script ⇒ SAST scope even without a known extension)."""
+    try:
+        with path.open("rb") as fh:
+            return fh.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _security_is_executable(path: Path) -> bool:
+    """True if the file exists and has any executable bit set."""
+    try:
+        import stat as _stat
+        mode = path.stat().st_mode
+        return bool(mode & (_stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH))
+    except OSError:
+        return False
+
+
+def _security_path_is_code(project_root: Path, rel_path: str) -> bool:
+    """Decide whether a changed path belongs in SAST (code) scope.
+
+    Signals (any one ⇒ code): extension allowlist, known code filename,
+    code-filename suffix, CI/automation path prefix, shebang line, or the
+    executable bit. Path-string signals work even for deleted files (the
+    file need not exist on disk); content/mode signals require the file.
+    """
+    name = rel_path.rsplit("/", 1)[-1]
+    lower_name = name.lower()
+    # Path-string signals (work for deleted files too).
+    suffix = ""
+    if "." in name:
+        suffix = "." + name.rsplit(".", 1)[-1].lower()
+    if suffix in _SECURITY_CODE_EXTENSIONS:
+        return True
+    if name in _SECURITY_CODE_FILENAMES:
+        return True
+    if any(lower_name.endswith(s) for s in _SECURITY_CODE_FILENAME_SUFFIXES):
+        return True
+    if any(rel_path.startswith(pfx) for pfx in _SECURITY_CI_PATH_PREFIXES) and (
+        suffix in (".yml", ".yaml")
+    ):
+        return True
+    # Content/mode signals (require the file on disk).
+    abspath = project_root / rel_path
+    if _security_has_shebang(abspath):
+        return True
+    if _security_is_executable(abspath):
+        return True
+    return False
+
+
+def security_scope(project_root: Path) -> Dict[str, Any]:
+    """Derive the security scope for this cycle from the ACTUAL git diff (§9 D1).
+
+    Returns:
+        {
+          "secrets": [str, ...],       # changed non-binary text files
+          "sast":    [str, ...],       # changed code-bearing files
+          "indeterminate": bool,       # True if the diff could not be collected
+          "reason": str,               # populated when indeterminate
+        }
+
+    PURE and git-diff-derived: it does NOT consult G_CLASSIFY (which exempts
+    `_meta/*.py` and would wrongly scope a prose-only _meta cycle out of SAST)
+    and does NOT accept a caller-supplied file list. On failed-diff-collection
+    the scope is marked `indeterminate: True` so the caller escalates — never
+    a silent empty-scope "clean".
+    """
+    paths, err = _security_collect_diff(project_root)
+    if paths is None:
+        return {
+            "secrets": [],
+            "sast": [],
+            "indeterminate": True,
+            "reason": err or "diff collection failed",
+        }
+
+    secrets: List[str] = []
+    sast: List[str] = []
+    for rel in paths:
+        abspath = project_root / rel
+        # text detection (secrets scope): any changed NON-binary file.
+        if not _security_is_binary(abspath):
+            secrets.append(rel)
+        # code detection (SAST scope): extension/filename/shebang/exec-bit.
+        if _security_path_is_code(project_root, rel):
+            sast.append(rel)
+    return {
+        "secrets": secrets,
+        "sast": sast,
+        "indeterminate": False,
+        "reason": "",
+    }
+
+
+# ---------------------------------------------------------------------------
 # G_SECURE — SAST gate (S038 Batch E, 2026-05-25)
 #
 # Wraps bandit (Python), semgrep (multi-language), eslint-security (JS/TS), or
@@ -2811,6 +3456,81 @@ def _g_secure_count_sarif_findings(sarif_text: str, min_sev: str) -> int:
     return count
 
 
+def _g_secure_parse_sarif(sarif_text: str, min_sev: str) -> Tuple[str, int]:
+    """False-clean-hardened SARIF parser (S045 / #120 §9 D3).
+
+    Returns (status, count):
+      - ("ok", N)        : output PARSED to a well-formed SARIF result
+                            (top-level object with a list `runs` key); N is the
+                            count of findings at severity >= min_sev. N may be 0
+                            — that is a genuine clean run.
+      - ("empty", 0)     : output was empty/whitespace when output was EXPECTED.
+                            NOT clean — a crashed/killed scanner can produce no
+                            output. Caller treats this as SECURITY_INDETERMINATE.
+      - ("malformed", 0) : output was non-empty but did NOT parse to a
+                            well-formed SARIF result (JSON decode error, or the
+                            parsed value is not an object with a list `runs`).
+                            NOT clean — never counted as zero findings.
+
+    The contract change vs `_g_secure_count_sarif_findings` (kept intact for
+    back-compat) is the WHOLE point of D3: an unparseable/empty result must be
+    distinguishable from a well-formed zero-finding result, so a broken run is
+    never silently reported as "clean".
+    """
+    if not sarif_text or not sarif_text.strip():
+        return ("empty", 0)
+    try:
+        data = json.loads(sarif_text)
+    except json.JSONDecodeError:
+        return ("malformed", 0)
+    # Well-formed SARIF MUST be a top-level object carrying a list `runs`.
+    if not isinstance(data, dict) or not isinstance(data.get("runs"), list):
+        return ("malformed", 0)
+    threshold = _SEVERITY_RANK.get(min_sev.lower(), 2)
+    count = 0
+    for run in data["runs"]:
+        if not isinstance(run, dict):
+            return ("malformed", 0)
+        rule_sev: Dict[str, str] = {}
+        for rule in (run.get("tool", {}).get("driver", {}).get("rules", []) or []):
+            rid = rule.get("id", "")
+            sev = (rule.get("defaultConfiguration", {}).get("level", "")
+                    or rule.get("properties", {}).get("security-severity", "")
+                    or rule.get("properties", {}).get("severity", "")).lower()
+            rule_sev[rid] = sev
+        for r in (run.get("results") or []):
+            sev = (r.get("level") or "").lower()
+            if not sev:
+                sev = rule_sev.get(r.get("ruleId", ""), "warning")
+            rank = _SEVERITY_RANK.get(sev, 1)
+            if rank >= threshold:
+                count += 1
+    return ("ok", count)
+
+
+# SECURITY_INDETERMINATE marker (S045 / #120 §9 D3). A broken scanner run
+# (error/timeout/bad-config/unexpected-exit/malformed-or-empty-output-when-
+# output-expected) is NOT "clean". v1 is advisory-only, so this surfaces a
+# loud `SECURITY_INDETERMINATE` line + nudge and exits 0 (zero-literal exit is
+# allow-listed). In the DEFERRED strict phase (#144) this path BLOCKS. The
+# marker is deliberately distinct from `_PASS`/"clean" so a broken run can
+# never be mistaken for a zero-finding clean run.
+_SECURITY_INDETERMINATE_MARKER = "SECURITY_INDETERMINATE"
+
+
+def _security_indeterminate_advisory(gate: str, message: str) -> None:
+    """Emit a SECURITY_INDETERMINATE advisory (NOT clean) and exit 0 (v1).
+
+    NEVER counts as zero findings; NEVER prints a `_PASS` line. The zero-exit
+    keeps v1 advisory (D2) — only the deferred strict phase (#144) blocks here.
+    """
+    sys.stdout.write(
+        f"{gate}_{_SECURITY_INDETERMINATE_MARKER}: {message} "
+        f"(advisory v1 — NOT clean, NOT a finding; install/repair the scanner)\n"
+    )
+    sys.exit(0)
+
+
 def check_G_SECURE(
     project_root: Path,
     *,
@@ -2818,7 +3538,16 @@ def check_G_SECURE(
     runner: str = "auto",
     severity: str = "high",
 ) -> None:
-    """Run SAST runner; exit 0/2/3 per gate contract."""
+    """Run SAST runner; exit 0/2/3 per gate contract.
+
+    S045 / #120 §9 D3 false-clean hardening (ADDITIVE): the subprocess return
+    code is validated AND the SARIF/JSON output must PARSE to a well-formed
+    result before findings are counted. A broken run (unexpected non-zero exit,
+    timeout, bad-config, or malformed/empty output when output was expected) is
+    surfaced as SECURITY_INDETERMINATE — explicitly NOT "clean" and never
+    counted as zero findings. All pre-existing pass/finding/strict behaviour is
+    preserved unchanged.
+    """
     import subprocess
     if mode not in ("advisory", "strict"):
         env_error(f"invalid --sast-mode: {mode}")
@@ -2859,28 +3588,99 @@ def check_G_SECURE(
             cmd, capture_output=True, text=True,
             timeout=timeout, check=False,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        env_error(f"G_SECURE subprocess failed: {e}")
+    except subprocess.TimeoutExpired as e:
+        # Timeout is NOT clean and NOT a missing-tool — it is indeterminate
+        # (the scan never completed). D3: never silently pass.
+        _security_indeterminate_advisory(
+            "G_SECURE",
+            f"runner={picked} timed out after {timeout}s: {e}",
+        )
+        return  # unreachable
+    except (FileNotFoundError, OSError) as e:
+        # Tool vanished between the which() check and exec — treat as a
+        # missing-tool environmental error (NO_COMPATIBLE_TOOL grace path).
+        env_error(f"G_SECURE subprocess failed (runner unavailable): {e}")
         return
+
+    # --- D3: validate the scanner exit code BEFORE counting findings -------
+    # Per-runner expected return codes. An UNEXPECTED non-zero exit (crash,
+    # bad-config, internal error) means the run is indeterminate, never clean.
+    rc = proc.returncode
+    if picked == "semgrep":
+        # semgrep: 0 = clean, 1 = findings, >=2 = error (config/internal/crash).
+        if rc >= 2:
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"semgrep exited {rc} (config/internal error): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
+            )
+            return  # unreachable
+    elif picked == "bandit":
+        # bandit: 0 = no issues, 1 = issues found, >=2 = error.
+        if rc >= 2:
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"bandit exited {rc} (run error): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
+            )
+            return  # unreachable
+    elif picked == "eslint":
+        # eslint: 0 = clean, 1 = lint problems, 2 = config/internal error.
+        if rc >= 2:
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"eslint exited {rc} (config/internal error): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
+            )
+            return  # unreachable
 
     findings = 0
     if picked == "eslint":
         # ESLint JSON: list of {filePath, messages: [{severity, ...}], ...}
         # severity 2 = error, 1 = warn. Treat 2 as "high" equivalent.
+        # D3: ESLint with rc 0/1 ALWAYS emits a JSON array ("[]" when clean);
+        # empty or unparseable output here means a broken run → indeterminate.
+        raw = proc.stdout
+        if not raw or not raw.strip():
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"eslint produced no JSON output at rc={rc} (expected an array)",
+            )
+            return  # unreachable
         try:
-            data = json.loads(proc.stdout or "[]")
-            for entry in data:
-                for msg in (entry.get("messages") or []):
-                    sev_num = msg.get("severity", 0)
-                    if sev_num >= 2 and _SEVERITY_RANK.get("high", 3) >= _SEVERITY_RANK.get(severity, 3):
-                        findings += 1
-                    elif sev_num == 1 and _SEVERITY_RANK.get("low", 1) >= _SEVERITY_RANK.get(severity, 3):
-                        findings += 1
+            data = json.loads(raw)
         except json.JSONDecodeError:
-            pass
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"eslint output did not parse as JSON at rc={rc} "
+                "(malformed — NOT clean)",
+            )
+            return  # unreachable
+        if not isinstance(data, list):
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"eslint output was not a JSON array at rc={rc} (malformed)",
+            )
+            return  # unreachable
+        for entry in data:
+            for msg in (entry.get("messages") or []):
+                sev_num = msg.get("severity", 0)
+                if sev_num >= 2 and _SEVERITY_RANK.get("high", 3) >= _SEVERITY_RANK.get(severity, 3):
+                    findings += 1
+                elif sev_num == 1 and _SEVERITY_RANK.get("low", 1) >= _SEVERITY_RANK.get(severity, 3):
+                    findings += 1
     else:
         sarif_text = proc.stdout
-        findings = _g_secure_count_sarif_findings(sarif_text, severity)
+        # D3: distinguish a well-formed zero-finding run ("ok", 0) from a broken
+        # one (empty/malformed). Only ("ok", N) is allowed to report clean.
+        status, findings = _g_secure_parse_sarif(sarif_text, severity)
+        if status != "ok":
+            _security_indeterminate_advisory(
+                "G_SECURE",
+                f"runner={picked} produced {status} SARIF at rc={rc} "
+                "(output expected but not well-formed — NOT clean)",
+            )
+            return  # unreachable
 
     if findings == 0:
         ok("G_SECURE",
@@ -3010,10 +3810,23 @@ def check_G_SECRETS_SCAN(
             cmd, capture_output=True, text=True,
             timeout=timeout, check=False,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        env_error(f"G_SECRETS_SCAN subprocess failed: {e}")
+    except subprocess.TimeoutExpired as e:
+        # D3: the scan never completed — indeterminate, NOT clean (and NOT a
+        # missing-tool grace case; the scanner WAS present).
+        _security_indeterminate_advisory(
+            "G_SECRETS_SCAN",
+            f"scanner={picked} timed out after {timeout}s: {e}",
+        )
+        return  # unreachable
+    except (FileNotFoundError, OSError) as e:
+        # Scanner vanished between pick and exec — missing-tool env error.
+        env_error(f"G_SECRETS_SCAN subprocess failed (scanner unavailable): {e}")
         return  # unreachable
 
+    # D3: a picked scanner that exits with an UNEXPECTED code (crash / bad
+    # config / internal error) is SECURITY_INDETERMINATE — NOT "clean" and NOT
+    # zero findings. NO_COMPATIBLE_TOOL (handled in the picker above) is the
+    # ONLY case that gets the advisory-skip grace; a broken run does not.
     rc = proc.returncode
     findings_detected = False
     if picked == "gitleaks":
@@ -3023,9 +3836,12 @@ def check_G_SECRETS_SCAN(
         elif rc == 1:
             findings_detected = True
         else:
-            env_error(
-                f"gitleaks rc={rc}: stderr={proc.stderr[:200]!r}"
+            _security_indeterminate_advisory(
+                "G_SECRETS_SCAN",
+                f"gitleaks exited {rc} (run error, not a finding): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
             )
+            return  # unreachable
     elif picked == "trufflehog":
         # 0 = no findings; 183 = findings; other = error
         if rc == 0:
@@ -3033,9 +3849,12 @@ def check_G_SECRETS_SCAN(
         elif rc == 183:
             findings_detected = True
         else:
-            env_error(
-                f"trufflehog rc={rc}: stderr={proc.stderr[:200]!r}"
+            _security_indeterminate_advisory(
+                "G_SECRETS_SCAN",
+                f"trufflehog exited {rc} (run error, not a finding): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
             )
+            return  # unreachable
     elif picked == "inhouse":
         # in-house secrets-scan.sh: 0 = clean OR advisory-only in default mode
         #                            1 = CRITICAL/HIGH OR --strict + any
@@ -3045,9 +3864,12 @@ def check_G_SECRETS_SCAN(
         elif rc == 1:
             findings_detected = True
         else:
-            env_error(
-                f"in-house scanner rc={rc}: stderr={proc.stderr[:200]!r}"
+            _security_indeterminate_advisory(
+                "G_SECRETS_SCAN",
+                f"in-house scanner exited {rc} (script error, not a finding): "
+                f"stderr={proc.stderr.strip()[:200]!r}",
             )
+            return  # unreachable
 
     if not findings_detected:
         ok("G_SECRETS_SCAN",
@@ -3074,6 +3896,175 @@ def check_G_SECRETS_SCAN(
 
 
 # ---------------------------------------------------------------------------
+# G_SECURITY — universal advisory security checkpoint (S045 / #120, §9 D1/D2/D4)
+#
+# The single pre-completion checkpoint bob MUST run on EVERY cycle — both the
+# contract-driven INTEGRATED->VERIFIED path AND the N/A->DONE path (so prose /
+# `_meta` cycles are covered, never bypassed). It:
+#   1. derives scope from the ACTUAL git diff via security_scope() (D1),
+#   2. runs G_SECRETS_SCAN over the secrets (text) scope and G_SECURE over the
+#      sast (code) scope, BOTH in advisory mode (D2),
+#   3. aggregates a normalized, SANITIZED result (status + per-arm metadata:
+#      arm, scanner/runner, scope size, fingerprint — NEVER raw secret
+#      material), and
+#   4. surfaces it + a nudge.
+# v1 is ADVISORY: it RUNS the gates and REPORTS, but does NOT hard-block
+# (exit 0) on findings or indeterminate arms. The ONLY non-zero exit is the
+# environmental escalation when the git diff itself cannot be collected
+# (indeterminate scope) — that is escalate-not-silent-skip per D1. Strict
+# enforcement is the DEFERRED phase (#144). Rides S039 telemetry via main().
+# ---------------------------------------------------------------------------
+
+
+# Outcome tokens an inner gate run is normalized into.
+_SECURITY_ARM_CLEAN = "clean"
+_SECURITY_ARM_FINDINGS = "findings"
+_SECURITY_ARM_INDETERMINATE = "indeterminate"
+_SECURITY_ARM_NO_TOOL = "no_compatible_tool"
+_SECURITY_ARM_SKIPPED = "skipped_empty_scope"
+
+
+def _security_run_inner_gate(gate: str, project_root: Path,
+                             extra_args: List[str]) -> Dict[str, Any]:
+    """Run an inner security gate (G_SECRETS_SCAN | G_SECURE) as a SUBPROCESS in
+    advisory mode and normalize its (exit_code, stdout) into one of the
+    _SECURITY_ARM_* tokens. Subprocess isolation means the inner gate's
+    sys.exit cannot terminate this orchestrator, and keeps scanner stdout out
+    of this process except as a length-bounded, sanitized echo.
+
+    Normalization (advisory inner runs):
+      exit 0 + a `_SECURITY_INDETERMINATE` marker line -> indeterminate
+      exit 0 + a `_PASS:` line                          -> clean
+      exit 0 (other)                                    -> findings (advisory)
+      exit 3 (env_error / NO_COMPATIBLE_TOOL)           -> no_compatible_tool
+      any other exit                                    -> indeterminate
+    """
+    import subprocess
+    cmd = [sys.executable, str(Path(__file__).resolve()), gate,
+           str(project_root), *extra_args]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=900, check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return {
+            "arm": gate, "status": _SECURITY_ARM_INDETERMINATE,
+            "detail": f"orchestrator failed to run {gate}: {e}",
+        }
+    out = proc.stdout or ""
+    rc = proc.returncode
+    # Length-bounded, sanitized summary line (inner scanners already redact;
+    # we additionally cap length and NEVER record raw matched material).
+    first_line = out.strip().splitlines()[0] if out.strip() else ""
+    summary = first_line[:240]
+    if rc == 0 and (f"_{_SECURITY_INDETERMINATE_MARKER}:" in out):
+        status = _SECURITY_ARM_INDETERMINATE
+    elif rc == 0 and (f"{gate}_PASS:" in out):
+        status = _SECURITY_ARM_CLEAN
+    elif rc == 0:
+        status = _SECURITY_ARM_FINDINGS
+    elif rc == 3:
+        status = _SECURITY_ARM_NO_TOOL
+    else:
+        status = _SECURITY_ARM_INDETERMINATE
+    return {"arm": gate, "status": status, "exit_code": rc, "summary": summary}
+
+
+def check_G_SECURITY(project_root: Path) -> None:
+    """Universal advisory security checkpoint (§9 D1/D2/D4).
+
+    Derives scope from the git diff, runs both security gates in advisory mode
+    over the derived scope, aggregates a normalized + sanitized result, and
+    surfaces it. v1 is advisory: exit 0 on findings / indeterminate arms /
+    no-tool arms (report + nudge, never block). The ONLY non-zero exit is the
+    environmental escalation when the diff cannot be collected (D1:
+    failed-diff-collection -> escalate, not silent-skip).
+    """
+    scope = security_scope(project_root)
+
+    # D1: a failed diff collection is indeterminate SCOPE — escalate, never
+    # treat an empty scope as "clean". This is environmental (exit 3).
+    if scope.get("indeterminate"):
+        env_error(
+            "G_SECURITY: could not derive security scope from the git diff "
+            f"({scope.get('reason', 'unknown')}); escalate — NOT silent-skip. "
+            "Resolve the git state and re-run the security checkpoint."
+        )
+        return  # unreachable
+
+    secrets_files = scope.get("secrets", [])
+    sast_files = scope.get("sast", [])
+
+    arms: List[Dict[str, Any]] = []
+
+    # secrets arm: any changed non-binary text file (broad scope).
+    if secrets_files:
+        arms.append(_security_run_inner_gate(
+            "G_SECRETS_SCAN", project_root, ["--secrets-mode", "advisory"]))
+    else:
+        arms.append({"arm": "G_SECRETS_SCAN",
+                     "status": _SECURITY_ARM_SKIPPED,
+                     "detail": "no changed text files in scope"})
+
+    # sast arm: changed code-bearing files only.
+    if sast_files:
+        arms.append(_security_run_inner_gate(
+            "G_SECURE", project_root, ["--sast-mode", "advisory"]))
+    else:
+        arms.append({"arm": "G_SECURE",
+                     "status": _SECURITY_ARM_SKIPPED,
+                     "detail": "no changed code files in scope"})
+
+    # Aggregate a normalized verdict. (Advisory v1: this never blocks.)
+    statuses = {a["status"] for a in arms}
+    if _SECURITY_ARM_FINDINGS in statuses:
+        agg = "advisory_findings"
+    elif _SECURITY_ARM_INDETERMINATE in statuses:
+        agg = "advisory_indeterminate"
+    elif _SECURITY_ARM_NO_TOOL in statuses:
+        agg = "advisory_no_tool"
+    else:
+        agg = "clean"
+
+    # Build the sanitized normalized result (NEVER raw secret material).
+    normalized: Dict[str, Any] = {
+        "gate": "G_SECURITY",
+        "mode": "advisory",
+        "aggregate": agg,
+        "scope": {"secrets": len(secrets_files), "sast": len(sast_files)},
+        "arms": arms,
+    }
+
+    # Emit a structured, machine-greppable advisory line + a human nudge.
+    sys.stdout.write(
+        "G_SECURITY_ADVISORY: " + canonical_json(normalized) + "\n"
+    )
+    # Per-arm human summary + nudges.
+    for a in arms:
+        st = a["status"]
+        arm = a["arm"]
+        if st == _SECURITY_ARM_CLEAN:
+            sys.stdout.write(f"  {arm}: clean\n")
+        elif st == _SECURITY_ARM_FINDINGS:
+            sys.stdout.write(
+                f"  {arm}: FINDINGS (advisory — review the bob report; "
+                "not blocking in v1)\n")
+        elif st == _SECURITY_ARM_INDETERMINATE:
+            sys.stdout.write(
+                f"  {arm}: INDETERMINATE (broken/incomplete run — NOT clean; "
+                "install/repair the scanner)\n")
+        elif st == _SECURITY_ARM_NO_TOOL:
+            sys.stdout.write(
+                f"  {arm}: no compatible scanner installed — advisory-skip + "
+                "nudge (install a scanner to enable this arm)\n")
+        elif st == _SECURITY_ARM_SKIPPED:
+            sys.stdout.write(
+                f"  {arm}: skipped ({a.get('detail', 'empty scope')})\n")
+    # v1 advisory: always exit 0. Strict enforcement is deferred (#144).
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 
@@ -3083,7 +4074,15 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
         env_error(
             "usage: gates.py "
             "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
-            "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE ..."
+            "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
+            "G_IDENTITY|G_DUAL_VERDICT ...\n"
+            "  G_SECURITY <project_root>  "
+            "(universal advisory security checkpoint; git-diff-scoped)\n"
+            "  G_CLASSIFY <project_root> [--design-doc <path>] "
+            "[--asserted N/A|provided] [--files-from <list>] [--verify-diff]\n"
+            "  G_IDENTITY <project_root> "
+            "[--pair prod-shadow|prod-foundry|all] [--foundry-root <path>]\n"
+            "  G_DUAL_VERDICT <project_root> --bundle-hash <hash>"
         )
     gate = argv[1]
     positional: List[str] = []
@@ -3190,6 +4189,54 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
             flags["intent_map_lockfile"] = argv[i + 1]
             i += 2
             continue
+        if a == "--design-doc":
+            # G_CLASSIFY: explicit design-doc path (else freshest by mtime)
+            if i + 1 >= len(argv):
+                env_error("--design-doc requires a value")
+            flags["design_doc"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--asserted":
+            # G_CLASSIFY: the claim under test (N/A | provided)
+            if i + 1 >= len(argv):
+                env_error("--asserted requires a value")
+            flags["asserted"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--files-from":
+            # G_CLASSIFY: planned file-touch set (path to list, or inline csv)
+            if i + 1 >= len(argv):
+                env_error("--files-from requires a value")
+            flags["files_from"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--verify-diff":
+            # G_CLASSIFY: final-checkpoint envelope check (R3 / §6.4)
+            flags["verify_diff"] = "1"
+            i += 1
+            continue
+        if a == "--bundle-hash":
+            # G_DUAL_VERDICT: the verdict-archive bundle_hash to validate (R6)
+            if i + 1 >= len(argv):
+                env_error("--bundle-hash requires a value")
+            flags["bundle_hash"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--pair":
+            # G_IDENTITY: prod-shadow|prod-foundry|all
+            if i + 1 >= len(argv):
+                env_error("--pair requires a value")
+            flags["identity_pair"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--foundry-root":
+            # G_IDENTITY: explicit agent-foundry clone path (repo root or
+            # its skills/_meta); also read from PUBLIC_REPO_ROOT env.
+            if i + 1 >= len(argv):
+                env_error("--foundry-root requires a value")
+            flags["identity_foundry_root"] = argv[i + 1]
+            i += 2
+            continue
         positional.append(a)
         i += 1
     return gate, positional, flags
@@ -3200,6 +4247,28 @@ def main(argv: Optional[List[str]] = None) -> None:
         argv = sys.argv
     gate, positional, flags = _parse_args(argv)
 
+    # Efficacy-telemetry gate-run denominator (S039 WP1). PRE-dispatch bump,
+    # then a try/except SystemExit that records the terminal exit code and
+    # re-raises the IDENTICAL SystemExit object. Control flow and exit code are
+    # provably unchanged: no branch added/removed, same exception re-raised.
+    _bump_gate_run(gate)
+    try:
+        _dispatch_gate(gate, positional, flags)
+    except SystemExit as e:
+        _record_gate_outcome(gate, e.code)
+        raise
+    else:
+        # Dispatch returned without sys.exit (shouldn't happen — every gate
+        # path exits — but record 0 so the denominator/outcome stays balanced).
+        _record_gate_outcome(gate, 0)
+
+
+def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> None:
+    """Existing gate dispatch body, extracted verbatim from main() so the
+    telemetry try/except in main() can wrap it without altering any control
+    flow. Every branch, every ok()/env_error()/check_*/sys.exit call is
+    UNCHANGED from the pre-S039 main() body.
+    """
     if gate == "G1":
         if len(positional) < 1:
             env_error("G1 requires <design_dir>")
@@ -3348,6 +4417,85 @@ def main(argv: Optional[List[str]] = None) -> None:
         runner = flags.get("g_secure_runner", "auto")
         severity = flags.get("g_secure_severity", "high")
         check_G_SECURE(project_root, mode=mode, runner=runner, severity=severity)
+    elif gate == "G_CLASSIFY":
+        # CLI: gates.py G_CLASSIFY <project_root>
+        #               [--design-doc <path>]
+        #               [--asserted N/A|provided]
+        #               [--files-from <list-file|inline,comma,list>]
+        #               [--verify-diff]
+        # Exit codes (corroboration matrix §3.4 / §12 R3):
+        #   0 = PASS (N/A corroborated, or provided->Step1.5, or no-doc 'no')
+        #   2 = BLOCK (asserted-N/A but scan=yes; or nothing-asserted scan=yes;
+        #              or --verify-diff out-of-envelope component-evidence)
+        #   3 = ESCALATE (ambiguous band; never silent-pass, never LLM-decides)
+        # S042 / #115. classify.py holds the deterministic logic.
+        if len(positional) < 1:
+            env_error("G_CLASSIFY requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        design_doc = (Path(flags["design_doc"]) if "design_doc" in flags
+                      else None)
+        asserted = flags.get("asserted")  # "N/A" | "provided" | None
+        files_from = flags.get("files_from")
+        verify_diff = "verify_diff" in flags
+        check_G_CLASSIFY(
+            project_root,
+            design_doc=design_doc,
+            asserted=asserted,
+            files_from=files_from,
+            verify_diff=verify_diff,
+        )
+    elif gate == "G_IDENTITY":
+        # CLI: gates.py G_IDENTITY <project_root>
+        #               [--pair prod-shadow|prod-foundry|all]
+        #               [--foundry-root <path>]
+        # Always runs the FIXED identity_check in --strict (presence-required).
+        # Exit codes:
+        #   0 = identical (CRITICAL _meta subset byte-identical across the pair)
+        #   2 = drift (differing file, MISSING safety file, or missing tree)
+        #   3 = environmental (prod-foundry/all with no agent-foundry clone and
+        #       no --foundry-root / PUBLIC_REPO_ROOT)
+        # S043 / #119 remediation half. identity_check.py holds the logic.
+        if len(positional) < 1:
+            env_error("G_IDENTITY requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        pair = flags.get("identity_pair", "prod-shadow")
+        if pair not in ("prod-shadow", "prod-foundry", "all"):
+            env_error(
+                f"G_IDENTITY --pair must be prod-shadow|prod-foundry|all "
+                f"(got {pair!r})")
+        foundry_root = flags.get("identity_foundry_root")
+        check_G_IDENTITY(project_root, pair=pair, foundry_root=foundry_root)
+    elif gate == "G_DUAL_VERDICT":
+        # CLI: gates.py G_DUAL_VERDICT <project_root> --bundle-hash <h>
+        # Read-only pre-flight over claims.assert_verified_preconditions (R6).
+        # Exit codes:
+        #   0 = PASS (both arms present + passing + versioned + cross-bound)
+        #   2 = FAIL (any VerifiedPreconditionError; gate_false_block)
+        #   3 = ENV  (missing --bundle-hash / no project root)
+        # S044 / #118. claims.py holds the validator; this is the visible
+        # pre-flight + S039-telemetry rider. The engine precondition is the
+        # backstop (strong protocol enforcement, not literally-unskippable).
+        if len(positional) < 1:
+            env_error("G_DUAL_VERDICT requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        bundle_hash = flags.get("bundle_hash")
+        if not bundle_hash:
+            env_error("G_DUAL_VERDICT requires --bundle-hash <hash>")
+        check_G_DUAL_VERDICT(bundle_hash, project_root)
+    elif gate == "G_SECURITY":
+        # CLI: gates.py G_SECURITY <project_root>
+        # Universal advisory security checkpoint (S045 / #120 §9 D1/D2/D4).
+        # Derives scope from the git diff, runs G_SECRETS_SCAN + G_SECURE in
+        # advisory mode over the derived scope, aggregates a normalized result.
+        # Exit codes:
+        #   0 = advisory complete (clean OR findings OR indeterminate-arm OR
+        #       no-tool-arm — v1 NEVER blocks; report + nudge)
+        #   3 = environmental escalation (the git diff could not be collected;
+        #       escalate, NOT silent-skip per D1)
+        if len(positional) < 1:
+            env_error("G_SECURITY requires <project_root>")
+        project_root = Path(positional[0]).resolve()
+        check_G_SECURITY(project_root)
     else:
         env_error(f"unknown gate: {gate}")
 

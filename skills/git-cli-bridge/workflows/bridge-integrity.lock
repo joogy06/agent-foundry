@@ -8,7 +8,13 @@
 # skill-creation time, so these lines use PLACEHOLDER hashes. The user MUST
 # replace them with real integrity values during first-boot Step 2 by running:
 #
-#   scripts/bump-bridge-deps.sh --gemini 0.36.0 --copilot 1.0.21
+#   scripts/bump-bridge-deps.sh --copilot 1.0.21
+#
+# TODO(agy): verify equivalent — agy (Antigravity CLI) is NOT an npm package, so
+# it has no `npm view ... dist.integrity` hash and no line in this lock file.
+# The supply-chain pinning here covers only the npm-distributed copilot CLI.
+# Establish a separate pin+verify mechanism for agy's actual distribution
+# channel before relying on integrity verification for the agy path.
 #
 # which queries `npm view <pkg>@<ver> dist.integrity` locally and rewrites this
 # file with actual sha512 hashes. Until that step runs, the integrity check in
@@ -17,5 +23,6 @@
 #
 # SEC-8 (pinned exact versions + integrity).
 
-@google/gemini-cli@0.36.0 sha512-PLACEHOLDER-REPLACE-DURING-FIRST-BOOT-BUMP
+# TODO(agy): no @google/gemini-cli line — the Gemini CLI is retired; agy is not
+# an npm package (see header). Only the copilot npm package is pinned below.
 @github/copilot@1.0.21 sha512-PLACEHOLDER-REPLACE-DURING-FIRST-BOOT-BUMP

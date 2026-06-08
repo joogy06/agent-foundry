@@ -8,7 +8,7 @@ GCP Workstations decouples the user's home directory from the running workstatio
 |---|---|---|---|
 | `/home/<user>` (== `$HOME`) | YES | YES | The persistent disk is the unit of persistence; lives independently of the workstation instance |
 | Files inside `$HOME` (anywhere) | YES | YES | Same as above |
-| `~/.claude/`, `~/.gemini/`, `~/.copilot/`, `~/.config/gh/` | YES | YES | All AI CLI configs survive |
+| `~/.claude/`, `~/.antigravity/`, `~/.gemini/` (agy config: `~/.antigravity/` + `~/.gemini/antigravity-cli/`), `~/.copilot/`, `~/.config/gh/` | YES | YES | All AI CLI configs survive |
 | `~/.npm/`, `~/.cargo/`, `~/.npm-global/`, `~/.local/` | YES | YES | User-installed package caches |
 | Git repos under `$HOME` | YES | YES | |
 | Customised `~/.bashrc`, `~/.profile`, `~/.gitconfig` | YES | YES | |

@@ -1,6 +1,6 @@
 ---
 name: affordance-advisor
-description: Use at workflow-completion boundaries to optionally surface host-native command suggestions when running on a known CLI host (Claude Code, Codex, Gemini, Copilot CLI). Reads a per-host affordance registry and returns zero or one structured hint per completion kind. Never executes commands. Activates only when the active host CLI is detected from environment variables; returns an empty result on unknown hosts so portable skills stay safe.
+description: Use at workflow-completion boundaries to optionally surface host-native command suggestions when running on a known CLI host (Claude Code, Codex, Antigravity CLI (agy), Copilot CLI). Reads a per-host affordance registry and returns zero or one structured hint per completion kind. Never executes commands. Activates only when the active host CLI is detected from environment variables; returns an empty result on unknown hosts so portable skills stay safe.
 exception_to_codex_symlink_rule: true
 ---
 
@@ -12,7 +12,7 @@ The advisor is a **suggestion layer**, not an execution layer. It never runs any
 
 ## Why this exists (the contamination problem)
 
-Every other skill in this fleet is host-agnostic — it must work identically under Claude Code, Codex CLI, Gemini CLI, and Copilot CLI/Chat. If a portable skill body contained a host-native command token (the kind that begins with a forward slash on Claude/Gemini, or a subcommand of `codex`/`gemini`/`gh` etc.), and that skill were symlinked into another host's skill corpus, the foreign host would either follow the suggestion literally (broken) or carry noisy text in its loaded descriptions.
+Every other skill in this fleet is host-agnostic — it must work identically under Claude Code, Codex CLI, Antigravity CLI (`agy`), and Copilot CLI/Chat. If a portable skill body contained a host-native command token (the kind that begins with a forward slash on Claude, or a subcommand of `codex`/`agy`/`gh` etc.), and that skill were symlinked into another host's skill corpus, the foreign host would either follow the suggestion literally (broken) or carry noisy text in its loaded descriptions.
 
 The mitigation is mechanical: host-native command strings live ONLY in this skill's `registry/*.yaml` data files. The body of every other skill stays neutral. A lint test (see `tests/test_lint_portability.py`) enforces this by scanning the entire skill corpus.
 
@@ -30,7 +30,8 @@ The mitigation is mechanical: host-native command strings live ONLY in this skil
                                        | detect_host_cli.py            |
                                        | reads env vars -> one of:     |
                                        |   claude-code / codex /       |
-                                       |   gemini / copilot-cli /      |
+                                       |   antigravity-cli /           |
+                                       |   copilot-cli /               |
                                        |   copilot-chat / unknown      |
                                        +---------------+---------------+
                                                        |
@@ -48,7 +49,7 @@ The mitigation is mechanical: host-native command strings live ONLY in this skil
 |---|---|
 | `CLAUDECODE=1` or `CLAUDE_CODE_ENTRYPOINT` set | claude-code |
 | `CODEX_VERSION` set | codex |
-| `GEMINI_CLI_SESSION_ID` set (interactive), or `GEMINI_API_KEY` + parent is gemini binary | gemini |
+| `ANTIGRAVITY_CLI_SESSION_ID` set (TODO(agy): confirm agy host env var) | antigravity-cli |
 | `COPILOT_*` env var present | copilot-cli |
 | `VSCODE_PID` + `TERM_PROGRAM=vscode` | copilot-chat |
 | none | unknown |
@@ -61,7 +62,7 @@ Every entry in `registry/<host>.yaml`:
 
 ```
 schema_version: affordance.v1
-host_cli: <claude-code|codex|gemini|copilot-cli|copilot-chat>     # or
+host_cli: <claude-code|codex|antigravity-cli|copilot-cli|copilot-chat>     # or
 activation: { tool_on_path: <name> }                              # for utility CLIs like gh
 
 affordances:
@@ -109,7 +110,7 @@ Calling the script twice with the same flags returns the same bytes. No hidden s
 
 ## Special design notes
 
-### Not symlinked to ~/.codex/skills/ (or ~/.gemini/, ~/.copilot/)
+### Not symlinked to ~/.codex/skills/ (or ~/.antigravity/, ~/.copilot/)
 
 This skill is the deliberate exception to the global "all new skills MUST be symlinked to ~/.codex/skills/" convention (see `~/.claude/CLAUDE.md` Skill Library section and the `copilot-compatibility` memory). The reason is identical to the reason the registry files exist: this skill is allowed to contain host-native command strings inside `registry/*.yaml`, and any host outside the active one must never read them. Symlinking the directory into another host's skill tree would defeat the active-CLI gate (the foreign host would happily load a description that mentions the wrong host's commands).
 
@@ -136,7 +137,7 @@ Each host CLI iterates its command surface independently. A weekly (manual) drif
 +-- registry/
 |   +-- claude-code.yaml
 |   +-- codex.yaml
-|   +-- gemini.yaml
+|   +-- antigravity-cli.yaml
 |   +-- copilot-cli.yaml
 |   +-- gh.yaml                    (host-independent, gated on tool_on_path)
 |   +-- copilot-chat.yaml          (stub, affordances: [])

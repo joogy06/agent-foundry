@@ -1,83 +1,23 @@
 # Hooks Portability
 
-Hooks (lifecycle event handlers in `settings.json`) do NOT cleanly port between Claude Code and Gemini CLI. The schemas differ and the events differ.
+Hooks (lifecycle event handlers in `settings.json`) are a **Claude Code-native** mechanism. Among the four cross-tool CLIs, only Claude Code has a verified hooks system. There is **no verified hooks contract for the Antigravity CLI (`agy`)** — see the TODO(agy) note below.
+
+> The retired Gemini CLI shipped a `gemini hooks migrate` one-shot importer from Claude's `settings.json`. **That mechanism is gone** along with the gemini CLI. Do NOT assume agy has an equivalent.
 
 ## Tool support matrix
 
 | Tool | Hooks support | Schema |
 |---|---|---|
-| Claude Code | `~/.claude/settings.json` `hooks.<Event>[].matcher + hooks[]` | Native |
-| Gemini CLI | `~/.gemini/settings.json` (via `gemini hooks migrate`) | Migrated from Claude format |
+| Claude Code | `~/.claude/settings.json` `hooks.<Event>[].matcher + hooks[]` | Native (verified) |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no confirmed hooks system or migration tool | Unverified |
 | GitHub Copilot CLI | No hooks concept | N/A |
 | Codex CLI | `[UNVERIFIED]` no documented hooks | N/A |
 
-Only Claude and Gemini have hooks. Copilot and Codex don't.
+Only Claude Code has a verified hooks system. Author and run hooks on the Claude side; do not assume they port.
 
-## The migration tool
+## Authoring hooks (Claude side)
 
-`gemini hooks migrate` is a **one-shot import** from Claude Code's `settings.json` format. It:
-
-1. Reads `~/.claude/settings.json`
-2. Translates the hooks block to Gemini's schema
-3. Writes the result to `~/.gemini/settings.json`
-4. Exits
-
-It is NOT a continuous sync. If you re-edit Claude's hooks, Gemini's hooks don't update. You must re-run the migration.
-
-## Recommended workflow
-
-1. **Author hooks in Claude's `settings.json`** as the source of truth
-2. **Run `gemini hooks migrate`** once to populate Gemini
-3. **Commit both files** to version control
-4. **After any Claude-side hook edit, re-run the migration** and commit both updated files
-
-Treat `~/.gemini/settings.json` hooks block as a generated artifact.
-
-## Don't share a single hooks file
-
-Tempting:
-
-```bash
-ln -sfn ~/.claude/settings.json ~/.gemini/settings.json   # NO
-```
-
-Why this is wrong:
-
-1. **Schemas differ.** Claude's `hooks.PostToolUse[].matcher` may not have a 1:1 Gemini equivalent. The migration tool exists because the schemas are different.
-2. **Other settings collide.** `settings.json` contains more than just hooks (model defaults, MCP servers, etc.). Sharing means polluting both tools' config.
-3. **Version conflicts.** Claude and Gemini might require different schema versions.
-
-## Hook re-entrancy
-
-A hook in Claude that calls `gemini` (or vice versa) can recurse if the called tool also has hooks. Use the `AI_CLI_CALL_DEPTH` convention:
-
-```bash
-#!/bin/bash
-# Claude hook script that calls gemini
-# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
-export GOOGLE_CLOUD_PROJECT=
-export GEMINI_API_KEY=
-export AI_CLI_CALL_DEPTH="${AI_CLI_CALL_DEPTH:-0}"
-if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
-  echo "Refusing to recurse: AI_CLI_CALL_DEPTH=$AI_CLI_CALL_DEPTH" >&2
-  exit 0
-fi
-export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
-gemini -p "..." --output-format json
-```
-
-Convention only — neither tool enforces this. See `challenger-concerns.md`.
-
-## Portable hook patterns
-
-If you want hooks that work in both Claude and Gemini:
-
-1. Author the hook script as a standalone bash/python script
-2. In Claude's `settings.json`, reference it via `hooks[].command`
-3. After `gemini hooks migrate`, the same script is referenced by Gemini's translated config
-4. The script runs the same way under both tools
-
-The key: keep the hook **logic** in a separate script, not inline in the settings.json. The `command` reference is portable; the inline definition is not.
+Author hooks in Claude's `settings.json` as the source of truth, and keep the hook **logic** in standalone scripts (not inline in settings.json). A `command:` reference to an external script is the most portable form should any other tool gain a compatible hooks system later.
 
 ```bash
 # ~/.claude/hooks/post-edit-format.sh
@@ -106,30 +46,37 @@ esac
 }
 ```
 
-After `gemini hooks migrate`, the same script is referenced from Gemini's settings.json.
+The key: keep the hook **logic** in a separate script. The `command` reference is the portable part; the inline definition is tool-specific.
 
-## What `gemini hooks migrate` produces
+## Cross-CLI hook re-entrancy
 
-**`[UNVERIFIED]`** locally — the exact output schema is research-grade. Test in a throwaway directory before relying:
+A Claude hook that shells out to another AI CLI (e.g. `agy`) can recurse if the called tool also runs hooks. Even though agy's hooks support is unverified, guard any hook that invokes another CLI with the `AI_CLI_CALL_DEPTH` convention:
 
 ```bash
-mkdir /tmp/gemini-hooks-test && cd /tmp/gemini-hooks-test
-mkdir -p .claude
-cat > .claude/settings.json <<'EOF'
-{
-  "hooks": {
-    "PostToolUse": [{
-      "matcher": "Edit",
-      "hooks": [{"type": "command", "command": "echo edited"}]
-    }]
-  }
-}
-EOF
-gemini hooks migrate
-cat ~/.gemini/settings.json
+#!/bin/bash
+# Claude hook script that calls agy
+export AI_CLI_CALL_DEPTH="${AI_CLI_CALL_DEPTH:-0}"
+if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
+  echo "Refusing to recurse: AI_CLI_CALL_DEPTH=$AI_CLI_CALL_DEPTH" >&2
+  exit 0
+fi
+export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
+agy -p "..."
 ```
 
-After verifying, update this file with the actual schema.
+Notes on the `agy` call: no `-m`/`--model` flag, no `GOOGLE_CLOUD_PROJECT=`/`GEMINI_API_KEY=` env prefix (agy authenticates via its own account), and output is plain text on stdout — parse text, not JSON.
+
+Convention only — neither tool enforces this. See `challenger-concerns.md`.
+
+## agy hooks — what is NOT verified
+
+TODO(agy): verify equivalent. The following were Gemini-CLI-specific and have **no confirmed agy analogue**. Do not document any of these as supported for agy without checking `agy help` / `agy <sub> --help`:
+
+- A `settings.json` hooks block / event schema (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, etc.).
+- A migration tool (the retired `gemini hooks migrate` has no agy successor).
+- Hook-event names matching Claude's set 1:1.
+
+If a workflow needs lifecycle hooks on the agy side, probe `agy help` first and confirm before relying on it.
 
 ## Common hook events (Claude side)
 
@@ -143,15 +90,14 @@ After verifying, update this file with the actual schema.
 | `SessionStart` | At session start |
 | `SessionEnd` | At session end |
 
-Whether each of these has a 1:1 Gemini equivalent is UNVERIFIED. Run the migration on a complex hook config to find out.
+These are Claude Code events. Whether agy exposes anything comparable is UNVERIFIED.
 
 ## Anti-patterns
 
 | Don't | Why |
 |---|---|
-| Symlink `settings.json` between Claude and Gemini | Schemas differ; collides on non-hook settings |
-| Re-run `gemini hooks migrate` without testing the result | One-shot, may produce surprising output |
+| Assume agy has a hooks system | Unverified. Probe `agy help` before relying on lifecycle hooks. |
 | Inline hook scripts in `settings.json` | Portable hooks reference external scripts |
 | Forget the call-depth guard | Hooks that call other CLIs can recurse infinitely |
-| Trust that Claude and Gemini hook events have identical names | They may differ subtly. Verify after migration. |
-| Skip version control on `~/.gemini/settings.json` | The migration output IS the source of truth for Gemini side; protect it |
+| Pass `-m <model>` or a `GEMINI_API_KEY=` prefix to `agy` in a hook | agy has no model flag and no env-key prefix; both are retired-gemini patterns |
+| Treat Claude hook events as cross-tool | Only Claude's hooks system is verified |

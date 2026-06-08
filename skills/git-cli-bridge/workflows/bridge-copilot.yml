@@ -3,7 +3,7 @@ name: bridge-copilot
 # ============================================================================
 # git-cli-bridge — Copilot workflow
 # ----------------------------------------------------------------------------
-# Same trigger and self-trigger defenses as bridge-gemini.yml.
+# Same trigger and self-trigger defenses as bridge-agy.yml.
 # Differences: fetches COPILOT_GITHUB_TOKEN from GCP Secret Manager via WIF,
 # installs @github/copilot@1.0.21, invokes with narrow --allow-tool scoping.
 # ============================================================================
@@ -57,7 +57,7 @@ jobs:
 
       - name: Skip if not a copilot request
         if: steps.detect.outputs.skip == 'true' || steps.detect.outputs.tool != 'copilot'
-        run: echo "This push is not a copilot request; bridge-gemini will handle it if applicable."
+        run: echo "This push is not a copilot request; bridge-agy will handle it if applicable."
 
       - name: Validate request schema
         if: steps.detect.outputs.tool == 'copilot'

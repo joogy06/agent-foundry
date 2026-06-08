@@ -1,4 +1,4 @@
-"""Tests for llm_fallback.py — codex/gemini stubbed via fake binary."""
+"""Tests for llm_fallback.py — codex/agy stubbed via fake binary."""
 from __future__ import annotations
 
 import os
@@ -61,7 +61,7 @@ class TestInterpretDeprecation(unittest.TestCase):
         os.environ["PATH"] = self._orig_path
 
     def test_fallback_returns_none_when_both_unavailable(self):
-        # Clear PATH so codex / gemini definitely not findable
+        # Clear PATH so codex / agy definitely not findable
         os.environ["PATH"] = "/nonexistent"
         out = interpret_deprecation("This package is deprecated; use foo-ng",
                                      "old-pkg")
@@ -107,7 +107,7 @@ class TestVerdictPostCheck(unittest.TestCase):
             '{"is_deprecated": false, "urgency": "immediate"}'
         )
         self.assertIsNotNone(parsed)
-        # The full interpret_deprecation flow would call _try_codex/gemini
+        # The full interpret_deprecation flow would call _try_codex/agy
         # and then check this; with no binary available, returns None
         # without reaching the check. That's fine for v1.
 

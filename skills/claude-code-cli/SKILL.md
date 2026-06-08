@@ -14,7 +14,7 @@ This SKILL.md is the navigation index. Detailed documentation lives in `referenc
 - Building anything that calls `claude` from the shell or a script (headless `-p` mode)
 - Authoring or debugging Claude Code agents, skills, plugins, hooks, MCP servers
 - Editing `~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.claude/AGENTS.md`
-- Cross-referencing Claude Code features against Gemini CLI, Codex CLI, or GitHub Copilot CLI (see `gemini-cli`, `gh-copilot-cli`, `cross-tool-portability` sub-skill)
+- Cross-referencing Claude Code features against Antigravity CLI (agy), Codex CLI, or GitHub Copilot CLI (see `antigravity-cli`, `gh-copilot-cli`, `cross-tool-portability` sub-skill)
 - Operating inside the local custom ecosystem (forge, bob, alf, pa, wiki, agent-teams)
 
 ## Versions covered
@@ -55,7 +55,7 @@ When the local `claude` version drifts from this skill, run `scripts/verify-clau
 |---|---|
 | Author an agent (`~/.claude/agents/<name>.md`) | `references/sub-agents.md` |
 | Author a skill (`~/.claude/skills/<name>/SKILL.md`) | `references/skills.md` + the `cross-tool-portability` sub-skill of `research-for-skills` |
-| Cross-tool skill that must work in Gemini/Codex/Copilot | `research-for-skills/cross-tool-portability/cross-tool-portability.md` |
+| Cross-tool skill that must work in Antigravity (agy)/Codex/Copilot | `research-for-skills/cross-tool-portability/cross-tool-portability.md` |
 | Skill discovery / progressive disclosure | `references/skills.md` |
 
 ### Plugins and marketplaces
@@ -146,7 +146,7 @@ These are not documented in upstream superpowers — they are specific to this u
 | Hard-rules checklist before spawning agents | `references/custom-ecosystem.md` (Hard Rules section) |
 | MEMORY index, project context (PROJECT.md, history.md, tasks.md) | `references/custom-ecosystem.md` (Memory + Project Docs sections) |
 | 119-skill library, _meta inventory | `references/custom-ecosystem.md` (Skills section) |
-| Cross-CLI orchestration: Claude + Codex + Gemini in parallel | `references/cross-tool-integration.md` |
+| Cross-CLI orchestration: Claude + Codex + Antigravity (agy) in parallel | `references/cross-tool-integration.md` |
 | What changed since the Jan 2026 superpowers snapshot | `references/upgrades-since-jan-2026.md` |
 
 ## Permission modes (verified from `claude --help`)
@@ -243,9 +243,9 @@ Run `scripts/verify-claude-install.sh` after any `claude update`. The script:
 ## See also
 
 - `references/custom-ecosystem.md` — forge/bob/alf/pa/wiki/agent-teams stack
-- `references/cross-tool-integration.md` — Claude + Codex + Gemini orchestration
+- `references/cross-tool-integration.md` — Claude + Codex + Antigravity (agy) orchestration
 - `references/upgrades-since-jan-2026.md` — delta vs the superpowers snapshot
-- `gemini-cli` — Gemini CLI counterpart
+- `antigravity-cli` — Antigravity CLI (agy) counterpart
 - `gh-copilot-cli` — GitHub Copilot CLI counterpart
 - `gcp-workstations` — running this whole stack on a GCP Workstation
 - `research-for-skills/cross-tool-portability/` — rules for skills that span multiple CLIs

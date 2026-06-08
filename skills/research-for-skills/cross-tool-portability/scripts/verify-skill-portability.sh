@@ -192,7 +192,7 @@ echo
 # 9. summary
 printf "Summary\n"
 if [ "$ERRORS" -eq 0 ]; then
-  ok "PASS: $SKILL_MD is portable across Claude Code, Gemini CLI, Codex CLI, and (via AGENTS.md) GitHub Copilot CLI"
+  ok "PASS: $SKILL_MD is portable across Claude Code, Antigravity CLI (agy), Codex CLI, and (via AGENTS.md) GitHub Copilot CLI"
   exit 0
 else
   err "FAIL: $ERRORS error(s) found"

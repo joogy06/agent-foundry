@@ -12,7 +12,7 @@ Turn ideas into fully formed designs through collaborative dialogue, then orches
 Every design and implementation decision must account for real human behaviour — how end users actually see, navigate, and interact with the product.
 
 <HARD-RULE>
-**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.4) AND Gemini (Gemini 3 via `ask-gemini` MCP tool) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/Gemini unavailable, fall back gracefully but note each gap explicitly.
+**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.4) AND Antigravity CLI (`agy`, via `agy -p`) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/agy unavailable, fall back gracefully but note each gap explicitly.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -34,7 +34,7 @@ Every design and implementation decision must account for real human behaviour �
 </HARD-RULE>
 
 <HARD-RULE>
-**Sandbox-Aware Routing**: For MEDIUM/COMPLEX tasks that call Gemini or Copilot (design exploration, challenger review, research analysis), compute `bridge-mode-detect.sh` output once at Step 4b and cache it for the session. In MODE=bridge, every downstream Gemini/Copilot call transparently routes through `bridge request`. Never mix modes within a single forge session — the caching is there precisely to prevent this. If the bridge is required but not initialized, halt Step 4b and tell the user to run `bridge init` first. See `git-cli-bridge` skill.
+**Sandbox-Aware Routing**: For MEDIUM/COMPLEX tasks that call `agy` or Copilot (design exploration, challenger review, research analysis), compute `bridge-mode-detect.sh` output once at Step 4b and cache it for the session. In MODE=bridge, every downstream `agy`/Copilot call transparently routes through `bridge request`. Never mix modes within a single forge session — the caching is there precisely to prevent this. If the bridge is required but not initialized, halt Step 4b and tell the user to run `bridge init` first. See `git-cli-bridge` skill.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -82,11 +82,11 @@ If `came_from_founder` is absent or false, proceed with normal forge flow. Forge
 4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
    - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
-   - **capabilities.gemini_analyst = true**: Gemini available, use `mcp__gemini-cli__ask-gemini`.
-   - **capabilities.bridge_fallback = true**: bridge mode active — route Gemini/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
+   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p "..."` Bash call.
+   - **capabilities.bridge_fallback = true**: bridge mode active — route `agy`/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
    - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
-   The manifest is cached for the session — do not re-probe on every use. If Codex/Gemini unavailable, note the gap explicitly but continue with what's available. See `env-adoption` skill for full schema and `git-cli-bridge` skill for bridge protocol.
+   The manifest is cached for the session — do not re-probe on every use. If Codex/agy unavailable, note the gap explicitly but continue with what's available. See `env-adoption` skill for full schema and `git-cli-bridge` skill for bridge protocol.
 5. **Skill gap check** — identify skills needed, check if they exist (see Skill Gap Detection)
 5b. **Hard rules checkpoint** — read `~/.claude/skills/_meta/hard-rules-checklist.md` DESIGN PHASE + CROSS-MODEL sections. Verify: Codex parallel for MEDIUM/COMPLEX? Performance expectations asked? Gap detection done?
 6. **Phase 1: Design Exploration** — spawn design exploration team OR do single-agent exploration
@@ -108,9 +108,9 @@ Before spawning any design exploration team, assess complexity:
 
 | Complexity | Signals | Design Exploration Team Size |
 |------------|---------|---------------------|
-| **Simple** | Config change, single-file tweak, obvious solution | No team — single agent explores + optional Codex/Gemini |
-| **Medium** | 2-3 valid approaches, touches 3-5 files | 2-3 approach agents + triple challengers (Claude + Codex + Gemini) |
-| **Complex** | Architecture decision, 4+ approaches, cross-layer | 4-5 approach agents + triple challengers (Claude + Codex + Gemini) + Codex approach agent |
+| **Simple** | Config change, single-file tweak, obvious solution | No team — single agent explores + optional Codex/agy |
+| **Medium** | 2-3 valid approaches, touches 3-5 files | 2-3 approach agents + triple challengers (Claude + Codex + agy) |
+| **Complex** | Architecture decision, 4+ approaches, cross-layer | 4-5 approach agents + triple challengers (Claude + Codex + agy) + Codex approach agent |
 
 ### Adaptive Checklist
 
@@ -120,9 +120,9 @@ Before spawning any design exploration team, assess complexity:
 | 2. Visual companion | Skip | If UI-facing | If UI-facing |
 | 3. Clarifying questions | 1-2 max | As needed | As needed |
 | 4. Complexity assessment | Done | Done | Done |
-| 4b. Codex + Gemini check (sandbox-aware) | Skip | Check both + detect mode | Check both + detect mode |
+| 4b. Codex + agy check (sandbox-aware) | Skip | Check both + detect mode | Check both + detect mode |
 | 5. Skill gap check | Skip | Check | Check |
-| 6. Design exploration | Lead proposes directly | 2-3 agents + Codex + Gemini | Full team + Codex + Gemini |
+| 6. Design exploration | Lead proposes directly | 2-3 agents + Codex + agy | Full team + Codex + agy |
 | 7. Present design | Brief, 1 section | Sections | Sections with approval each |
 | 8. Write design doc | Optional (skip if <20 lines change) | Yes | Yes |
 | 8b. Spec review | Self-review only | Self + subagent | Self + subagent |
@@ -192,7 +192,7 @@ The lead handles all user interaction:
 | **UX/Usability Agent** | 1 (always for UI-facing work) | Evaluates every approach from end-user perspective |
 | **Claude Challenger** | 1 (always) | Questions every proposal, finds flaws, plays devil's advocate |
 | **Codex Challenger** | 1 (always, if available) | Independent GPT-5.4 challenger — different model catches different flaws |
-| **Gemini Analyst** | 1 (MEDIUM+, if available) | Independent Gemini analysis via `ask-gemini` MCP — third model, 1M context, Google Search grounding |
+| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p "..."` Bash call — third model for additional coverage |
 | **Codex Second Opinion** | 1 (always for creative/design, if available) | Parallel exploration via Codex for independent perspective |
 
 #### Three Phases
@@ -272,7 +272,7 @@ Rank approaches with reasoning."
 
 Check Codex availability first (step 4b). If unavailable, skip Codex agents and note the gap.
 
-**Note on bridge mode**: Codex has no bridge fallback. Codex is the caller in this architecture, not a callee. If `bridge-mode-detect.sh` reports `bridge`, Codex still runs locally (it must be installed in the sandbox — it is the only CLI with that constraint). The bridge only affects Gemini and Copilot delegation.
+**Note on bridge mode**: Codex has no bridge fallback. Codex is the caller in this architecture, not a callee. If `bridge-mode-detect.sh` reports `bridge`, Codex still runs locally (it must be installed in the sandbox — it is the only CLI with that constraint). The bridge only affects `agy` and Copilot delegation.
 
 **Primary: Use Codex plugin commands** (structured output, job tracking, resume capability):
 
@@ -332,53 +332,68 @@ wait  # Wait for all Codex tasks to complete
 
 **When to use plugin vs raw exec**: Plugin commands are preferred for single challenger/research tasks (structured output, job tracking). Use raw `codex exec` when running 3+ parallel tasks in a batch or when custom brief files with skill injection are needed.
 
-#### Spawning Gemini Analyst (MEDIUM+ — in parallel with Claude and Codex agents)
+#### Spawning Antigravity (agy) Analyst (MEDIUM+ — in parallel with Claude and Codex agents)
 
-Check Gemini availability first: `mcp__gemini-cli__ping()`. If unavailable, skip and note the gap.
+Check `agy` availability first: `command -v agy`. If unavailable, skip and note the gap.
 
-```
-# Gemini Analyst — leverages 1M context and Google Search grounding
-mcp__gemini-cli__ask-gemini(prompt: "You are an analyst for [TASK].
+`agy -p` returns **plain text on stdout** (the old `mcp__gemini-cli__*` MCP tools returned
+structured fields — `agy` does not, so the lead parses the text reply, not JSON fields).
+Raise `--print-timeout` above the 5m default for long analyses. Append a `served_by` probe
+line to the prompt and capture it — self-reported model identity is unreliable.
+
+**STDIN RULE (root-caused 2026-06-05, #135):** headless `agy` MUST have stdin closed or piped —
+`< /dev/null` on every call. agy reads non-TTY stdin until EOF *before* the model call; in
+background/harness shells stdin never EOFs, so agy hangs forever producing 0 bytes and
+`--print-timeout` never fires (it only guards the print phase). Also wrap in a shell `timeout`.
+Prompt size is NOT a factor (verified: 30-char prompt hung; 11KB prompt with `< /dev/null`
+answered in 9s).
+
+```bash
+# Antigravity (agy) Analyst — independent third-model analysis
+timeout 600 agy -p "You are an analyst for [TASK].
 Project context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Analyze: 1. Architecture trade-offs  2. Scalability limits  3. Security surface
 4. What approaches work best at scale for this pattern?
-Be specific and cite real-world precedents where possible.")
+Be specific and cite real-world precedents where possible.
+At the very end print one line: SERVED_BY=<model-id-you-are-running-as>." < /dev/null
 
-# For large codebase context (Gemini's 1M window advantage):
-mcp__gemini-cli__ask-gemini(prompt: "Review the codebase at [PATHS] for [TASK].
-Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries.")
+# For codebase context, add the relevant paths to the workspace with --add-dir:
+timeout 600 agy --add-dir [PATHS] -p "Review the codebase at [PATHS] for [TASK].
+Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries." < /dev/null
 
-# For multi-methodology brainstorming:
-mcp__gemini-cli__brainstorm(topic: "[TASK] approaches", methodology: "six_hats")
+# For multi-methodology brainstorming (frame the methodology in the prompt itself):
+timeout 600 agy -p "Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —
+work through White (facts), Red (intuition), Black (caution), Yellow (benefits),
+Green (alternatives), and Blue (process) in turn, then summarise." < /dev/null
 ```
 
-**When to use Gemini vs Codex**: Gemini excels at large context analysis (full codebase review), research with Google Search grounding, and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.
+**When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.
 
-### Bridge-mode Gemini analyst
+### Bridge-mode agy analyst
 
-When `bridge-mode-detect.sh` returned `bridge`, call Gemini via the bridge:
+When `bridge-mode-detect.sh` returned `bridge`, call `agy` via the bridge:
 
 ```bash
 # Uses the already-initialized session from bridge init
-BRIDGE_CALLER=forge BRIDGE_CALLER_TASK_ID="forge-$(date +%s)-gemini-analyst" \
-bridge request --tool gemini --kind review \
+BRIDGE_CALLER=forge BRIDGE_CALLER_TASK_ID="forge-$(date +%s)-agy-analyst" \
+bridge request --tool agy --kind review \
   --context "$PROJECT_SUMMARY_PATH" \
   --wait --timeout 720 \
   "Analyze this design for architecture trade-offs, scalability limits, security surface.
   Cite real-world precedents."
 ```
 
-Latency expectation: ~90s cold, ~40s warm. The parallel-model design pattern (Claude + Codex + Gemini in parallel) still holds — launch this alongside the Claude challenger and Codex adversarial review at the start of the design exploration team phase, not sequentially after.
+Latency expectation: ~90s cold, ~40s warm. The parallel-model design pattern (Claude + Codex + agy in parallel) still holds — launch this alongside the Claude challenger and Codex adversarial review at the start of the design exploration team phase, not sequentially after.
 
 #### Converging Triple-Model Findings
 
 When collecting results, the lead MUST:
-1. Read Claude challenger output AND Codex challenger output (`$CODEX_WORK/challenger.md`) AND Gemini analyst output
+1. Read Claude challenger output AND Codex challenger output (`$CODEX_WORK/challenger.md`) AND agy analyst output
 2. Read Codex approach exploration (`$CODEX_WORK/approach.md`)
 3. Identify where models **agree** (high confidence) vs **disagree** (needs deeper analysis)
-4. Flag disagreements to the user: "Claude, Codex, and Gemini disagree on X — here are all perspectives"
+4. Flag disagreements to the user: "Claude, Codex, and agy disagree on X — here are all perspectives"
 5. Weight all model findings equally — each has different blind spots and strengths
-6. Gemini findings often include real-world precedents and Google Search-grounded data — flag these as evidence
+6. agy findings that cite real-world precedents — flag these as evidence (and verify per Stage 1.5)
 
 #### Codex Escalation (When Claude Is Stuck)
 
@@ -445,6 +460,37 @@ After convergence:
 ---
 
 ## Contract Map Generation (Step 8a)
+
+### Step 8a.0: Emit + corroborate the classification artifact (S042 / #115)
+
+BEFORE deciding whether to build a map, forge MUST write `.forge/classification.json` (schema `contract-classification.v1`) — the recorded classification that travels with the cycle, analogous to the signed contract map. This closes the bare-`Contract map: N/A` hole at the producer side (not just bob's front door).
+
+The artifact states:
+- `introduces_components`: `"yes" | "no"`
+- `reason_code`: a value from the **closed enum** {`skill_text`, `doc_only`, `direct_bugfix`, `refactor`, `self_contained_meta_helper`, `sidecar_telemetry`, `agent_text`, `existing_component_extension`} — NOT free-text (free-text reasons are a loophole).
+- `design_doc`, `planned_globs`, `evidence` (confirmed_positives / negatives / prose_only).
+
+Forge may hand-write it, or derive a default via the helper:
+```bash
+python3 ~/.claude/skills/_meta/classify_emit.py "<project_root>" \
+  --design-doc "<design-doc-path>" --classified-by forge_design \
+  --files-from "<planned-file-touch-list>"
+```
+
+Then forge **locally runs `G_CLASSIFY` to fail-fast at design time** (catch a misclassification before bob is ever spawned):
+```bash
+python3 ~/.claude/skills/_meta/gates.py G_CLASSIFY "<project_root>" \
+  --design-doc "<design-doc-path>" \
+  --asserted "<N/A if introduces_components==no, else provided>" \
+  --files-from "<planned-file-touch-list>"
+```
+- Exit 0 → classification corroborated; proceed.
+- Exit 2 → the scan contradicts the artifact (named signals). Fix the design/classification before continuing; do NOT hand bob a false N/A.
+- Exit 3 → ambiguous; resolve with the user before spawning bob.
+
+The artifact is a CLAIM the gate re-derives and corroborates — never trusted (the threat model includes a buggy/drifting producer). `existing_component_extension` makes the Ship-of-Theseus case (appending component logic into existing allowed files) a *declarable, checkable* category rather than a silent dodge.
+
+### Step 8a.1+: Build the signed contract map (component cycles only)
 
 When a design introduces components (new services, modules, APIs, integration points), forge MUST produce a signed contract map BEFORE invoking the spec review (Step 8b) and before spawning bob.
 
@@ -578,10 +624,11 @@ The design has been reviewed and approved by the user. Execute it as specified.
 """)
 ```
 
-The contract-map block is OMITTED only for designs that do not introduce components (pure refactors, single-file bugfixes). In that case, include an explicit line: `Contract map: N/A (no new components in this change).`
+The contract-map block is OMITTED only for designs that do not introduce components (pure refactors, single-file bugfixes). In that case, include an explicit line: `Contract map: N/A (no new components in this change) — <reason>.` **This `N/A` line is ADVISORY only** (S042 / #115): bob does NOT trust it: bob's mandatory `G_CLASSIFY` pre-flight independently re-derives and corroborates the classification, and authorizes skipping Step 1.5 SOLELY on a green (`exit 0`) gate. A false N/A is caught (exit 2 BLOCK with named signals).
 
 **What to include in bob's prompt:**
 - Path to the design doc (bob reads it himself)
+- **Path to `.forge/classification.json`** (the Step 8a.0 classification artifact — bob's `G_CLASSIFY` pre-flight corroborates it)
 - Architecture docs: PROJECT.md path + relevant COMPONENT.md paths
 - Coding conventions (if any)
 - Existing interface contracts to respect
@@ -607,6 +654,13 @@ Bob returns a structured execution report. When you receive it:
 
 ### Verification
 [From bob's report — what passed, what didn't]
+
+### Cycle cost (observe-only, S046 #124)
+[If bob's report includes a `Spawn cost` line, surface it verbatim: "captured
+Claude-verifier spend: $X across N spawns; summed spawn duration Ys —
+coverage: partial (forge approach-agents + Codex + agy costs NOT captured);
+budget_enforced: false". This is OBSERVE-ONLY — v1 records, does not cap
+(enforcement deferred → #147). Omit if bob ran no cold-context verifier spawn.]
 
 ### How to Verify
 [From bob's report — step-by-step testing instructions]
@@ -715,9 +769,9 @@ Fix issues inline. Then proceed to stage 2.
 
 **Stage 1.5 — External-finding verification (S030-quickwins #37):**
 
-If Stage 2 will dispatch external-model reviewers (Codex, Gemini), or if
+If Stage 2 will dispatch external-model reviewers (Codex, agy), or if
 external-model findings already exist from earlier in the design (Step 4b
-challengers, the Gemini analyst), run the **verification pass** BEFORE
+challengers, the agy analyst), run the **verification pass** BEFORE
 merging any of those findings into the consolidated review report.
 
 For each external-model finding that cites a specific code/file/symbol:
@@ -732,7 +786,7 @@ For each external-model finding that cites a specific code/file/symbol:
    evidence" section. Move `NEEDS-FOLLOWUP` to a third section for the
    user to adjudicate.
 
-Codex and Gemini have observed false-positive rates of 60-65% on adversarial
+Codex and agy have observed false-positive rates of 60-65% on adversarial
 spec/design review (DLP pilot 2026-04-09; S030-init WP-0). Skipping this
 verification pass would propagate model hallucinations into the design doc
 and waste user attention. The protocol — including worked examples of how
@@ -801,12 +855,12 @@ For UI-facing work, apply these when evaluating designs:
 - **Multiple choice preferred** — easier to answer than open-ended
 - **YAGNI ruthlessly** — remove unnecessary features from all designs
 - **Users first, code second** — every decision starts with "how does the user experience this?"
-- **Always triple challengers for MEDIUM+** — Claude + Codex + Gemini catch what one or two models miss
+- **Always triple challengers for MEDIUM+** — Claude + Codex + agy catch what one or two models miss
 - **Always include UX for UI work** — technically perfect but confusing = failed
-- **Codex and Gemini run in parallel, not after** — launch all external model tasks alongside Claude agents, never sequentially
+- **Codex and agy run in parallel, not after** — launch all external model tasks alongside Claude agents, never sequentially
 - **Escalate to Codex when stuck** — if Claude agents fail 2+ times, delegate to Codex for a fresh perspective before asking the user
-- **Flag model disagreements** — when Claude, Codex, and Gemini disagree, present all perspectives to the user
-- **Gemini for grounded research** — use Gemini's Google Search grounding and 1M context for real-world precedents, large codebase analysis, and freshness checks
+- **Flag model disagreements** — when Claude, Codex, and agy disagree, present all perspectives to the user
+- **agy as an independent third model** — use `agy -p` for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming
 - **Forge owns design, bob owns execution** — after design approval, spawn bob and let him handle everything
 - **Teammates don't inherit context** — include ALL relevant info in spawn prompts
 - **Prefer Codex plugin commands** (`/codex:adversarial-review`, `/codex:rescue`, `/codex:review`) over raw `codex exec` — they provide structured output, job tracking, and resume capability
@@ -819,9 +873,9 @@ For UI-facing work, apply these when evaluating designs:
 - Starting to code before design is approved
 - Skipping the Claude challenger "to save tokens"
 - Skipping the Codex challenger "Codex is unavailable" (check first, then skip only if truly unavailable)
-- Skipping the Gemini analyst without checking `bridge-mode-detect.sh` first (even in sandboxed environments, Gemini should be available via the bridge)
-- Running Codex/Gemini sequentially after Claude instead of in parallel
-- Ignoring Codex or Gemini findings because they disagree with Claude
+- Skipping the agy analyst without checking `bridge-mode-detect.sh` first (even in sandboxed environments, agy should be available via the bridge)
+- Running Codex/agy sequentially after Claude instead of in parallel
+- Ignoring Codex or agy findings because they disagree with Claude
 - Staying stuck on a problem without escalating to Codex
 - Forge doing work package construction instead of letting bob handle it
 - Forge micro-managing bob's team orchestration decisions

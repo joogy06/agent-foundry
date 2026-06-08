@@ -21,7 +21,7 @@ This is the **canonical source**. Other tools symlink to it.
 | Tool | Path | How to install | Notes |
 |---|---|---|---|
 | **Claude Code** | `~/.claude/skills/<name>/` | `mkdir`, place files | The canonical source. Edit here. |
-| **Gemini CLI** | `~/.gemini/skills/<name>/` | `gemini skills link ~/.claude/skills/<name>` | `link` (not `install`) so edits are live |
+| **Antigravity CLI (`agy`)** | agy-managed (config under `~/.antigravity/`) | `agy plugin import claude` (imports Claude plugins/skills) | TODO(agy): verify per-skill live-symlink path. `agy plugin import` is the verified bulk-import path. |
 | **Codex CLI** | `~/.codex/skills/<name>/` | `ln -sfn ~/.claude/skills/<name> ~/.codex/skills/<name>` | Plain symlink |
 | **GitHub Copilot CLI** | (no skill concept) | Reference from `AGENTS.md` or wrap as MCP server | See below |
 
@@ -47,25 +47,17 @@ test -L "$HOME/.codex/skills/$SKILL_NAME" \
   && [[ "$(readlink -f "$HOME/.codex/skills/$SKILL_NAME")" == "$HOME/.claude/skills/$SKILL_NAME" ]] \
   || { echo "FAIL: Codex symlink not set correctly"; exit 1; }
 
-# 3. Gemini symlink (uses gemini skills link, not install)
-gemini skills link "$HOME/.claude/skills/$SKILL_NAME"
+# 3. Antigravity (agy) — import Claude plugins/skills into agy
+agy plugin import claude
 
 # 4. (No GitHub Copilot CLI install — see AGENTS.md bridge below)
 ```
 
-## Why `gemini skills link`, not `gemini skills install`
+## Getting skills into `agy`
 
-`gemini skills install` is for distributing pre-packaged `.skill` files (zip with `.skill` extension). It expects to:
+`agy plugin import claude` pulls Claude plugins/skills into agy — the verified path for reusing the existing skill set rather than re-authoring (see the `antigravity-cli` skill). It is a bulk import keyed to the Claude plugin/skill set, not a per-skill symlink.
 
-- Pull from a git URL or `.skill` file
-- Copy to a managed location
-- Treat as opaque — edits don't propagate
-
-`gemini skills link` is the dev-friendly path:
-
-- Symlinks the source directory
-- Edits to the source take effect immediately
-- Perfect for the "canonical source in `~/.claude/skills/`" pattern
+TODO(agy): verify equivalent — whether agy supports a per-skill live-symlink (the way `~/.codex/skills/<name>` symlinks back to the Claude canonical source). Until verified, treat `agy plugin import` as a re-runnable import rather than a live symlink, and re-import after substantial canonical-source edits.
 
 ## GitHub Copilot CLI bridge
 
@@ -108,7 +100,7 @@ For project-scoped skills (rare), use the project-local skill location of each t
 | Tool | Project-local skill location |
 |---|---|
 | Claude Code | `<project>/.claude/skills/<name>/` (loaded with `--add-dir`) |
-| Gemini CLI | `<project>/.gemini/skills/<name>/` |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified project-local skill path; use `--add-dir <project>` to add the workspace |
 | Codex CLI | `<project>/.codex/skills/<name>/` |
 | Copilot CLI | `<project>/AGENTS.md` reference |
 
@@ -121,13 +113,13 @@ After symlinking, run:
 ```bash
 # Claude
 ls ~/.claude/skills/<name>/SKILL.md
-# Gemini
-gemini skills list | grep <name>
+# Antigravity (agy) — list imported plugins
+agy plugin list | grep <name>   # TODO(agy): verify exact list output / skill-vs-plugin granularity
 # Codex
 ls ~/.codex/skills/<name>/SKILL.md
 ```
 
-If all three resolve, the skill is installed for the three skill-aware CLIs. For Copilot, verify the AGENTS.md reference is in place in any project that should use it.
+If Claude and Codex resolve and the agy import succeeded, the skill is available to the skill-aware CLIs. For Copilot, verify the AGENTS.md reference is in place in any project that should use it.
 
 ## Skip list (Claude-specific skills NOT to symlink)
 
@@ -152,20 +144,20 @@ When you update the canonical skill at `~/.claude/skills/<name>/`:
 ```bash
 # Edits are live for Claude (it reads from canonical source)
 # Edits are live for Codex (symlink, no copy)
-# Edits are live for Gemini (symlink via `gemini skills link`)
+# For agy: re-run `agy plugin import claude` after substantial canonical-source edits
+#          (TODO(agy): verify whether agy tracks live edits or needs re-import)
 # Copilot picks up changes via AGENTS.md reference at next session start
 ```
 
-No re-install needed. That's the point of the symlink pattern.
+No re-install needed for the symlinked tools (Claude, Codex). agy import currency depends on whether it symlinks or copies — verify and re-import if needed.
 
 ## Anti-patterns
 
 | Don't | Why |
 |---|---|
-| `gemini skills install` for cross-tool skills | Replaces symlink with managed copy; edits don't propagate |
-| `cp -r` instead of `ln -sfn` | Diverging copies — fix one, not the others |
-| Edit `~/.gemini/skills/<name>/` directly | Edits the symlink target, but easy to forget you're not in the canonical source |
+| Edit the agy-imported copy directly instead of the canonical Claude source | Canonical source is `~/.claude/skills/<name>/`; agy import is downstream |
+| `cp -r` instead of `ln -sfn` for Codex | Diverging copies — fix one, not the others |
 | Skip the symlink for Codex | Codex won't find the skill |
 | Copy instead of symlink for project-local overrides | The override doesn't track the global skill |
 | Symlink Claude-internal skills | They'll break on other tools — see skip list |
-| Forget to verify with `gemini skills list` after linking | Symlink can be present but the skill missing if frontmatter is wrong |
+| Forget to re-run `agy plugin import claude` after canonical edits | The agy copy may be stale (TODO(agy): verify import currency) |

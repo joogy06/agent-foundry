@@ -33,7 +33,7 @@ output storage. The caller owns those.
 **Parallel diverge is mandatory.** Round 1 teams MUST run in parallel, not sequentially. Sequential
 execution defeats the entire point of divergence — the later team sees the earlier team's output and
 anchors to it. Always spawn all teams simultaneously via `Agent` tool (Claude) / `codex exec` (Codex) /
-`mcp__gemini-cli__ask-gemini` (Gemini) calls batched in a single message.
+`agy -p` (Antigravity) calls batched in a single message.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -78,7 +78,7 @@ n_per_team: int                 # outputs each team should produce in Round 1
 context: map                    # optional data feeds keyed by name
                                 # e.g. { reddit_pain_data: ..., gdelt_inflection_data: ..., user_assets: ... }
 kill_criteria_required: bool    # default true; false rejected (see HARD-RULE)
-team_model_override: map        # optional: { contrarian: "codex", trend_first: "gemini" }
+team_model_override: map        # optional: { contrarian: "codex", trend_first: "agy" }
                                 # default all teams run on Claude
 max_total_outputs: int          # optional cap after arbiter synthesis (default = n_per_team * len(team_angles))
 output_class: string            # "ideas" (default) | "signals" | "proposals" | "designs"

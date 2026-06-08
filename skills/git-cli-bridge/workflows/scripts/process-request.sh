@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# process-request.sh — per-request driver for both Gemini and Copilot.
+# process-request.sh — per-request driver for both agy (Antigravity CLI) and Copilot.
 #
-# Usage: process-request.sh <req-dir> <tool:gemini|copilot>
+# Usage: process-request.sh <req-dir> <tool:agy|copilot>
 #
 # Responsibilities:
 #   1. Drive status.json through the state machine (queued -> running -> done).
@@ -12,7 +12,7 @@
 #   6. Capture sanitized log tails (M23).
 #   7. Write response.md (or error.md on failure).
 #
-# Runs as part of the bridge-gemini.yml / bridge-copilot.yml workflow.
+# Runs as part of the bridge-agy.yml / bridge-copilot.yml workflow.
 
 set -euo pipefail
 
@@ -87,22 +87,32 @@ EOF
 
 cli_package_label() {
   case "$TOOL" in
-    gemini)  printf '@google/gemini-cli@0.36.0' ;;
+    # TODO(agy): verify equivalent — agy ships as the `agy` binary
+    # (~/.local/bin/agy, Antigravity CLI 1.0.4), NOT an npm package. There is
+    # no @scope/name@version label to pin. Confirm a stable version identifier
+    # for provenance before treating this as authoritative.
+    agy)     printf 'agy (Antigravity CLI 1.0.4)' ;;
     copilot) printf '@github/copilot@1.0.21' ;;
     *)       printf 'unknown' ;;
   esac
 }
 
-invoke_gemini() {
+invoke_agy() {
   # $1 = prompt file, $2 = stdout file, $3 = stderr file
   local pf="$1" out="$2" err="$3"
-  local policy="$(dirname "$SCRIPTS_DIR")/bridge-gemini-policy.json"
-  timeout "$MAX_RUNTIME" gemini \
-    --approval-mode plan \
-    --policy "$policy" \
-    --model "${MODEL/auto/gemini-2.5-pro}" \
-    --output-format markdown \
-    < "$pf" > "$out" 2> "$err"
+  # agy is the headless analogue of `gemini -p`: `agy -p "<prompt>"` emits plain
+  # text on stdout. agy takes NO `-m/--model` flag (one configured model, no
+  # tiers) and NO `GOOGLE_CLOUD_PROJECT=/GEMINI_API_KEY=` env prefix — it
+  # authenticates itself via the Antigravity account.
+  # TODO(agy): verify equivalent — the retired Gemini path enforced read-only
+  # behaviour with `--approval-mode plan` + `--policy bridge-gemini-policy.json`.
+  # agy has no verified policy-engine analogue; `--sandbox` (restricted-terminal
+  # run) is the closest coarse flag. Confirm how to keep v1 kinds read-only on
+  # the runner before relying on this path. We read the prompt from the prompt
+  # file as an argument because agy -p takes the prompt inline.
+  timeout "$MAX_RUNTIME" agy -p "$(cat "$pf")" \
+    --print-timeout "${MAX_RUNTIME}s" \
+    > "$out" 2> "$err"
 }
 
 invoke_copilot() {
@@ -148,8 +158,8 @@ trap 'kill "$HB_PID" 2>/dev/null || true' EXIT
 
 rc=0
 case "$TOOL" in
-  gemini)
-    invoke_gemini "$PROMPT_FILE" "$CLI_STDOUT" "$CLI_STDERR" || rc=$?
+  agy)
+    invoke_agy "$PROMPT_FILE" "$CLI_STDOUT" "$CLI_STDERR" || rc=$?
     ;;
   copilot)
     invoke_copilot "$PROMPT_FILE" "$CLI_STDOUT" "$CLI_STDERR" || rc=$?

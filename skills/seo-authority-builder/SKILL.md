@@ -9,6 +9,8 @@ description: Use when building E-E-A-T signals, brand authority, Knowledge Panel
 
 Authority is how Google and AI systems decide whether to trust and cite your content. Trust is the most important E-E-A-T pillar (Google's own words). Brand web mentions now correlate more strongly with AI visibility (0.664) than backlinks (0.218). Build entity authority, not just links.
 
+> **Boundary:** company/brand entity authority → here; an individual professional's findability (personal site, GitHub, social, AI people-search) → `career-online-presence`.
+
 ## E-E-A-T Framework (2026)
 
 E-E-A-T is **not a direct ranking factor** — it's a framework that shapes the algorithms. But the December 2025 core update significantly amplified these signals, and E-E-A-T now applies to **ALL content categories**, not just YMYL.

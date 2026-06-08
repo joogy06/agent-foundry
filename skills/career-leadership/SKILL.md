@@ -25,19 +25,22 @@ Child of `career-coach`. This skill provides frameworks, models, and actionable 
 
 **Sibling skills** (cross-reference when appropriate):
 - `career-coach` — parent skill for overall career strategy, promotion planning, and career assessment
-- `career-interview` — interview preparation and performance
-- `career-negotiation` — salary, title, and offer negotiation
-- `career-resume` — CV/resume optimization and personal branding
-- `career-transition` — career pivots and role changes
+- `career-storytelling` — interview preparation, STAR stories, promotion-case narrative
+- `career-transition` — salary/offer negotiation, career pivots, role changes
+- `career-positioning` — LinkedIn profile, personal brand, recruiter strategy (positioning)
+- `career-application-writer` — writing/tailoring the CV and cover letter
+- `career-online-presence` — personal site, GitHub, social, AI findability
 
 ## When NOT to Use This Skill
 
 | If the user asks about... | Redirect to... |
 |---|---|
 | Promotion strategy, career planning, performance reviews | `career-coach` |
-| Interview preparation, behavioral questions, case studies | `career-interview` |
-| Salary negotiation, offer evaluation, compensation benchmarking | `career-negotiation` |
-| Resume writing, LinkedIn optimization, personal branding | `career-resume` |
+| Interview preparation, behavioral questions, case studies | `career-storytelling` |
+| Salary negotiation, offer evaluation, compensation benchmarking | `career-transition` |
+| Resume / cover-letter writing | `career-application-writer` |
+| LinkedIn / personal-brand positioning strategy | `career-positioning` |
+| Online presence / findability (site, GitHub, social, AI search) | `career-online-presence` |
 | Changing roles, IC-to-manager transition, industry pivots | `career-transition` |
 
 ---
@@ -49,6 +52,7 @@ Child of `career-coach`. This skill provides frameworks, models, and actionable 
 3. **Leadership advice must account for banking compliance culture** — every recommendation must be viable within a regulated environment where risk, audit, and compliance have veto power.
 4. **In banking, the cross-silo narrative must balance three pillars**: commercial value + operational resilience + control strength. Any leadership initiative that ignores one of these pillars will fail.
 5. **Use "professional development" not "skills development"** — consistent terminology across the career-* skill family.
+6. **AI-era leadership still serves the control triangle.** Introducing AI-augmented work does not relax the commercial-value + operational-resilience + control-strength balance — it raises the bar. Regulated outputs still need a human accountability owner, a quality bar, and an audit trail; "the AI did it" is never a control.
 
 ---
 
@@ -141,6 +145,10 @@ In a matrix organization, positional authority is the weakest form of influence.
 - Sponsors speak for you in calibration meetings. These are the closed-door sessions where promotion decisions are actually made.
 - Without a sponsor at the table, VP to ED and ED to MD promotions are nearly impossible — no matter how strong your performance review.
 - Your sponsor needs to be senior enough to carry weight in the calibration room AND willing to spend political capital on you.
+
+### Sponsorship When AI Does First-Pass Evaluation
+
+Where organizations have adopted AI-assisted performance rollups and talent reviews (hedged — *where adopted*), the evidence that survives the summarization is **concrete, quantified, attributable wins**. Vague praise ("great team player", "strong contributor") evaporates in an AI rollup; "closed two repeat audit findings and cut break-investigation from 4 hrs to 30 min" survives because it is specific and verifiable. Give your sponsor — and the rollup — the kind of evidence that doesn't get compressed away.
 
 ---
 
@@ -348,6 +356,28 @@ Don't navigate your career alone. Build a deliberate advisory network of 4-7 peo
 
 ---
 
+## 11. Leading AI-Augmented Teams
+
+As teams adopt AI in their daily work, leadership picks up new responsibilities:
+
+- **Set team AI-use norms** — be explicit about what is reviewed, what may be AI-assisted, and **what is never AI'd** (regulated outputs, anything where a human must own the judgment and the audit trail). Write the norms down; don't leave them implicit.
+- **Hold a slop quality bar.** AI makes it cheap to produce volume; your job is to keep the bar at *human-quality, true, and reviewed*. This is a craft-and-integrity standard, not a detector exercise — never reduce it to "make it pass an AI-detector" (see `~/.claude/skills/career-coach/references/ai-tells-catalog.md` for the no-detector-gaming principle). The standard is: would a competent human reviewer trust this?
+- **Rethink contribution metrics.** When AI multiplies individual output, lines-of-code / volume metrics mislead. Measure outcomes, judgment, and the quality of what shipped — not raw throughput.
+- **The judgment/framing shift intensifies.** With execution cheaper, a leader's value moves further toward framing the right problems, owning trade-offs, and being accountable for outcomes.
+- **Banking example:** for AI-augmented regulated outputs (e.g., a model-risk artifact or a surveillance control), the team norm is human review + documented accountability + audit trail — the control triangle (HARD RULE 6) is non-negotiable.
+
+---
+
+## 12. Executive Presence in AI-Mediated Contexts
+
+More meetings are recorded, transcribed, and AI-summarized; presence is increasingly judged through that filter:
+
+- **Lead with an explicit early headline and decision.** State the point and the decision up front, in words — a summary engine (and a busy reader of the rollup) captures what was said clearly and early, not what you built up to at the end.
+- **Feed the rollup with structured written updates.** A crisp written status (what shipped / what's at risk / what you need) survives summarization and reaches people who never attended. Treat the written artifact as first-class.
+- **Your presence is transcript-judged.** Rambling, hedging, and filler read worse in a transcript than in the room. Brevity and clarity (the §5 disciplines) matter more, not less, when a machine and a skim-reader are the audience.
+
+---
+
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails | Correct Approach |
@@ -357,3 +387,4 @@ Don't navigate your career alone. Build a deliberate advisory network of 4-7 peo
 | Ignoring organizational politics as "beneath you" | In banking matrix structures, political capital determines who gets budget, headcount, and executive attention | Map stakeholder influence, build alliances, and invest in relationships as deliberately as you invest in technical solutions |
 | Waiting for formal authority before leading | VP-to-ED transition requires demonstrating leadership before the title arrives | Lead through influence — propose initiatives, chair working groups, mentor others — without waiting for permission |
 | Building a network of only technologists | Homogeneous networks cannot provide the cross-silo advocacy needed for advancement in banking | Deliberately cultivate relationships in risk, compliance, business, and operations functions |
+| Shipping AI-generated deliverables without a quality bar | Unreviewed AI output erodes trust, risks regulated-control failures, and reads as slop to stakeholders | Set explicit team norms: what's reviewed, what's never AI'd, and a human-quality bar with accountability (§11) |
