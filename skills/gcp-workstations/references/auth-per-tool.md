@@ -7,7 +7,7 @@ The canonical recommendation for a single-developer GCP Workstation. Each tool h
 | Tool | On a GCP Workstation | Why |
 |---|---|---|
 | **Claude Code** | Vertex AI ADC | Metadata server provides ADC; no key file; same region as Vertex; CLAUDE_CODE_USE_VERTEX flag is single switch |
-| **Gemini CLI** | Vertex AI ADC | Same metadata server; `GOOGLE_GENAI_USE_VERTEXAI=1` is the single switch |
+| **Antigravity CLI (agy)** | Antigravity account login | agy authenticates via its own Antigravity account (config under `~/.antigravity/`), NOT Vertex ADC / metadata server. TODO(agy): confirm agy install + auth on GCP Workstation |
 | **GitHub Copilot CLI** | Device flow with TCP tunnel fallback | OAuth flow needs a browser; `gcloud workstations start-tcp-tunnel` forwards to laptop |
 | **Codex CLI** | OpenAI account login | No GCP path; copy-paste a device code from the workstation terminal to your laptop browser |
 
@@ -33,32 +33,17 @@ claude -p "say hello" --bare  # bypasses auto-auth, uses ADC via Vertex
 
 The runtime service account on the workstation needs `roles/aiplatform.user`.
 
-## Gemini CLI → Vertex AI ADC
+## Antigravity CLI (agy) → Antigravity account login
 
 ```bash
-export GOOGLE_GENAI_USE_VERTEXAI=1
-export GOOGLE_CLOUD_PROJECT=my-project
-export GOOGLE_CLOUD_LOCATION=us-central1
-gemini -p "say hello"
+agy -p "say hello" < /dev/null
 ```
 
-Same ADC, same metadata server, same service account permission. No key file.
+agy authenticates via its own Antigravity account, with config under `~/.antigravity/` (and `~/.gemini/antigravity-cli/`). There is NO API-key env var pattern at the call layer — agy takes neither a `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` env prefix nor a `-m <model>` flag. It exposes one configured model, so there is no Vertex ADC / metadata-server routing to manage and no model-tier downgrade to guard against.
 
-### If the user has an AI Pro / Gemini Advanced subscription instead of Vertex
+TODO(agy): confirm agy install + auth on GCP Workstation. Unlike Claude Code, agy does NOT use the workstation metadata server / Vertex ADC; the one-time account login flow on a headless cloud VM is unverified — expect a copy-paste device-code or browser-redirect step similar to the Codex / Copilot flows below (see `references/gotchas-and-fixes.md` for the headless-OAuth workarounds). The agy config directory lives in `$HOME` so the login persists across restarts.
 
-`gemini-cli` routes based on env vars at invocation time:
-
-- **OAuth subscription (AI Pro / Gemini Advanced)** — default when `~/.gemini/oauth_creds.json` exists with `selectedType: oauth-personal` AND no conflicting env vars are set
-- **Cloud AI Companion API** — forced whenever `GOOGLE_CLOUD_PROJECT` is a non-empty string, requires `cloudaicompanion.googleapis.com` enabled on that project
-- **`GEMINI_API_KEY` auth** — takes precedence over OAuth when set (non-empty)
-
-On a workstation configured for Vertex ADC, the whole-shell `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` env vars will silently force subscription users onto the Cloud AI Companion path and return 403 if the Companion API isn't enabled. For an AI Pro subscription user on this workstation, override per-invocation:
-
-```bash
-GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -p "say hello"
-```
-
-Or in a multi-call script, `export GOOGLE_CLOUD_PROJECT=` and `export GEMINI_API_KEY=` at the top of the block. This is the same trick the MCP server config uses (`claude mcp add gemini-cli -s user -e GOOGLE_CLOUD_PROJECT= -e GEMINI_API_KEY= ...`). See `~/.claude/skills/gemini-cli/references/auth.md` for the canonical routing note.
+Output is plain text on stdout (raise `--print-timeout <dur>` for long runs). See `~/.claude/skills/antigravity-cli/SKILL.md` and the "Antigravity CLI (agy) — host-specific directive" in `~/.claude/CLAUDE.md` for the canonical invocation pattern.
 
 ## GitHub Copilot CLI → Device flow with TCP tunnel
 
@@ -116,7 +101,7 @@ codex exec "..."
 | Where | Contents |
 |---|---|
 | Service account `roles` | `aiplatform.user`, `secretmanager.secretAccessor`, `artifactregistry.reader` |
-| Workstation env vars (`/etc/skel/.bashrc`) | `CLAUDE_CODE_USE_VERTEX=1`, `GOOGLE_GENAI_USE_VERTEXAI=1`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `ANTHROPIC_VERTEX_*` |
+| Workstation env vars (`/etc/skel/.bashrc`) | `CLAUDE_CODE_USE_VERTEX=1`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `ANTHROPIC_VERTEX_*` (Claude→Vertex; agy needs none of these — it logs in to its own Antigravity account) |
 | Secret Manager | `copilot-token`, `openai-api-key`, any other long-lived tokens |
 | User home | OAuth credentials only after manual login (Codex), Vertex ADC cached by metadata server |
 

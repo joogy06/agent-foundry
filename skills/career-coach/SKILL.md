@@ -1,14 +1,6 @@
 ---
 name: career-coach
-description: >
-  Use when the user asks about career progression, promotion strategy, salary negotiation, interview
-  preparation, resume/CV optimization, LinkedIn branding, leadership development, managing up, executive
-  sponsorship, corporate ladder navigation, performance reviews, career transitions, job search, recruiter
-  relationships, personal branding, professional development planning, competency growth, career assessment,
-  or any career-related question. Also trigger on: promotion, raise, compensation, bonus, title, grade,
-  calibration cycle, career plan, career change, IC to manager, offer negotiation, or "what should I do
-  with my career." Parent skill for the career-* family.
-  Parent skill for the career-* skill family.
+description: "Use when the user asks about career progression, promotion strategy, salary negotiation, interview preparation, resume/CV strategy, cover letters, LinkedIn branding, online presence, personal websites, leadership development, managing up, executive sponsorship, corporate ladder navigation, performance reviews, career transitions, AI-era job search, AI interviews, applicant tracking, recruiter relationships, personal branding, professional development planning, competency growth, career assessment, or any career-related question. Trigger on - promotion, raise, compensation, bonus, title, grade, calibration cycle, career plan, career change, IC to manager, offer negotiation, what should I do with my career. Parent skill for the career-* skill family."
 ---
 
 # Career Coach
@@ -32,7 +24,7 @@ Parent skill covering career coaching intake, assessment, and routing. For speci
 </HARD-RULE>
 
 <HARD-RULE>
-**Banking context always.** Always consider the banking/finance context. VP is mid-level. Bonus is discretionary. Sponsorship beats mentorship. Calibration is political. Regulatory fluency is a career moat. Reference `~/.claude/skills/career-coach/references/corporate-ladders.md` when title, compensation, or promotion questions arise.
+**Apply the right vertical lens.** When the user is in banking/finance, apply the full banking context: VP is mid-level, bonus is discretionary, sponsorship beats mentorship, calibration is political, regulatory fluency is a career moat — reference `~/.claude/skills/career-coach/references/corporate-ladders.md` for title/compensation/promotion questions. Banking remains the family's fully-worked example. When the user is in another sector, translate the *principle* (grade-vs-title gaps, sponsorship layers, comp bands, the moats that matter in their domain) rather than imposing banking specifics. Conditional vertical, not a deletion.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -70,9 +62,13 @@ Before routing to a child skill:
 | "Where am I? What should I do next?" / self-assessment / direction | `career-assessment` |
 | "How do I get there?" / roadmap / timeline / certifications / professional development | `career-planning` |
 | "How do I explain my experience?" / interview prep / STAR stories / achievements | `career-storytelling` |
-| Resume, CV, LinkedIn, personal brand, recruiter, job search, visibility | `career-positioning` |
+| Positioning *strategy* — what to emphasize, LinkedIn profile, personal brand, recruiter, visibility, speaking | `career-positioning` |
+| **Write / tailor the CV, resume, or cover letter (the document itself)** | `career-application-writer` |
+| **Make me findable — personal website, GitHub, social, newsletters, AI people-search** | `career-online-presence` |
 | Managing up, influence, sponsorship, team building, executive presence, stakeholders | `career-leadership` |
 | New job, offer, negotiation, salary, IC to manager, career pivot, changing roles | `career-transition` |
+
+> **Disambiguation:** "how should I position myself / what should my CV emphasize" → `career-positioning` (strategy). "write my CV / tailor my resume for this posting / draft a cover letter" → `career-application-writer` (the document). "be found online / what does ChatGPT say about me" → `career-online-presence`.
 
 ### Stage-Aware Routing Biases
 
@@ -87,6 +83,8 @@ Career stage modifies which sub-skills are most relevant:
 
 Stage is a modifier, not a hard rule. A senior engineer preparing for interviews still needs storytelling.
 
+**2026 job-search note.** When the user is actively job-searching, bias toward `career-transition` (referral-first strategy under the application flood), `career-online-presence` (be findable), and `career-application-writer` (truthful, tailored documents) *before* mass-applying. The cold-application channel is the weakest one now — set up the referral, presence, and document foundations first.
+
 ---
 
 ## Cross-Cutting Principles
@@ -96,8 +94,8 @@ These apply to ALL career coaching interactions regardless of sub-skill:
 ### Quantify Everything
 "Led a team" is weak. "Led a 12-person team delivering $2.3M in annual automation savings across 3 business lines" is strong. Always push toward specifics.
 
-### Think in Banking Language
-Frame achievements in terms the calibration committee cares about:
+### Think in Your Audience's Decision-Language
+Translate every achievement into the language your audience's decision-makers actually use. For banking calibration committees that means:
 - Revenue enabled or protected
 - Risk reduced (in dollar terms)
 - Compliance gaps closed
@@ -105,14 +103,16 @@ Frame achievements in terms the calibration committee cares about:
 - Incidents prevented or MTTR reduced
 - Regulatory findings addressed
 
+The banking list is the worked example; in any sector, frame in the terms *that* audience's leaders weigh decisions by (for a product org: user impact, growth, retention, cost-to-serve).
+
 ### Sponsor > Mentor
 Mentors give advice. Sponsors advocate for you in rooms you're not in. At VP+ level, sponsorship is the single most significant predictor of advancement. Always ask: "Who is your sponsor?"
 
 ### Internal Mobility Is a Tool
 A lateral move to another team often comes with a grade bump that would take 2+ years through normal promotion. Don't default to "wait for promotion" — consider strategic moves.
 
-### The AI Premium
-AI/automation specialists in finance are breaking through traditional glass ceilings. Leverage this: frame your work as revenue-enabling and regulatory-compliant, not just technical.
+### AI-Era Framing
+**AI fluency is becoming table stakes; the durable premium is judgment + accountability + relationships** — plus authentic, specific, verifiable self-presentation (your real work, told truthfully, not generic AI-slop). Plan toward the judgment/accountability end, not the automatable middle. The finance glass-ceiling dynamic is the worked example: AI/automation specialists in finance break through traditional ceilings by framing their work as revenue-enabling and regulatory-compliant, not just technical — the same principle (own the judgment, prove it specifically) generalizes to any sector.
 
 ---
 
@@ -120,9 +120,11 @@ AI/automation specialists in finance are breaking through traditional glass ceil
 
 Read these as needed during coaching:
 
-- `~/.claude/skills/career-coach/references/user-profile.md` — default user persona and context modifiers
+- `~/.claude/skills/career-coach/references/user-profile.md` — fill-in profile template (Part A) + a worked example (Part B); have the user complete Part A or state their situation
 - `~/.claude/skills/career-coach/references/corporate-ladders.md` — banking hierarchies, promotion mechanics, compensation bands, AI career paths
 - `~/.claude/skills/career-coach/references/coaching-frameworks.md` — all frameworks mapped to sub-skills
+- `~/.claude/skills/career-coach/references/ai-tells-catalog.md` — anti-AI-slop catalog + voice-capture protocol (consumed by writer / storytelling / positioning / human-voice-writing)
+- `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md` — the single dated home for all volatile market statistics (REVIEW-BY 2027-01)
 
 ---
 
@@ -135,6 +137,7 @@ Read these as needed during coaching:
 | Defaulting to "wait for the next promotion cycle" | Lateral moves, strategic visibility, and role expansion often accelerate advancement faster than patience | Evaluate all options — lateral moves, scope expansion, cross-silo projects — not just linear promotion |
 | Framing achievements in technical language for business audiences | Calibration committees care about revenue, risk, cost, compliance — not tech stack details | Translate every achievement into committee language: revenue enabled, risk reduced, cost saved, compliance achieved |
 | Treating all banks as having the same culture | Investment bank VP is mid-level; retail bank VP may be senior leadership; cultures differ drastically | Reference `corporate-ladders.md` and ask which type of institution the user is in |
+| Giving 2024-era job-search advice | The market changed — semantic ATS, AI interviews, the application flood, referral-first economics — pre-2025 advice misleads | Route to the refreshed children (transition §0, application-writer, online-presence); cite `market-snapshot-2026-06.md` for current reality |
 
 ---
 

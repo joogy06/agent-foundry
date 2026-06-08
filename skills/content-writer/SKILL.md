@@ -16,6 +16,8 @@ Modular content creation system with **pluggable writing personas**. Select a pe
 - Any long-form content that needs a distinct voice
 - When the user requests a specific writing style or persona
 
+> **Related:** to authenticate human voice / remove AI-typical patterns in any draft, see `human-voice-writing`; it authenticates voice, it does not override an explicit persona.
+
 ## Architecture
 
 ```

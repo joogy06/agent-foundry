@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory/schemas/dual-verdict.v1.json",
+  "title": "dual-verdict.v1 — bob-persisted INTEGRATED->VERIFIED archive",
+  "description": "Frozen envelope for the dual-arm verdict archive bob writes to .ledger/verdicts/<bundle_hash>.verdict.yaml before any INTEGRATED -> VERIFIED transition (S044 / #118, design §10 B4). claims.assert_verified_preconditions (R6) READS this archive and refuses the transition unless: schema_version == 'dual-verdict.v1', all cross-binding fields present, BOTH arms present at the ASYMMETRIC canonical keys (audit_arm.result vs arbiter_arm.verdict), and BOTH arms in the closed pass-set {VERIFIED, VERIFIED_WITH_CONCERNS} with neither AUDIT_UNAVAILABLE/REJECTED. HONEST SCOPE: bob writes this archive, so a complete fabricated archive is NOT defended against here (that needs the deferred spawner non-bob-provenance, design §10 B2/B7). R6 catches rationalized/accidental skips, arbiter-only archives, AUDIT_UNAVAILABLE-ignored, unversioned envelopes, and cross-binding mismatch — the observed #43-dev3 drift class.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "component_id",
+    "bundle_hash",
+    "verification_request_id",
+    "prior_state_version",
+    "generation",
+    "audit_arm",
+    "arbiter_arm"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dual-verdict.v1",
+      "description": "Envelope version. R6 rejects any value other than this const (reject unversioned/ambiguous — C6 schema-drift)."
+    },
+    "component_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cross-binding: the component this verdict belongs to. Validated TOGETHER with the other cross-binding fields by R6."
+    },
+    "bundle_hash": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cross-binding: sha256 of the frozen evidence bundle. MUST equal the verdict filename stem (self-binding); R6 enforces archive.bundle_hash == lookup key."
+    },
+    "verification_request_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cross-binding: the open verification request id (claims.open_verification_request). Binds this archive to ONE verification attempt."
+    },
+    "prior_state_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cross-binding: the ledger state version at request time. A stale prior_state_version mismatches R6's expected and is refused."
+    },
+    "generation": {
+      "type": ["integer", "string"],
+      "description": "Cross-binding: the component generation at verification time (CB1). Bound TOGETHER so a verdict from generation N cannot satisfy a transition at generation N+1."
+    },
+    "audit_arm": {
+      "type": "object",
+      "required": ["result"],
+      "description": "The metacognitive audit arm (audit_spawn.py, Claude+Codex). CANONICAL axis key is `result` (asymmetric vs the arbiter arm's `verdict`). R6 reads `audit_arm.result` ONLY; it MUST NOT substring-grep the file for AUDIT_UNAVAILABLE (which can legitimately appear in a free-text rerun-history field while the canonical result is REJECTED — the S039 mis-bucketing fixture).",
+      "properties": {
+        "result": {
+          "type": "string",
+          "enum": ["VERIFIED", "VERIFIED_WITH_CONCERNS", "REJECTED", "AUDIT_UNAVAILABLE"],
+          "description": "Canonical audit-arm axis. Pass-set = {VERIFIED, VERIFIED_WITH_CONCERNS}. REJECTED/AUDIT_UNAVAILABLE are explicit non-pass; R6 fails closed."
+        },
+        "claude_verdict": {
+          "type": "string",
+          "description": "DECOY sub-vocabulary (intra-audit Claude arm: pass/pass_with_concerns/fail). R6 MUST NOT read this — it is NOT the canonical axis."
+        },
+        "codex_verdict": {
+          "type": "string",
+          "description": "DECOY sub-vocabulary (intra-audit Codex arm). R6 MUST NOT read this."
+        },
+        "disagreements_count": {"type": ["integer", "null"]},
+        "elapsed_s": {"type": ["number", "null"]}
+      }
+    },
+    "arbiter_arm": {
+      "type": "object",
+      "required": ["verdict"],
+      "description": "The verification-arbiter arm (verification_arbiter_spawn.py, single cold-context Claude). CANONICAL axis key is `verdict` (asymmetric vs the audit arm's `result`). The 8-field tuple lives here per design §10 B4.",
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["VERIFIED", "VERIFIED_WITH_CONCERNS", "REJECTED", "AUDIT_UNAVAILABLE"],
+          "description": "Canonical arbiter-arm axis. Same pass-set + fail-set semantics as audit_arm.result."
+        },
+        "attempt_id": {"type": ["string", "integer"]},
+        "plan_hash": {"type": "string"},
+        "inventory_hash": {"type": "string"},
+        "runner_version": {"type": "string"},
+        "rubric_version": {"type": "string"},
+        "coverage": {"type": ["object", "null"]},
+        "concerns": {"type": ["array", "null"]},
+        "self_hash_check": {"type": ["object", "null"]},
+        "consume_outcome": {"type": ["string", "null"]}
+      }
+    },
+    "combined_outcome": {
+      "type": "string",
+      "description": "Bob's human-readable summary of the combined gate (advisory; R6 derives its own verdict from the two canonical arm keys, NOT from this field)."
+    },
+    "written_by": {"type": "string", "description": "Provenance — bob (sole writer, CB4)."},
+    "written_at": {"type": "string"},
+    "rerun_notes": {
+      "type": ["object", "null"],
+      "description": "Optional free-text rerun history. May contain a misleading first_run_result: AUDIT_UNAVAILABLE string — R6 IGNORES this and reads only the canonical audit_arm.result (S039 asymmetric-key fixture)."
+    }
+  },
+  "additionalProperties": true
+}

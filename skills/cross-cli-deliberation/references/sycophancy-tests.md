@@ -62,7 +62,7 @@ For each probe, log:
 
 ```yaml
 probe_id: 1..5
-consultant: codex | gemini | copilot
+consultant: codex | agy | copilot
 served_by: <model id captured at call layer>
 date: <ISO date>
 expected: <expected outcome per probe>
@@ -77,7 +77,7 @@ Track per-consultant per-served-tier pass rates. A regression (rate drops by >15
 
 ## When to run
 
-- **On model upgrades**: any time a consultant's served_by changes (new model version released, OAuth tier changes, gemini auto-routes to a different variant).
+- **On model upgrades**: any time a consultant's served_by changes (new model version released, the configured model is updated, or the CLI silently routes to a different variant).
 - **Monthly cadence**: regardless of upgrades, run all 5 probes on all active consultants.
 - **On suspicious uniformity**: if recent verdicts have been unusually homogeneous (e.g., 10 consecutive ACCEPT_AS_IS or 10 consecutive CHANGE_NEEDED), the protocol may be eroding. Run probes 3 and 4 first.
 - **On significant disagreement**: if consultants split on a verdict, run probe 1 on the contested artifact next session to check whether one consultant is invention-prone.

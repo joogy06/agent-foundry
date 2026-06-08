@@ -9,7 +9,7 @@ GCP Workstations uses Docker images as the OS layer. The default `code-oss:lates
 For an AI dev workstation, you want:
 
 - Node.js 22 LTS (for the npm-based AI CLIs)
-- `@anthropic-ai/claude-code`, `@google/gemini-cli`, `@github/copilot` preinstalled
+- `@anthropic-ai/claude-code`, `@github/copilot` preinstalled (npm); Antigravity CLI (agy) too — TODO(agy): confirm agy install method on the image (agy is NOT an npm package; it ships as the `agy` binary at `~/.local/bin/agy`)
 - `gh` CLI for GitHub access
 - `git` (already in code-oss but pin a recent version)
 - `libsecret-1-0` so credential stores work
@@ -99,7 +99,7 @@ gcloud workstations configs update ai-dev-config \
 | Base | `code-oss:latest` | Don't reinvent VS Code-in-browser |
 | OS packages | `libsecret-1-0`, `chrony`, `gh`, `python3`, `pipx`, `git`, `curl`, `jq`, `unzip`, `vim`, `tmux` | Things that change rarely; update the base periodically |
 | Node | Node 22 LTS via NodeSource | Pinned LTS, separate layer for cache |
-| AI CLIs | `@anthropic-ai/claude-code`, `@google/gemini-cli`, `@github/copilot` | The point of the image; bumps a few times per month |
+| AI CLIs | `@anthropic-ai/claude-code`, `@github/copilot` (npm) + Antigravity CLI (agy) | The point of the image; bumps a few times per month. TODO(agy): confirm agy install method (binary, not npm) |
 | Python | `pipx install ...` for tools you want isolated | After Node so partial rebuilds skip Node |
 | User setup | Non-root user, default shell, dotfile skeleton | Last layer — most likely to change |
 
@@ -110,7 +110,7 @@ Order matters for cache reuse. Put slow-changing layers first.
 ```bash
 docker run --rm $IMAGE bash -c '
   claude --version &&
-  gemini --version &&
+  agy --version &&
   copilot --version &&
   gh --version &&
   node --version &&

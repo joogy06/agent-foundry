@@ -141,13 +141,43 @@ def _parse_yaml_registry(text: str, source: str) -> Dict[str, Any]:
             result["affordances"] = affordances
             continue
 
-        if key == "activation":
+        if key == "tracked_tools":
+            # Evergreening v1 (S041, §6.12): a flat string list naming the MCP tool
+            # surface for the claude-in-chrome sentinel registry (presence/coverage,
+            # NOT semantics). Either inline `[]` or a `  - name` block list.
+            if val and val != "[]":
+                raise RegistryParseError(
+                    f"{source}: 'tracked_tools:' must be '[]' or a block list at line {i+1}"
+                )
+            if val == "[]":
+                result["tracked_tools"] = []
+                i += 1
+                continue
+            i += 1
+            items: List[str] = []
+            while i < len(lines):
+                sub = lines[i]
+                if not sub.strip() or sub.lstrip().startswith("#"):
+                    i += 1
+                    continue
+                if not sub.lstrip().startswith("- "):
+                    break
+                items.append(sub.lstrip()[2:].strip())
+                i += 1
+            result["tracked_tools"] = items
+            continue
+
+        if key in ("activation", "validated_against"):
+            # Both are single-level nested mappings (no inline value, then `  k: v`
+            # sub-entries). `validated_against` was added by Evergreening v1 (S041)
+            # to carry {cli_version, date, note} for the drift runner; it parses with
+            # the same closed-schema handler as `activation`.
             if val:
                 raise RegistryParseError(
-                    f"{source}: 'activation:' must be a mapping (no inline value) at line {i+1}"
+                    f"{source}: '{key}:' must be a mapping (no inline value) at line {i+1}"
                 )
             i += 1
-            activation: Dict[str, Any] = {}
+            mapping: Dict[str, Any] = {}
             while i < len(lines):
                 sub = lines[i]
                 if not sub.strip() or sub.lstrip().startswith("#"):
@@ -156,11 +186,17 @@ def _parse_yaml_registry(text: str, source: str) -> Dict[str, Any]:
                 if not sub.startswith("  "):
                     break
                 if ":" not in sub:
-                    raise RegistryParseError(f"{source}: malformed activation entry at line {i+1}")
+                    raise RegistryParseError(f"{source}: malformed {key} entry at line {i+1}")
                 sk, _, sv = sub.strip().partition(":")
-                activation[sk.strip()] = sv.strip()
+                sv = sv.strip()
+                # normalize a bare `null` to None; strip surrounding quotes on scalars
+                if sv == "null":
+                    sv = None
+                elif len(sv) >= 2 and sv[0] == sv[-1] and sv[0] in ("'", '"'):
+                    sv = sv[1:-1]
+                mapping[sk.strip()] = sv
                 i += 1
-            result["activation"] = activation
+            result[key] = mapping
             continue
 
         # Plain scalar key

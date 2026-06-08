@@ -51,7 +51,7 @@ If ANY failure mode is `moderate` or `high`, the consultant must explain how it 
 Append to every consultation prompt:
 
 > At the very end of your response, append a single line:
-> `served_by=<the exact model id you are running on, e.g. gpt-5.5 or gemini-3.1-pro-preview>`
+> `served_by=<the exact model id you are running on, e.g. gpt-5.5 or whatever model your CLI actually served>`
 
 Parse the trailing `served_by=` line and log it alongside the ballot.
 

@@ -1,4 +1,8 @@
 schema_version: affordance.v1
+validated_against:
+  cli_version: null
+  date: "2026-06-05"
+  note: "metadata-only: VS Code Copilot Chat has no CLI to --help; not a drift target"
 host_cli: copilot-chat
 
 # VS Code Copilot Chat is in-IDE, panel-based, not a CLI. Detection signal

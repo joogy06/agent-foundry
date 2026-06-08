@@ -808,6 +808,816 @@ def recover_verification_requests(project_root: Path) -> Tuple[int, int]:
     return (swept, skipped_open)
 
 
+# ===========================================================================
+# S044 / #118 — the SOLE-WRITER transition engine (B1) + R6 precondition (B2)
+# ===========================================================================
+#
+# Closes task #47 (the missing `apply_request_idempotent` symbol bob.md cites
+# 4x) AND converts bob's prose dual-arm VERIFIED rule into a structural
+# precondition on the transition path (design §10 B1/B2/B4/B5/B6).
+#
+# Honesty (design §10 B2, §9-A1 C1): this is STRONG PROTOCOL ENFORCEMENT, not
+# literally-unskippable. Bob retains filesystem write access; a truly
+# "cannot bypass" engine needs a host-owned broker / separate-UID trust
+# boundary (explicit v2 non-goal). The win is: ONE chokepoint, all stage
+# preconditions dispatched under ONE lock, no inline-append drift. R6 reads
+# bob's persisted dual-verdict archive — it catches rationalized/accidental
+# skips (the observed #43-dev3 drift class), NOT a bob that maliciously
+# fabricates a complete archive (that needs the deferred spawner provenance).
+#
+# Scope discipline (additive only): every existing function above is
+# untouched. The engine reuses `_bob_claim_lock`, `atomic_write`,
+# `read_ledger`, `verify_claim_on_transition`. CB4 preserved — bob is the
+# sole writer of progress/integration-ledger.md.
+
+
+class VerifiedPreconditionError(RuntimeError):
+    """Raised by `assert_verified_preconditions` when the persisted dual-verdict
+    archive for an INTEGRATED -> VERIFIED transition does not satisfy R6
+    (both arms present + both passing + closed pass-set + neither
+    AUDIT_UNAVAILABLE/REJECTED + complete versioned cross-binding).
+
+    A subclass of RuntimeError so existing `except RuntimeError` call sites in
+    bob's flow still trap it, while tests can assert the precise type.
+    """
+
+
+class IllegalTransitionError(RuntimeError):
+    """Raised by `apply_request_idempotent` when a requested from->to pair is
+    not in `LEGAL_TRANSITIONS`. Subclass of RuntimeError for the same reason
+    as VerifiedPreconditionError."""
+
+
+# ---------------------------------------------------------------------------
+# B1 — the LEGAL_TRANSITIONS locked table (design §10 B1, git-reviewable
+# constant — NOT config-driven, mirrors CONTRACT_SCOPE_CRITICAL_GLOBS rationale:
+# configs are mutable + rubber-stampable; constants are reviewable in history).
+#
+# Rules:
+#   - a `to` not in LEGAL_TRANSITIONS[from] -> reject (IllegalTransitionError).
+#   - any `->PLANNED` is a DEMOTE/restart and MUST bump the component
+#     generation (CB1 — the live S029 freeze-the-world / amendment path).
+#   - DOCUMENTED is terminal (empty set).
+#   - BLOCKED unblocks only by demote-to-PLANNED.
+#
+# The UI lane (UI-INTEGRATED -> UI-VERIFIED) is OUT this cycle (A5 deferred,
+# design §10 B3). UI transitions keep their current path; this table covers
+# only the core lane.
+# ---------------------------------------------------------------------------
+
+LEGAL_TRANSITIONS: Dict[str, frozenset] = {
+    "PLANNED":     frozenset({"SCAFFOLDED", "BLOCKED"}),
+    "SCAFFOLDED":  frozenset({"UNIT_TESTED", "BLOCKED", "PLANNED"}),   # PLANNED = demote
+    "UNIT_TESTED": frozenset({"INTEGRATED", "BLOCKED", "PLANNED"}),
+    "INTEGRATED":  frozenset({"VERIFIED", "BLOCKED", "PLANNED"}),
+    "VERIFIED":    frozenset({"DOCUMENTED", "BLOCKED", "PLANNED"}),
+    "DOCUMENTED":  frozenset(),                                        # terminal
+    "BLOCKED":     frozenset({"PLANNED"}),                             # unblock = demote
+}
+
+
+def check_transition_legal(from_stage: str, to_stage: str) -> bool:
+    """Return True iff `to_stage` is a legal successor of `from_stage` per the
+    locked LEGAL_TRANSITIONS table (design §10 B1). The engine's step-3 calls
+    this; bob.md's prose legality narration is now a backstop only.
+
+    Unknown `from_stage` -> False (fail closed: an unrecognized current stage
+    cannot legally transition anywhere)."""
+    return to_stage in LEGAL_TRANSITIONS.get(from_stage, frozenset())
+
+
+def is_demote_to_planned(to_stage: str) -> bool:
+    """A `->PLANNED` transition is a demote/restart that bumps the component
+    generation (CB1). Centralized so the engine and tests agree."""
+    return to_stage == "PLANNED"
+
+
+# ---------------------------------------------------------------------------
+# Ledger event + projection structured read/write (B1 step 5 + step 6).
+#
+# The ledger is a markdown file with three load-bearing regions:
+#   1. YAML frontmatter header (--- ... ---) carrying consumed_request_ids
+#   2. a "## Projection" table:  | WP | component | stage | generation | deps |
+#   3. a "## Transition log" table: | # | WP | component | from -> to | generation | evidence |
+#
+# To preserve the hand-authored header byte-for-byte (quotes, amendments
+# block, skill_checksums ordering), we do a SURGICAL text rewrite: regenerate
+# only the projection rows, the transition-log rows, and the
+# consumed_request_ids header line. Everything else passes through verbatim.
+# This is the engine's atomic rewrite (design §10 B1 step 6) — it is the ONLY
+# code that appends transition events (design §10 B6).
+# ---------------------------------------------------------------------------
+
+# Accepts either ASCII "->" or unicode "→" in the from->to cell (S029 archive
+# used "→"; the production ledger template uses "->"). We WRITE with the same
+# arrow the file already uses (sniffed per-file) so round-trips stay clean.
+_EVENT_ROW_RE = re.compile(
+    r"^\|\s*(?P<num>\d+)\s*\|"
+    r"\s*(?P<wp>[A-Za-z0-9_.-]+)\s*\|"
+    r"\s*(?P<component>[A-Za-z0-9_.-]+)\s*\|"
+    r"\s*(?P<from>[A-Z_]+)\s*(?:->|→)\s*(?P<to>[A-Z_]+)\s*\|"
+    r"\s*(?P<gen>\d+)\s*\|"
+    r"\s*(?P<evidence>.*?)\s*\|\s*$"
+)
+
+
+def _ledger_arrow(text: str) -> str:
+    """Sniff which from->to arrow this ledger file uses. Default ASCII '->'."""
+    if "from → to" in text or "→" in text:
+        return "→"
+    return "->"
+
+
+def _split_header(text: str) -> Tuple[str, Dict[str, Any], str]:
+    """Return (header_block_including_fences, header_dict, body_after_header).
+
+    header_block_including_fences is the verbatim '---\\n...\\n---' region so
+    it can be rewritten surgically. body_after_header is everything after the
+    closing fence (including the leading newline)."""
+    if not text.startswith("---"):
+        return ("", {}, text)
+    end = text.find("\n---", 4)
+    if end == -1:
+        return ("", {}, text)
+    # closing fence line ends at the newline after '---'
+    close_line_end = text.find("\n", end + 1)
+    if close_line_end == -1:
+        close_line_end = len(text)
+    header_block = text[:close_line_end + 1]
+    body = text[close_line_end + 1:]
+    inner = text[4:end]
+    try:
+        header_dict = yaml.safe_load(inner) or {}
+    except yaml.YAMLError:
+        header_dict = {}
+    if not isinstance(header_dict, dict):
+        header_dict = {}
+    return (header_block, header_dict, body)
+
+
+def _rewrite_consumed_request_ids(header_block: str, consumed: List[str]) -> str:
+    """Surgically replace the `consumed_request_ids:` line in the header.
+
+    Renders an inline flow list `[a, b, c]` (matches the existing
+    `consumed_request_ids: []` template). Preserves every other header line."""
+    rendered = "[" + ", ".join(consumed) + "]"
+    lines = header_block.splitlines(keepends=True)
+    out: List[str] = []
+    replaced = False
+    in_block_list = False
+    for line in lines:
+        if in_block_list:
+            # consume any block-list members ('  - xxx') belonging to the
+            # previous consumed_request_ids: key, then stop.
+            if re.match(r"^\s*-\s+", line):
+                continue
+            in_block_list = False
+        m = re.match(r"^(\s*)consumed_request_ids\s*:(.*)$", line)
+        if m and not replaced:
+            indent = m.group(1)
+            out.append(f"{indent}consumed_request_ids: {rendered}\n")
+            replaced = True
+            # if the original used a block list (value empty / pipe), skip its
+            # following '  - ' members
+            tail = m.group(2).strip()
+            if tail == "" or tail == "[]":
+                in_block_list = tail == ""
+            continue
+        out.append(line)
+    if not replaced:
+        # No consumed_request_ids key present — insert before the closing fence.
+        # header_block ends with '---\n'; insert just before it.
+        joined = "".join(out)
+        idx = joined.rfind("\n---")
+        if idx != -1:
+            insertion = f"consumed_request_ids: {rendered}\n"
+            joined = joined[:idx + 1] + insertion + joined[idx + 1:]
+            return joined
+        return joined + f"consumed_request_ids: {rendered}\n"
+    return "".join(out)
+
+
+def _render_projection_table(rows: List["LedgerRow"], arrow: str) -> str:
+    """Render the '## Projection' table body (header + separator + rows)."""
+    out = [
+        "| WP | component | stage | generation | deps |",
+        "|----|-----------|-------|------------|------|",
+    ]
+    for r in rows:
+        deps = ", ".join(r.deps) if r.deps else "—"
+        out.append(f"| {r.wp} | {r.component} | {r.stage} | {r.generation} | {deps} |")
+    return "\n".join(out)
+
+
+def _replace_section_table(body: str, section_header: str, new_table: str) -> str:
+    """Replace the markdown table immediately following `section_header`.
+
+    Finds the section, then replaces the run of consecutive table lines (lines
+    starting with '|') after it with `new_table`. Non-table content (blank
+    lines, prose) before the first '|' is preserved; content after the table
+    block is preserved verbatim."""
+    idx = body.find(section_header)
+    if idx == -1:
+        return body  # section absent — leave body untouched (defensive)
+    after = idx + len(section_header)
+    lines = body[after:].splitlines(keepends=True)
+    # Walk forward to the first table line, preserving intervening lines.
+    pre: List[str] = []
+    i = 0
+    while i < len(lines) and not lines[i].lstrip().startswith("|"):
+        pre.append(lines[i])
+        i += 1
+    # Consume the contiguous table block.
+    j = i
+    while j < len(lines) and lines[j].lstrip().startswith("|"):
+        j += 1
+    rest = lines[j:]
+    # Ensure exactly one trailing newline after the new table, then the rest.
+    new_block = new_table.rstrip("\n") + "\n"
+    rebuilt = body[:after] + "".join(pre) + new_block + "".join(rest)
+    return rebuilt
+
+
+def _parse_event_rows(body: str) -> List[Dict[str, Any]]:
+    """Parse existing transition-log rows into dicts (for max-num + replay)."""
+    out: List[Dict[str, Any]] = []
+    for line in body.splitlines():
+        m = _EVENT_ROW_RE.match(line)
+        if not m:
+            continue
+        out.append({
+            "num": int(m.group("num")),
+            "wp": m.group("wp"),
+            "component": m.group("component"),
+            "from": m.group("from"),
+            "to": m.group("to"),
+            "gen": int(m.group("gen")),
+            "evidence": m.group("evidence"),
+        })
+    return out
+
+
+def _append_event_row(
+    body: str, event: Dict[str, Any], arrow: str,
+) -> str:
+    """Append one event row to the '## Transition log' table."""
+    existing = _parse_event_rows(body)
+    next_num = (max((e["num"] for e in existing), default=0) + 1)
+    evidence = str(event.get("evidence", "")).replace("|", "\\|").replace("\n", " ")
+    row = (
+        f"| {next_num} | {event['wp']} | {event['component']} | "
+        f"{event['from']} {arrow} {event['to']} | {event['generation']} | "
+        f"{evidence} |"
+    )
+    idx = body.find("## Transition log")
+    if idx == -1:
+        # No transition-log section — append one at the end.
+        block = (
+            "\n## Transition log\n\n"
+            "| # | WP | component | from " + arrow + " to | generation | evidence |\n"
+            "|---|----|-----------|-----------|------------|----------|\n"
+            + row + "\n"
+        )
+        return body.rstrip("\n") + "\n" + block
+    after = idx + len("## Transition log")
+    lines = body[after:].splitlines(keepends=True)
+    # Find the end of the contiguous table block (header+sep+rows).
+    i = 0
+    while i < len(lines) and not lines[i].lstrip().startswith("|"):
+        i += 1
+    j = i
+    last_table_line = i
+    while j < len(lines) and lines[j].lstrip().startswith("|"):
+        last_table_line = j
+        j += 1
+    # Insert the new row right after the last table line.
+    insert_at = last_table_line + 1
+    new_lines = lines[:insert_at] + [row + "\n"] + lines[insert_at:]
+    return body[:after] + "".join(new_lines)
+
+
+# ---------------------------------------------------------------------------
+# B2 / B4 — R6: dual-arm VERIFIED precondition (reads dual-verdict.v1 archive)
+# ---------------------------------------------------------------------------
+
+VERDICTS_SUBDIR = ".ledger/verdicts"
+
+# B4: the frozen dual-verdict.v1 envelope. R6 rejects archives missing
+# schema_version or any cross-binding field. The closed pass-set is the ONLY
+# vocabulary that allows the transition; anything else (REJECTED,
+# AUDIT_UNAVAILABLE, missing, malformed) FAILS CLOSED.
+DUAL_VERDICT_SCHEMA_VERSION = "dual-verdict.v1"
+VERIFIED_PASS_SET: frozenset = frozenset({"VERIFIED", "VERIFIED_WITH_CONCERNS"})
+VERIFIED_FAIL_VALUES: frozenset = frozenset({"REJECTED", "AUDIT_UNAVAILABLE"})
+
+# The cross-binding fields validated TOGETHER (design §10 B2). A bundle_hash
+# alone is insufficient (C6). These bind the archive to ONE component, ONE
+# bundle, ONE verification request, ONE prior state version, ONE generation.
+_R6_CROSS_BINDING_FIELDS: Tuple[str, ...] = (
+    "component_id",
+    "bundle_hash",
+    "verification_request_id",
+    "prior_state_version",
+    "generation",
+)
+
+# S048 / #116 — the deterministic (non-LLM) verification arm. R6's VERIFIED
+# condition becomes a flat CONJUNCTION (NOT a quorum):
+#     audit_arm passes ∧ arbiter_arm passes ∧ deterministic_evidence == GREEN
+#       ∧ citations_corroborated
+# The deterministic conjunct is DERIVED IN R6 from the hash-addressed bundle
+# itself (deterministic_arm.classify_bundle_evidence) — NEVER from a producer-
+# written boolean in the archive (forgeable), NEVER from gate-runs.jsonl
+# (fail-open telemetry with no component/bundle/state binding). It is a pure
+# VETO: it can only subtract VERIFIEDs, so it cannot introduce a false-pass.
+#
+# Citation-corroboration is gated on the verdict's rubric_version (the R-B2
+# cutover key). Older verdicts (produced under a pre-cutover rubric that did NOT
+# require an evidence_map) skip corroboration DETERMINISTICALLY — keyed to the
+# rubric the verdict was produced under, so there is no silent-disable gap. New
+# verdicts all carry the new rubric -> all corroborated.
+#
+# bundle_hash is NOT touched here — R6 READS the bundle; it never writes it (the
+# #124 load-bearing invariant).
+R6_CITATION_RUBRIC_MIN: Tuple[int, int, int] = (1, 2, 0)
+
+
+def _parse_semver(value: Any) -> Optional[Tuple[int, int, int]]:
+    """Parse a 'MAJOR.MINOR.PATCH' string into a comparable tuple. Returns None
+    on any non-conforming value (a verdict whose rubric_version is unparseable
+    is treated as PRE-cutover -> corroboration not required, fail-safe: we never
+    fabricate a 'new rubric' that would demand corroboration the producer could
+    not have emitted)."""
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except (TypeError, ValueError):
+        return None
+
+
+def _import_deterministic_arm():
+    """Lazy, path-safe import of deterministic_arm (mirrors the gates.py
+    `_load_classify_module` pattern). Keeps claims.py module-load unperturbed."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import deterministic_arm  # type: ignore
+    return deterministic_arm
+
+
+def _verdict_path(project_root: Path, bundle_hash: str) -> Path:
+    return project_root.resolve() / VERDICTS_SUBDIR / f"{bundle_hash}.verdict.yaml"
+
+
+def _read_verdict_archive(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.is_file():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def assert_verified_preconditions(
+    bundle_hash: str,
+    project_root: Path,
+    *,
+    expected: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """R6 (design §10 B2). READ bob's persisted dual-verdict archive at
+    `.ledger/verdicts/<bundle_hash>.verdict.yaml` and enforce, for an
+    INTEGRATED -> VERIFIED transition:
+
+      1. archive EXISTS + parses;
+      2. it is a versioned `dual-verdict.v1` envelope (reject unversioned /
+         wrong-version — C6 schema-drift);
+      3. ALL cross-binding fields present (component_id, bundle_hash,
+         verification_request_id, prior_state_version, generation);
+      4. if `expected` is given, every overlapping cross-binding field matches
+         (validated TOGETHER — a bundle_hash alone is insufficient, C6);
+      5. BOTH arms present at the asymmetric canonical keys:
+           audit axis   = audit_arm.result
+           arbiter axis = arbiter_arm.verdict
+         (mirrors the S039 mis-bucketing fixture; do NOT substring-grep the
+         file for AUDIT_UNAVAILABLE — it can appear in a free-text
+         rerun-history field while the canonical key is REJECTED);
+      6. BOTH arms in the closed pass-set {VERIFIED, VERIFIED_WITH_CONCERNS};
+      7. NEITHER arm AUDIT_UNAVAILABLE or REJECTED (forecloses the invented
+         "not attempted" 3rd branch, #43-dev3).
+      8. (S048 / #116) DETERMINISTIC EVIDENCE == GREEN — derived IN R6 from the
+         hash-addressed bundle (deterministic_arm.classify_bundle_evidence),
+         NOT from any producer-written boolean and NOT from gate-runs.jsonl.
+         RED (a failed/error result) -> veto (a VERIFIED contradicting failing
+         evidence is impossible). INDETERMINATE (empty / all-skipped-without-
+         sanction / timeout / hash-or-provenance mismatch) -> veto with a
+         "bounded clean rerun then escalate; do NOT VERIFY this bundle" message.
+      9. (S048 / #116) CITATION CORROBORATION — when the arbiter arm's
+         rubric_version >= R6_CITATION_RUBRIC_MIN, every nodeid the arbiter cited
+         in `arbiter_arm.evidence_map` MUST exist in the bundle's
+         results[].tests[] AND have outcome == "passed". A cited nodeid that is
+         absent/non-passing -> veto (invented/misattributed evidence). On older
+         (pre-cutover) verdicts, or degraded/jest bundles with no per-test
+         records, corroboration is skipped/unavailable (no veto).
+
+    Returns the parsed archive on success. Raises VerifiedPreconditionError on
+    ANY failure (refuse the transition). Honest scope (design §10 B2 + §5/#151):
+    this catches rationalized/accidental skips + arbiter-only archives +
+    AUDIT_UNAVAILABLE-ignored + unversioned envelopes + RED/empty/mismatched
+    evidence + invented citations; it does NOT defend against a bob that
+    fabricates a complete archive (deferred spawner provenance, #141) NOR against
+    the semantic-test-adequacy residual (tests that pass but encode the wrong
+    oracle — deferred to #151 changed-line mutation).
+    """
+    project_root = project_root.resolve()
+    path = _verdict_path(project_root, bundle_hash)
+    archive = _read_verdict_archive(path)
+    if archive is None:
+        raise VerifiedPreconditionError(
+            f"R6: dual-verdict archive missing/unparseable at {path} "
+            f"(bundle_hash={bundle_hash!r}) — refuse INTEGRATED->VERIFIED "
+            f"(forecloses the 'not attempted' skip, #43-dev3)"
+        )
+
+    # (2) versioned envelope.
+    sv = archive.get("schema_version")
+    if sv != DUAL_VERDICT_SCHEMA_VERSION:
+        raise VerifiedPreconditionError(
+            f"R6: archive at {path} has schema_version={sv!r}, "
+            f"require {DUAL_VERDICT_SCHEMA_VERSION!r} (reject unversioned / "
+            f"ambiguous — C6 schema-drift)"
+        )
+
+    # (3) cross-binding fields present.
+    missing = [f for f in _R6_CROSS_BINDING_FIELDS if archive.get(f) is None]
+    if missing:
+        raise VerifiedPreconditionError(
+            f"R6: archive at {path} missing cross-binding field(s) "
+            f"{missing} — a bundle_hash alone is insufficient (C6)"
+        )
+
+    # bundle_hash inside the archive MUST equal the lookup key (self-binding).
+    if str(archive.get("bundle_hash")) != str(bundle_hash):
+        raise VerifiedPreconditionError(
+            f"R6: archive bundle_hash {archive.get('bundle_hash')!r} != "
+            f"lookup key {bundle_hash!r} (self-binding mismatch)"
+        )
+
+    # (4) cross-binding match against caller's expected values (TOGETHER).
+    if expected:
+        mismatched: List[str] = []
+        for field in _R6_CROSS_BINDING_FIELDS:
+            if field in expected:
+                if str(archive.get(field)) != str(expected.get(field)):
+                    mismatched.append(field)
+        if mismatched:
+            raise VerifiedPreconditionError(
+                f"R6: archive at {path} cross-binding mismatch on "
+                f"{mismatched} (expected {{"
+                + ", ".join(f"{k}={expected.get(k)!r}" for k in mismatched)
+                + "}}) — validated together, refuse transition"
+            )
+
+    # (5) both arms present at the ASYMMETRIC canonical keys.
+    audit_arm = archive.get("audit_arm")
+    arbiter_arm = archive.get("arbiter_arm")
+    if not isinstance(audit_arm, dict) or "result" not in audit_arm:
+        raise VerifiedPreconditionError(
+            f"R6: archive at {path} missing audit_arm.result "
+            f"(audit arm not present/passing — arbiter-only archive does not "
+            f"prove the audit subprocess ran, #43-dev3)"
+        )
+    if not isinstance(arbiter_arm, dict) or "verdict" not in arbiter_arm:
+        raise VerifiedPreconditionError(
+            f"R6: archive at {path} missing arbiter_arm.verdict "
+            f"(arbiter arm not present/passing)"
+        )
+
+    audit_result = audit_arm.get("result")
+    arbiter_verdict = arbiter_arm.get("verdict")
+
+    # (6)+(7) closed pass-set + neither fail-value. Order matters for clarity:
+    # an explicit fail-value (AUDIT_UNAVAILABLE/REJECTED) gets a precise error.
+    for axis_name, value in (("audit_arm.result", audit_result),
+                             ("arbiter_arm.verdict", arbiter_verdict)):
+        if value in VERIFIED_FAIL_VALUES:
+            raise VerifiedPreconditionError(
+                f"R6: {axis_name}={value!r} is an explicit non-pass — "
+                f"stay at INTEGRATED, escalate (AUDIT_UNAVAILABLE/REJECTED are "
+                f"NEVER auto-approved)"
+            )
+        if value not in VERIFIED_PASS_SET:
+            raise VerifiedPreconditionError(
+                f"R6: {axis_name}={value!r} not in closed pass-set "
+                f"{sorted(VERIFIED_PASS_SET)} — fail closed"
+            )
+
+    # -----------------------------------------------------------------------
+    # (8) DETERMINISTIC EVIDENCE (S048 / #116) — the 4th necessary conjunct,
+    # derived IN R6 from the hash-addressed bundle (never a producer boolean,
+    # never gate-runs.jsonl). component_id + bundle_hash come from the archive's
+    # already-validated cross-binding. A flat conjunction (NOT a quorum): the
+    # deterministic arm can only VETO.
+    # -----------------------------------------------------------------------
+    component_id = str(archive.get("component_id"))
+    try:
+        det = _import_deterministic_arm()
+    except Exception as e:  # pragma: no cover - import failure is env, fail safe
+        raise VerifiedPreconditionError(
+            f"R6: could not load the deterministic verification arm "
+            f"({type(e).__name__}: {e}) — refuse INTEGRATED->VERIFIED rather "
+            f"than skip the on-disk evidence check"
+        )
+
+    det_verdict = det.classify_bundle_evidence(component_id, bundle_hash, project_root)
+    det_state = det_verdict.get("state")
+    if det_state == det.RED:
+        raise VerifiedPreconditionError(
+            f"R6: deterministic evidence arm is RED for component={component_id!r} "
+            f"bundle_hash={bundle_hash} — {det_verdict.get('reason')}. A VERIFIED "
+            f"contradicting failing on-disk evidence is impossible -> veto "
+            f"(derived from the bundle, NOT from any archive boolean)"
+        )
+    if det_state != det.GREEN:  # INDETERMINATE or anything non-GREEN
+        raise VerifiedPreconditionError(
+            f"R6: deterministic evidence arm is {det_state!r} (not GREEN) for "
+            f"component={component_id!r} bundle_hash={bundle_hash} — "
+            f"{det_verdict.get('reason')}. Bounded clean rerun then escalate; do "
+            f"NOT VERIFY this bundle (never auto-pass on an evidence gap)"
+        )
+
+    # -----------------------------------------------------------------------
+    # (9) CITATION CORROBORATION (S048 / #116, R-B2/R-I3) — gated on the
+    # arbiter arm's rubric_version. Pre-cutover verdicts skip this
+    # deterministically (keyed to the rubric the verdict was produced under —
+    # no silent-disable gap). The evidence_map rides the arbiter arm (the
+    # dual-verdict envelope is additionalProperties:true, so bob stores the full
+    # arbiter verdict — incl. evidence_map — under arbiter_arm).
+    # -----------------------------------------------------------------------
+    rubric = _parse_semver(arbiter_arm.get("rubric_version"))
+    if rubric is not None and rubric >= R6_CITATION_RUBRIC_MIN:
+        evidence_map = arbiter_arm.get("evidence_map")
+        if evidence_map is None:
+            raise VerifiedPreconditionError(
+                f"R6: arbiter rubric_version={arbiter_arm.get('rubric_version')!r} "
+                f">= {'.'.join(map(str, R6_CITATION_RUBRIC_MIN))} REQUIRES an "
+                f"evidence_map under arbiter_arm, but none is present — refuse "
+                f"(the post-cutover arbiter MUST cite passing test nodeids)"
+            )
+        # Re-load the bundle dict to walk results[].tests[] for corroboration.
+        # (classify_bundle_evidence already proved hash/provenance/component;
+        # here we only need the test records to match cited nodeids.)
+        bundle_path = det.bundle_path_for(component_id, bundle_hash, project_root)
+        bundle_doc = det._read_bundle(bundle_path)
+        if bundle_doc is None:  # pragma: no cover - already proven readable in (8)
+            raise VerifiedPreconditionError(
+                f"R6: bundle vanished between deterministic classify and citation "
+                f"corroboration at {bundle_path} — refuse"
+            )
+        cit = det.corroborate_citations(bundle_doc, evidence_map)
+        if cit.get("status") == det.CIT_VETO:
+            raise VerifiedPreconditionError(
+                f"R6: citation corroboration VETO — {cit.get('reason')}; invalid="
+                f"{cit.get('invalid')}. The arbiter cited test nodeid(s) that are "
+                f"absent or non-passing in the bundle (invented/misattributed "
+                f"evidence — a correlated-hallucination tell) -> refuse"
+            )
+        # CIT_OK or CIT_UNAVAILABLE (degraded/jest) -> no veto.
+
+    return archive
+
+
+# ---------------------------------------------------------------------------
+# B1 — apply_request_idempotent: the ONE general transition writer (#47).
+# ---------------------------------------------------------------------------
+
+# Stage-specific precondition dispatch (B1 step 4). Keyed by (from, to). Each
+# hook takes (request, ledger_state_dict, project_root) and raises on failure.
+# Only the INTEGRATED->VERIFIED R6 hook is wired this cycle; the UI lane is
+# deferred (A5). Adding a hook here is the extension point for future stages.
+
+
+def _precondition_integrated_to_verified(
+    request: Dict[str, Any],
+    row: "LedgerRow",
+    project_root: Path,
+) -> None:
+    """R6 hook dispatched on INTEGRATED -> VERIFIED (B1 step 4, B2)."""
+    bundle_hash = request.get("bundle_hash")
+    if not bundle_hash:
+        raise VerifiedPreconditionError(
+            "R6: INTEGRATED->VERIFIED request carries no bundle_hash; "
+            "cannot locate the dual-verdict archive — refuse"
+        )
+    expected = {
+        "component_id": request.get("component_id", row.component),
+        "bundle_hash": bundle_hash,
+        "generation": request.get("generation", row.generation),
+    }
+    if request.get("verification_request_id") is not None:
+        expected["verification_request_id"] = request.get("verification_request_id")
+    if request.get("prior_state_version") is not None:
+        expected["prior_state_version"] = request.get("prior_state_version")
+    assert_verified_preconditions(bundle_hash, project_root, expected=expected)
+
+
+_TRANSITION_PRECONDITIONS: Dict[Tuple[str, str], Any] = {
+    ("INTEGRATED", "VERIFIED"): _precondition_integrated_to_verified,
+}
+
+
+def apply_request_idempotent(
+    request: Dict[str, Any],
+    project_root: Path,
+) -> Dict[str, Any]:
+    """The SOLE-WRITER transition engine (design §10 B1, closes #47).
+
+    All work happens under `_bob_claim_lock`. Steps (B1):
+      1. read current ledger state;
+      2. dedup by transition `request_id` ONLY (NOT request_id+attempt_id —
+         attempt_id belongs to the 8-field verification tuple; conflating them
+         would break PLANNED->SCAFFOLDED / SCAFFOLDED->UNIT_TESTED /
+         demote-to-PLANNED callers, design §9-A1 step 2);
+      3. validate the claim (`verify_claim_on_transition`) + legal from->to
+         (`check_transition_legal` over the B1 table);
+      4. dispatch the stage-specific precondition (R6 on INTEGRATED->VERIFIED);
+      5. append the event + update the projection + consumed_request_ids;
+      6. atomic rewrite.
+
+    `request` keys consumed:
+      request_id   (str, REQUIRED) — idempotency + dedup key
+      wp           (str) — WP id (falls back to component lookup)
+      component_id (str) — component name (falls back to wp's row component)
+      to_stage     (str, REQUIRED) — target stage
+      from_stage   (str, optional) — asserted current stage; if given and it
+                   disagrees with the ledger, the engine trusts the LEDGER
+                   (the request is a proposal; the ledger is truth)
+      evidence     (str, optional) — transition-log evidence cell
+      bundle_hash  (str) — required for INTEGRATED->VERIFIED (R6)
+      claim_uuid   (str, optional) — when present, verify_claim_on_transition
+                   is enforced; when absent, the claim check is skipped (bob's
+                   own engine-driven demotes / force-restarts carry no claim)
+
+    Returns a result dict:
+      {applied: bool, outcome: str, request_id, from, to, generation,
+       reason: str|None}
+      outcome in {applied, duplicate_ignored, illegal_transition,
+                  invalid_claim, precondition_failed, unknown_wp}.
+
+    Idempotency: a request whose request_id is already in the ledger header's
+    consumed_request_ids is a no-op returning outcome='duplicate_ignored'
+    (design §10 B1 step 2 + §10 B5 crash-recovery: the VERIFIED event
+    re-applies idempotently via this dedup).
+
+    Raises:
+      - KeyError if request_id or to_stage is missing (a malformed request is
+        a programming error, not a recoverable runtime state).
+    Failure MODES that are part of normal flow (illegal transition, invalid
+    claim, precondition failure) are returned as structured outcomes AND also
+    surface the underlying exception type for callers that prefer to raise —
+    EXCEPT the engine itself never half-writes: on any pre-write failure the
+    ledger is left untouched.
+    """
+    if "request_id" not in request:
+        raise KeyError("apply_request_idempotent: request missing 'request_id'")
+    if "to_stage" not in request:
+        raise KeyError("apply_request_idempotent: request missing 'to_stage'")
+
+    project_root = project_root.resolve()
+    ledger_path = project_root / "progress" / "integration-ledger.md"
+    request_id = str(request["request_id"])
+    to_stage = str(request["to_stage"])
+    wp_id = request.get("wp") or request.get("wp_id")
+    component_id = request.get("component_id")
+
+    with _bob_claim_lock(project_root):
+        if not ledger_path.is_file():
+            return {
+                "applied": False, "outcome": "unknown_wp",
+                "request_id": request_id, "from": None, "to": to_stage,
+                "generation": None,
+                "reason": f"ledger not found at {ledger_path}",
+            }
+        text = ledger_path.read_text()
+        header_block, header, body = _split_header(text)
+        arrow = _ledger_arrow(text)
+
+        # (2) dedup by request_id ONLY.
+        consumed: List[str] = list(header.get("consumed_request_ids") or [])
+        if request_id in consumed:
+            return {
+                "applied": False, "outcome": "duplicate_ignored",
+                "request_id": request_id, "from": None, "to": to_stage,
+                "generation": None,
+                "reason": "request_id already in consumed_request_ids",
+            }
+
+        ledger = read_ledger(ledger_path)
+        # Resolve the row by wp first, then component.
+        row: Optional[LedgerRow] = None
+        if wp_id is not None:
+            row = ledger.row(str(wp_id))
+        if row is None and component_id is not None:
+            row = ledger.row(str(component_id))
+        if row is None:
+            return {
+                "applied": False, "outcome": "unknown_wp",
+                "request_id": request_id,
+                "from": None, "to": to_stage, "generation": None,
+                "reason": f"no projection row for wp={wp_id!r} "
+                          f"component={component_id!r}",
+            }
+
+        from_stage = row.stage  # ledger is truth (request from_stage is advisory)
+
+        # (3a) legal from->to.
+        if not check_transition_legal(from_stage, to_stage):
+            return {
+                "applied": False, "outcome": "illegal_transition",
+                "request_id": request_id,
+                "from": from_stage, "to": to_stage, "generation": row.generation,
+                "reason": f"{from_stage}->{to_stage} not in LEGAL_TRANSITIONS",
+            }
+
+        # (3b) claim validity — only when the request carries a claim_uuid.
+        if request.get("claim_uuid"):
+            if not verify_claim_on_transition(request, ledger_path):
+                return {
+                    "applied": False, "outcome": "invalid_claim",
+                    "request_id": request_id,
+                    "from": from_stage, "to": to_stage,
+                    "generation": row.generation,
+                    "reason": "verify_claim_on_transition returned False "
+                              "(lease expired / stale generation / revoked / "
+                              "missing)",
+                }
+
+        # (4) stage-specific precondition dispatch (R6 on INTEGRATED->VERIFIED).
+        hook = _TRANSITION_PRECONDITIONS.get((from_stage, to_stage))
+        if hook is not None:
+            try:
+                hook(request, row, project_root)
+            except VerifiedPreconditionError as e:
+                return {
+                    "applied": False, "outcome": "precondition_failed",
+                    "request_id": request_id,
+                    "from": from_stage, "to": to_stage,
+                    "generation": row.generation,
+                    "reason": str(e),
+                }
+
+        # (5) compute new generation (any ->PLANNED demote bumps it, CB1).
+        new_generation = row.generation
+        if is_demote_to_planned(to_stage):
+            new_generation = row.generation + 1
+
+        # (5a) update the in-memory projection row.
+        row.stage = to_stage
+        row.generation = new_generation
+
+        # (5b) append the event row.
+        event = {
+            "wp": row.wp,
+            "component": row.component,
+            "from": from_stage,
+            "to": to_stage,
+            "generation": new_generation,
+            "evidence": request.get("evidence", ""),
+        }
+        body2 = _append_event_row(body, event, arrow)
+
+        # (5c) regenerate the projection table from the (mutated) rows.
+        proj_table = _render_projection_table(ledger.rows, arrow)
+        body3 = _replace_section_table(
+            body2, "## Projection (current state — one row per WP/component)",
+            proj_table,
+        )
+        if body3 == body2:
+            # Header text may differ; try the bare "## Projection" anchor.
+            body3 = _replace_section_table(body2, "## Projection", proj_table)
+
+        # (5d) record consumed_request_id in the header.
+        consumed.append(request_id)
+        new_header = _rewrite_consumed_request_ids(header_block, consumed)
+
+        # (6) atomic rewrite of the whole ledger.
+        atomic_write(ledger_path, new_header + body3)
+
+        return {
+            "applied": True, "outcome": "applied",
+            "request_id": request_id,
+            "from": from_stage, "to": to_stage,
+            "generation": new_generation,
+            "reason": None,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Phase 2b additions — ecosystem-keystone §5.5 + §5.2 + §2.8
 # ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@ Gates run as subprocesses (not prose). Before invoking any contract-driven skill
 </HARD-RULE>
 
 <HARD-RULE>
-VERIFIED requires BOTH `audit_spawn.py` AND `verification_arbiter_spawn.py` to return passing verdicts (tester-split design §5.6). They run in parallel on the same sanitized bundle; bob consumes both before any INTEGRATED → VERIFIED transition. Either failing → stay at INTEGRATED, freeze dependents, escalate. AUDIT_UNAVAILABLE from either arm → NEVER auto-approve; escalate to user. Arbiter verdict is only honored after the 8-field tuple (request_id, attempt_id, prior_state_version, bundle_hash, plan_hash, inventory_hash, runner_version, rubric_version) echoes back verbatim AND the persisted verification request is still `status: open` — bob calls `claims.consume_verdict(request_id, parsed)` to enforce. Tuple mismatch or `rejected_not_open` → discard, do NOT apply transition. The arbiter writes to stdout only; bob is the sole writer of `.ledger/verdicts/` (CB4 preserved).
+VERIFIED requires a FLAT CONJUNCTION (S048 / #116 — NOT a quorum): `audit_spawn.py` passes ∧ `verification_arbiter_spawn.py` passes ∧ the DETERMINISTIC (non-LLM) evidence arm is GREEN ∧ the arbiter's evidence_map citations corroborate. The two LLM arms run in parallel on the same sanitized bundle; bob consumes both before any INTEGRATED → VERIFIED transition. The deterministic conjunct is enforced INSIDE R6 (`claims.assert_verified_preconditions`), DERIVED from the hash-addressed bundle itself (`deterministic_arm.classify_bundle_evidence` — recompute bundle_hash, assert `produced_by==bob-trusted-runner` + component match, classify GREEN/RED/INDETERMINATE) — NEVER from a producer-written archive boolean and NEVER from `gate-runs.jsonl`. RED (a failed/error result) → veto; INDETERMINATE (empty / all-skipped-without-sanction / timeout / hash-or-provenance mismatch) → veto (bounded clean rerun then escalate; never auto-pass an evidence gap). Citation-corroboration (`deterministic_arm.corroborate_citations`) is required when `arbiter_arm.rubric_version >= 1.2.0`: every cited test nodeid MUST exist in the bundle `results[].tests[]` AND have `outcome==passed`, else veto (invented evidence). The deterministic arm can ONLY VETO (it adds no new pass-path → cannot create a false-pass). Either LLM arm failing OR deterministic-not-GREEN OR citation-veto → stay at INTEGRATED, freeze dependents, escalate. AUDIT_UNAVAILABLE from either LLM arm → NEVER auto-approve; escalate to user. Arbiter verdict is only honored after the 8-field tuple (request_id, attempt_id, prior_state_version, bundle_hash, plan_hash, inventory_hash, runner_version, rubric_version) echoes back verbatim AND the persisted verification request is still `status: open` — bob calls `claims.consume_verdict(request_id, parsed)` to enforce. Tuple mismatch or `rejected_not_open` → discard, do NOT apply transition. The arbiter writes to stdout only; bob is the sole writer of `.ledger/verdicts/` (CB4 preserved). `bundle_hash` is NOT touched — R6 READS the bundle, never writes it (#124 invariant). HONEST scope: this closes the red-evidence-contradiction + invented-evidence class; the semantic-test-adequacy residual (green-but-wrong oracle) is deferred to #151. Spawner fabrication is deferred to #141.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -57,17 +57,6 @@ HARD-RULE 6 — Eager G_CONTRACT_SCOPE invocation (S029). Bob MUST invoke `pytho
 USER IS SOLE AUTHORITY for amendments (Q3b lock). No waivers — the only legal bypass is a user-approved amendment of the signed `progress/contract-map.yaml`. Forge proposes; bob applies. Bob NEVER self-approves. Bob MUST NOT directly call `pause_state.request_pause` — only `scope_reaction.handle` is the legal caller (CB4-CB1). Bob enters the pause cycle through `claims.request_scope_pause(project_root)`.
 
 Cross-references: HARD-RULE 5 (dual-verdict at INTEGRATED → VERIFIED) — both gates run in sequence at INTEGRATED → VERIFIED, G_CONTRACT_SCOPE first; HARD-RULE 1 (agent-teams when WP ≥ 3) — agent-teams' BLOCKED enum routes `scope_change` reasons to bob's pause cycle, never auto-restarting; CB4 (bob is sole writer of `progress/integration-ledger.md`, `.ledger/claims/`, `.ledger/deltas/`, and `.ledger/scope-deltas/<delta_id>.yaml` status mutations).
-</HARD-RULE>
-
-<HARD-RULE>
-HARD-RULE 7 — Out-of-scope spotted mid-WP execution (S038 Batch G, 2026-05-25). When bob detects, during execution of a WP, work that is OUT-OF-SCOPE of the WP plan (refactor opportunity unrelated to current contract, security finding outside the scope being verified, infrastructure change unrelated to current design), bob MUST:
-1. NOT inline-handle the out-of-scope work (dilutes WP focus; violates the plan; risks scope drift).
-2. NOT silently drop it.
-3. Invoke the `handoff` skill to generate `/tmp/handoff-<topic>-<date>-<uuid>.md` summarising the out-of-scope finding with the standard handoff template (purpose / pointer pack / open question / suggested skills / how to verify).
-4. Log a new entry in `tasks.md` of the project containing the handoff doc path + a one-line summary, so the work is durably tracked (handoff doc itself is disposable in `/tmp/`).
-5. Continue the current WP without deviation.
-
-This converts "bob spotted X but the user can't see it" into a durable artifact that becomes a fresh-session pickup later. The handoff skill's HARD-RULE 3 (secret-scan redaction) applies — bob does NOT include raw secrets / tokens / PII in the handoff body.
 </HARD-RULE>
 
 ## Core Identity
@@ -128,6 +117,8 @@ You ALWAYS return a structured completion report:
 - Tests run: [command] → [pass/fail with output summary]
 - Lint run: [command] → [pass/fail]
 - Build run: [command] → [pass/fail]
+- Security checkpoint: `G_SECURITY` → [aggregate: clean/advisory_findings/advisory_indeterminate/advisory_no_tool] (advisory v1; sanitized — no raw secret material)
+- Spawn cost (observe-only, S046 #124): captured Claude-verifier spend: $X across N spawns; summed spawn duration Ys — `coverage: partial` (forge approach-agents + Codex + agy costs NOT captured) + `budget_enforced: false`. Source: `python3 ~/.claude/skills/process-observation/scripts/query.py rollup --format text` → `spawn_cost` block (from the `.process-observations/spawn-runs.jsonl` sidecar). Omit the line if no cold-context verifier spawn ran this cycle. v1 RECORDS, does not cap (enforcement deferred → #147).
 - Plan coverage: [N/M requirements have deliverables]
 
 ### How to Verify
@@ -166,18 +157,37 @@ Read the design doc and project context:
 
 Do NOT second-guess the design. If it's been approved, execute it as specified. If you spot a critical flaw that would cause the implementation to fail (not a style preference — a genuine blocker), note it in your output but proceed with the rest.
 
-### Step 1 → Step 1.5 Gate (contract map routing)
+### Step 1 → Step 1.5 Gate (contract map routing, G_CLASSIFY-enforced)
 
-After reading the design, determine whether the contract-driven pipeline applies. This runs **regardless of caller** (forge, alf, pa, standalone):
+After reading the design, bob MUST run the deterministic component-classification gate `G_CLASSIFY` (S042 / #115) BEFORE routing. This replaces the old prose heuristic ("the design doc contains a section like 'Components'…") with a checkable, reproducible verdict, and makes `Contract map: N/A` a **corroborated** decision rather than a bare assertion any caller can use to silently skip ALL enforcement. This runs **regardless of caller** (forge, alf, pa, standalone).
 
-| Spawn prompt says | Design introduces components? | Action |
+**Mandatory pre-flight — run this first:**
+```bash
+python3 ~/.claude/skills/_meta/gates.py G_CLASSIFY "<project_root>" \
+  --design-doc "<design-doc-path>" \
+  --asserted "<N/A | provided | (omit if spawn says nothing)>" \
+  --files-from "<planned-file-touch-list>"
+```
+- `--asserted N/A` when the spawn prompt says `Contract map: N/A`.
+- `--asserted provided` when the spawn prompt provided contract map paths.
+- Omit `--asserted` entirely when the spawn prompt says nothing about a contract map.
+- `--files-from` is the PLANNED file-touch set (comma list or path to a list file); omit to let the gate use `git diff` (pre-flight has no diff yet, so pass the plan).
+
+If forge already wrote `.forge/classification.json` (Step 8a.0), the artifact is the recorded claim; the gate re-derives and corroborates it (never trusts it).
+
+**The gate's exit code IS the routing decision** (the middle column is now a gate exit, not an LLM read):
+
+| Spawn prompt says (`--asserted`) | `G_CLASSIFY` exit | Action |
 |---|---|---|
-| Contract map paths provided | Yes | Proceed to Step 1.5 with provided paths |
-| `Contract map: N/A` | No | Skip Step 1.5 entirely |
-| **Nothing about contract map** | **Yes** | Auto-detect: check if `progress/contract-map.yaml` + `.sig` exist in project root. If found → proceed to Step 1.5 with auto-detected paths. If missing → **HALT**: "This design introduces components but has no contract map. Use forge step 8a to generate one, or re-spawn bob with `Contract map: N/A` if this is intentionally exempt." |
-| **Nothing about contract map** | **No** | Skip Step 1.5 (treat as N/A) |
+| Contract map paths provided (`provided`) | **0** | Proceed to Step 1.5 with provided paths |
+| `Contract map: N/A` (`N/A`) | **0** | N/A corroborated — skip Step 1.5 legitimately |
+| `Contract map: N/A` (`N/A`) | **2** | **HALT** — the CRITICAL #115 hole: the gate named CONFIRMED component signals that contradict the N/A. Report the named signals to the caller; do NOT skip Step 1.5. |
+| Nothing about contract map (omit) | **0**, scan=yes | Proceed to Step 1.5 (auto-detect map; if missing, HALT for forge Step 8a) |
+| Nothing about contract map (omit) | **0**, scan=no | Skip Step 1.5 (treat as N/A) |
+| Nothing about contract map (omit) | **2** | **HALT** — design introduces components with no map; named-signals evidence. Use forge Step 8a or re-spawn with a corroborated N/A. |
+| *(any)* | **3** | **HALT + ask the user** — ambiguous classification band. NEVER silent-pass, NEVER let an LLM decide. Surface the evidence bundle (`progress/.classify/verdict.json`) and escalate. |
 
-**How to detect "introduces components"**: the design doc contains a section like "Components", "Architecture", "New Services", or lists new modules/APIs/endpoints. A design that only modifies existing files without adding new integration boundaries does NOT introduce components.
+Bare `Contract map: N/A` in the spawn prompt is **advisory only** — the skip is authorized SOLELY by a green (`exit 0`) `G_CLASSIFY`. Do NOT skip Step 1.5 on the assertion alone.
 
 ## Step 1.5: Freeze Contract Map & Initialize Ledger (contract-driven designs only)
 
@@ -213,7 +223,7 @@ Entered via the routing table above. Skip if routed to N/A.
    - `drift_canary: "ALDEBARAN-7"`
    - `pause_epoch: 0`
    - One projection row per component at stage PLANNED with generation 0
-   Use the atomic write helper: `claims.atomic_write_ledger` (CB3 exactly-once semantics).
+   Use the atomic write helper: `claims.atomic_write` under `claims._bob_claim_lock(project_root)` (CB3 exactly-once semantics). This is the ONE-TIME ledger INITIALIZATION (no prior state, no transition event); all subsequent stage changes go exclusively through `claims.apply_request_idempotent` (B6 — the sole transition-event writer).
 
 5. **Re-run G1 with ledger binding** — this is the critical CB2 check.
    ```bash
@@ -287,11 +297,11 @@ For each component in the contract map, before the implementation WP for that co
    - `project_root`
 4. **Skill heartbeats** (every 60s) while it works. Bob's claim ledger is the authority; if the lease expires, bob's next transition-request poll sees a stale/expired claim and the skill exits cleanly.
 5. **Skill writes fixtures + manifest** under `tests/fixtures/<component>/` and emits `.ledger/requests/<uuid>.request.yaml` with the claim UUID attached.
-6. **Bob consumes the request** via `claims.apply_request_idempotent`:
-   - Dedup via `consumed_request_ids`
-   - Verify claim is still valid
-   - Apply PLANNED → SCAFFOLDED atomically
-   - Bump the component's generation counter
+6. **Bob applies the transition** via `claims.apply_request_idempotent(request, project_root)` (the SOLE-writer engine, #47) with `request_id`, `wp`, `component_id`, `to_stage: SCAFFOLDED`, `claim_uuid`, and an `evidence` summary. The engine, all under `_bob_claim_lock`:
+   - Dedups by transition `request_id` ONLY (returns `duplicate_ignored` if already in `consumed_request_ids`)
+   - Verifies the claim (`verify_claim_on_transition`) and the legal `PLANNED → SCAFFOLDED` pair (`check_transition_legal` over the locked `LEGAL_TRANSITIONS` table)
+   - Appends the event + updates the projection + `consumed_request_ids`, then atomic-rewrites the ledger
+   - (any `→ PLANNED` demote bumps the component generation per CB1; SCAFFOLDED is a forward step, generation unchanged)
 7. **On timeout** (S=10/M=25/L=60 min): mark WP BLOCKED, revoke the claim, freeze dependents, run the escalation chain.
 
 ## Step 3: Delegate to agent-teams
@@ -358,8 +368,8 @@ After implementation WPs complete and unit tests exist:
 1. **Run G1 (with ledger binding)** before execution.
 2. **Invoke `trusted_runner.run_trusted_test_suite(component_id, test_paths)`** — bob executes the runner itself. The skill does NOT run tests.
 3. **Capture the sanitized audit bundle** (JSON, provenance-tagged `produced_by: bob-trusted-runner`).
-4. **If all tests pass:** advance SCAFFOLDED → UNIT_TESTED via `claims.apply_request_idempotent`.
-5. **If any test fails:** mark WP BLOCKED, attach the bundle as failure evidence, escalate.
+4. **If all tests pass:** advance SCAFFOLDED → UNIT_TESTED by submitting a transition request to `claims.apply_request_idempotent(request, project_root)` (`to_stage: UNIT_TESTED`, `request_id`, `wp`, `component_id`, `evidence`). The engine is the only ledger-event writer (B6 — no inline append).
+5. **If any test fails:** mark WP BLOCKED (submit a `to_stage: BLOCKED` request through the same engine), attach the bundle as failure evidence, escalate.
 6. **Store the bundle** at `.ledger/evidence/<component>/unit-test-bundle.json`.
 
 ## Step 4.5: Integration & Flow Tests + Dual-Verdict Verification (contract-driven designs only)
@@ -369,8 +379,8 @@ After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires BOTH the metacogniti
 1. **Run G1/G2/G3**, issue a claim for `integration-flow-testing` via `claims.issue_claim`.
 2. **Invoke the `integration-flow-testing` skill** with `component_id`, `claim_uuid`, `language_target` (pytest or jest — v1 only). The skill generates test files but does NOT execute them.
 3. **Skill heartbeats and emits** `.ledger/requests/<uuid>.request.yaml` with `target_stage: INTEGRATED`.
-4. **Bob applies the transition** atomically (UNIT_TESTED → INTEGRATED).
-5. **Bob runs the trusted runner AGAIN** against the new integration + flow test paths. New sanitized bundle.
+4. **Bob applies the transition** atomically (UNIT_TESTED → INTEGRATED) via `claims.apply_request_idempotent(request, project_root)` (`to_stage: INTEGRATED`, `request_id`, `wp`, `component_id`, `claim_uuid`, `evidence`). The engine checks legality + claim + dedup under `_bob_claim_lock` and is the only ledger-event writer (B6).
+5. **Bob runs the trusted runner AGAIN** against the new integration + flow test paths. New sanitized bundle. **(S048 / #116 R-B1)** When the frozen test plan declares tier-gated requirements (`test_plan_schema.requirements[].required_tier` / `skip_if_tier_below`), pass `required_tiers={<nodeid>: <required_tier>, ...}` (derived from the plan) to `run_trusted_test_suite` so it stamps a bundle-level `tier_decision: {inventory_tier, inventory_hash}` + per-test `sanctioned_tier_skip` BEFORE the hash is computed. This is what lets the deterministic arm grant GREEN-by-sanctioned-skip on sub-tier hosts WITHOUT a non-converging rerun loop. The stamp is hash-bound into the evidence and R6 reads it from the bundle only (no test-plan dependency at transition time).
 
 ### 5a. Freeze the bundle (design §5.2, §5.7)
 
@@ -379,7 +389,7 @@ After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires BOTH the metacogniti
 
 ### 5b. Open the verification request (design §5.3, §5.4)
 
-8. **Open a verification request** via `claims.open_verification_request(...)` with the 8-field input tuple: `component_id`, `attempt_id` (monotonic per-component retry counter), `prior_state_version` (current ledger state version), `bundle_hash`, `plan_hash` (sha256 of `docs/plans/<task>-test-plan.yaml` if present; empty string `""` if no frozen plan yet — Phase 3 wiring), `inventory_hash` (sha256 of `~/.claude/state/inventory.json` at request time), `runner_version`, `rubric_version` (from `skills/verification-arbiter/SKILL.md` rubric — currently `1.0.0`). The helper is idempotent on the tuple; restart-safe.
+8. **Open a verification request** via `claims.open_verification_request(...)` with the 8-field input tuple: `component_id`, `attempt_id` (monotonic per-component retry counter), `prior_state_version` (current ledger state version), `bundle_hash`, `plan_hash` (sha256 of `docs/plans/<task>-test-plan.yaml` if present; empty string `""` if no frozen plan yet — Phase 3 wiring), `inventory_hash` (sha256 of `~/.claude/state/inventory.json` at request time), `runner_version`, `rubric_version` (from `skills/verification-arbiter/SKILL.md` rubric — currently `1.2.0`; this is the CUTOVER KEY — R6 requires citation-corroboration only when the verdict's `rubric_version >= 1.2.0`). The helper is idempotent on the tuple; restart-safe.
 
 ### 5c. Parallel dual-verdict
 
@@ -407,16 +417,19 @@ After UNIT_TESTED, the INTEGRATED → VERIFIED arc requires BOTH the metacogniti
     - `accepted` → arbiter verdict honored
     - `rejected_mismatch` → tuple echo failed; discard verdict and retry (bounded N ≤ 3 per component per attempt). Increment `attempt_id`, re-open a new request, re-spawn arbiter. Do NOT transition.
     - `rejected_not_open` → request already closed (superseded / abandoned / consumed). Escalate; do NOT transition.
-12. **Combine both arms — outer gate**:
-    - Both `VERIFIED` AND arbiter `consume_verdict -> accepted` → apply INTEGRATED → VERIFIED.
-    - Either arm `VERIFIED_WITH_CONCERNS` (other clean), arbiter accepted → apply transition, log concerns.
-    - Either arm `REJECTED` → stay at INTEGRATED, freeze dependents, escalate. Do NOT transition.
-    - Either arm `AUDIT_UNAVAILABLE` (arbiter exit 4 or audit_spawn equivalent) → mark WP AUDIT_UNAVAILABLE, escalate to user. **NEVER auto-approve.**
-13. **Record both verdicts + bundle_hash + request_id + tuple fields + any structured disagreements** in the ledger event. Both arms' full JSON outputs are archived under `.ledger/verdicts/<bundle_hash>.verdict.yaml` (bob is sole writer — CB4).
+12. **Combine both arms — outer gate** (decision only; the transition is applied through the engine in steps 13–15, never inline here):
+    - Both `VERIFIED` AND arbiter `consume_verdict -> accepted` → proceed to apply INTEGRATED → VERIFIED (steps 13–15).
+    - Either arm `VERIFIED_WITH_CONCERNS` (other clean), arbiter accepted → proceed to apply (steps 13–15), log concerns.
+    - Either arm `REJECTED` → stay at INTEGRATED, freeze dependents, escalate. Do NOT transition (R6 in the engine also fails closed if you somehow proceed).
+    - Either arm `AUDIT_UNAVAILABLE` (arbiter exit 4 or audit_spawn equivalent) → mark WP AUDIT_UNAVAILABLE, escalate to user. **NEVER auto-approve** (R6 fails closed on AUDIT_UNAVAILABLE).
+13. **Write the dual-verdict.v1 archive** under `.ledger/verdicts/<bundle_hash>.verdict.yaml` (bob is sole writer — CB4) conforming to the frozen `_meta/schemas/dual-verdict.v1.json` envelope. The archive MUST carry: `schema_version: dual-verdict.v1`; the cross-binding block `component_id` + `bundle_hash` + `verification_request_id` + `prior_state_version` + `generation`; the **audit arm under the canonical key `audit_arm.result`** and the **arbiter arm under the canonical key `arbiter_arm.verdict`** (these keys are ASYMMETRIC by design — `.result` vs `.verdict` — mirroring the S039 telemetry fixture; do NOT collapse them). Record both arms' full JSON outputs (incl. the arbiter's `evidence_map` under `arbiter_arm` and its `rubric_version`), the 8-field tuple (inside `arbiter_arm`), and any structured disagreements. **(S048 / #116)** ALSO record the deterministic arm result for telemetry: `deterministic_arm: {state: GREEN|RED|INDETERMINATE, evidence_quality, citation: {...}}` from `deterministic_arm.classify_bundle_evidence` + `corroborate_citations` (this is OBSERVE-ONLY telemetry that `rollup.py triple_arm_disagreement` reads — R6 still RE-DERIVES the deterministic verdict from the hash-addressed bundle itself, so a forged `deterministic_arm` field here CANNOT pass R6; it only affects read-only telemetry). **R6 (`claims.assert_verified_preconditions`) READS this archive** at the INTEGRATED → VERIFIED transition and refuses the transition unless both LLM canonical keys are present + passing + neither AUDIT_UNAVAILABLE/REJECTED, the versioned cross-binding is intact, **the deterministic evidence arm (derived from the bundle) is GREEN, AND (when `arbiter_arm.rubric_version >= 1.2.0`) every `evidence_map` citation corroborates** — so a failing/empty/mismatched bundle or an invented citation will BLOCK the transition even if both LLM arms approve. **HONESTY:** bob writes this archive, so R6 catches rationalized/accidental skips (#43-dev3) + RED/empty/mismatched evidence + invented citations, NOT a maliciously-fabricated complete archive (deferred: spawner non-bob-provenance #141) NOR the semantic-test-adequacy residual (tests that pass but encode the wrong oracle — deferred #151). #116 stays OPEN (PARTIAL closure: red-evidence-contradiction + invented-evidence DONE).
+14. **Pre-flight the gate** before applying the transition — run `python3 ~/.claude/skills/_meta/gates.py G_DUAL_VERDICT "<project_root>" --bundle-hash <bundle_hash>` (exit 0 pass / 2 fail / 3 env). The gate now ALSO runs the deterministic + citation check as a VISIBLE belt-and-suspenders pre-flight: when the deterministic arm is RED/INDETERMINATE while BOTH LLM arms passed, it emits a `gate_false_pass`-class observation (the empirically-caught correlated-LLM-error). This is the visible pre-flight + S039-telemetry rider; the engine precondition dispatched inside `claims.apply_request_idempotent` is the structural backstop (strong protocol enforcement, not literally-unskippable — bob retains filesystem write access).
+   - **(S048 / #116 R-I2) bounded INDETERMINATE rerun:** if R6 vetoes with INDETERMINATE (empty / all-skipped-without-sanction / timeout / runner-not-found / hash-or-provenance mismatch), do NOT auto-VERIFY and do NOT loop forever — wire it into the EXISTING N ≤ 3 attempt retry (`attempt_id`): each rerun is a FRESH `bundle_hash` + verification request (no new counter). A recurring DETERMINISTIC INDETERMINATE (the same timeout / runner_not_found / all-skipped-non-sanctioned repeating across attempts) → escalate immediately (Claude 2x → Codex 1x → user). A deterministic RED → veto the current bundle (a real failure; the remedy is fresh passing evidence, NOT approving the failed bundle).
+15. **Apply INTEGRATED → VERIFIED** by submitting a transition request to `claims.apply_request_idempotent(request, project_root)` with `request_id`, `wp`, `component_id`, `to_stage: VERIFIED`, `bundle_hash`, `verification_request_id`, `prior_state_version`, `generation`, and an `evidence` summary. The engine re-runs R6 INSIDE the `_bob_claim_lock` (TOCTOU re-check), appends the event, updates the projection + `consumed_request_ids`, and atomic-rewrites the ledger. This is the ONLY path that writes a VERIFIED ledger event (B6 — no inline append).
 
 ### 5e. Startup recovery
 
-14. **On bob startup** (Step 1), after `claims.recover_claims(project_root)`, also call `claims.recover_verification_requests(project_root)` to sweep any `status: open` verification requests older than `ARBITER_FRESHNESS_WINDOW_S` (default 1800 s per design §9.5). Stale → marked `abandoned` + `reason: freshness_window_elapsed`; the component is returned to INTEGRATED-with-escalation so the user decides whether to retry. The helper mirrors the shape of `recover_claims` and is idempotent.
+16. **On bob startup** (Step 1), after `claims.recover_claims(project_root)`, also call `claims.recover_verification_requests(project_root)` to sweep any `status: open` verification requests older than `ARBITER_FRESHNESS_WINDOW_S` (default 1800 s per design §9.5). Stale → marked `abandoned` + `reason: freshness_window_elapsed`; the component is returned to INTEGRATED-with-escalation so the user decides whether to retry. The helper mirrors the shape of `recover_claims` and is idempotent. **B5 crash-recovery note:** the engine writes the VERIFIED ledger event FIRST, then bob marks the verification request consumed (validate → write → consume). If bob crashes after the VERIFIED write but before the consume, the LEDGER is idempotently correct on replay (the request_id dedup in `apply_request_idempotent` makes the re-applied VERIFIED event a no-op `duplicate_ignored`), and this recovery sweep moves the stranded open request to the terminal `abandoned` state so a fresh request can be opened — it does NOT auto-become `consumed`.
 
 ## Step 4.6: Scope-change orchestration loop (S029, contract-driven designs only)
 
@@ -444,11 +457,11 @@ This step runs only after Step 4.6 has driven the pause-state machine to `PAUSED
    Forge presents undecided deltas to the user, drafts the amended map via the helper, and returns `{amended_map_path, deltas_resolved}`. Read `~/.claude/skills/forge/references/amendment.md` for the full protocol if forge's response is malformed.
 3. **Receive forge's proposal** — `{amended_map_path, deltas_resolved}`. If `deltas_resolved == []` (user deferred or rejected everything), stay at PAUSED — escalate to user; if MAP_UPDATING times out (`STATE_TIMEOUT_SECONDS["MAP_UPDATING"] = 900`), `pause_state.recover_pause_state` rolls back automatically.
 4. **Validate the proposal** — run `gates.check_G2(amended_map_path, project_root=project_root)`. If G2 fails, do NOT sign; prompt the user to re-engage forge with corrections. The helper's `draft_amendment` is pure but bob's G2 is the authoritative validation.
-5. **Sign the amended map** — write `amended_map_yaml` to `progress/contract-map.yaml` and re-emit `progress/contract-map.yaml.sig` using the existing forge Step 8a.2 HMAC pattern: SHA-256 over the canonical-map-text via the same Python-oracle / `openssl` chain used by `gates.sh` (the trailing-newline fix from S025 #85 still applies — preserve byte-exact map text). Re-bind the integration ledger header `contract_map_hash` + `contract_map_revision` to the new map (atomic-rewrite via `claims.atomic_write_ledger`).
+5. **Sign the amended map** — write `amended_map_yaml` to `progress/contract-map.yaml` and re-emit `progress/contract-map.yaml.sig` using the existing forge Step 8a.2 HMAC pattern: SHA-256 over the canonical-map-text via the same Python-oracle / `openssl` chain used by `gates.sh` (the trailing-newline fix from S025 #85 still applies — preserve byte-exact map text). Re-bind the integration ledger header `contract_map_hash` + `contract_map_revision` to the new map (atomic header re-write via `claims.atomic_write` under `claims._bob_claim_lock(project_root)` — this mutates the HEADER only, not a transition event; the subsequent WP demotes in step 9 go through `claims.apply_request_idempotent`).
 6. **Write the delta event** — append `.ledger/deltas/rev-<N>.yaml` with one entry per resolved delta (delta_id, decision kind, target_component-or-excluded, requesting_wp, signing timestamp). This is bob's authoritative log of the amendment, separate from the per-delta record.
 7. **Update each scope_delta record** — for each `delta_id` in `deltas_resolved`, call `scope_delta.update_status(project_root, delta_id, "amended", resolution=f"rev-{N}")`. This is bob's hand-off — forge MUST NOT have called this. Idempotent on re-runs.
 8. **Transition to RESUMING** — `pause_state.transition_to(project_root, "RESUMING")`. Compute `affected_wps = pause_state.affected_wps(state)`; these are the WPs that need force-restart per design §12.
-9. **Force-restart affected WPs** — for each `wp_id` in `affected_wps`: write a transition request under `.ledger/requests/<uuid>.request.yaml` that demotes the WP to PLANNED with `generation += 1`. Apply via `claims.apply_request_idempotent` (CB4 — bob is the sole writer). Workers re-pick up at PLANNED stage and re-run G_CONTRACT_SCOPE during their next WP-boundary check; with the amended map in place, the previously-undeclared paths now resolve into the declared universe.
+9. **Force-restart affected WPs** — for each `wp_id` in `affected_wps`: write a transition request under `.ledger/requests/<uuid>.request.yaml` that demotes the WP to PLANNED, then apply via `claims.apply_request_idempotent(request, project_root)` with `to_stage: PLANNED` (CB4 — bob is the sole writer). The engine automatically bumps the component generation on any `→ PLANNED` demote (CB1 — `is_demote_to_planned`), so bob does NOT hand-compute `generation += 1`; the engine's `LEGAL_TRANSITIONS` table also permits the `BLOCKED → PLANNED` and `<stage> → PLANNED` demotes used here. Workers re-pick up at PLANNED stage and re-run G_CONTRACT_SCOPE during their next WP-boundary check; with the amended map in place, the previously-undeclared paths now resolve into the declared universe.
 10. **Transition to NORMAL** — `pause_state.transition_to(project_root, "NORMAL")`. Resume normal WP execution. The TOCTOU re-check at INTEGRATED → VERIFIED runs the gate one more time; if a new critical undeclared has appeared since the amendment (e.g. a different specialist added something new), Step 4.6 re-fires.
 
 **Cross-references for forge in amendment mode:** `~/.claude/skills/forge/SKILL.md` "Amendment Mode" section; helper at `~/.claude/skills/_meta/forge_amendment_helper.py`; reference protocol doc at `~/.claude/skills/forge/references/amendment.md`. **HARD-RULE 6 self-application reminder:** even bob's own MAP_UPDATING orchestration writes WPs (transition requests for `affected_wps`) — those writes themselves do NOT trigger `G_CONTRACT_SCOPE` because the demote-to-PLANNED transition does not introduce filesystem artifacts.
@@ -463,6 +476,33 @@ After agent-teams returns results:
 4. **Check for conflicts** — any file touched by multiple teams?
 5. **Integration check** — do the pieces connect correctly? (imports, interfaces, data flow)
 6. **Run concrete verification** — produce verification artifacts:
+
+### Step 4.x: `G_CLASSIFY --verify-diff` final checkpoint (S042 / #115 — the teeth)
+
+The Step-1 pre-flight gated on the *planned* file set. The real teeth are a final check before declaring done — before `INTEGRATED → VERIFIED` for mapped cycles, OR before DONE for N/A cycles. This catches post-pre-flight scope creep AND the Ship-of-Theseus loophole (component logic appended into existing allowed files), which `G_CONTRACT_SCOPE` cannot reach on the N/A route.
+
+```bash
+python3 ~/.claude/skills/_meta/gates.py G_CLASSIFY "<project_root>" --verify-diff
+```
+
+- Compares the ACTUAL `git diff --name-only` (∪ untracked) against the `.forge/classification.json` envelope.
+- If the cycle declared `introduces_components: no` but the diff contains ≥1 **component-evidence path** (`progress/contract-map.yaml`, `_meta/schemas/*.json`, a new `G_*` in `gates.py`, `**/services/**`, `*.sig`, `migrations/*.sql`) NOT covered by an `existing_component_extension` declaration → **exit 2 BLOCK** (named path). Do NOT declare done; the scope crept out of the N/A envelope.
+- Exit 3 (escalate, e.g. malformed/missing artifact) → HALT + ask the user.
+- Exit 0 → envelope clean; proceed to report/transition.
+
+### Step 4.y: Universal Security checkpoint (S045 / #120 — runs on EVERY cycle)
+
+Bob MUST run the universal `G_SECURITY` advisory checkpoint **before completion on EVERY cycle** — both the contract-driven `INTEGRATED → VERIFIED` path AND the `N/A → DONE` path. This is the S045 G6 win: the S038 security gates (`G_SECRETS_SCAN`, `G_SECURE`) were built-but-dormant (wired nowhere → never ran); this step makes them RUN and REPORT on every cycle in the mandated advisory-first posture. It is NOT G_CLASSIFY-scoped and NOT bob-list-scoped — `G_SECURITY` derives its own scope from the ACTUAL git diff, so prose / `_meta` cycles (which `G_CLASSIFY` exempts) are covered, never bypassed.
+
+```bash
+python3 ~/.claude/skills/_meta/gates.py G_SECURITY "<project_root>"
+```
+
+- **Scope derivation (D1):** `security_scope(project_root)` reads `git diff --name-only` + staged + untracked. Code-bearing files (extension allowlist + `Dockerfile`/`Makefile`/CI YAML + shebang + executable bit) → SAST scope; any changed non-binary text file → secrets scope. `G_CLASSIFY=yes` is only an ADDITIONAL positive SAST signal; `=no` is NEVER proof-of-prose (a prose-only `_meta`.py cycle STILL gets SAST).
+- **Advisory posture (D2):** `G_SECURITY` RUNS both gates over the derived scope and SURFACES findings + a nudge, but does NOT hard-block in v1. **Exit 0 is the normal completion** — even with findings, indeterminate arms, or no-compatible-tool arms. The ONLY non-zero exit is **exit 3** = the git diff could not be collected (indeterminate SCOPE) → escalate, NOT silent-skip; resolve the git state and re-run.
+- **False-clean honesty (D3):** a broken scanner run (error/timeout/bad-config/unexpected-exit/malformed-or-empty output when output was expected) is normalized as `indeterminate` — explicitly NOT "clean" and never counted as zero findings. `no_compatible_tool` (no scanner installed) is the ONLY case that gets the advisory-skip grace.
+- **Sanitized reporting:** bob surfaces the normalized `G_SECURITY_ADVISORY` aggregate in the execution report's Verification Artifacts section — per-arm status (clean / findings / indeterminate / no_compatible_tool / skipped) + scope sizes + the install nudge for absent scanners. **NEVER put raw matched secret material in the report or ledger — only sanitized metadata (path, rule-id, confidence, fingerprint).**
+- **Deferred (NOT v1):** strict enforcement + baseline rollout (#144), non-bob opt-out authorization (#145), and the dual-verdict `security_verdict` arm + TOCTOU binding (#146). v1 is advisory-only.
 
 ### Verification — Test Discovery
 

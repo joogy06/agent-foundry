@@ -1,0 +1,154 @@
+schema_version: affordance.v1
+validated_against:
+  cli_version: "1.0.5"
+  date: "2026-06-05"
+host_cli: antigravity-cli
+
+# Day-one entries derived from Antigravity CLI 1.0.4 (agy --help, verified 2026-06-03).
+# 2026-06-05 (S041): re-verified against agy 1.0.5; models + changelog rows added.
+#   validated_against bumped to 1.0.5.
+# See ~/.claude/skills/antigravity-cli for full operational notes.
+# NOTE: agy has a much smaller surface than the retired Gemini CLI. As of 1.0.5 it
+# DOES have a `--model` flag and a `models` subcommand (convention: omit `--model`,
+# use the account default — see the antigravity-cli skill). It still has no short `-m`
+# alias, no worktree flag, no approval-mode/plan flag, no hooks/skills/mcp
+# subcommands, and no ACP/A2A mode. Only verified agy commands are listed here.
+
+affordances:
+  - id: antigravity-cli/headless-single-prompt
+    command: "agy -p"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - one-shot-question
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Run a single prompt non-interactively and print the plain-text response —
+      good for a quick second opinion or challenger pass.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/interactive-with-seed
+    command: "agy -i"
+    risk_class: low
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - seed-interactive-session
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Run an initial prompt interactively and continue the session — useful for
+      a back-and-forth design exploration off a starting seed.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/resume-prior-conversation
+    command: "agy -c"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - switching-back-to-prior-task
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Continue the most recent agy conversation — useful for context-switching
+      back to a half-done piece of work. (Use --conversation <id> for a specific one.)
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/add-workspace-dir
+    command: "agy --add-dir"
+    risk_class: low
+    workflow_match:
+      orchestrator: [bob, forge]
+      completion_kind:
+        - user-wants-isolated-workspace
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Add a directory to the agy workspace (repeatable) — scope the run to the
+      next chunk of work without pulling in the whole tree.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/sandbox-restricted-run
+    command: "agy --sandbox"
+    risk_class: low
+    workflow_match:
+      orchestrator: [forge]
+      completion_kind:
+        - user-wants-readonly-planning
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Run in a sandbox with terminal restrictions enabled — safer exploration when
+      you don't want agy mutating the host freely.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/yolo-auto-approve
+    command: "agy --dangerously-skip-permissions"
+    risk_class: high
+    workflow_match:
+      orchestrator: [bob]
+      completion_kind:
+        - user-wants-yolo
+    skip_when:
+      orchestrator_failed: true
+      already_suggested_this_session: true
+    hint: |
+      Auto-approve every tool permission request without prompting. Destructive
+      default-off — only suggest when the user has explicitly asked to skip approvals.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/plugin-management
+    command: "agy plugin"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - manage-plugins
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Install / uninstall / list / enable / disable agy plugins.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/update-cli
+    command: "agy update"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - update-tooling
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Update the agy CLI to the latest release.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/list-models
+    command: "agy models"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - inspect-available-models
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      List the models available to agy (added in 1.0.5; pairs with the `--model` flag).
+      Convention is to use the account default — only switch models when explicitly needed.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md
+
+  - id: antigravity-cli/changelog
+    command: "agy changelog"
+    risk_class: low
+    workflow_match:
+      orchestrator: ["*"]
+      completion_kind:
+        - check-cli-release-notes
+    skip_when:
+      already_suggested_this_session: true
+    hint: |
+      Show agy changelog / release notes — useful after an `agy update` to see what moved.
+    reference: ~/.claude/skills/antigravity-cli/SKILL.md

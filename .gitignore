@@ -42,3 +42,11 @@ skills/_meta/perf-findings.jsonl/
 skills/_meta/inventory.json/
 skills/_meta/inventory.json.before-*/
 skills/forge/superpowers-tracked.md/
+state/
+state/inventory-history.jsonl/
+state/inventory-prev.json/
+state/freshness/
+skills/.pytest_cache/
+**/.pytest_cache/
+**/__pycache__/
+**/*.pyc/

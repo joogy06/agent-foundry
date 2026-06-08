@@ -50,7 +50,7 @@ date -u   # compare to a known-good time
 
 ## #3: Browser OAuth on cloud VM → no display
 
-**Symptom**: `gemini auth login`, `gcloud auth login`, `copilot login` open a browser on the **VM** (no display), or print a URL the user is supposed to open. The user is on a different machine.
+**Symptom**: the Antigravity CLI (agy) account login, `gcloud auth login`, `copilot login` open a browser on the **VM** (no display), or print a URL the user is supposed to open. The user is on a different machine.
 
 **Cause**: The OAuth flow defaults to opening a browser on the local machine. On a cloud VM, the local machine is the headless VM.
 

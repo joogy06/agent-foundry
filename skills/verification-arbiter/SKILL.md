@@ -58,9 +58,9 @@ One JSON object matching [`verdict_schema.json`](../_meta/verdict_schema.json). 
 
 Design §5.6: arbiter never writes `.ledger/`. On any failure it exits with code 4 and a single-line stderr diagnostic; bob is sole ledger writer.
 
-## Rubric (v1.1.0)
+## Rubric (v1.2.0)
 
-**Source of truth: this SKILL.md file itself, hashed.** Bump the rubric version (semver) when changes to this file affect verdict semantics. Current rubric covers:
+**Source of truth: this SKILL.md file itself, hashed.** Bump the rubric version (semver) when changes to this file affect verdict semantics. The `rubric_version` bob passes (10th positional arg) is the CUTOVER KEY: bob's R6 (`claims.assert_verified_preconditions`) requires citation-corroboration only when the verdict's `rubric_version >= 1.2.0` (older verdicts skip it deterministically — no silent-disable gap). Current rubric covers:
 
 1. **Self-hash check.** The model MUST recompute the bundle hash from on-disk bytes using the canonical JSON form (sort_keys=True, separators=`(",", ":")`, ensure_ascii=False, exclude the `bundle_hash` field itself — imported from `skills/_meta/trusted_runner.py:canonical_bundle_bytes` / `bundle_hash_hex`). Result populates `self_hash_check.bundle_recomputed_hash` + `matches_input`. Mismatch forces `REJECTED`.
 
@@ -83,6 +83,10 @@ Design §5.6: arbiter never writes `.ledger/`. On any failure it exits with code
    **Plan flag.** `test_plan_schema.json` v1.1 (S038 Batch E) adds optional `security_required: bool` at plan-level (default `false` for backwards compat). When `true`, missing `security_status` field in the bundle = `unavailable`.
 
    **Companion skills:** `sast-tooling` (G_SECURE), `secret-scanning` (G_SECRETS_SCAN), `dep-currency-check` (G_DEP_CURRENCY — referenced separately by bob, not part of arbiter rubric since dep-check runs at design-time not test-time).
+
+6. **Evidence-map citations (NEW in v1.2.0 — S048 / #116, the non-LLM verification arm).** The verdict MUST carry a top-level `evidence_map: {<REQ-ID>: [<nodeid>, ...]}` — for each REQ-ID scored as covered, the verbatim passing-test nodeid(s) (`outcome == "passed"`) from the bundle's `results[].tests[]` cited as satisfying it. This is a REQUIRED top-level key (in `verdict_schema.json` + `verification_arbiter_spawn.REQUIRED_TOP_KEYS` — without it there, the arbiter's own hand-rolled `validate_verdict` would reject its output and bob would halt). Bob's deterministic arm (`deterministic_arm.corroborate_citations`, invoked by R6) verifies every cited nodeid EXISTS in the bundle AND passed, and REJECTS the INTEGRATED→VERIFIED transition if any cited nodeid is absent or non-passing (an invented/misattributed-evidence tell — the correlated-hallucination signal). Empty `{}` is valid (degraded/returncode-only or jest bundle with no per-test records, or coverage by skips-with-reason only); on such bundles citation-corroboration is recorded `unavailable` and does NOT veto. **Honest residual:** catches *invented* evidence, NOT *irrelevant-but-real* citations (a real passing test cited for the wrong criterion). The deeper semantic-test-adequacy residual (tests that pass but encode the wrong oracle) is deferred to #151.
+
+   This couples with R6's deterministic-evidence conjunct: VERIFIED now requires `audit_arm passes ∧ arbiter_arm passes ∧ deterministic_evidence == GREEN ∧ citations_corroborated` (a flat conjunction, NOT a quorum — the deterministic arm can only VETO). The deterministic GREEN/RED/INDETERMINATE verdict is derived by R6 *from the hash-addressed bundle itself* (`deterministic_arm.classify_bundle_evidence`), never from a producer-written archive boolean and never from `gate-runs.jsonl`.
 
 ## Env vars
 

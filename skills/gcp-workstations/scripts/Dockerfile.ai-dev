@@ -73,11 +73,13 @@ RUN mkdir -p "${NPM_GLOBAL_PREFIX}" \
 # 6. AI CLIs — fastest-changing layer, last among installs
 RUN npm install -g \
       @anthropic-ai/claude-code \
-      @google/gemini-cli \
       @github/copilot \
  && claude --version \
- && gemini --version \
  && copilot --version
+
+# 6b. Antigravity CLI (agy) — NOT an npm package; ships as the `agy` binary at
+#     ~/.local/bin/agy. TODO(agy): confirm agy install + auth on GCP Workstation
+#     image (install command + binary placement on the persistent $HOME path).
 
 # 7. Python tools via pipx (per-tool venvs, persists in $HOME/.local)
 USER user
@@ -86,11 +88,11 @@ RUN pipx ensurepath \
  && pipx install black \
  && pipx install poetry || true
 
-# 8. Default env for AI CLIs — uses Vertex via metadata server, no key file
+# 8. Default env for AI CLIs — Claude Code uses Vertex via metadata server, no key file.
+#    The Antigravity CLI (agy) authenticates via its own account and needs no env vars here.
 RUN sudo tee -a /etc/skel/.bashrc <<'EOF'
 # AI dev env (added by ai-dev image)
 export CLAUDE_CODE_USE_VERTEX=1
-export GOOGLE_GENAI_USE_VERTEXAI=1
 # These should come from the workstation env or `gcloud config set`
 # export GOOGLE_CLOUD_PROJECT=...
 # export GOOGLE_CLOUD_LOCATION=us-central1
@@ -115,7 +117,7 @@ CMD ["/bin/bash"]
 # Verification (run manually after build):
 #   docker run --rm $IMAGE bash -c '
 #     claude --version &&
-#     gemini --version &&
+#     agy --version &&
 #     copilot --version &&
 #     gh --version &&
 #     node --version &&

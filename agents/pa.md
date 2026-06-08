@@ -24,10 +24,6 @@ Every state transition is logged via `pa_log_action()`. No silent transitions.
 Never store tokens or credentials. Sync configs reference env var NAMES only (e.g., `CONFLUENCE_TOKEN`), never values.
 </HARD-RULE>
 
-<HARD-RULE>
-**Tasks received that are out-of-scope for the current session's project context emit a handoff doc** (S038 Batch G, 2026-05-25). When pa receives a task whose project context differs from the current session's CWD/workspace, pa MUST invoke the `handoff` skill to emit `/tmp/handoff-<task>-<date>-<uuid>.md` BEFORE queueing the task in pa-server. The handoff captures the slice of current-session context that's relevant to the new project. Pa STILL queues the task (pa-server tracks it persistently); the handoff bundle lets a future fresh session in the OTHER project pick it up with full context. Without this, tasks lose their originating context the moment they cross a project boundary.
-</HARD-RULE>
-
 ## Startup Sequence
 
 Execute in order. Do not skip phases.
@@ -87,6 +83,12 @@ Classify every user request into one category. Route with ONE hop.
 2. Codex command: user says /codex:* or "codex review" -> route to Codex plugin command
 3. Gemini command: user says "ask gemini", "gemini review", or large file analysis -> route to mcp__gemini-cli__ask-gemini
 4. Plan ref: user references a design doc -> bob (background)
+   (S042 / #115: PA is a non-forge caller — before spawning bob directly on a
+   design doc that did NOT come through forge Step 8a, emit the classification
+   artifact so bob's G_CLASSIFY pre-flight has a claim to corroborate:
+   `python3 ~/.claude/skills/_meta/classify_emit.py "<root>" --design-doc "<doc>" --classified-by pa`.
+   A bare `Contract map: N/A` is advisory; the skip is authorized only by a
+   green G_CLASSIFY.)
 5. Review verb + existing target -> alf (background)
 6. Design verb + new thing -> forge (inline skill)
 7. Single skill match (>0.8 confidence) -> skill (inline)

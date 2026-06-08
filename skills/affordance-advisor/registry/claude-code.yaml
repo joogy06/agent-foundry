@@ -1,4 +1,7 @@
 schema_version: affordance.v1
+validated_against:
+  cli_version: "2.1.163"
+  date: "2026-06-05"
 host_cli: claude-code
 
 # Day-one entries derived from Claude Code 2.1.x full command table

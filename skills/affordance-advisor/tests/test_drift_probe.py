@@ -14,51 +14,27 @@ test would otherwise flap.
 """
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-import advise
+# Import the extraction helpers from the PUBLIC drift_extract module (Evergreening v1,
+# S041, spec-review Issue 2) rather than re-defining private symbols here. This test
+# and scripts/drift_runner.py share ONE import surface, so a refactor can't silently
+# break the production runner. The test keeps the same names (aliased) for continuity.
+_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+import advise  # noqa: E402,F401  (kept for back-compat with any external importer)
+import drift_extract  # noqa: E402
 
-
-_REGISTRY_DIR = Path(__file__).resolve().parent.parent / "registry"
-
-# Map registry filename -> (binary, --help args, regex to extract commands)
-_DRIFT_TARGETS = {
-    "claude-code.yaml": ("claude",   ["--help"],
-                         re.compile(r"^\s*/(\S+)", re.MULTILINE)),
-    "codex.yaml":       ("codex",    ["--help"],
-                         re.compile(r"^\s+(\w[\w-]*)\s+", re.MULTILINE)),
-    "gemini.yaml":      ("gemini",   ["--help"],
-                         re.compile(r"^\s+(\w[\w-]*)\s+", re.MULTILINE)),
-    "copilot-cli.yaml": ("copilot",  ["--help"],
-                         re.compile(r"^\s+(\w[\w-]*)\s+", re.MULTILINE)),
-    "gh.yaml":          ("gh",       ["--help"],
-                         re.compile(r"^\s+(\w[\w-]*)\s+", re.MULTILINE)),
-}
-
-
-def _extract_commands(text: str, pattern: re.Pattern) -> set[str]:
-    return {m.group(1) for m in pattern.finditer(text)}
-
-
-def _registry_commands(registry_path: Path) -> set[str]:
-    data = advise.load_registry(registry_path)
-    out: set[str] = set()
-    for aff in data.get("affordances", []):
-        cmd = aff["command"]
-        # Take the distinctive first token: slash + word, or binary + first sub
-        if cmd.startswith("/"):
-            out.add(cmd.split()[0].lstrip("/"))
-        else:
-            words = cmd.split()
-            # Skip the binary name (codex, gh, gemini, copilot)
-            if len(words) >= 2:
-                out.add(words[1])
-    return out
+_REGISTRY_DIR = drift_extract.registry_dir()
+_DRIFT_TARGETS = drift_extract.DRIFT_TARGETS
+_extract_commands = drift_extract.extract_commands
+_registry_commands = drift_extract.registry_commands
 
 
 @pytest.mark.manual
@@ -95,8 +71,28 @@ def test_help_vs_registry(registry_name):
 
 def test_drift_probe_is_marked_manual():
     """Sanity: the drift test must be marked manual so CI doesn't run it."""
-    import inspect
     fn = test_help_vs_registry
     markers = [m for m in getattr(fn, "pytestmark", [])]
     assert any(m.name == "manual" for m in markers), \
         "test_help_vs_registry must be @pytest.mark.manual"
+
+
+def test_drift_extract_public_surface_pinned():
+    """Meta-test (Evergreening v1, S041, spec-review Issue 2): pin the PUBLIC names
+    drift_runner.py depends on, so a refactor of drift_extract can't silently break
+    the production runner."""
+    assert hasattr(drift_extract, "DRIFT_TARGETS")
+    assert hasattr(drift_extract, "extract_commands")
+    assert hasattr(drift_extract, "registry_commands")
+    assert hasattr(drift_extract, "read_validated_against")
+    assert hasattr(drift_extract, "registry_dir")
+    assert hasattr(drift_extract, "KNOWN_FLOORS")  # #139: floor-check public surface
+    # The 5 CLI-backed targets are stable; copilot-chat is NOT a drift target.
+    assert set(drift_extract.DRIFT_TARGETS) == {
+        "claude-code.yaml", "codex.yaml", "antigravity-cli.yaml",
+        "copilot-cli.yaml", "gh.yaml",
+    }
+    assert "copilot-chat.yaml" not in drift_extract.DRIFT_TARGETS
+    # validated_against is stamped on all 6 (the 5 + copilot-chat metadata registry).
+    assert "copilot-chat.yaml" in drift_extract.ALL_REGISTRIES
+    assert len(drift_extract.ALL_REGISTRIES) == 6

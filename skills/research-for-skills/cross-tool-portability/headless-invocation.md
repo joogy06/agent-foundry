@@ -1,33 +1,33 @@
 # Headless Invocation
 
-Side-by-side comparison of `-p` mode in Claude Code, Gemini CLI, and GitHub Copilot CLI. Use to translate scripts from one tool to another.
+Side-by-side comparison of `-p` mode in Claude Code, Antigravity CLI (`agy`), and GitHub Copilot CLI. Use to translate scripts from one tool to another. `agy` is this host's second-opinion / research delegate — it replaces the retired Gemini CLI for orchestration. See the `antigravity-cli` skill for the full flag reference (verified against `agy --help`, v1.0.4).
 
 ## The basic invocation
 
 | Tool | Command |
 |---|---|
 | Claude Code | `claude -p "<prompt>"` |
-| Gemini CLI | `gemini -p "<prompt>"` |
+| Antigravity CLI (`agy`) | `agy -p "<prompt>"` |
 | Copilot CLI | `copilot -p "<prompt>" --allow-all-tools` |
 
-Note: Copilot REQUIRES `--allow-all-tools` for `-p` mode (otherwise it blocks on permission prompts).
+Note: Copilot REQUIRES `--allow-all-tools` for `-p` mode (otherwise it blocks on permission prompts). `agy -p` takes no model flag and no API-key env prefix — it authenticates via the Antigravity account.
 
 ## Output format
 
 | Tool | Plain | JSON | Streaming |
 |---|---|---|---|
 | Claude Code | `--output-format text` (default) | `--output-format json` | `--output-format stream-json --include-partial-messages` |
-| Gemini CLI | `--output-format text` | `--output-format json` | `--output-format stream-json` |
+| Antigravity CLI (`agy`) | plain text on stdout (default; only verified mode) | TODO(agy): verify equivalent — no verified JSON output mode | TODO(agy): verify equivalent — no verified streaming mode |
 | Copilot CLI | `--output-format text` (default) | `--output-format json` (JSONL — one object per line) | (no separate streaming flag — `--stream on/off` controls it) |
 
-JSON output schemas differ. Don't try to parse Claude's JSON with Gemini's parser.
+JSON output schemas differ. Don't try to parse Claude's JSON with another tool's parser. `agy -p` returns **plain text** — parse text, not JSON fields (the retired `mcp__gemini-cli__*` tools returned structured fields; agy does not).
 
 ## Permission / approval mode
 
 | Tool | Read-only | Auto-approve | YOLO |
 |---|---|---|---|
 | Claude Code | `--permission-mode plan` | `--permission-mode acceptEdits` | `--permission-mode bypassPermissions` |
-| Gemini CLI | `--approval-mode plan` | `--approval-mode auto_edit` | `-y` / `--approval-mode yolo` |
+| Antigravity CLI (`agy`) | `--sandbox` (terminal restrictions; TODO(agy): verify plan-only mode) | TODO(agy): verify equivalent — no verified per-edit auto-approve flag | `--dangerously-skip-permissions` (auto-approve all tool calls; fully-headless only) |
 | Copilot CLI | (no built-in plan mode — use `--available-tools` to limit) | `--allow-all-tools` | `--yolo` / `--allow-all` |
 
 ## Allowing/denying tools
@@ -35,7 +35,7 @@ JSON output schemas differ. Don't try to parse Claude's JSON with Gemini's parse
 | Tool | Allow specific | Deny specific |
 |---|---|---|
 | Claude Code | `--allowedTools "Bash(git:*) Read"` | `--disallowedTools "..."` |
-| Gemini CLI | `--policy ./allow.policy.yaml` (Policy Engine) | (in policy file) |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified per-tool allow flag (the gemini Policy Engine has no confirmed agy analogue) | TODO(agy): verify equivalent |
 | Copilot CLI | `--allow-tool='shell(git:*)' --allow-tool='read'` | `--deny-tool='shell(git push)'` |
 
 Patterns differ. Translate carefully.
@@ -45,7 +45,7 @@ Patterns differ. Translate carefully.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--add-dir <dir>` (repeatable) |
-| Gemini CLI | `--include-directories <dir>` (comma-sep or repeated) |
+| Antigravity CLI (`agy`) | `--add-dir <dir>` (repeatable) |
 | Copilot CLI | `--add-dir <dir>` (repeatable) |
 
 ## Sessions
@@ -53,7 +53,7 @@ Patterns differ. Translate carefully.
 | Tool | Resume latest | Resume by ID |
 |---|---|---|
 | Claude Code | `--continue` | `--resume <id>` |
-| Gemini CLI | `--resume latest` | `--resume <index>` |
+| Antigravity CLI (`agy`) | `-c` / `--continue` | `--conversation <id>` |
 | Copilot CLI | `--continue` | `--resume=<id>` |
 
 ## Model selection
@@ -61,17 +61,17 @@ Patterns differ. Translate carefully.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--model <name>` (e.g. `sonnet`, `opus`) |
-| Gemini CLI | `-m, --model <name>` |
+| Antigravity CLI (`agy`) | (no model flag — `agy` uses its Antigravity-account-configured model; `-m` is not defined) |
 | Copilot CLI | `--model <name>` |
 
-Model names differ across tools. There's no shared naming.
+Model names differ across tools. There's no shared naming. `agy` exposes one configured model with no per-call selector.
 
 ## Worktree mode
 
 | Tool | Flag |
 |---|---|
 | Claude Code | `-w, --worktree [name]` |
-| Gemini CLI | `-w, --worktree [name]` |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified worktree flag |
 | Copilot CLI | (no built-in worktree — use git separately) |
 
 ## CI-safe minimal mode
@@ -79,27 +79,27 @@ Model names differ across tools. There's no shared naming.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--bare` (CANONICAL — skips hooks, LSP, plugin sync, auto-memory, keychain) |
-| Gemini CLI | (no equivalent — closest is `-y --approval-mode yolo` with explicit settings) |
+| Antigravity CLI (`agy`) | (no equivalent — closest is `--dangerously-skip-permissions --sandbox`; raise `--print-timeout` for long runs) |
 | Copilot CLI | `--allow-all-tools --no-custom-instructions --no-auto-update` (closest combo) |
 
-Only Claude has a single canonical flag. The other two require flag combinations.
+Only Claude has a single canonical flag. The others require flag combinations.
 
 ## Cost / budget cap
 
 | Tool | Flag |
 |---|---|
 | Claude Code | `--max-budget-usd <n>` (only with `-p`) |
-| Gemini CLI | (no equivalent) |
+| Antigravity CLI (`agy`) | (no equivalent) |
 | Copilot CLI | `--max-autopilot-continues <n>` (caps continuations, not $) |
 
-Only Claude has a $ cap. Use external tooling for Gemini/Copilot budget enforcement.
+Only Claude has a $ cap. Use external tooling for agy/Copilot budget enforcement.
 
 ## Structured output / schemas
 
 | Tool | Flag |
 |---|---|
 | Claude Code | `--json-schema '<JSON Schema>'` (built-in validation) |
-| Gemini CLI | (no equivalent — use `--output-format json` and validate downstream) |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified JSON / schema output mode; `agy -p` returns plain text only |
 | Copilot CLI | (no equivalent) |
 
 Only Claude has built-in schema validation.
@@ -109,7 +109,7 @@ Only Claude has built-in schema validation.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--agent <name>` or `--agents '<JSON inline>'` |
-| Gemini CLI | (no `--agent` flag — use extensions) |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified `--agent` flag (plugins via `agy plugin`) |
 | Copilot CLI | `--agent <name>` (format `[UNVERIFIED]`) |
 
 ## Putting it together — equivalent invocations
@@ -126,15 +126,16 @@ ANTHROPIC_API_KEY=$KEY \
   --permission-mode bypassPermissions
 ```
 
-### Gemini CLI
+### Antigravity CLI (`agy`)
 
 ```bash
-GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=$KEY \
-  gemini -p "fix the bug" \
-  --include-directories . \
-  --output-format json \
-  -y -s
+agy -p "fix the bug" \
+  --add-dir . \
+  --dangerously-skip-permissions \
+  --sandbox
 ```
+
+`agy` takes no model flag and no API-key env prefix (it authenticates via the Antigravity account). Output is plain text on stdout — there is no verified JSON output mode (TODO(agy): verify equivalent). Raise `--print-timeout <dur>` for long runs.
 
 ### Copilot CLI
 
@@ -151,7 +152,7 @@ COPILOT_GITHUB_TOKEN=$TOKEN \
 These are roughly equivalent. The exact behaviour differs in subtle ways:
 
 - Claude's `--bare` skips more than just hooks (also LSP, auto-memory, plugin sync)
-- Gemini's `-y` is yolo mode — same as bypassPermissions
+- `agy`'s `--dangerously-skip-permissions` auto-approves all tool calls — same intent as bypassPermissions; use only in fully-headless contexts
 - Copilot's `--allow-all-tools` allows tools but not all paths/URLs (use `--yolo` for that)
 
 ## Anti-patterns
@@ -159,9 +160,9 @@ These are roughly equivalent. The exact behaviour differs in subtle ways:
 | Don't | Why |
 |---|---|
 | Assume all three have `--bare` | Only Claude does. Use the closest equivalent for the other two. |
-| Translate JSON output 1:1 | Schemas differ. Re-implement parsing per tool. |
-| Use the same `--allowedTools` syntax in Gemini | Gemini deprecated `--allowed-tools`. Use Policy Engine. |
-| Pin the same model name across tools | Model namespaces are independent. |
+| Translate JSON output 1:1 | Schemas differ. Re-implement parsing per tool. `agy` has no verified JSON mode — parse its plain-text stdout. |
+| Pass `-m <model>` to `agy` | `agy` has no model flag — `-m` is "not defined". Drop it. |
+| Pin the same model name across tools | Model namespaces are independent. `agy` has no per-call model selector. |
 | Forget `--allow-all-tools` for Copilot `-p` mode | Copilot blocks on permission prompts. |
-| Use `--yolo` in production scripts | Disables ALL safety. Use `--allow-all-tools` for Copilot, similar restraint elsewhere. |
-| Pipe Claude's JSON output to a Gemini parser | Schemas differ. Validate downstream of each tool. |
+| Use `--yolo` / `--dangerously-skip-permissions` in production scripts | Disables safety. Use the minimum approval level the task needs. |
+| Add a `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` prefix to `agy` | That was a gemini-OAuth hack; `agy` authenticates via its own account. Drop it. |

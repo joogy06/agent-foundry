@@ -6,7 +6,7 @@ A checklist to run when you publish a new cross-tool skill, to confirm it actual
 
 - After authoring a new cross-tool skill
 - After substantial edits to an existing one
-- After upgrading any of the CLIs (Claude, Gemini, Copilot, Codex)
+- After upgrading any of the CLIs (Claude, Antigravity CLI (agy), Copilot, Codex)
 - During alf sweeps when reviewing skill portability
 
 ## Checklist
@@ -36,24 +36,19 @@ claude -p "<sample query that should match the description>" --bare
 
 Expected: skill loads, body is read.
 
-### 3. Check Gemini can find the skill
+### 3. Check Antigravity (agy) can find the skill
 
 ```bash
-# Force OAuth subscription path when the shell has GOOGLE_CLOUD_PROJECT / GEMINI_API_KEY set for other Google tooling
-export GOOGLE_CLOUD_PROJECT=
-export GEMINI_API_KEY=
+# After importing Claude plugins/skills via `agy plugin import claude`
+agy plugin list | grep <skill-name>   # TODO(agy): verify exact list output / skill granularity
+# Should appear if agy surfaces imported skills individually
 
-# After symlinking via `gemini skills link ~/.claude/skills/<skill-name>`
-gemini skills list | grep <skill-name>
-# Should appear
-
-# Test in a session
-gemini -p "/skills enable <skill-name>"
-# Then a query that should trigger it
-gemini -p "<sample query>"
+# Test a query that should trigger it (agy takes no model flag and no env-key prefix)
+agy -p "<sample query>"
+# Output is plain text on stdout — parse text, not JSON.
 ```
 
-Note: After `link`, the user must `/skills reload` in an interactive session before the skill appears. Document this in the skill's install instructions.
+TODO(agy): verify equivalent — the gemini `/skills enable` + `/skills reload` flow has no confirmed agy analogue. Confirm how agy enables/refreshes imported skills before documenting it in install instructions.
 
 ### 4. Check Codex can find the skill
 
@@ -61,7 +56,7 @@ Note: After `link`, the user must `/skills reload` in an interactive session bef
 ls ~/.codex/skills/<skill-name>/SKILL.md
 # Should exist (symlink)
 
-# Codex doesn't have explicit skill commands like Claude/Gemini.
+# Codex doesn't have explicit skill commands like Claude.
 # Skills resolve by content discovery via the codex-orchestration workflow.
 # Verify the symlink resolves and the file is readable.
 readlink ~/.codex/skills/<skill-name>
@@ -142,7 +137,7 @@ If the skill includes hook scripts, verify they have an `AI_CLI_CALL_DEPTH` guar
 grep -l 'AI_CLI_CALL_DEPTH' ~/.claude/skills/<skill-name>/scripts/*.sh
 ```
 
-Expected: every hook script that calls `claude`, `gemini`, `codex`, or `copilot` has the guard.
+Expected: every hook script that calls `claude`, `agy`, `codex`, or `copilot` has the guard.
 
 ## Continuous verification (in alf sweeps)
 
@@ -154,7 +149,7 @@ Add this checklist to alf's skill audit. Every cross-tool skill should pass on e
 |---|---|
 | Skip the validator | The five hard rules are easy to break by accident |
 | Trust frontmatter without parsing | YAML edge cases will surprise you |
-| Assume `gemini skills list` shows all skills | Skill might be installed but rejected due to bad frontmatter |
-| Forget the `/skills reload` step in Gemini | Newly-linked skills are invisible until reload |
+| Assume `agy plugin list` shows all imported skills | A skill might be imported but rejected due to bad frontmatter (TODO(agy): verify list granularity) |
+| Assume agy auto-refreshes imported skills | TODO(agy): verify equivalent — the gemini `/skills reload` step has no confirmed agy analogue |
 | Test only on Claude | The whole point is cross-tool — test in all four |
 | Ignore broken intra-skill links | Model loads SKILL.md, follows link, gets 404 — silently degrades |

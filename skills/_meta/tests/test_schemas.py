@@ -66,6 +66,8 @@ VALID_VERDICT = {
         "bundle_recomputed_hash": "b" * 64,
         "matches_input": True,
     },
+    # S048 / #116 R-B2: evidence_map is now a REQUIRED top-level key.
+    "evidence_map": {"REQ-001": ["tests/test_auth.py::test_expired_token"]},
 }
 
 

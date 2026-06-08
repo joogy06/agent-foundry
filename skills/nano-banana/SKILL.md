@@ -8,6 +8,8 @@ allowed-tools: Bash(gemini:*), Bash(*gemini --yolo*), Bash(*gemini extensions*),
 
 Generate professional images via the Gemini CLI's nanobanana extension.
 
+**Ambiguity gate (ask before generating):** if the request is underspecified on the dimensions that change the output materially — intended use (blog hero / thumbnail / icon / diagram), aspect ratio or size, style direction, and any must-include elements — ask ONE compact clarifying question covering the missing dimensions BEFORE the first generation. Don't silently generate the version you guessed; a wrong guess costs a full generation round-trip.
+
 ## When to Use This Skill
 
 ALWAYS use this skill when the user:

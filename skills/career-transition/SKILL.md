@@ -28,6 +28,8 @@ Child of `career-coach`. This skill handles every scenario where a career crosse
 - `career-assessment` — use when the user needs to figure out *where they are* before deciding *where to go*
 - `career-planning` — use when the user needs a structured roadmap with milestones and OKRs
 - `career-storytelling` — use when the user needs to articulate their experience for interviews, promotions, or branding
+- `career-application-writer` — use when the user needs the actual CV / cover letter written or tailored
+- `career-online-presence` — use when the user needs to be findable (website, GitHub, social, AI people-search)
 
 ## When NOT to Use
 
@@ -35,7 +37,9 @@ Child of `career-coach`. This skill handles every scenario where a career crosse
 |---|---|
 | "Where am I in my career?" / self-assessment / SWOT | `career-assessment` |
 | Building a 12-month development plan / OKRs / certification strategy | `career-planning` |
-| Writing STAR stories / interview prep / promotion case | `career-storytelling` |
+| Writing STAR stories / interview prep / promotion case (the answers themselves) | `career-storytelling` |
+| Writing or tailoring the CV / cover-letter document | `career-application-writer` |
+| Building online presence / findability (site, GitHub, social, AI search) | `career-online-presence` |
 | General career coaching, sponsorship, managing up, performance reviews | `career-coach` |
 
 ---
@@ -47,6 +51,21 @@ Child of `career-coach`. This skill handles every scenario where a career crosse
 3. **Apply appropriate framework** — select the matching section below
 4. **Produce specific recommendation** — with risk/reward analysis
 5. **Identify immediate next action** — one concrete step the user can take today
+
+---
+
+## 0. Job Search Under the AI Flood
+
+Before any offer or move, frame the macro reality: application volume is at record highs, AI-assisted mass-applying has flooded the funnel, and cold-application response rates are very low — a doom-loop where the flood drives more applications (qualitative; figures in `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). The winning strategy inverts the instinct to spray applications.
+
+**Strategy order (highest-yield first):**
+1. **Referrals first** — referrals are a small share of applications but convert to a large share of hires (snapshot). Activate your network before touching a job board.
+2. **Direct outreach** — approach hiring managers / teams directly, with a specific reason you fit.
+3. **Apply early** — when you do apply, apply early in the posting window (early applicants are over-represented among hires).
+4. **Staffing-firm pre-verification** — specialist recruiters who pre-vet you to employers bypass the flood (relationship-driven; see `career-positioning` §4).
+5. **Cold-apply LAST** — the public-portal cold application is a *minor* channel, not the primary one. Use it, but don't rely on it.
+
+This order is the antidote to the flood: the first four channels route around the bottleneck that channel five is stuck in.
 
 ---
 
@@ -81,6 +100,14 @@ Score each component **1-5** against the user's stated priorities. Weight by imp
 - Unclear reporting line or "TBD" org structure
 - No mention of severance or notice terms
 - Sign-on bonus that doesn't cover forfeited compensation
+
+### Evaluating an Employer's AI-Maturity
+
+A 2026 addition to due diligence — read how the prospective employer treats AI, in hiring and in the work:
+- **Screening posture** — do they use AI/automated screening fairly and transparently (and are they aware of automated-decision regulation, e.g. California ADS — see `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`)? Opaque or careless screening is a culture signal.
+- **AI-fluency expectations** — what do they expect you to do with AI in the role? Vague hype is a yellow flag; concrete, governed use is healthy.
+- **Tooling investment** — are they actually investing in AI capability, or just talking about it?
+- **Red flag:** no coherent story about AI in hiring *or* in the work — suggests either denial or chaos.
 
 ---
 
@@ -290,6 +317,10 @@ What is the **minimum** you need to be credible in the target domain? Often less
 - Domain vocabulary? (A few weeks of immersion)
 - A portfolio piece? (One side project or open-source contribution)
 
+### AI-Displacement-Aware Pivots
+
+When the pivot is partly *defensive* (your current task-mix is increasingly automatable), aim the move toward **moats AI doesn't easily cross**: judgment under ambiguity, regulatory/accountability ownership, and relationship/trust capital. Diagnose which of your tasks are automatable-now vs AI-augmented vs AI-resistant first (cross-ref `career-assessment`'s AI-Exposure Assessment), then pivot toward the resistant, premium end. The banking regtech path (regulatory fluency + technical depth → regtech, model-risk, AI-governance roles) is the worked example; the general principle — *move up the judgment/accountability/relationship ladder, not deeper into the automatable middle* — applies in any sector.
+
 ---
 
 ## 7. Onboarding Into a Bigger Role (First 90 Days)
@@ -398,3 +429,4 @@ Build a diversified career portfolio where each component reinforces the others:
 | Resigning before unvested compensation vests | Leaving 2 weeks before bonus payment or equity cliff costs tens of thousands in forfeited compensation | Map all vesting dates and bonus payment windows; time resignation to minimize forfeiture |
 | Treating IC-to-manager transition as a promotion | It is a career change — different competencies, different success metrics, different daily work | Assess management fit separately: do you want to coach, hire, shield, and translate — or build and solve? |
 | Starting a new role without a 90-day plan | Drifting through onboarding means missing the window when people expect you to ask questions and shape your role | Create a structured 30/60/90-day plan with learning goals, relationship targets, and early wins |
+| Volume job search (spray-and-pray cold applications) | Under the application flood, cold-apply response rates are very low — mass-applying mostly adds to the doom-loop | Invert the order (§0): referrals → direct outreach → apply early → staffing-firm pre-verification → cold-apply last |

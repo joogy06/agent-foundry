@@ -1,4 +1,8 @@
 schema_version: affordance.v1
+validated_against:
+  cli_version: "1.0.21"
+  date: "2026-06-05"
+  note: "not installed on this host; version from skill reference"
 host_cli: copilot-cli
 
 # Day-one entries derived from GitHub Copilot CLI 1.0.x (@github/copilot).

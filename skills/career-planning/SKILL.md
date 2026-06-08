@@ -15,19 +15,23 @@ Child of `career-coach`. This skill turns career direction — whether from a fo
 **Siblings:**
 - `career-coach` (parent) — overall career coaching, assessment, strategy
 - `career-assessment` — strengths/gaps analysis, competency mapping, career fit evaluation
-- `career-branding` — LinkedIn, CV/resume, personal brand, executive presence
-- `career-negotiation` — salary, title, offer negotiation, promotion conversations
+- `career-positioning` — LinkedIn, personal brand, recruiter strategy, visibility (positioning strategy)
+- `career-application-writer` — writing/tailoring the CV and cover letter
+- `career-online-presence` — personal site, GitHub, social, AI findability
+- `career-transition` — salary, title, offer negotiation, moves, pivots
 
 ---
 
 ## When NOT to Use This Skill
 
-| If the user needs...                          | Redirect to...          |
-|-----------------------------------------------|-------------------------|
-| Strengths/gaps analysis, "where am I today?"  | `career-assessment`     |
-| Resume, LinkedIn, personal brand              | `career-branding`       |
-| Salary negotiation, offer evaluation          | `career-negotiation`    |
-| General career advice, big-picture strategy   | `career-coach`          |
+| If the user needs...                          | Redirect to...               |
+|-----------------------------------------------|------------------------------|
+| Strengths/gaps analysis, "where am I today?"  | `career-assessment`          |
+| Positioning strategy, LinkedIn, personal brand | `career-positioning`        |
+| Writing or tailoring the CV / cover letter    | `career-application-writer`   |
+| Building online presence / findability        | `career-online-presence`      |
+| Salary negotiation, offer evaluation, moves   | `career-transition`          |
+| General career advice, big-picture strategy   | `career-coach`               |
 
 ---
 
@@ -44,6 +48,7 @@ Activate this skill when the user mentions: career roadmap, career plan, goals, 
 3. Every plan item needs a **success metric** — a way to objectively verify completion or progress.
 4. Reference `~/.claude/skills/career-coach/references/corporate-ladders.md` for promotion timeline expectations.
 5. Use **"professional development"** not "skills development" terminology.
+6. **Plan for role volatility.** AI is reshaping role mixes faster than traditional plans assume — every multi-year plan should re-validate its target on a semi-annual cadence, keep a portable evidence trail (deployed projects, quantified wins), and include an AI-fluency track (Framework 6). Don't lock a 3-year plan and walk away.
 
 ---
 
@@ -174,6 +179,11 @@ Specific stretch assignments for banking IT professionals:
 - **Structured feedback loops:** After every significant deliverable, ask your manager and one stakeholder: "What worked? What would you change?" Document and act on patterns.
 - **Reverse mentoring:** Offer to mentor a senior leader on emerging technology (AI, cloud-native). Builds relationship while demonstrating expertise.
 
+**AI-fluency examples across the bands:**
+- **70% (experiential):** ship one real LLM-API project end-to-end; introduce an AI-augmented workflow to your team and own its quality bar.
+- **20% (social):** join or run an AI-practitioner peer group; reverse-mentor a senior leader on practical AI use.
+- **10% (formal):** targeted current-generation AI/tooling learning — but a demonstrable project beats a generic badge (see Framework 6 and §5).
+
 #### 10% Formal Learning (Courses, Certifications, Events)
 
 **Certifications that matter in banking:**
@@ -257,6 +267,8 @@ Use when the user asks about certifications, learning paths, or credentialing.
 
 **Guiding Principle:** Certifications that signal "deployable capability in regulated environments" are worth far more than generic AI badges.
 
+**AI-credential currency (2026).** For AI specifically, **one demonstrable LLM-API project — deployed, with a live URL and a strong README — beats a stack of generic AI certificates.** Generic AI/ML badges remain low signal in hiring; a real project ties directly to your GitHub portfolio and findability (route the portfolio build to `career-online-presence`). Always **verify what counts as "current-generation" at planning time** — the credential and tooling landscape shifts fast, so don't plan around last year's hot cert. *(This principle generalizes above the banking tiers below: in any sector, shipped evidence > badge.)*
+
 #### Tier 1 — High Signal (Prioritize These)
 
 | Certification | Why It Matters in Banking | Study Time |
@@ -289,6 +301,24 @@ Use when the user asks about certifications, learning paths, or credentialing.
 
 ---
 
+### 6. AI-Fluency Competency Track
+
+Use to plan deliberate growth in AI capability — a first-class competency for technical roles now, not an optional extra. Three levels, each mapped to the 70/20/10 model:
+
+| Level | What it means | Plan it via |
+|---|---|---|
+| **L1 — Personal productivity** | Use AI tools well in your own work; know their failure modes | 10% formal + daily practice |
+| **L2 — AI-augmented team workflows** | Introduce and govern AI-augmented workflows for your team; own the quality bar | 70% experiential + 20% social |
+| **L3 — Builds / governs AI systems** | Design, ship, and govern AI systems and their controls (model risk, evaluation, accountability) | 70% experiential (real LLM-API project) + L2 foundation |
+
+**Planning rules:**
+- Sequence L1 → L2 → L3; don't skip the foundation.
+- **Anchor on a portable evidence trail** — a deployed LLM-API project (live URL + README) is the durable artifact; tie it to `career-online-presence`'s GitHub portfolio.
+- **Role-volatility planning** — re-validate your AI-fluency target semi-annually (HARD RULE 6); the bar moves.
+- Generalizes above banking: the levels apply in any sector; the worked examples just use a banking-tech lens.
+
+---
+
 ## Output Format
 
 Every plan produced by this skill must include:
@@ -311,3 +341,4 @@ Every plan produced by this skill must include:
 | Planning without a success metric for each item | No way to know if the plan is working — "improve leadership" means nothing measurable | Every plan item needs a concrete metric: completed cert by date, visibility event count, sponsor meeting cadence |
 | Creating a 3-year plan and never revisiting it | Career context changes — reorgs, market shifts, new opportunities — stale plans mislead | Build review gates: 30-day quick check, 90-day course correction, annual strategy refresh |
 | Optimizing for promotion timeline without considering lateral moves | Linear "wait for promotion" thinking ignores that lateral moves often accelerate advancement | Always evaluate lateral moves, scope expansion, and strategic jumps alongside linear promotion paths |
+| Building an AI-era plan with no AI-fluency track | Role mixes are shifting under AI; a plan that ignores AI capability ages fast and leaves the user exposed | Include the AI-Fluency Competency Track (Framework 6) and a portable evidence trail in any multi-year plan |

@@ -6,7 +6,7 @@
 #   1. AI_BRIDGE_DISABLE=1      -> always "local", ignore cache
 #   2. AI_BRIDGE_MODE=1         -> always "bridge", ignore cache
 #   3. Cached decision          -> reuse (sticky, M21)
-#   4. Probe gemini --version + copilot --version with 3s timeout each.
+#   4. Probe agy --version + copilot --version with 3s timeout each.
 #      Both reachable -> "local", reset fail counter.
 #      Either fails   -> increment counter; >= 3 fails -> "bridge" (cached).
 #
@@ -18,7 +18,7 @@
 #   --probe   Probe once; do NOT update the cache. Useful for diagnostics.
 #
 # Environment overrides for testing (consumed by the smoke test harness):
-#   BRIDGE_PROBE_GEMINI=ok|fail     force gemini probe result
+#   BRIDGE_PROBE_AGY=ok|fail        force agy probe result
 #   BRIDGE_PROBE_COPILOT=ok|fail    force copilot probe result
 #   BRIDGE_MODE_CACHE_DIR=/path     override $XDG_RUNTIME_DIR (for test isolation)
 
@@ -82,7 +82,7 @@ probe_cli() {
   local name="$1"
   local override
   case "$name" in
-    gemini)  override="${BRIDGE_PROBE_GEMINI:-}" ;;
+    agy)     override="${BRIDGE_PROBE_AGY:-}" ;;
     copilot) override="${BRIDGE_PROBE_COPILOT:-}" ;;
     *)       override="" ;;
   esac
@@ -97,12 +97,12 @@ probe_cli() {
   return 0
 }
 
-gemini_ok=0
+agy_ok=0
 copilot_ok=0
-probe_cli gemini  && gemini_ok=1 || gemini_ok=0
+probe_cli agy     && agy_ok=1 || agy_ok=0
 probe_cli copilot && copilot_ok=1 || copilot_ok=0
 
-if [ "$gemini_ok" -eq 1 ] && [ "$copilot_ok" -eq 1 ]; then
+if [ "$agy_ok" -eq 1 ] && [ "$copilot_ok" -eq 1 ]; then
   # Both work — reset counter, return local.
   if [ "$MODE_PROBE_ONLY" -eq 0 ]; then
     rm -f "$COUNTER_FILE"
@@ -134,7 +134,7 @@ if [ "$MODE_PROBE_ONLY" -eq 0 ]; then
   fi
 else
   # Probe-only: do not mutate counters.
-  if [ "$gemini_ok" -eq 0 ] && [ "$copilot_ok" -eq 0 ]; then
+  if [ "$agy_ok" -eq 0 ] && [ "$copilot_ok" -eq 0 ]; then
     printf 'bridge\n'
   else
     printf 'local\n'

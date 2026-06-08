@@ -26,14 +26,14 @@ jq -r '.tier' ~/.claude/state/inventory.json 2>/dev/null || echo 0
 
 ### forge (step 4b)
 
-Before env-adoption, forge step 4b did inline probing (`codex --version`, `mcp__gemini-cli__ping()`). After:
+Before env-adoption, forge step 4b did inline probing (`codex --version`, `agy --version`). After:
 
 ```
 Read ~/.claude/state/inventory.json for tool availability.
 Read $XDG_RUNTIME_DIR/env-adoption/session-<id>.json for capabilities.
 Branch on capabilities:
   if capabilities.codex_challenger -> use Codex
-  if capabilities.gemini_analyst -> use Gemini
+  if capabilities.agy_analyst -> use agy (Antigravity CLI)
   if capabilities.bridge_fallback -> route through bridge
 ```
 

@@ -1,0 +1,50 @@
+schema_version: affordance.v1
+validated_against:
+  cli_version: null
+  date: "2026-06-05"
+  note: "MCP server (chrome-devtools / claude-in-chrome), not a CLI; tool-NAME set only in v1 — no --help drift probe, no semantic capability analysis (deferred to v1.1 Chrome MCP schema fingerprints)"
+host_cli: claude-in-chrome
+
+# B2 surface (Evergreening v1, S041, §6.12). claude-in-chrome is an MCP browser-control
+# server, NOT a CLI. There is deliberately NO prose skill for it (the fastest-rotting
+# artifact risk — the tool schemas live in-session and change with the MCP server). This
+# registry is a THIN sentinel: a workflow-hint set keyed to completion kinds, PLUS a
+# tracked tool-NAME set so the detection bus can report presence / coverage:partial when
+# the MCP server's tool surface changes (name added/removed). The full per-tool input
+# schemas are NOT tracked here (that is v1.1 "Chrome MCP schema FINGERPRINTS").
+#
+# Detection signal: the chrome-devtools / claude-in-chrome MCP server appears in
+# inventory.json.mcp_servers[] (collected by inventory_history.py). When the tracked
+# tool-NAME set below drifts from the live MCP tool list, that is a name-set delta the
+# freshness sweep surfaces — presence only, never a semantic capability claim.
+#
+# coverage: partial — name-set tracked, schemas/semantics NOT (by design, v1).
+
+# Tracked tool-NAME set (presence/coverage sentinel; v1 = names only).
+# A change in this set vs the live MCP tool list is surfaced as a name-set delta.
+tracked_tools:
+  - navigate
+  - computer
+  - find
+  - form_input
+  - file_upload
+  - get_page_text
+  - read_page
+  - read_console_messages
+  - read_network_requests
+  - javascript_tool
+  - tabs_create_mcp
+  - tabs_close_mcp
+  - tabs_context_mcp
+  - select_browser
+  - switch_browser
+  - list_connected_browsers
+  - resize_window
+  - shortcuts_list
+  - shortcuts_execute
+  - gif_creator
+  - upload_image
+  - browser_batch
+
+# Workflow hints keyed to completion kinds (the advisor surfaces at most one).
+affordances: []

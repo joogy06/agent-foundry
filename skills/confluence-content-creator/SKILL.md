@@ -5,6 +5,8 @@ description: Use when creating or generating Confluence pages and content — XH
 
 # Confluence Content Creator
 
+**Ambiguity gate (ask before generating):** if the request is underspecified on space/parent page, audience, template type (ADR / runbook / project doc / free-form), or whether the page replaces or supplements existing content, ask ONE compact clarifying question covering the missing items BEFORE generating page content. Don't publish the guessed version of an ambiguous request.
+
 ## Reference Files
 
 Detailed code examples, patterns, and configuration are in the reference files below. Read the relevant file when working on that area.

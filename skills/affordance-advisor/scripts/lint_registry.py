@@ -76,11 +76,11 @@ def schema_pass(registry_dir: Path) -> Tuple[List[str], List[str]]:
 
 # Tokens we never want to see in a portable skill body. The contamination
 # vector we care about is the Claude-Code slash-command family: if a skill
-# body says "run /verify next" and that skill is loaded into Codex (or Gemini),
+# body says "run /verify next" and that skill is loaded into Codex (or agy),
 # the foreign host either follows the suggestion literally (broken) or
 # carries noisy text in its skill descriptions.
 #
-# Binary-prefixed commands like `codex review`, `gh pr create`, `gemini -w`
+# Binary-prefixed commands like `codex review`, `gh pr create`, `agy -p`
 # are a weaker vector — they typically appear in skills that legitimately
 # discuss those CLIs (e.g. codex-orchestration, gh-copilot-cli), and the
 # command body is unambiguous in context. We intentionally do NOT flag them.

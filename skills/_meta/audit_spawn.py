@@ -41,9 +41,39 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# --- S046 / #124 observe-only cost telemetry (best-effort, never-raise) ------
+# extract_usage pulls cost/duration/num_turns from the claude -p JSON envelope;
+# record_spawn_run appends one line to .process-observations/spawn-runs.jsonl.
+# Both are null-safe + never-raise. Loaded fail-open so a missing module / a
+# broken backend can NEVER perturb this spawner's verdict-return API or exit
+# code (the audit pipeline's correctness is independent of telemetry). See
+# spawn_usage.py / spawn_runs.py headers and design §A/§G.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+try:
+    from spawn_usage import extract_usage as _extract_usage  # noqa: E402
+except Exception:  # pragma: no cover - fail-open: telemetry must never block audit
+    def _extract_usage(envelope: Any) -> Dict[str, Optional[float]]:
+        return {"cost_usd": None, "duration_ms": None, "num_turns": None}
+
+# spawn_runs.py lives in the process-observation skill, not _meta. Add that
+# scripts dir to sys.path; fail-open to a no-op recorder if unavailable.
+_PROC_OBS_SCRIPTS = (
+    _SCRIPT_DIR.parent / "process-observation" / "scripts"
+)
+if _PROC_OBS_SCRIPTS.is_dir() and str(_PROC_OBS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_PROC_OBS_SCRIPTS))
+try:
+    from spawn_runs import record_spawn_run as _record_spawn_run  # noqa: E402
+except Exception:  # pragma: no cover - fail-open: telemetry must never block audit
+    def _record_spawn_run(**kwargs: Any) -> None:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -376,10 +406,20 @@ def _extract_json_from_claude_output(stdout: str) -> Optional[Any]:
     return None
 
 
-def run_claude_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def run_claude_auditor(
+    prompt: str,
+    timeout_s: int,
+    usage_out: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Spawn a fresh Claude subagent via `claude -p --output-format json`.
 
-    Returns (verdict_dict, None) or (None, error_message).
+    Returns (verdict_dict, None) or (None, error_message) — the verdict-return
+    API is UNCHANGED (#124 constraint). The optional `usage_out` dict is a
+    side-channel: when provided, it is populated in place with the arm's
+    cost/duration/num_turns (from the JSON envelope) plus `wall_clock_s`. It is
+    never read by this function and its absence changes nothing — so every
+    existing caller / test that calls `run_claude_auditor(prompt, timeout)`
+    behaves exactly as before.
     """
     cmd = [
         CLAUDE_BIN,
@@ -388,6 +428,19 @@ def run_claude_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, 
         "--output-format", "json",
         prompt,
     ]
+    _arm_start = time.time()
+
+    def _stamp_usage(envelope: Any) -> None:
+        # Best-effort, never-raise: fill usage_out if the caller asked for it.
+        if usage_out is None:
+            return
+        try:
+            usage = _extract_usage(envelope)
+            usage_out.update(usage)
+            usage_out["wall_clock_s"] = round(time.time() - _arm_start, 3)
+        except BaseException:  # noqa: BLE001
+            usage_out.setdefault("wall_clock_s", round(time.time() - _arm_start, 3))
+
     try:
         proc = subprocess.run(
             cmd,
@@ -397,11 +450,23 @@ def run_claude_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, 
             check=False,
         )
     except FileNotFoundError:
+        _stamp_usage(None)
         return None, f"claude binary not found ({CLAUDE_BIN})"
     except subprocess.TimeoutExpired:
+        _stamp_usage(None)
         return None, f"claude subprocess timed out after {timeout_s}s"
     except OSError as e:
+        _stamp_usage(None)
         return None, f"claude subprocess OS error: {e}"
+
+    # Parse the envelope ONCE; reuse it for both the verdict and the usage.
+    envelope: Any = None
+    if isinstance(proc.stdout, str) and proc.stdout.strip():
+        try:
+            envelope = json.loads(proc.stdout)
+        except (json.JSONDecodeError, ValueError):
+            envelope = proc.stdout  # extract_usage will null-out on non-JSON
+    _stamp_usage(envelope)
 
     if proc.returncode != 0:
         return None, f"claude exited {proc.returncode}: {proc.stderr[:200]}"
@@ -428,8 +493,18 @@ def _extract_json_from_codex_output(stdout: str) -> Optional[Any]:
     return _parse_agent_text_as_json(stdout)
 
 
-def run_codex_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Spawn a Codex adversarial review via `codex exec --ephemeral`."""
+def run_codex_auditor(
+    prompt: str,
+    timeout_s: int,
+    usage_out: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Spawn a Codex adversarial review via `codex exec --ephemeral`.
+
+    Verdict-return API UNCHANGED (#124). `usage_out`, when provided, is filled
+    with this arm's wall_clock_s; cost/duration/num_turns stay null because the
+    Codex path is NOT a `claude -p --output-format json` envelope (this is the
+    null-safe non-JSON path the design calls out — null, never error).
+    """
     cmd = [
         CODEX_BIN,
         "exec",
@@ -438,6 +513,18 @@ def run_codex_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, A
         "-s", "read-only",
         prompt,
     ]
+    _arm_start = time.time()
+
+    def _stamp_usage(envelope: Any) -> None:
+        if usage_out is None:
+            return
+        try:
+            usage = _extract_usage(envelope)  # plain text -> all-None
+            usage_out.update(usage)
+            usage_out["wall_clock_s"] = round(time.time() - _arm_start, 3)
+        except BaseException:  # noqa: BLE001
+            usage_out.setdefault("wall_clock_s", round(time.time() - _arm_start, 3))
+
     try:
         proc = subprocess.run(
             cmd,
@@ -447,11 +534,17 @@ def run_codex_auditor(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, A
             check=False,
         )
     except FileNotFoundError:
+        _stamp_usage(None)
         return None, f"codex binary not found ({CODEX_BIN})"
     except subprocess.TimeoutExpired:
+        _stamp_usage(None)
         return None, f"codex subprocess timed out after {timeout_s}s"
     except OSError as e:
+        _stamp_usage(None)
         return None, f"codex subprocess OS error: {e}"
+
+    # codex exec emits plain prose, not a JSON envelope -> usage stays null.
+    _stamp_usage(proc.stdout)
 
     if proc.returncode != 0:
         return None, f"codex exited {proc.returncode}: {proc.stderr[:200]}"
@@ -728,6 +821,78 @@ def merge_disagreements(claude: Dict[str, Any], codex: Dict[str, Any]) -> List[D
 
 
 # ---------------------------------------------------------------------------
+# Observe-only spawn-run telemetry (S046 / #124)
+# ---------------------------------------------------------------------------
+
+
+def _emit_audit_spawn_runs(
+    *,
+    claude_usage: Dict[str, Any],
+    codex_usage: Dict[str, Any],
+    claude_verdict: Optional[Dict[str, Any]],
+    claude_err: Optional[str],
+    codex_verdict: Optional[Dict[str, Any]],
+    codex_err: Optional[str],
+    invocation_id: str,
+    cycle_id: Optional[str],
+    component_id: str,
+    bundle_hash: Optional[str],
+    project_root: Path,
+) -> None:
+    """Append one spawn-run record per audit arm. BEST-EFFORT; never raises.
+
+    The audit arm is NOT request-bound (no verification request id), so
+    request_id is left null; the arbiter arm (the other spawner) carries it.
+    `status` is the arm's verdict string on success or an error sentinel on
+    failure — observe-only context, never a gate signal.
+    """
+    try:
+        claude_status = (
+            claude_verdict.get("verdict") if isinstance(claude_verdict, dict)
+            else f"ERROR: {claude_err}"
+        )
+        _record_spawn_run(
+            tool="audit_claude",
+            status=claude_status,
+            cost_usd=claude_usage.get("cost_usd"),
+            duration_ms=claude_usage.get("duration_ms"),
+            num_turns=claude_usage.get("num_turns"),
+            wall_clock_s=claude_usage.get("wall_clock_s"),
+            model=CLAUDE_MODEL,
+            cycle_id=cycle_id,
+            component_id=component_id,
+            bundle_hash=bundle_hash,
+            request_id=None,
+            invocation_id=invocation_id,
+            project_root_override=project_root,
+        )
+    except BaseException:  # noqa: BLE001
+        pass
+    try:
+        codex_status = (
+            codex_verdict.get("verdict") if isinstance(codex_verdict, dict)
+            else f"ERROR: {codex_err}"
+        )
+        _record_spawn_run(
+            tool="audit_codex",
+            status=codex_status,
+            cost_usd=codex_usage.get("cost_usd"),
+            duration_ms=codex_usage.get("duration_ms"),
+            num_turns=codex_usage.get("num_turns"),
+            wall_clock_s=codex_usage.get("wall_clock_s"),
+            model="codex",
+            cycle_id=cycle_id,
+            component_id=component_id,
+            bundle_hash=bundle_hash,
+            request_id=None,
+            invocation_id=invocation_id,
+            project_root_override=project_root,
+        )
+    except BaseException:  # noqa: BLE001
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -767,10 +932,18 @@ def main(argv: Optional[List[str]] = None) -> None:
     ledger_row = load_ledger_row(project_root, component_id)
     prompt = build_prompt(component_entry, bundle, ledger_row)
 
+    # #124 observe-only telemetry: per-arm usage side-channels. The audit
+    # pipeline does not read these; they feed ONLY the spawn-runs.jsonl sidecar.
+    claude_usage: Dict[str, Any] = {}
+    codex_usage: Dict[str, Any] = {}
+    invocation_id = uuid.uuid4().hex
+    cycle_id = os.environ.get("FORGE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID")
+    bundle_hash = bundle.get("bundle_hash")
+
     started_at = time.time()
     with ThreadPoolExecutor(max_workers=2) as pool:
-        claude_future = pool.submit(run_claude_auditor, prompt, timeout_s)
-        codex_future = pool.submit(run_codex_auditor, prompt, timeout_s)
+        claude_future = pool.submit(run_claude_auditor, prompt, timeout_s, claude_usage)
+        codex_future = pool.submit(run_codex_auditor, prompt, timeout_s, codex_usage)
 
         try:
             claude_verdict, claude_err = claude_future.result(timeout=timeout_s + 30)
@@ -782,6 +955,25 @@ def main(argv: Optional[List[str]] = None) -> None:
             codex_verdict, codex_err = None, "codex future exceeded outer timeout"
 
     elapsed = round(time.time() - started_at, 2)
+
+    # Emit one observe-only spawn-run record per arm (best-effort, never-raise).
+    # This is the ONLY new side effect; the stdout result dict below is
+    # byte-for-byte the same shape it was before (#124: do not touch verdict
+    # output / evidence bundle). cost/duration/num_turns are null for the Codex
+    # arm (non-JSON path) and for any Claude arm whose envelope lacked them.
+    _emit_audit_spawn_runs(
+        claude_usage=claude_usage,
+        codex_usage=codex_usage,
+        claude_verdict=claude_verdict,
+        claude_err=claude_err,
+        codex_verdict=codex_verdict,
+        codex_err=codex_err,
+        invocation_id=invocation_id,
+        cycle_id=cycle_id,
+        component_id=component_id,
+        bundle_hash=bundle_hash,
+        project_root=project_root,
+    )
 
     if claude_verdict is None or codex_verdict is None:
         emit_result(

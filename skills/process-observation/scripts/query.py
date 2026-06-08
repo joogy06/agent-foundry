@@ -174,18 +174,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="process-observation-query",
         description="Query the .process-observations ledger (canonical-JSON output).",
     )
-    parser.add_argument("op", help="hot | stats | subject:<id> | category:<name> | session:<id> | since:<iso>")
+    parser.add_argument("op", help="hot | stats | rollup | subject:<id> | category:<name> | session:<id> | since:<iso>")
     parser.add_argument("--threshold", type=int, default=None)
     parser.add_argument("--window", default="7d")
     parser.add_argument("--min-severity", default="degraded", choices=list(CLOSED_SET_SEVERITIES))
     parser.add_argument("--project-root", default=None)
+    parser.add_argument("--format", default="json", choices=["json", "text"],
+                        help="output format for the rollup op (default: json)")
     ns = parser.parse_args(argv)
 
     project_root = _resolve_project_root(ns.project_root)
     window_s = _parse_window(ns.window)
 
     op = ns.op
-    if op == "hot":
+    if op == "rollup":
+        # S039 efficacy-telemetry read-only projection (WP2). Pure read: never
+        # writes .ledger/ or active.yaml. Renders efficacy-rollup.v1 JSON or a
+        # human text table.
+        import rollup as _rollup  # local import; keeps base query path lean
+        roll = _rollup.compute_rollup(project_root, window_s, window_label=ns.window)
+        sys.stdout.write(_rollup.render(roll, fmt=ns.format))
+        return 0
+    elif op == "hot":
         result = op_hot(
             project_root,
             threshold=ns.threshold,

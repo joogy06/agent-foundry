@@ -19,9 +19,12 @@ def test_codex_env_var():
     assert host == "codex"
 
 
-def test_gemini_env_var():
-    host, _ = detect_host_cli.detect_from_env({"GEMINI_CLI_SESSION_ID": "abc-123"})
-    assert host == "gemini"
+def test_antigravity_cli_env_var():
+    # TODO(agy): confirm agy host env var. ANTIGRAVITY_CLI_SESSION_ID is a
+    # placeholder marker matching detect_host_cli._DETECTION_RULES until the
+    # real agy session/host env var is verified.
+    host, _ = detect_host_cli.detect_from_env({"ANTIGRAVITY_CLI_SESSION_ID": "abc-123"})
+    assert host == "antigravity-cli"
 
 
 def test_copilot_cli_via_cli_version():

@@ -1,4 +1,4 @@
-"""llm_fallback.py — bounded subprocess to codex/gemini for deprecation prose.
+"""llm_fallback.py — bounded subprocess to codex/agy for deprecation prose.
 
 Per Codex challenger Rev 2: LLM output is `confidence_level: interpretive` ONLY.
 NEVER feeds:
@@ -16,7 +16,6 @@ Public API:
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -39,8 +38,8 @@ def _codex_available() -> bool:
     return shutil.which("codex") is not None
 
 
-def _gemini_available() -> bool:
-    return shutil.which("gemini") is not None
+def _agy_available() -> bool:
+    return shutil.which("agy") is not None
 
 
 def _build_prompt(text: str, package: str) -> str:
@@ -85,24 +84,26 @@ def _try_codex(prompt: str) -> Optional[tuple]:
     return (proc.stdout, "codex")
 
 
-def _try_gemini(prompt: str) -> Optional[tuple]:
-    if not _gemini_available():
+def _try_agy(prompt: str) -> Optional[tuple]:
+    """Returns (response_text, model_id) or None.
+
+    agy (Antigravity CLI) authenticates itself via the Antigravity account —
+    no API-key env prefix and no per-call model flag. Output is plain text on
+    stdout; the prompt asks for JSON, which _parse_verdict_json extracts.
+    """
+    if not _agy_available():
         return None
-    env = os.environ.copy()
-    # Host directive: force OAuth subscription path
-    env["GOOGLE_CLOUD_PROJECT"] = ""
-    env["GEMINI_API_KEY"] = ""
     try:
         proc = subprocess.run(
-            ["gemini", "-m", "gemini-3.1-pro-preview", "-p", prompt],
-            capture_output=True, text=True, env=env,
+            ["agy", "-p", prompt],
+            capture_output=True, text=True,
             timeout=LLM_TIMEOUT_S, check=False,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     if proc.returncode != 0:
         return None
-    return (proc.stdout, "gemini-3.1-pro-preview")
+    return (proc.stdout, "agy")
 
 
 def _parse_verdict_json(text: str) -> Optional[dict]:
@@ -135,7 +136,7 @@ def interpret_deprecation(
     text: str,
     package: str,
     *,
-    prefer: Literal["codex", "gemini"] = "codex",
+    prefer: Literal["codex", "agy"] = "codex",
 ) -> Optional[DeprecationVerdict]:
     """Interpret a deprecation notice via LLM subprocess.
 
@@ -152,7 +153,7 @@ def interpret_deprecation(
     prompt = _build_prompt(text, package)
 
     # Try preferred first, then the other
-    chain = [_try_codex, _try_gemini] if prefer == "codex" else [_try_gemini, _try_codex]
+    chain = [_try_codex, _try_agy] if prefer == "codex" else [_try_agy, _try_codex]
     for fn in chain:
         result = fn(prompt)
         if result is None:

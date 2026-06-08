@@ -540,6 +540,11 @@ _BARE_EXIT_ALLOWLIST = frozenset({
     "ok",                          # zero-exit helper (still allow-listed)
     "exit_with_observation",       # the helper itself does the final sys.exit
     "main",                        # CLI dispatcher
+    "_classify_escalate",          # S042 R4-mandated escalate helper: exit-3 with
+                                   # NO friction-observation (the closed taxonomy
+                                   # has no escalation category; R4 forbids
+                                   # gate_false_pass on this path). Peer of
+                                   # env_error/fail/ok.
 })
 
 

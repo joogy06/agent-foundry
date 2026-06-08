@@ -44,17 +44,18 @@ LLM enrichment is purely **report-text decoration** — surfaces the interpretat
 
 ## Mechanics
 
-- **Subprocess**: `codex exec --ephemeral -s read-only` preferred, `gemini -m gemini-3.1-pro-preview -p` fallback
+- **Subprocess**: `codex exec --ephemeral -s read-only` preferred, `agy -p` fallback (Antigravity CLI; plain-text stdout, no model flag, no env prefix — see antigravity-cli skill)
 - **Timeout**: 30s hard per fallback call
 - **Captures `served_by`** per cross-cli-deliberation pattern — tier matters
 - **Cache**: verdict cached at `deprecation/<ecosystem>/<package>.json` with 7-day TTL; re-invokes only on notice text change
 
-## Gemini env (host-specific)
+## agy invocation (host-specific)
 
-Per global CLAUDE.md, ALWAYS use:
+Per global CLAUDE.md "Antigravity CLI (agy) — host-specific directive", the fallback shells out with:
 ```bash
-GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "..."
+agy -p "..." < /dev/null
 ```
+`agy` authenticates itself via the Antigravity account — there is NO API-key env prefix and NO per-call `-m`/`--model` flag (agy exposes one configured model, no tiers). Output is plain text on stdout; the prompt asks for JSON, which the parser extracts. See the `antigravity-cli` skill for the full pattern.
 
 ## Prompt template (deprecation interpretation)
 
@@ -83,7 +84,7 @@ Rules:
 
 ## Failure modes
 
-- LLM unavailable (`codex` and `gemini` both missing or fail) → return `None`; report uses raw deprecation prose
+- LLM unavailable (`codex` and `agy` both missing or fail) → return `None`; report uses raw deprecation prose
 - LLM returns non-JSON or malformed JSON → return `None`; report uses raw deprecation prose
 - LLM times out (30s) → return `None`; report uses raw deprecation prose
 - LLM verdict is internally contradictory (e.g., `is_deprecated: false` but `urgency: immediate`) → return `None`

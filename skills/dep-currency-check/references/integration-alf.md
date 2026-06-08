@@ -8,7 +8,9 @@
 - Research via /codex:rescue (preferred) or raw codex exec: current stable version,
   deprecation status, breaking changes since target's version
 - Invoke web-research skill for claims that need triangulation
-- Use mcp__gemini-cli__ask-gemini with Google Search grounding for real-time freshness
+- Use `agy -p "..."` (Antigravity CLI; plain-text stdout) for real-time freshness
+  # TODO(agy): verify equivalent for the old gemini-cli "Google Search grounding" — agy
+  # has no verified web-search-grounding flag; route grounding through the web-research skill instead.
 - Check official docs first, then community consensus
 ```
 
@@ -27,13 +29,13 @@ Alf reads the JSON and constructs **structured findings** (one per Finding) inst
 
 **Latency drop**: minutes → seconds.
 
-## What alf's OTHER lenses keep using codex/gemini
+## What alf's OTHER lenses keep using codex/agy
 
 - Best-practice drift (2b)
 - Capability gaps (2c)
 - Ecosystem fit (2e)
 
-Those are **interpretive** lenses; codex/gemini still appropriate. ONLY 2a Freshness Check converts to structured data.
+Those are **interpretive** lenses; codex/agy still appropriate. ONLY 2a Freshness Check converts to structured data.
 
 ## Patch shape
 
@@ -52,7 +54,7 @@ Read `$ALF_REPORT_DIR/dep-currency.json` and construct one structured finding pe
 - `gap_kind == "deprecated"` → deprecation finding (consult `deprecation_verdict` for interpretive context if present, `confidence_level: interpretive`)
 - `cves[]` non-empty → CVE finding (one per CVE)
 
-For freshness claims that the skill could not resolve (`gap_kind: deferred_offline` or `gap_kind: unknown`), fall back to `/codex:rescue` + `mcp__gemini-cli__ask-gemini` for triangulation. Use `confidence_level: interpretive` for any inference not backed by the structured skill output.
+For freshness claims that the skill could not resolve (`gap_kind: deferred_offline` or `gap_kind: unknown`), fall back to `/codex:rescue` + a direct `agy -p "..."` Bash call (Antigravity CLI; returns plain text on stdout — parse the prose, not structured fields) for triangulation. Use `confidence_level: interpretive` for any inference not backed by the structured skill output.
 ```
 
 ## Why this is the right cut

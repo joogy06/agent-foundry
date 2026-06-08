@@ -50,6 +50,8 @@ import os
 import re
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -59,6 +61,27 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from trusted_runner import canonical_bundle_bytes, bundle_hash_hex  # noqa: E402
 import hashlib  # noqa: E402
+
+# --- S046 / #124 observe-only cost telemetry (best-effort, never-raise) ------
+# This arm's verdict stdout is additionalProperties:false (verdict_schema.json),
+# so usage CANNOT ride the verdict object — it goes ONLY to the spawn-runs.jsonl
+# sidecar. Both helpers are null-safe + never-raise, loaded fail-open so a
+# missing module / broken backend can NEVER perturb the arbiter's verdict-return
+# API or exit code. See spawn_usage.py / spawn_runs.py headers and design §A/§G.
+try:
+    from spawn_usage import extract_usage as _extract_usage  # noqa: E402
+except Exception:  # pragma: no cover - fail-open: telemetry never blocks arbiter
+    def _extract_usage(envelope: Any) -> Dict[str, Optional[float]]:
+        return {"cost_usd": None, "duration_ms": None, "num_turns": None}
+
+_PROC_OBS_SCRIPTS = SCRIPT_DIR.parent / "process-observation" / "scripts"
+if _PROC_OBS_SCRIPTS.is_dir() and str(_PROC_OBS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_PROC_OBS_SCRIPTS))
+try:
+    from spawn_runs import record_spawn_run as _record_spawn_run  # noqa: E402
+except Exception:  # pragma: no cover - fail-open: telemetry never blocks arbiter
+    def _record_spawn_run(**kwargs: Any) -> None:
+        return None
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -86,6 +109,14 @@ REQUIRED_TOP_KEYS = frozenset({
     "coverage",
     "concerns",
     "self_hash_check",
+    # S048 / #116 R-B2 (LOAD-BEARING): evidence_map is now a REQUIRED top-level
+    # key. Without it here, validate_verdict's `extra = set(raw) - REQUIRED_TOP_KEYS`
+    # check would reject the arbiter's OWN output (it emits evidence_map per the
+    # bumped prompt) -> bob halts on every verdict. R6 (claims.py) requires
+    # citation-corroboration only when the verdict's rubric_version >= the new
+    # rubric (the cutover key), so the contract here and the enforcement there
+    # are bumped together.
+    "evidence_map",
 })
 
 HEX32_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -219,6 +250,27 @@ def _validate_self_hash_check(shc: Any) -> Optional[str]:
     return None
 
 
+def _validate_evidence_map(em: Any) -> Optional[str]:
+    """S048 / #116 R-B2/R-I3. evidence_map shape:
+        {<success_criterion_id>: [<nodeid>, ...], ...}
+    Keys are non-empty strings (REQ-IDs); values are lists of non-empty string
+    nodeids. An empty map {} is allowed (a component with no declared success
+    criteria, or all-skipped-sanctioned). The DEEP corroboration (each nodeid
+    exists + passed in the bundle) is bob's R6 job (deterministic_arm.
+    corroborate_citations) — here we only validate the structural contract."""
+    if not isinstance(em, dict):
+        return "evidence_map is not an object"
+    for crit, nodeids in em.items():
+        if not isinstance(crit, str) or not crit:
+            return f"evidence_map key {crit!r} must be a non-empty string"
+        if not isinstance(nodeids, list):
+            return f"evidence_map[{crit!r}] must be a list of nodeids"
+        for i, nid in enumerate(nodeids):
+            if not isinstance(nid, str) or not nid:
+                return f"evidence_map[{crit!r}][{i}] must be a non-empty string"
+    return None
+
+
 def validate_verdict(raw: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Validate the arbiter's JSON output against verdict_schema.json.
 
@@ -264,6 +316,9 @@ def validate_verdict(raw: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]
     if err:
         return None, err
     err = _validate_self_hash_check(raw["self_hash_check"])
+    if err:
+        return None, err
+    err = _validate_evidence_map(raw["evidence_map"])
     if err:
         return None, err
 
@@ -319,6 +374,8 @@ TASK (perform in order):
    - coverage.uncovered = list of REQ-IDs with NO passing test and NO skip-with-reason.
    - coverage.skipped_with_reason = the plan's declared skips, echoed (each with requirement_id, reason, and tier_required when the plan has it).
 
+3b. Build the evidence_map: for each REQ-ID you counted as covered, list the EXACT test nodeid(s) from the bundle's results[].tests[] (those with outcome == "passed") that you are citing as satisfying it. Format: {{"REQ-...": ["<nodeid>", ...], ...}}. Use the verbatim nodeid strings from the bundle — bob will deterministically verify every cited nodeid EXISTS in the bundle AND has outcome == "passed", and will REJECT the transition if any cited nodeid is absent or non-passing. Do NOT invent, paraphrase, or guess nodeids. For a REQ-ID covered only by a skip-with-reason, omit it from evidence_map (a skip is not a citation). If the bundle carries no per-test records (returncode-only or jest), emit an empty evidence_map {{}}.
+
 4. Pick a verdict:
    - VERIFIED  -> every REQ-ID is either covered OR skipped-with-reason; no blocker concerns; self_hash_check.matches_input is true.
    - VERIFIED_WITH_CONCERNS -> all REQ-IDs covered/skipped, but at least one warning-severity concern worth logging (coverage thin, fixtures stale, performance budget unverified, etc.).
@@ -354,6 +411,9 @@ STRICT OUTPUT CONTRACT (JSON only, no prose, no markdown fences):
   "self_hash_check": {{
     "bundle_recomputed_hash": "<64-hex>",
     "matches_input": true | false
+  }},
+  "evidence_map": {{
+    "REQ-...": ["<verbatim passing nodeid from bundle results[].tests[]>", "..."]
   }}
 }}
 
@@ -467,10 +527,19 @@ def _extract_json_from_claude_output(stdout: str) -> Optional[Any]:
 # ---------------------------------------------------------------------------
 
 
-def run_claude_arbiter(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def run_claude_arbiter(
+    prompt: str,
+    timeout_s: int,
+    usage_out: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Spawn a fresh Claude subagent via `claude -p --output-format json`.
 
-    Returns (parsed_json_dict, None) on success or (None, error_msg) on failure.
+    Returns (parsed_json_dict, None) on success or (None, error_msg) on failure
+    — the verdict-return API is UNCHANGED (#124 constraint). The optional
+    `usage_out` dict is a side-channel: when provided, it is filled in place
+    with cost/duration/num_turns (from the JSON envelope) plus wall_clock_s. It
+    is never read here and its absence changes nothing, so every existing caller
+    / test that calls `run_claude_arbiter(prompt, timeout)` is unaffected.
     """
     cmd = [
         CLAUDE_BIN,
@@ -479,6 +548,18 @@ def run_claude_arbiter(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, 
         "--output-format", "json",
         prompt,
     ]
+    _arm_start = time.time()
+
+    def _stamp_usage(envelope: Any) -> None:
+        if usage_out is None:
+            return
+        try:
+            usage = _extract_usage(envelope)
+            usage_out.update(usage)
+            usage_out["wall_clock_s"] = round(time.time() - _arm_start, 3)
+        except BaseException:  # noqa: BLE001
+            usage_out.setdefault("wall_clock_s", round(time.time() - _arm_start, 3))
+
     try:
         proc = subprocess.run(
             cmd,
@@ -488,11 +569,23 @@ def run_claude_arbiter(prompt: str, timeout_s: int) -> Tuple[Optional[Dict[str, 
             check=False,
         )
     except FileNotFoundError:
+        _stamp_usage(None)
         return None, f"claude binary not found ({CLAUDE_BIN})"
     except subprocess.TimeoutExpired:
+        _stamp_usage(None)
         return None, f"claude subprocess timed out after {timeout_s}s"
     except OSError as e:
+        _stamp_usage(None)
         return None, f"claude subprocess OS error: {e}"
+
+    # Parse the envelope ONCE; reuse for both usage and verdict extraction.
+    envelope: Any = None
+    if isinstance(proc.stdout, str) and proc.stdout.strip():
+        try:
+            envelope = json.loads(proc.stdout)
+        except (json.JSONDecodeError, ValueError):
+            envelope = proc.stdout  # extract_usage will null-out on non-JSON
+    _stamp_usage(envelope)
 
     if proc.returncode != 0:
         return None, f"claude exited {proc.returncode}: {(proc.stderr or '')[:200]}"
@@ -629,7 +722,41 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     prompt = build_prompt(evidence_bundle, test_plan, tuple_inputs)
 
-    parsed, err = run_claude_arbiter(prompt, timeout_s)
+    # #124 observe-only telemetry: capture this arm's usage via a side-channel.
+    # The arbiter pipeline does not read it; it feeds ONLY spawn-runs.jsonl.
+    arbiter_usage: Dict[str, Any] = {}
+    parsed, err = run_claude_arbiter(prompt, timeout_s, arbiter_usage)
+
+    # Determine the observe-only status string (verdict on success, else an
+    # error sentinel) and emit the spawn-run record BEFORE any exit path. This
+    # records cost even when the arbiter ultimately AUDIT_UNAVAILABLEs. usage is
+    # null on a non-JSON / truncated envelope (the design's null-safe path).
+    if isinstance(parsed, dict) and isinstance(parsed.get("verdict"), str):
+        _status = parsed["verdict"]
+    elif parsed is None:
+        _status = f"ERROR: {err}"
+    else:
+        _status = "ERROR: non-dict-output"
+    cycle_id = os.environ.get("FORGE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID")
+    try:
+        _record_spawn_run(
+            tool="verification_arbiter",
+            status=_status,
+            cost_usd=arbiter_usage.get("cost_usd"),
+            duration_ms=arbiter_usage.get("duration_ms"),
+            num_turns=arbiter_usage.get("num_turns"),
+            wall_clock_s=arbiter_usage.get("wall_clock_s"),
+            model=CLAUDE_MODEL,
+            cycle_id=cycle_id,
+            component_id=evidence_bundle.get("component_id"),
+            bundle_hash=bundle_hash_input,
+            request_id=request_id,
+            invocation_id=uuid.uuid4().hex,
+            project_root_override=None,  # discover from cwd
+        )
+    except BaseException:  # noqa: BLE001 - telemetry never blocks the arbiter
+        pass
+
     if parsed is None:
         audit_unavailable(
             f"arbiter subprocess failed: {err}",

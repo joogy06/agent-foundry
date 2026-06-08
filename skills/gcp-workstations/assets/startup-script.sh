@@ -16,9 +16,10 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
 fi
 
 # 2. Set Vertex env vars (these should be in /etc/skel/.bashrc from the Dockerfile,
-#    but defaults here as a safety net)
+#    but defaults here as a safety net). These drive Claude Code → Vertex ADC only.
+#    The Antigravity CLI (agy) authenticates via its own Antigravity account and needs
+#    none of these.
 export CLAUDE_CODE_USE_VERTEX="${CLAUDE_CODE_USE_VERTEX:-1}"
-export GOOGLE_GENAI_USE_VERTEXAI="${GOOGLE_GENAI_USE_VERTEXAI:-1}"
 export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 export GOOGLE_CLOUD_LOCATION="${GOOGLE_CLOUD_LOCATION:-us-central1}"
 export ANTHROPIC_VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-$GOOGLE_CLOUD_PROJECT}"
@@ -50,7 +51,7 @@ secret() {
 # 5. Sanity-check tool availability
 echo "Tool versions:"
 claude --version 2>/dev/null | head -1 || echo "  claude: not installed"
-gemini --version 2>/dev/null | head -1 || echo "  gemini: not installed"
+agy --version 2>/dev/null | head -1 || echo "  agy: not installed"
 copilot --version 2>/dev/null | head -1 || echo "  copilot: not installed"
 gh --version 2>/dev/null | head -1 || echo "  gh: not installed"
 
@@ -69,5 +70,5 @@ else
 fi
 
 echo
-echo "Workstation ready. AI CLIs will use Vertex via ADC."
+echo "Workstation ready. Claude Code uses Vertex via ADC; agy uses its own Antigravity account login."
 echo "Use 'secret <name>' to fetch a token at command time."

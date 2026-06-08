@@ -1,6 +1,6 @@
 ---
 name: cross-cli-deliberation
-description: Use when consulting one or more external CLIs (Codex, Gemini, Copilot) for second opinions, challenger reviews, design ratification, or any decision where sycophancy / "I-was-asked-so-I-produced-something" is a real failure mode. Implements a two-gate protocol — null-hypothesis ballot before any deliberation, then burden-of-falsification on every CHANGE_NEEDED claim — that converts cross-CLI consultation from echo-chamber into genuine deliberation. Trigger on - "ask Codex / Gemini what they think", "second opinion", "tiebreak between models", forge design ratification, alf review hand-offs, bob's arbiter gates.
+description: Use when consulting one or more external CLIs (Codex, Antigravity (agy), Copilot) for second opinions, challenger reviews, design ratification, or any decision where sycophancy / "I-was-asked-so-I-produced-something" is a real failure mode. Implements a two-gate protocol — null-hypothesis ballot before any deliberation, then burden-of-falsification on every CHANGE_NEEDED claim — that converts cross-CLI consultation from echo-chamber into genuine deliberation. Trigger on - "ask Codex / agy what they think", "second opinion", "tiebreak between models", forge design ratification, alf review hand-offs, bob's arbiter gates.
 ---
 
 # Cross-CLI Deliberation
@@ -95,7 +95,7 @@ Three admissible evidence classes:
    - (a) executable test — fails on current state, passes on proposed change
    - (b) procedural trace through the protocol/system on a representative artifact, showing observable failure mechanics
    - (c) failure-mechanics trace with minimal remedy (concrete steps + concrete patch)
-2. **Constraint violation** — direct quote from MEMORY.md / GEMINI.md / project rules / declared constraints
+2. **Constraint violation** — direct quote from MEMORY.md / CLAUDE.md / project rules / declared constraints
 3. **Efficiency regression** — measurable complexity / token cost / latency increase not offset by gain
 
 **Orchestrator verification:** the orchestrator MUST execute or check the evidence before accepting it. Run the test. Check the quote. Validate the regression. If the evidence does not reproduce as claimed, flag the consultant for "hallucinatory helpfulness" and nullify its ballot.
@@ -120,7 +120,7 @@ Model identity from `-m <model>` flag and from the model's free-text self-identi
 - Parse the trailing `served_by=` from the response
 - Log it alongside the verdict — capability tier affects verdict quality
 
-See `gemini-cli` and `codex-orchestration` skills for tier-specific quirks (e.g., gemini OAuth tier silently routes between Pro variants regardless of `-m` flag).
+See `antigravity-cli` and `codex-orchestration` skills for CLI-specific quirks. Self-reported model identity is unreliable across CLIs — always capture `served_by` observationally rather than trusting a requested model.
 
 ## Sycophancy measurement
 
@@ -139,8 +139,9 @@ Full test cases + scoring: `references/sycophancy-tests.md`.
 ## Invocation pattern
 
 ```bash
-# Canonical pattern for Gemini consultant
-GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "$(cat ballot-prompt.md)" > /tmp/gemini-ballot.md
+# Canonical pattern for Antigravity (agy) consultant
+# agy returns plain text on stdout (no model flag, no env prefix — it authenticates itself).
+agy -p "$(cat ballot-prompt.md)" > /tmp/agy-ballot.md < /dev/null
 
 # Canonical pattern for Codex consultant
 codex exec "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md
@@ -180,11 +181,11 @@ The orchestrator does NOT vote. The orchestrator synthesizes. If the orchestrato
 
 ## Worked example
 
-This skill was designed and ratified by applying itself to its own synthesis — a 4-round arc with Codex (gpt-5.5) and Gemini (gemini-2.5-pro and gemini-3.1-pro-preview at different points). Key findings:
+This skill was designed and ratified by applying itself to its own synthesis — a 4-round arc with Codex (gpt-5.5) and a second external CLI consultant. (At the time of the original arc the second consultant was the Gemini CLI; on this host that role is now primarily filled by the Antigravity CLI (`agy`), with gemini a fallback until Google retires it on 2026-06-18. The model-tier specifics below are preserved only as historical record of that original arc — see `references/origin-trace.md`.) Key findings:
 
-- Round 1 (open): each CLI proposed an independent mechanism (Codex → null-hypothesis gate; Gemini → burden of falsification). Result: stacked synthesis.
+- Round 1 (open): each CLI proposed an independent mechanism (Codex → null-hypothesis gate; the second consultant → burden of falsification). Result: stacked synthesis.
 - Round 2 (ratification under self): both voted CHANGE_NEEDED on the synthesis with a 4th evidence class.
-- Round 2 (rerun): different served tiers gave different verdicts on the SAME ballot — gemini-2.5-pro CHANGE_NEEDED 85, gemini-3.1-pro-preview ACCEPT_AS_IS 95. Real protocol-design data point: tier matters.
+- Round 2 (rerun): the SAME ballot produced opposite verdicts depending on which model actually served the request — a CHANGE_NEEDED 85 and an ACCEPT_AS_IS 95. Real protocol-design data point: the model that served a request, not the one requested, drives the verdict — capture `served_by` observationally.
 - Round 3 (tiebreak): Codex re-ratified CHANGE_NEEDED at confidence 84, reframing its evidence as a procedural reproduction trace under category 1 — making the F1 patch a clarification of what "reproduction" admits, not an addition.
 
 Full transcript: `references/origin-trace.md`.
@@ -197,4 +198,4 @@ Full transcript: `references/origin-trace.md`.
 - `adversarial-team-brainstorm` — for divergent ideation (different problem); use this skill for convergent ratification
 - `challenger` — for one-side critique (different problem); use this skill for two-sided deliberation
 - `codex-orchestration` — Codex CLI invocation patterns
-- `gemini-cli` — Gemini CLI invocation patterns + host-specific directives
+- `antigravity-cli` — Antigravity CLI (`agy`) invocation patterns + host-specific directives

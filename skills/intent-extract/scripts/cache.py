@@ -124,16 +124,64 @@ def cache_ttl_days() -> int:
     return n
 
 
-def evict_stale(project_root: Path, now_ts: Optional[float] = None) -> int:
-    """Remove cache entries older than TTL. Returns count removed."""
+def protected_keys_from_lock(lock_path: Path) -> set:
+    """Return the set of cache keys (sha) referenced by a partition.lock.
+
+    S048/code-comprehension (§12 C10): a content-addressed cache entry referenced
+    by a CURRENT partition.lock must NEVER be evicted — otherwise a delete-and-rebuild
+    of the render would have to cold-LLM-regen, and cold regen is not byte-stable.
+
+    The lock stores component → {source_files, entry_points}. The cache key is a
+    function of (component_id, content_hash, extractor_version, model_id,
+    template_hash), which the lock does NOT record directly. So instead of trying to
+    reconstruct keys, the orchestrator records the live cache keys it just wrote into
+    the lock's optional `cache_keys` list. We read that list. Absent => empty set
+    (no protection, legacy behavior preserved).
+    """
+    if not lock_path.is_file():
+        return set()
+    try:
+        import json as _json
+        data = _json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    keys = data.get("cache_keys")
+    if isinstance(keys, list):
+        return {str(k) for k in keys}
+    # Backward/forward-compat: also accept per-component cache_key under components[].
+    comps = data.get("components")
+    out = set()
+    if isinstance(comps, dict):
+        for v in comps.values():
+            if isinstance(v, dict) and v.get("cache_key"):
+                out.add(str(v["cache_key"]))
+    return out
+
+
+def evict_stale(
+    project_root: Path,
+    now_ts: Optional[float] = None,
+    protected_keys: Optional[set] = None,
+) -> int:
+    """Remove cache entries older than TTL. Returns count removed.
+
+    `protected_keys` (a set of cache-key shas) are NEVER evicted regardless of age
+    (§12 C10 never-evict for entries referenced by a current partition.lock). When
+    None, the caller may pass the partition.lock-derived set via
+    `protected_keys_from_lock`. Absent => no protection (legacy behavior).
+    """
     cdir = cache_dir(project_root)
     if not cdir.is_dir():
         return 0
     if now_ts is None:
         now_ts = time.time()
+    protected = protected_keys or set()
     horizon = now_ts - cache_ttl_days() * 86400
     removed = 0
     for entry in cdir.glob("*.yaml"):
+        key = entry.stem  # filename is <key>.yaml
+        if key in protected:
+            continue
         try:
             if entry.stat().st_mtime < horizon:
                 entry.unlink()

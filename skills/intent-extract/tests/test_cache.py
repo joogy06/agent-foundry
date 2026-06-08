@@ -142,3 +142,51 @@ def test_evict_stale_removes_old(project_root: Path) -> None:
 
 def test_evict_stale_empty_dir_returns_zero(project_root: Path) -> None:
     assert cache.evict_stale(project_root) == 0
+
+
+# --- §12 C10: never-evict entries referenced by a current partition.lock ---
+
+
+def test_evict_stale_respects_protected_keys(project_root: Path) -> None:
+    f_keep = cache.write_cache(project_root, "locked", "x\n")
+    f_drop = cache.write_cache(project_root, "unlocked", "y\n")
+    long_ago = time.time() - 90 * 86400
+    os.utime(f_keep, (long_ago, long_ago))
+    os.utime(f_drop, (long_ago, long_ago))
+    # 'locked' is protected → only 'unlocked' is evicted despite both being stale
+    removed = cache.evict_stale(project_root, protected_keys={"locked"})
+    assert removed == 1
+    assert f_keep.exists(), "a key referenced by partition.lock must NEVER be evicted"
+    assert not f_drop.exists()
+
+
+def test_protected_keys_from_lock_reads_cache_keys_list(tmp_path: Path) -> None:
+    import json
+    lock = tmp_path / "partition.lock"
+    lock.write_text(json.dumps({
+        "schema_version": "1.0.0",
+        "cache_keys": ["aaa", "bbb"],
+        "components": {"x": {"source_files": ["a.py"]}},
+    }))
+    keys = cache.protected_keys_from_lock(lock)
+    assert keys == {"aaa", "bbb"}
+
+
+def test_protected_keys_from_lock_absent_is_empty(tmp_path: Path) -> None:
+    assert cache.protected_keys_from_lock(tmp_path / "nope.lock") == set()
+
+
+def test_end_to_end_lock_protects_cache(project_root: Path) -> None:
+    import json
+    f_keep = cache.write_cache(project_root, "key-in-lock", "x\n")
+    f_drop = cache.write_cache(project_root, "key-not-in-lock", "y\n")
+    long_ago = time.time() - 90 * 86400
+    os.utime(f_keep, (long_ago, long_ago))
+    os.utime(f_drop, (long_ago, long_ago))
+    lock = project_root / "partition.lock"
+    lock.write_text(json.dumps({"cache_keys": ["key-in-lock"]}))
+    protected = cache.protected_keys_from_lock(lock)
+    removed = cache.evict_stale(project_root, protected_keys=protected)
+    assert removed == 1
+    assert f_keep.exists()
+    assert not f_drop.exists()

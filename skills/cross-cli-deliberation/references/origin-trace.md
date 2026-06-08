@@ -4,6 +4,8 @@ Record of the deliberation that produced this skill, captured here as both prove
 
 Date: 2026-05-04. Session in `/path/to/project`.
 
+> **Tooling note (historical record).** The original arc used the now-retired Gemini CLI as the second consultant, invoked with a per-call `-m <model>` flag and OAuth-tier routing. On this host that consultant role is now filled by the Antigravity CLI (`agy -p`), which exposes a single configured model — no `-m` flag, no env prefix, no tier selection. The model names and tier-routing mechanics below are preserved verbatim as a faithful record of what actually happened during that arc; they are NOT a description of the current invocation pattern. The transferable lesson — *capture `served_by` observationally; the model that serves a request, not the one requested, drives the verdict* — survives the CLI change.
+
 ## Round 1 — Open consultation (no protocol yet)
 
 **Question to Codex and Gemini, asked in parallel without peer visibility:** what protocol or framing change would let multi-CLI consultation actually deliberate, where "no change needed" is a respected response and pushback is structural?
@@ -78,10 +80,10 @@ The synthesis became the SKILL.md you're reading.
 ## Operational lessons baked into the skill
 
 - Capture served_by at the call layer; never trust model self-ID. (Probe: append `served_by=<model>` line to prompts.)
-- Quorum rule: declare absent consultants explicitly. (One Gemini round failed with 10× 429 retries; the implicit "missing ballot = no opinion" must be explicit.)
-- Pin gemini-3.1-pro-preview on this host's OAuth tier. Lower tiers produce different verdicts.
+- Quorum rule: declare absent consultants explicitly. (One consultant round failed with 10× 429 retries; the implicit "missing ballot = no opinion" must be explicit.)
+- Use a top-tier model for deliberation work where the CLI lets you choose; on a single-model CLI like `agy`, capture `served_by` observationally and treat verdict variance across model versions as real.
 - The orchestrator must verify every CHANGE_NEEDED evidence — running the trace, walking the steps, checking the quote.
-- Settings.json model pinning is advisory; server-side routing dominates. Capture observationally.
+- Requested model identity is advisory; server-side routing dominates. Capture observationally.
 
 ## Ledger of model selection during the arc
 

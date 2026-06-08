@@ -1,6 +1,6 @@
 # Frontmatter Rules
 
-The single source of truth for what goes in a SKILL.md frontmatter when the skill must work across Claude Code, Gemini CLI, Codex CLI, and (via AGENTS.md) GitHub Copilot CLI.
+The single source of truth for what goes in a SKILL.md frontmatter when the skill must work across Claude Code, Antigravity CLI (`agy`), Codex CLI, and (via AGENTS.md) GitHub Copilot CLI.
 
 ## The strict format
 
@@ -13,13 +13,13 @@ description: <single-line, max 1024 chars, leads with "Use when ...">
 
 **That's it.** No other fields. Period.
 
-## Hard rule (verbatim from Google's skill-creator)
+## Hard rule (from the skill-creator convention)
 
-The local `gemini-cli` 0.36.0 ships a built-in skill-creator with this exact wording:
+The skill-creator convention (originally surfaced verbatim by the local `gemini-cli` 0.36.0 built-in skill-creator, and the prevailing cross-tool standard) is unambiguous:
 
 > *"Do not include any other fields in YAML frontmatter."*
 
-This is NOT a recommendation. Gemini silently rejects skills with extra fields — they don't appear in `gemini skills list`. The skill effectively does not exist in Gemini.
+This is NOT a recommendation. A strict skill loader silently rejects skills with extra fields — the skill effectively does not exist there.
 
 Claude Code tolerates extras, but at the cost of cross-tool compat. Don't.
 
@@ -78,7 +78,7 @@ description: Use when working with the Claude Code CLI (`claude`) — headless a
 ```
 
 ```yaml
-description: Use when authoring a skill that must work across multiple AI CLIs (Claude Code, Gemini CLI, Codex CLI, Copilot CLI). Covers frontmatter, naming, body length, install matrix, and common mistakes.
+description: Use when authoring a skill that must work across multiple AI CLIs (Claude Code, Antigravity CLI (agy), Codex CLI, Copilot CLI). Covers frontmatter, naming, body length, install matrix, and common mistakes.
 ```
 
 ### Bad descriptions
@@ -142,7 +142,7 @@ The validator script `scripts/verify-skill-portability.sh` enforces:
 
 | Don't | Why |
 |---|---|
-| `allowed-tools: [...]` | Claude-only. Gemini rejects. |
+| `allowed-tools: [...]` | Claude-only. A strict skill loader rejects it. |
 | `model: ...` | Pin a model in the body if needed, not frontmatter |
 | Multi-line description | YAML allows it; the strict rule does not |
 | `name: my_skill` | Underscores forbidden |

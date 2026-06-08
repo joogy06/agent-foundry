@@ -1,5 +1,7 @@
 # Corporate Ladder Structures in Finance/Banking IT
 
+> **Banking is the worked example here; the principles generalize.** The title-vs-grade gap, the sponsorship layer above a certain level, and the existence of compensation bands per grade exist in most large organizations — the specific titles and bands differ by sector. Translate the *mechanics* (where the title/grade gap bites, where sponsorship becomes load-bearing, how comp bands constrain negotiation) to the user's actual sector; the banking ladder below is the illustration.
+
 ## Banking Title Hierarchies
 
 ### Investment Banking Standard (Front Office Benchmark)
@@ -202,3 +204,12 @@ The strongest pathway is NOT "best model builder." It is:
 Typical trajectory: Automation/Architecture Lead → Enterprise Platform/Data/AI Leader → Accountable Executive
 
 Your unit of value must shift from "solutions I delivered" to "portfolios, standards, funding, and decision rights I shape."
+
+---
+
+## How AI Is Changing This
+
+Two shifts are reshaping the ladder itself:
+
+- **AI-fluency is now explicit in banking-tech job descriptions** — at most grades, demonstrable AI/automation capability (and the governance to deploy it in a regulated estate) is moving from differentiator to expectation. Plan for it as a core competency (see `career-planning` Framework 6), not a bonus.
+- **AI changes the cost-center calculus** — as AI absorbs routine technology tasks, displacement pressure concentrates on roles framed purely as cost. The durable positions are those framed around judgment, accountability, controls ownership, and revenue/risk impact — exactly the moats this ladder rewards at senior grades. The principle generalizes beyond banking: move up the accountability ladder, not deeper into the automatable middle.
