@@ -796,6 +796,158 @@ cobc -x ordproc.cbl -ldb2
 
 ---
 
+## 11. Reading & Understanding Unfamiliar COBOL
+
+The rest of this reference is authoring-focused. This section is for the opposite task:
+being dropped into a large, undocumented COBOL program you did not write and having to
+**understand** it — the comprehension payload for a maintenance or migration pass.
+Companion comprehension references in this family: `pick-developer` (Pick/MultiValue) and
+`datastage-developer` (DataStage ETL).
+
+### Orient top-down: the four divisions are a fixed reading order
+
+COBOL's rigid structure is an advantage when reading — the divisions always appear in the
+same order and each answers a specific question:
+
+1. **IDENTIFICATION DIVISION** — `PROGRAM-ID` (the program's callable name), author, date.
+   One line of real signal: the name other programs `CALL`.
+2. **ENVIRONMENT DIVISION** — `CONFIGURATION SECTION` (`SPECIAL-NAMES`, e.g.
+   `DECIMAL-POINT IS COMMA`, `CURRENCY SIGN`) and `INPUT-OUTPUT SECTION` → `FILE-CONTROL`
+   with the `SELECT … ASSIGN TO …` clauses. **This is where logical file names bind to
+   physical DD names / datasets** — read it first to learn what the program touches.
+3. **DATA DIVISION** — the data shapes: `FILE SECTION` (record layouts under each `FD`),
+   `WORKING-STORAGE SECTION` (the program's variables, flags, counters, tables), and
+   `LINKAGE SECTION` (parameters passed in from the caller / JCL `PARM`).
+4. **PROCEDURE DIVISION** — the executable logic, organized into paragraphs and sections.
+   The first paragraph runs first; follow the `PERFORM`s from there.
+
+A fast first pass: read `PROGRAM-ID` → the `SELECT` list (what files) → the `FD`/`01`
+record layouts (what the data looks like) → the first PROCEDURE paragraph (the driver),
+then follow control flow from the top.
+
+### Follow control flow: PERFORM / PERFORM THRU / CALL / GO TO
+
+COBOL control flow is mostly `PERFORM` (an in-program "call and return"):
+
+```cobol
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE          *> run that paragraph, then return here
+           PERFORM 2000-PROCESS
+               UNTIL END-OF-FILE            *> loop: repeat until the condition
+           PERFORM 9000-TERMINATE
+           GOBACK                           *> return to caller (or STOP RUN)
+```
+
+- **`PERFORM <para>`** — execute the named paragraph, then return to the line after the
+  `PERFORM`. The primary call-graph edge.
+- **`PERFORM <a> THRU <b>`** (a.k.a. `PERFORM <a> THROUGH <b>`) — execute paragraphs `a`
+  through `b` **in source order**, then return. You must read every paragraph in the range
+  to know what runs — control falls from one into the next (see fall-through below). A
+  common convention is an empty `<b>-EXIT.` paragraph holding just `EXIT.` as the range
+  terminator.
+- **`PERFORM … UNTIL …`** / **`PERFORM … VARYING … FROM … BY … UNTIL …`** — the loop
+  forms; `VARYING` is the COBOL `for` loop (note: `UNTIL` is tested **before** each
+  iteration by default — it is a pre-test loop unless `WITH TEST AFTER`).
+- **`PERFORM n TIMES`** — fixed iteration count.
+- **`CALL '<PROG>' USING …`** — invoke a **separate** program (the inter-program edge);
+  arguments are matched positionally to the callee's `LINKAGE SECTION`. `CALL <data-name>`
+  is a **dynamic** call — the target is only known at run time (treat as unresolved when
+  reading statically).
+- **`GO TO`** — an unconditional jump that does **not** return. In legacy code it is common;
+  trace it as a hard branch. `GO TO … DEPENDING ON n` is a computed branch (jump to the
+  *n*th label).
+
+### Decode the data: PIC, COMP-3, REDEFINES, OCCURS DEPENDING ON, 88-levels
+
+The DATA DIVISION is where meaning lives. Key things to decode when reading a layout:
+
+- **`PIC` (picture) clause** — the shape of a field. `9` = a digit, `X` = any character,
+  `S` = a sign, `V` = an **implied** decimal point (no byte stored), `A` = alphabetic.
+  `PIC S9(7)V99` = a signed number, 7 integer digits + 2 decimal places. **The `V` is
+  virtual** — `1234567` `89` is stored as 9 digits with the decimal point only implied.
+- **`USAGE`** (the storage form) — `DISPLAY` (default; one byte per digit, human-readable),
+  `COMP`/`COMP-4`/`BINARY` (binary integer, 2/4/8 bytes), **`COMP-3`/`PACKED-DECIMAL`**
+  (packed BCD, `(n+1)/2` bytes, two digits per byte + a sign nibble — **not printable**;
+  a `COMP-3` field dumped as text is garbage), `COMP-1`/`COMP-2` (float/double). When a
+  numeric field looks like binary noise in a file, check its `USAGE`.
+- **`REDEFINES`** — a **second name and layout over the same bytes** (COBOL's union). The
+  bytes are interpreted one way under the first name and another way under the
+  `REDEFINES` name; only one interpretation is valid at a time. Watch for a record read as
+  raw bytes then re-interpreted via a `REDEFINES` based on a record-type flag.
+- **`OCCURS n TIMES`** — a fixed array (a table); `INDEXED BY` names its index.
+- **`OCCURS 1 TO n TIMES DEPENDING ON <counter>`** (ODO) — a **variable-length** array
+  whose live length is the value of `<counter>` at run time. The record's length changes
+  with the counter — critical when reading file layouts (everything after an ODO field
+  shifts). Find the `DEPENDING ON` field to know how many entries are real.
+- **`88`-level condition names** — a named boolean over a parent field's value(s):
+  ```cobol
+       05  WS-STATUS        PIC X.
+           88  ORD-PENDING  VALUE 'P'.
+           88  ORD-SHIPPED  VALUE 'S'.
+  ```
+  `IF ORD-PENDING` means `IF WS-STATUS = 'P'`; `SET ORD-SHIPPED TO TRUE` means
+  `MOVE 'S' TO WS-STATUS`. 88-levels make the code read like business rules — map each
+  back to its parent field and value.
+- **Level numbers** — `01` = a record/group; `05`/`10`/… = nested subordinate fields
+  (the numbers show nesting depth, not fixed steps); `77` = a standalone elementary item;
+  `66` = a `RENAMES` regrouping (rare).
+
+### Connect files: FD ↔ SELECT ↔ ASSIGN (and the JCL DD)
+
+Tracing a file end to end crosses three places:
+
+1. `SELECT logical-name ASSIGN TO DDNAME … FILE STATUS IS WS-xx.` (ENVIRONMENT) — binds
+   the program's logical file name to a system DD name and a status field.
+2. `FD logical-name … 01 record-layout.` (DATA / FILE SECTION) — the record structure read
+   or written.
+3. In batch, the JCL `//DDNAME DD DSN=…` maps that DD name to the actual dataset (see §7).
+
+So a `READ ORDER-FILE` reaches the `FD ORDER-FILE`, whose `SELECT` says `ASSIGN TO ORDIN`,
+which the JCL maps to a physical dataset. **Always check the `FILE STATUS` field after I/O**
+— a paragraph that reads a file and then tests `WS-ORDER-FS` is doing its error handling
+there (file status `00` = OK, `10` = end of file, `23` = not found, `35` = file missing;
+see §3).
+
+### Gotchas that mislead a reader
+
+- **Fall-through between paragraphs.** Paragraphs are not subroutines with hard
+  boundaries — when a paragraph ends, control **falls into the next paragraph in source
+  order** unless a `PERFORM` returns, a `GO TO` jumps, or the program stops. A paragraph
+  reached by `PERFORM A THRU B` runs A, then *everything between A and B*. Never assume a
+  paragraph runs in isolation; check what physically follows it.
+- **`ALTER` + `GO TO`** (obsolete but present in old code) — `ALTER X TO PROCEED TO Y`
+  **rewrites** the target of a `GO TO` at run time, so the same `GO TO` can branch to
+  different places on different executions. It makes static reading treacherous; flag any
+  `ALTER` and trace every place that alters the same `GO TO`.
+- **Implicit `MOVE` / group moves** — a `MOVE` between fields of different `PIC` does
+  silent conversion/truncation (alphanumeric-to-numeric, decimal alignment, space-padding).
+  A `MOVE` of a group item copies bytes positionally regardless of the subordinate fields'
+  types. The data can change shape without an obvious cast.
+- **`MOVE CORRESPONDING`** — moves only the subordinate fields whose names match between
+  two groups; what actually moves depends on the names, not the order.
+- **`REDEFINES` aliasing** — the same bytes seen under two names (above). A value "changing"
+  may just be the other view of the same storage.
+- **`OCCURS DEPENDING ON`** — record length is not constant; offsets after the ODO field
+  move with the counter.
+- **PERFORM range edits** — adding a paragraph *inside* an existing `PERFORM A THRU B`
+  range silently makes it run as part of that range. When reading a `THRU`, enumerate
+  every paragraph in the span.
+
+### A reading checklist
+
+1. `PROGRAM-ID` — the name; grep the codebase for who `CALL`s it.
+2. `SELECT … ASSIGN` list — what files/datasets it touches (+ the `FILE STATUS` fields).
+3. `FD` / `01` record layouts — decode `PIC`/`USAGE`/`REDEFINES`/`OCCURS … DEPENDING ON`.
+4. `WORKING-STORAGE` flags and `88`-levels — the state machine and its named conditions.
+5. `LINKAGE SECTION` + `PROCEDURE DIVISION USING` — the parameters from the caller/JCL.
+6. The first PROCEDURE paragraph — the driver; follow `PERFORM`/`PERFORM THRU`/`GO TO`.
+7. Each `CALL` — an external program (dynamic `CALL <data-name>` is unresolved statically).
+8. `COPY` members — shared layouts/code pulled in (`COPY … REPLACING` renames at compile
+   time; the post-replace names are not in the source you see).
+9. Watch the gotchas: fall-through, `ALTER`/`GO TO`, implicit/group `MOVE`, ODO lengths.
+
+---
+
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails | Correct Approach |

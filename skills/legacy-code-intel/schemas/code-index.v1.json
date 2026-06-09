@@ -89,8 +89,8 @@
           "description": "sha256 of the entire artifact content. Half of the dedup key."
         },
         "format": {
-          "enum": ["cobol", "dsx", "etl"],
-          "description": "Auto-detected artifact format. Locked v1 scope: COBOL, DataStage DSX, ETL (shell/SQL/Python)."
+          "enum": ["cobol", "dsx", "etl", "pick"],
+          "description": "Auto-detected artifact format. Scope: COBOL, DataStage DSX, ETL (shell/SQL/Python), Pick/MultiValue BASIC (UniVerse/UniData/D3/jBASE/OpenQM)."
         },
         "source_path": {
           "type": "string",
@@ -144,7 +144,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "Per-format symbol kind. Validated against the format-specific enum in code-finding.v1.json at chunk time. COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}."
+          "description": "Per-format symbol kind. Validated against the format-specific enum in code-finding.v1.json at chunk time. COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}; Pick {program,subroutine,paragraph,dict_item,file,common_block,label,variable}."
         },
         "name": {
           "type": "string",

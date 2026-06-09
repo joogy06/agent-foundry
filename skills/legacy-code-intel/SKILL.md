@@ -1,6 +1,6 @@
 ---
 name: legacy-code-intel
-description: "Use when you want a PERSISTENT, queryable, SCIP-inspired code-intelligence library over legacy artifacts — COBOL, DataStage .dsx (XML), and ETL scripts (shell/SQL/Python) — built ONCE into a content-addressed store and exposed via a deterministic graph-query layer + a self-contained HTML navigator. An LLM-as-parser framework (mirrors lineage-extract-static): model-neutral prompts the in-session AI CLI uses to extract symbols/occurrences/relationships, NOT per-format AST parsers. Triggerable as a single skill (ingest one artifact/dir) and via agent-teams (batch, one worker per artifact — NO new agent). Static analysis only (v1). Also trigger on \"index this COBOL\", \"symbol graph for DataStage jobs\", \"where is this paragraph called\", \"impact of changing this copybook\", \"code intelligence for legacy\", \"build a navigator for this mainframe code\"."
+description: "Use when you want a PERSISTENT, queryable, SCIP-inspired code-intelligence library over legacy artifacts — COBOL, DataStage .dsx (XML), ETL scripts (shell/SQL/Python), and Pick/MultiValue BASIC (UniVerse/UniData/D3/jBASE/OpenQM) — built ONCE into a content-addressed store and exposed via a deterministic graph-query layer + a self-contained HTML navigator. An LLM-as-parser framework (mirrors lineage-extract-static): model-neutral prompts the in-session AI CLI uses to extract symbols/occurrences/relationships, NOT per-format AST parsers. Triggerable as a single skill (ingest one artifact/dir) and via agent-teams (batch, one worker per artifact — NO new agent). Static analysis only (v1). Also trigger on \"index this COBOL\", \"symbol graph for DataStage jobs\", \"where is this paragraph called\", \"impact of changing this copybook\", \"index this Pick/MultiValue BASIC\", \"code intelligence for legacy\", \"build a navigator for this mainframe code\"."
 ---
 
 # legacy-code-intel — persistent SCIP-inspired code-intelligence library
@@ -21,9 +21,9 @@ stores it **once** in a **content-addressed library** (`~/.codelib`), and expose
 
 It is a **framework**: the in-session AI CLI (Claude Code / Codex CLI / Gemini CLI /
 Copilot CLI) is the parser via model-neutral prompts; `scripts/` has NO per-format AST
-parsers (the `lineage-extract-static` precedent). Scope (locked): **COBOL + DataStage
-DSX + ETL**. Both triggers: **skill** (one artifact/dir) and **agent-teams** (batch).
-**No new agent.**
+parsers (the `lineage-extract-static` precedent). Scope: **COBOL + DataStage
+DSX + ETL + Pick/MultiValue BASIC**. Both triggers: **skill** (one artifact/dir) and
+**agent-teams** (batch). **No new agent.**
 
 ## When to use it
 
@@ -44,7 +44,7 @@ Skip when:
 ## Components (one skill; mirror lineage-extract-static)
 
 ```
-prompts/     analyze-symbols.md (+ cobol.md / dsx.md / etl.md addenda),
+prompts/     analyze-symbols.md (+ cobol.md / dsx.md / etl.md / pick.md addenda),
              merge-chunks-within-file.md, resolve-symbol-id.md, redact-secrets.md   (model-neutral)
 scripts/     chunk_file.py, accumulate.py, redact.py (fail-closed), emit_index.py,
              store.py (SINGLE WRITER), query.py (deterministic), render_navigator.py,
@@ -71,7 +71,8 @@ When a user issues `legacy-code-intel ingest <artifact|dir>` (or equivalent NL):
 4. chunk_file.py <artifact> <run_id>  -> per-file manifest + chunk placeholders
    at ~/.cache/legacy-code-intel/runs/<run_id>/files/<sha>/ (0700, NEVER /tmp).
 5. For each chunk: read it, apply prompts/analyze-symbols.md + the format addendum
-   (auto-detected: cobol/dsx/etl), emit ONE code-finding.v1 JSON object into
+   (auto-detected: cobol/dsx/etl/pick — Pick BASIC often has no extension, so it is
+   detected by content: SUBROUTINE / READNEXT / <a,v,s> / OCONV / CRT), emit ONE code-finding.v1 JSON object into
    chunk_NNNN.jsonl. Classify confidence per the bright-line rule. Use
    prompts/resolve-symbol-id.md for path-INDEPENDENT IDs.
    DSX: the agent loads the .dsx XML via defusedxml (XXE HARD-RULE) before analysis.
@@ -163,8 +164,8 @@ measurement the store becomes a write-once never-trusted graveyard. Mitigation:
   catalog report it.
 - **`impact()` is advisory-by-default**: until a format's gold precision clears 0.85,
   `impact()` carries the speculative framing + `advisory: true`. COBOL ships its gold
-  file in v1; DSX + ETL extraction prompts ship too (locked: all three) but their gold
-  files are a tracked fast-follow — until then DSX/ETL `impact()` stays advisory.
+  file in v1; DSX + ETL + Pick extraction prompts ship too but their gold files are a
+  tracked fast-follow — until then DSX/ETL/Pick `impact()` stays advisory (same gate).
 
 ## Composition with other skills
 
@@ -175,7 +176,7 @@ measurement the store becomes a write-once never-trusted graveyard. Mitigation:
 - `wiring-query` — the `graph_ops.py` adjacency-BFS shape ported into `query.py`.
 - `wiring-reconcile` / `project-state` — the flock + atomic-`os.replace` promote pattern
   ported into `store.py`.
-- `cobol-developer` / `datastage-developer` — the per-format symbol vocabulary.
+- `cobol-developer` / `datastage-developer` / `pick-developer` — the per-format symbol vocabulary.
 
 ## Security — XML / XHTML parsing
 

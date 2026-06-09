@@ -101,7 +101,7 @@
       "properties": {
         "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "pipeline_fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "format": { "enum": ["cobol", "dsx", "etl"] },
+        "format": { "enum": ["cobol", "dsx", "etl", "pick"] },
         "source_path": { "type": "string", "minLength": 1 },
         "line_count": { "type": "integer", "minimum": 0 }
       }
@@ -116,7 +116,7 @@
         "name": { "type": "string", "minLength": 1 },
         "signature": { "type": "string" },
         "container_symbol_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
-        "format": { "enum": ["cobol", "dsx", "etl"] },
+        "format": { "enum": ["cobol", "dsx", "etl", "pick"] },
         "attributes": { "type": "object", "additionalProperties": true }
       }
     },

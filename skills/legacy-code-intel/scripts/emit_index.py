@@ -54,6 +54,7 @@ KIND_BY_FORMAT = {
     "cobol": {"program", "division", "section", "paragraph", "data_item", "copybook", "file_descriptor", "call_target"},
     "dsx": {"job", "stage", "link", "column", "parameter", "container", "routine", "sequence"},
     "etl": {"function", "variable", "sql_cte", "table", "call_target", "shell_task"},
+    "pick": {"program", "subroutine", "paragraph", "dict_item", "file", "common_block", "label", "variable"},
 }
 
 # Bright-line classifier markers (HARD-RULE 2). Presence => forced speculative.
@@ -70,6 +71,8 @@ _DYNAMIC_MARKERS = [
     re.compile(r"%[-#0-9.]*[sdix]"),                                  # printf-style %s/%d
     re.compile(r"\.format\s*\("),                                     # python .format(
     re.compile(r"\bf['\"]"),                                          # python f-string
+    re.compile(r"\bCALL\b\s*@", re.IGNORECASE),                       # Pick CALL @var (indirect call)
+    re.compile(r"\b(EXECUTE|PERFORM|CHAIN)\b[^\"']*[<{:]"),           # Pick EXECUTE/CHAIN with an interpolated sentence
 ]
 
 
@@ -218,7 +221,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("summary_json", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--content-sha256", required=True)
-    parser.add_argument("--format", required=True, choices=["cobol", "dsx", "etl"])
+    parser.add_argument("--format", required=True, choices=["cobol", "dsx", "etl", "pick"])
     parser.add_argument("--source-path", required=True)
     parser.add_argument("--line-count", type=int, required=True)
     parser.add_argument("--model-id", required=True)

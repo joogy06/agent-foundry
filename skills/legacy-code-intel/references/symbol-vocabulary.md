@@ -44,6 +44,26 @@ Vocabulary grounded in `cobol-developer`, `ibm-mainframe`, and `datastage-develo
 | `call_target` | invoked script/fn/program | `call/<target>` or `<stem>/dyn/<expr>` | `calls` |
 | `shell_task` | pipeline step | `<stem>/task/<n>` | `schedules`/`calls` |
 
+## Pick / MultiValue — `kind` ∈ {program, subroutine, paragraph, dict_item, file, common_block, label, variable}
+
+| kind | what it is | scoped-name | primary relationships |
+|---|---|---|---|
+| `program` | cataloged top-level program | `<prog>` | `contains` |
+| `subroutine` | external `SUBROUTINE name(args)` | `subroutine/<NAME>` | `calls` (CALL) |
+| `paragraph` | PROC / VOC paragraph (stored TCL sentence) | `paragraph/<name>` | `calls` (EXECUTE/PERFORM) |
+| `dict_item` | DICT item (D/I/A/S/X/PH) | `dict/<file>/<item>` | `references` (file / Tfile JOIN) |
+| `file` | MultiValue file opened via `OPEN..TO` | `file/<name>` | `reads`/`writes` |
+| `common_block` | `COMMON [/name/]` shared memory | `<prog>/common/<name>` | `contains` |
+| `label` | `GOSUB` target | `<prog>/label/<name>` | `calls` (GOSUB) |
+| `variable` | BASIC / `@`-system variable | `<prog>/var/<name>` | — |
+
+Pick notes: `CALL @var` (indirect), interpolated `EXECUTE`/`PERFORM`/`CHAIN`, and
+files opened to a computed name are **speculative** (HARD-RULE 2; `emit_index._looks_dynamic`
+enforces `CALL @` + interpolated transfer verbs). A `dict_item` with a `Tfile`/`TRANS`
+correlative `references` the other file — the MultiValue substitute for a SQL JOIN. The
+classic-Pick vs U2 dictionary layout differs; record the observed `dict_type`, do not assume
+a fixed attribute layout. See `pick-developer` for the full vocabulary.
+
 ## Relationship enum (format-agnostic)
 `contains`, `calls`, `reads`, `writes`, `copies`, `references`, `schedules`.
 

@@ -52,6 +52,11 @@ _FORMAT_HINTS = {
     "sh": "etl", "bash": "etl", "ksh": "etl",
     "sql": "etl", "ddl": "etl", "dml": "etl",
     "py": "etl",
+    # Pick / MultiValue BASIC. Often has NO canonical extension (programs live as
+    # items inside a BP file), so the LLM's content detection (SUBROUTINE / READNEXT /
+    # <a,v,s> / OCONV / CRT / EQUATE ... TO @) is the real signal — see prompts/pick.md.
+    # These extensions are the conventional ones when a filesystem export exists.
+    "b": "pick", "mvb": "pick", "qm": "pick", "bp": "pick", "jbc": "pick",
 }
 
 
