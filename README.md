@@ -53,10 +53,9 @@ After bootstrap, two more steps inside Claude Code finish the setup:
 
 ```bash
 # Per working repo you care about:
-bash scripts/install-pre-push-hook.sh /path/to/repo  # POSIX
-# or Windows:
-pwsh -NoProfile -NonInteractive -File \
-    scripts\install-pre-push-hook.ps1 -TargetRepo C:\path\to\repo
+bash scripts/install-pre-push-hook.sh /path/to/repo            # POSIX
+# or any OS (incl. enterprise Windows where PowerShell is blocked):
+python3 scripts/install-pre-push-hook.py --target-repo /path/to/repo
 ```
 
 The pre-push hook runs a secrets scanner (live API keys, PEM private keys, AWS credentials, JWTs, inline tokens, etc.) before every `git push`. Critical/high findings block the push; medium/low advisory hits print but don't block. Override per-push with `git push --no-verify`.
