@@ -23,7 +23,7 @@
     "schema_version": { "const": "1.0.0" },
     "extractor_id": { "const": "legacy-code-intel" },
     "format": {
-      "enum": ["cobol", "dsx", "etl"],
+      "enum": ["cobol", "dsx", "etl", "pick"],
       "description": "Artifact format. Selects which kind-enum applies (see definitions/kind_by_format)."
     },
     "file_sha256": {
@@ -70,7 +70,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "Per-format kind. The closed sets are: COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}. emit_index.py enforces the closed set per format; the schema keeps kind as string so a single schema serves all three formats (cross-format validation is the script's job)."
+          "description": "Per-format kind. The closed sets are: COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}; Pick {program,subroutine,paragraph,dict_item,file,common_block,label,variable}. emit_index.py enforces the closed set per format; the schema keeps kind as string so a single schema serves all formats (cross-format validation is the script's job)."
         },
         "name": { "type": "string", "minLength": 1 },
         "signature": { "type": "string" },
@@ -153,6 +153,10 @@
         "etl": {
           "type": "array",
           "items": { "enum": ["function", "variable", "sql_cte", "table", "call_target", "shell_task"] }
+        },
+        "pick": {
+          "type": "array",
+          "items": { "enum": ["program", "subroutine", "paragraph", "dict_item", "file", "common_block", "label", "variable"] }
         }
       }
     }

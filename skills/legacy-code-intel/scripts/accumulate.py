@@ -217,7 +217,7 @@ def accumulate(chunk_dir: Path, run_id: str, file_sha256: str, overlap_lines: in
         # binary / oversized skip
         summary = {
             "schema_version": "1.0.0", "extractor_id": "legacy-code-intel",
-            "format": fmt if fmt in ("cobol", "dsx", "etl") else "etl",
+            "format": fmt if fmt in ("cobol", "dsx", "etl", "pick") else "etl",
             "file_path": file_path, "file_sha256": file_sha256, "chunk_id": 0,
             "start_line": 1, "end_line": 1, "boundary_status": "complete",
             "symbols": [], "occurrences": [], "relationships": [],
@@ -250,11 +250,11 @@ def accumulate(chunk_dir: Path, run_id: str, file_sha256: str, overlap_lines: in
         all_gaps.extend(chunk.get("gaps", []))
 
     # Determine format from chunks if manifest hint was 'unknown'
-    fmt_final = fmt if fmt in ("cobol", "dsx", "etl") else None
+    fmt_final = fmt if fmt in ("cobol", "dsx", "etl", "pick") else None
     if fmt_final is None:
         for chunk in chunks:
             cf = chunk.get("format")
-            if cf in ("cobol", "dsx", "etl"):
+            if cf in ("cobol", "dsx", "etl", "pick"):
                 fmt_final = cf
                 break
     if fmt_final is None:
