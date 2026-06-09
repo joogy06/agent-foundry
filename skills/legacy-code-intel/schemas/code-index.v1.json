@@ -1,0 +1,256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/code-index.v1.json",
+  "title": "code-index.v1",
+  "description": "legacy-code-intel SCIP-inspired custom code-intelligence index for a single artifact. Symbol / occurrence / relationship triad (SCIP's package and type hierarchy dropped). ~75% shared core + per-format symbol.kind enum + an open attributes{} bag for per-format extras. Produced by emit_index.py from accumulated per-chunk findings; schema-validated before store.persist. Symbol IDs are content-hash-based (codelib://sha256/<artifact_hash>#sym/<scoped-name>), NEVER path-derived. Draft-07, lowercase types throughout (anti-requirement vs the discarded agy build which used uppercase STRING/OBJECT and could never validate).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "extractor_id",
+    "extractor_version",
+    "artifact",
+    "symbols",
+    "occurrences",
+    "relationships",
+    "gaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Index schema version. Additive-only; a breaking change bumps the major and forces re-extraction via the pipeline fingerprint."
+    },
+    "extractor_id": {
+      "const": "legacy-code-intel"
+    },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "SemVer of the extractor scripts. Part of the pipeline fingerprint."
+    },
+    "artifact": {
+      "$ref": "#/definitions/artifact"
+    },
+    "symbols": {
+      "type": "array",
+      "description": "All symbols defined or referenced in this artifact. Empty array is valid.",
+      "items": { "$ref": "#/definitions/symbol" }
+    },
+    "occurrences": {
+      "type": "array",
+      "description": "Definition and reference occurrences of symbols, with line ranges, evidence and confidence.",
+      "items": { "$ref": "#/definitions/occurrence" }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Typed edges between symbols (contains / calls / reads / writes / copies / references / schedules).",
+      "items": { "$ref": "#/definitions/relationship" }
+    },
+    "refs": {
+      "type": "object",
+      "description": "Path-side reverse index. Symbol IDs are path-independent; this maps the artifact's source path(s) so cross-artifact path lookups still work.",
+      "additionalProperties": false,
+      "properties": {
+        "by_path": {
+          "type": "object",
+          "description": "source_path -> list of symbol_ids defined in that path. additionalProperties:true because paths are arbitrary keys.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Honest disclosure of unresolved static-analysis lossiness (dynamic CALL, COPY REPLACING rename, DSX RCP, unsupported format, etc.).",
+      "items": { "$ref": "#/definitions/gap" }
+    }
+  },
+  "definitions": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content_sha256",
+        "format",
+        "source_path",
+        "size",
+        "line_count",
+        "ingested_at",
+        "model_id",
+        "prompt_hash",
+        "pipeline_fingerprint"
+      ],
+      "properties": {
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "sha256 of the entire artifact content. Half of the dedup key."
+        },
+        "format": {
+          "enum": ["cobol", "dsx", "etl"],
+          "description": "Auto-detected artifact format. Locked v1 scope: COBOL, DataStage DSX, ETL (shell/SQL/Python)."
+        },
+        "source_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path the artifact was ingested from. Forward-slash separator. Informational only; NOT part of the symbol ID."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Artifact size in bytes."
+        },
+        "line_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ingested_at": {
+          "type": "string",
+          "description": "ISO-8601 UTC ingest timestamp, OR the literal 'SOURCE_DATE_EPOCH' sentinel when deterministic output is forced (HARD-RULE 3)."
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier of the LLM/CLI that performed extraction (e.g. claude-code, codex-cli, gemini-cli, copilot-cli, or a test sentinel). Part of the pipeline fingerprint so a model change re-extracts."
+        },
+        "prompt_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "sha256 of the concatenated extraction prompt set. Part of the pipeline fingerprint."
+        },
+        "pipeline_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "sha256(schema_version + prompt_hash + extractor_version + model_id + normalizer_version). The OTHER half of the dedup key (with content_sha256). A prompt/model/extractor bump produces a NEW fingerprint so the store re-extracts instead of false-hitting a stale cache (anti-requirement vs the discarded agy build which trusted an unset field)."
+        },
+        "cost": {
+          "type": "object",
+          "description": "Optional best-effort cost metadata. Open bag.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "kind", "name"],
+      "properties": {
+        "symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$",
+          "description": "Path-INDEPENDENT content-addressed symbol ID: codelib://sha256/<artifact_hash>#sym/<scoped-name>. Content-hash dedup conflicts with path-derived IDs; the same copybook in two repos must resolve identically. Paths live in refs.by_path, NOT in the ID."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Per-format symbol kind. Validated against the format-specific enum in code-finding.v1.json at chunk time. COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable symbol name (paragraph name, stage name, function name)."
+        },
+        "signature": {
+          "type": "string",
+          "description": "Optional signature/declaration text (e.g. PIC clause, parameter list)."
+        },
+        "container_symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$",
+          "description": "Optional enclosing symbol (e.g. the section that contains a paragraph). Used to render the contains relationship."
+        },
+        "attributes": {
+          "type": "object",
+          "description": "Open per-format extras bag (e.g. COBOL level number, DSX stage type). additionalProperties:true by design.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "role", "range", "evidence_snippet", "confidence", "confidence_reason"],
+      "properties": {
+        "symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "role": {
+          "enum": ["definition", "reference"],
+          "description": "Whether this occurrence defines the symbol or references it."
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_line", "end_line"],
+          "properties": {
+            "start_line": { "type": "integer", "minimum": 1 },
+            "end_line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "evidence_snippet": {
+          "type": "string",
+          "description": "Source text supporting the occurrence. Passes through fail-closed redaction (HARD-RULE 1) before any store write."
+        },
+        "confidence": {
+          "enum": ["grounded", "inferred", "speculative"],
+          "description": "Bright-line classifier (HARD-RULE 2). Interpolation / dynamic CALL / COPY REPLACING / DSX RCP => forced speculative."
+        },
+        "confidence_reason": {
+          "type": "string",
+          "description": "Short machine-readable reason code for the confidence tier."
+        },
+        "boundary_issue": {
+          "type": "boolean",
+          "description": "True when an unpaired/ambiguous chunk-boundary partial forced a speculative downgrade during accumulate."
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rel", "from_id", "to_id", "confidence"],
+      "properties": {
+        "rel": {
+          "enum": ["contains", "calls", "reads", "writes", "copies", "references", "schedules"],
+          "description": "Typed relationship between two symbols."
+        },
+        "from_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "to_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "evidence_line": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Line where the relationship is established (0 if synthesized from containment)."
+        },
+        "confidence": {
+          "enum": ["grounded", "inferred", "speculative"]
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "line", "detail"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Gap class: dynamic_call, copy_replacing_rename, dsx_rcp, unsupported_format, oversized_file, binary_file, unresolved_symbol, boundary_issue, etc."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

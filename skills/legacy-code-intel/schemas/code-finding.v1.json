@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/code-finding.v1.json",
+  "title": "code-finding.v1",
+  "description": "legacy-code-intel per-chunk emission from the in-session AI CLI's LLM analysis (prompts/analyze-symbols.md + per-format addendum). Captures symbols + occurrences + relationships for ONE chunk of an artifact, with per-format kind enums and bright-line confidence. accumulate.py reads these chunk findings, applies deterministic boundary-pairing, and emits the artifact-level rollup that emit_index.py assembles into code-index.v1. Draft-07, lowercase types (anti-requirement vs the discarded agy build).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "extractor_id",
+    "format",
+    "file_sha256",
+    "chunk_id",
+    "start_line",
+    "end_line",
+    "boundary_status",
+    "symbols",
+    "occurrences",
+    "relationships",
+    "gaps"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "extractor_id": { "const": "legacy-code-intel" },
+    "format": {
+      "enum": ["cobol", "dsx", "etl"],
+      "description": "Artifact format. Selects which kind-enum applies (see definitions/kind_by_format)."
+    },
+    "file_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "chunk_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1-indexed chunk within the artifact; 0 reserved for the artifact-level rollup produced by accumulate."
+    },
+    "start_line": { "type": "integer", "minimum": 1 },
+    "end_line": { "type": "integer", "minimum": 1 },
+    "boundary_status": {
+      "enum": ["complete", "partial_start", "partial_end", "partial_both"],
+      "description": "Whether the chunk ends mid-construct. Drives deterministic boundary-pairing in accumulate.py. Always 'complete' for single-chunk artifacts."
+    },
+    "symbols": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/symbol" }
+    },
+    "occurrences": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/occurrence" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/relationship" }
+    },
+    "gaps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/gap" }
+    }
+  },
+  "definitions": {
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "kind", "name"],
+      "properties": {
+        "symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Per-format kind. The closed sets are: COBOL {program,division,section,paragraph,data_item,copybook,file_descriptor,call_target}; DSX {job,stage,link,column,parameter,container,routine,sequence}; ETL {function,variable,sql_cte,table,call_target,shell_task}. emit_index.py enforces the closed set per format; the schema keeps kind as string so a single schema serves all three formats (cross-format validation is the script's job)."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string" },
+        "container_symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "role", "range", "evidence_snippet", "confidence", "confidence_reason"],
+      "properties": {
+        "symbol_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "role": { "enum": ["definition", "reference"] },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_line", "end_line"],
+          "properties": {
+            "start_line": { "type": "integer", "minimum": 1 },
+            "end_line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "evidence_snippet": { "type": "string" },
+        "confidence": { "enum": ["grounded", "inferred", "speculative"] },
+        "confidence_reason": { "type": "string" },
+        "boundary_issue": { "type": "boolean" }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rel", "from_id", "to_id", "confidence"],
+      "properties": {
+        "rel": { "enum": ["contains", "calls", "reads", "writes", "copies", "references", "schedules"] },
+        "from_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "to_id": {
+          "type": "string",
+          "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$"
+        },
+        "evidence_line": { "type": "integer", "minimum": 0 },
+        "confidence": { "enum": ["grounded", "inferred", "speculative"] }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "line", "detail"],
+      "properties": {
+        "kind": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "detail": { "type": "string" }
+      }
+    },
+    "kind_by_format": {
+      "description": "Reference only (not a validation constraint here; emit_index.py enforces). COBOL/DSX/ETL closed kind sets.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cobol": {
+          "type": "array",
+          "items": { "enum": ["program", "division", "section", "paragraph", "data_item", "copybook", "file_descriptor", "call_target"] }
+        },
+        "dsx": {
+          "type": "array",
+          "items": { "enum": ["job", "stage", "link", "column", "parameter", "container", "routine", "sequence"] }
+        },
+        "etl": {
+          "type": "array",
+          "items": { "enum": ["function", "variable", "sql_cte", "table", "call_target", "shell_task"] }
+        }
+      }
+    }
+  }
+}
