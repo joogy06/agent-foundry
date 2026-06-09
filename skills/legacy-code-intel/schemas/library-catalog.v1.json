@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-factory.local/schemas/library-catalog.v1.json",
+  "title": "library-catalog.v1",
+  "description": "legacy-code-intel PROMOTED catalog projection (catalog/latest.json). The query layer reads ONLY this file — never the per-artifact objects/ store directly. Written exclusively by store.py under fcntl.flock + atomic os.replace (HARD-RULE 5: producers never write latest.json). Aggregates all promoted artifacts into a single flat symbol/occurrence/relationship view plus a path index and per-format accuracy numbers. Deterministic (sort_keys, stable ordering). Draft-07, lowercase types.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generation",
+    "promoted_at",
+    "artifacts",
+    "symbols",
+    "occurrences",
+    "relationships",
+    "refs",
+    "accuracy"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "generation": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic promote counter. Bumped once per successful promote under the flock."
+    },
+    "promoted_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC promote time, OR the 'SOURCE_DATE_EPOCH' sentinel when deterministic output is forced."
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "One entry per promoted artifact (content-addressed). Keyed by (content_sha256, pipeline_fingerprint).",
+      "items": { "$ref": "#/definitions/artifact_ref" }
+    },
+    "symbols": {
+      "type": "array",
+      "description": "Union of all symbols across promoted artifacts. Same content-addressed symbol from two artifacts appears once (deduped by symbol_id).",
+      "items": { "$ref": "#/definitions/catalog_symbol" }
+    },
+    "occurrences": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/catalog_occurrence" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/catalog_relationship" }
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_path"],
+      "properties": {
+        "by_path": {
+          "type": "object",
+          "description": "source_path -> list of symbol_ids. additionalProperties:true because paths are arbitrary keys.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "accuracy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-format gold-file accuracy (goldcheck.py). Drives advisory-by-default impact(): a format below precision_threshold keeps impact() flagged speculative.",
+      "required": ["precision_threshold", "by_format"],
+      "properties": {
+        "precision_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Default 0.85. A format clears authoritative impact() only when its call-edge precision >= this."
+        },
+        "by_format": {
+          "type": "object",
+          "description": "format -> {precision, recall, gold_program, advisory}. additionalProperties keyed by format name.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["precision", "recall", "advisory"],
+            "properties": {
+              "precision": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "recall": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "gold_program": { "type": "string" },
+              "advisory": {
+                "type": "boolean",
+                "description": "True when precision is null or below threshold; impact() must present results as speculative."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "pipeline_fingerprint", "format", "source_path", "line_count"],
+      "properties": {
+        "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "pipeline_fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "format": { "enum": ["cobol", "dsx", "etl"] },
+        "source_path": { "type": "string", "minLength": 1 },
+        "line_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "catalog_symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "kind", "name", "format"],
+      "properties": {
+        "symbol_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
+        "kind": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string" },
+        "container_symbol_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
+        "format": { "enum": ["cobol", "dsx", "etl"] },
+        "attributes": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "catalog_occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol_id", "role", "range", "confidence", "source_path"],
+      "properties": {
+        "symbol_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
+        "role": { "enum": ["definition", "reference"] },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_line", "end_line"],
+          "properties": {
+            "start_line": { "type": "integer", "minimum": 1 },
+            "end_line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "evidence_snippet": { "type": "string" },
+        "confidence": { "enum": ["grounded", "inferred", "speculative"] },
+        "confidence_reason": { "type": "string" },
+        "source_path": { "type": "string" }
+      }
+    },
+    "catalog_relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rel", "from_id", "to_id", "confidence"],
+      "properties": {
+        "rel": { "enum": ["contains", "calls", "reads", "writes", "copies", "references", "schedules"] },
+        "from_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
+        "to_id": { "type": "string", "pattern": "^codelib://sha256/[a-f0-9]{64}#sym/.+$" },
+        "evidence_line": { "type": "integer", "minimum": 0 },
+        "confidence": { "enum": ["grounded", "inferred", "speculative"] }
+      }
+    }
+  }
+}

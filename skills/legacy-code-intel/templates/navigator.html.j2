@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Intelligence Navigator — {{ store_label | e }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; line-height: 1.4; color: #222; }
+    header { background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%); color: white; padding: 16px 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { margin: 0; font-size: 1.4em; font-weight: 600; }
+    .meta { font-size: 0.85em; opacity: 0.92; margin-top: 4px; }
+    .accuracy-badge { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 12px; font-size: 0.82em; font-weight: 600; }
+    .accuracy-badge.advisory { background: #fde68a; color: #92400e; }
+    .accuracy-badge.cleared { background: #bbf7d0; color: #166534; }
+    main { padding: 16px 24px; max-width: 1400px; margin: 0 auto; }
+    .tiles { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+    .tile { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; min-width: 110px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .tile .label { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+    .tile .value { font-size: 1.6em; font-weight: 600; color: #222; margin-top: 4px; }
+    .tile.grounded .value { color: #1a73e8; }
+    .tile.inferred .value { color: #f9ab00; }
+    .tile.speculative .value { color: #d93025; }
+    section { margin: 24px 0; }
+    h2 { font-size: 1.2em; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; margin-top: 32px; }
+    #dag-container { width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
+    .controls { margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .controls button { padding: 6px 14px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; font-size: 0.9em; }
+    .controls button:hover { background: #f0f0f0; }
+    .controls button.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+    .controls input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; min-width: 220px; }
+    .banner { background: #fff3cd; border: 1px solid #ffeeba; padding: 10px 14px; margin: 12px 0; border-radius: 4px; color: #856404; font-size: 0.9em; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; background: white; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
+    th { background: #f5f5f5; font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; }
+    th:hover { background: #ebebeb; }
+    th::after { content: " \25B4\25BE"; opacity: 0.4; font-size: 0.7em; }
+    th.sorted-asc::after { content: " \25B4"; opacity: 1; }
+    th.sorted-desc::after { content: " \25BE"; opacity: 1; }
+    tr:hover td { background: #fafafa; }
+    tr.hidden-row { display: none; }
+    .conf-grounded { color: #1a73e8; font-weight: 500; }
+    .conf-inferred { color: #f9ab00; font-weight: 500; }
+    .conf-speculative { color: #d93025; font-weight: 500; }
+    .kind-tag { font-size: 0.78em; background: #ede9fe; color: #5b21b6; padding: 1px 7px; border-radius: 10px; }
+    .downloads { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .downloads a { padding: 6px 14px; border: 1px solid #7c3aed; color: #7c3aed; text-decoration: none; border-radius: 4px; font-size: 0.9em; }
+    .downloads a:hover { background: #7c3aed; color: white; }
+    .table-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
+    code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+    footer { padding: 16px 24px; color: #888; font-size: 0.85em; border-top: 1px solid #eee; margin-top: 32px; }
+    .legend { font-size: 0.82em; color: #555; margin: 6px 0; }
+    .legend span { margin-right: 14px; }
+  </style>
+</head>
+<body data-generation="{{ generation | e }}">
+  <header>
+    <h1>Code Intelligence Navigator — {{ store_label | e }}</h1>
+    <div class="meta">Generation: {{ generation | e }} | Artifacts: {{ counts.artifacts }} | Symbols: {{ counts.symbols }} | Extractor: legacy-code-intel {{ extractor_version | e }}</div>
+    <div>
+      {% for fmt in accuracy_formats %}
+      <span class="accuracy-badge {{ 'advisory' if fmt.advisory else 'cleared' }}">{{ fmt.format | e }}: call-edge precision {{ fmt.precision_display | e }}{% if fmt.advisory %} (ADVISORY){% else %} (cleared){% endif %}</span>
+      {% endfor %}
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>Summary</h2>
+      <div class="tiles">
+        <div class="tile"><div class="label">Artifacts</div><div class="value">{{ counts.artifacts }}</div></div>
+        <div class="tile"><div class="label">Symbols</div><div class="value">{{ counts.symbols }}</div></div>
+        <div class="tile"><div class="label">Occurrences</div><div class="value">{{ counts.occurrences }}</div></div>
+        <div class="tile"><div class="label">Relationships</div><div class="value">{{ counts.relationships }}</div></div>
+        <div class="tile grounded"><div class="label">Grounded</div><div class="value">{{ counts.grounded }}</div></div>
+        <div class="tile inferred"><div class="label">Inferred</div><div class="value">{{ counts.inferred }}</div></div>
+        <div class="tile speculative"><div class="label">Speculative</div><div class="value">{{ counts.speculative }}</div></div>
+      </div>
+    </section>
+
+    {% if banner_cdn_fallback %}
+    <div class="banner">CDN fallback in use: cytoscape.min.js loaded from unpkg.com. Vendor cytoscape into <code>visual-companion/templates/vendor/</code> for air-gap-safe deployments.</div>
+    {% endif %}
+
+    <section>
+      <h2>Relationship DAG</h2>
+      <div class="legend">
+        <span><strong>Confidence:</strong></span>
+        <span style="color:#1a73e8">— solid = grounded</span>
+        <span style="color:#f9ab00">– – dashed = inferred</span>
+        <span style="color:#d93025">· · dotted = speculative</span>
+      </div>
+      <div class="controls">
+        <button id="filter-all" class="active">All</button>
+        <button id="filter-grounded">Grounded only</button>
+        <button id="filter-no-spec">Hide speculative</button>
+        <button id="layout-cose" class="active">Layout: cose</button>
+        <button id="layout-grid">Layout: grid</button>
+      </div>
+      <div id="dag-container"></div>
+    </section>
+
+    <section>
+      <h2>Symbols ({{ counts.symbols }})</h2>
+      <div class="controls">
+        <input type="text" id="symbol-search" placeholder="Filter symbols by name / kind / format…" aria-label="Filter symbols">
+      </div>
+      <div class="table-wrap">
+        <table id="symbols-table">
+          <thead><tr><th>Name</th><th>Kind</th><th>Format</th><th>Defs</th><th>Refs</th><th>Symbol ID</th></tr></thead>
+          <tbody>
+          {% for s in symbols %}
+            <tr>
+              <td data-name="{{ s.name | e }}">{{ s.name | e }}</td>
+              <td><span class="kind-tag">{{ s.kind | e }}</span></td>
+              <td>{{ s.format | e }}</td>
+              <td>{{ s.def_count }}</td>
+              <td>{{ s.ref_count }}</td>
+              <td><code>{{ s.symbol_id | e }}</code></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Occurrences ({{ counts.occurrences }})</h2>
+      <div class="table-wrap">
+        <table id="occurrences-table">
+          <thead><tr><th>Symbol</th><th>Role</th><th>Path</th><th>Lines</th><th>Confidence</th><th>Evidence</th></tr></thead>
+          <tbody>
+          {% for o in occurrences %}
+            <tr>
+              <td>{{ o.symbol_name | e }}</td>
+              <td>{{ o.role | e }}</td>
+              <td><code>{{ o.source_path | e }}</code></td>
+              <td>{{ o.range.start_line | e }}–{{ o.range.end_line | e }}</td>
+              <td class="conf-{{ o.confidence | e }}">{{ o.confidence | e }}</td>
+              <td><code>{{ o.evidence_snippet | e }}</code></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Relationships ({{ counts.relationships }})</h2>
+      <div class="table-wrap">
+        <table id="relationships-table">
+          <thead><tr><th>From</th><th>Rel</th><th>To</th><th>Confidence</th></tr></thead>
+          <tbody>
+          {% for r in relationships %}
+            <tr>
+              <td>{{ r.from_name | e }}</td>
+              <td>{{ r.rel | e }}</td>
+              <td>{{ r.to_name | e }}</td>
+              <td class="conf-{{ r.confidence | e }}">{{ r.confidence | e }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Downloads</h2>
+      <div class="downloads">
+        <a href="symbols.csv">symbols.csv</a>
+        <a href="occurrences.csv">occurrences.csv</a>
+        <a href="relationships.csv">relationships.csv</a>
+        <a href="index.ndjson">index.ndjson</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Generated by <code>legacy-code-intel</code> | catalog generation <code>{{ generation | e }}</code> | impact() advisory until per-format gold precision clears {{ precision_threshold | e }}.
+  </footer>
+
+  {% if cytoscape_src %}
+  <script src="{{ cytoscape_src | e }}"></script>
+  <script>
+    (function() {
+      // Embedded Cytoscape elements (escaped JSON — < > & neutralised so user
+      // symbol names cannot break out of the script context). XSS HARD-RULE 4.
+      var elements = {{ cytoscape_elements_json | safe }};
+      var cy = cytoscape({
+        container: document.getElementById('dag-container'),
+        elements: elements,
+        layout: { name: 'grid' },
+        style: [
+          { selector: 'node', style: { 'background-color': '#7c3aed', 'shape': 'round-rectangle', 'label': 'data(label)', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '11px', 'width': 'label', 'padding': '6px' }},
+          { selector: 'edge[confidence="grounded"]', style: { 'line-color': '#1a73e8', 'target-arrow-color': '#1a73e8', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'width': 2, 'label': 'data(rel)', 'font-size': '8px', 'color': '#555' }},
+          { selector: 'edge[confidence="inferred"]', style: { 'line-color': '#f9ab00', 'target-arrow-color': '#f9ab00', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'line-style': 'dashed', 'width': 2, 'label': 'data(rel)', 'font-size': '8px', 'color': '#555' }},
+          { selector: 'edge[confidence="speculative"]', style: { 'line-color': '#d93025', 'target-arrow-color': '#d93025', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'line-style': 'dotted', 'width': 1.5, 'label': 'data(rel)', 'font-size': '8px', 'color': '#555' }}
+        ]
+      });
+      try { cy.layout({ name: 'cose', animate: false, nodeDimensionsIncludeLabels: true }).run(); }
+      catch (err) { cy.layout({ name: 'grid' }).run(); }
+
+      var bCose = document.getElementById('layout-cose');
+      var bGrid = document.getElementById('layout-grid');
+      if (bCose) bCose.addEventListener('click', function() { try { cy.layout({ name: 'cose', animate: false, nodeDimensionsIncludeLabels: true }).run(); } catch(e) { cy.layout({name:'grid'}).run(); } });
+      if (bGrid) bGrid.addEventListener('click', function() { cy.layout({ name: 'grid' }).run(); });
+      document.getElementById('filter-all').addEventListener('click', function() { cy.elements().style('display', 'element'); });
+      document.getElementById('filter-grounded').addEventListener('click', function() {
+        cy.edges('[confidence != "grounded"]').style('display', 'none');
+        cy.edges('[confidence = "grounded"]').style('display', 'element');
+      });
+      document.getElementById('filter-no-spec').addEventListener('click', function() {
+        cy.edges('[confidence = "speculative"]').style('display', 'none');
+        cy.edges('[confidence != "speculative"]').style('display', 'element');
+      });
+
+      // Table sorting (textContent only — never innerHTML). XSS HARD-RULE 4.
+      ['symbols-table', 'occurrences-table', 'relationships-table'].forEach(function(tableId) {
+        var t = document.getElementById(tableId);
+        if (!t) return;
+        var headers = t.querySelectorAll('th');
+        headers.forEach(function(h, idx) {
+          h.addEventListener('click', function() {
+            var tbody = t.querySelector('tbody');
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            var asc = !h.classList.contains('sorted-asc');
+            headers.forEach(function(o){ o.classList.remove('sorted-asc','sorted-desc'); });
+            h.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+            rows.sort(function(a, b) {
+              var av = a.cells[idx].textContent.trim();
+              var bv = b.cells[idx].textContent.trim();
+              var an = parseFloat(av), bn = parseFloat(bv);
+              if (!isNaN(an) && !isNaN(bn)) { return asc ? an - bn : bn - an; }
+              return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+            rows.forEach(function(r){ tbody.appendChild(r); });
+          });
+        });
+      });
+
+      // Client-side symbol filter (textContent matching only).
+      var search = document.getElementById('symbol-search');
+      if (search) {
+        search.addEventListener('input', function() {
+          var q = search.value.toLowerCase();
+          var rows = document.querySelectorAll('#symbols-table tbody tr');
+          rows.forEach(function(r) {
+            var hay = r.textContent.toLowerCase();
+            if (hay.indexOf(q) === -1) { r.classList.add('hidden-row'); }
+            else { r.classList.remove('hidden-row'); }
+          });
+        });
+      }
+    })();
+  </script>
+  {% else %}
+  <script>
+    (function() {
+      var c = document.getElementById('dag-container');
+      // textContent (never innerHTML) even for this static fallback message.
+      var d = document.createElement('div');
+      d.style.padding = '24px'; d.style.textAlign = 'center'; d.style.color = '#666';
+      d.textContent = 'DAG rendering unavailable: cytoscape.min.js not loaded (air-gap mode). The Symbols / Relationships tables below are fully populated.';
+      c.appendChild(d);
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

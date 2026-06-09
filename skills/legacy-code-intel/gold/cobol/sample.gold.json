@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "format": "cobol",
+  "program": "PAYROLL",
+  "source_fixture": "tests/fixtures/PAYROLL.cbl",
+  "description": "Hand-labeled ground-truth call-edges for PAYROLL.cbl. The accuracy oracle for legacy-code-intel's COBOL extractor (design §8). goldcheck.py computes call-edge precision/recall against this. Edges are identified by paragraph NAME (from_name -> to_name) so the gold is independent of any artifact content-hash. 'calls' covers both PERFORM (intra-program transfer) and CALL (inter-program). dynamic:true marks edges whose target is a data-name (must classify speculative, per HARD-RULE 2).",
+  "call_edges": [
+    { "from_name": "0000-MAIN-CONTROL", "to_name": "1000-INITIALIZE", "via": "PERFORM" },
+    { "from_name": "0000-MAIN-CONTROL", "to_name": "2000-PROCESS-EMPLOYEES", "via": "PERFORM" },
+    { "from_name": "0000-MAIN-CONTROL", "to_name": "9000-TERMINATE", "via": "PERFORM" },
+    { "from_name": "1000-INITIALIZE", "to_name": "1100-LOAD-TAX-TABLE", "via": "PERFORM" },
+    { "from_name": "2000-PROCESS-EMPLOYEES", "to_name": "2100-COMPUTE-PAY", "via": "PERFORM" },
+    { "from_name": "2100-COMPUTE-PAY", "to_name": "TAXCALC", "via": "CALL" },
+    { "from_name": "2100-COMPUTE-PAY", "to_name": "2200-WRITE-PAYSLIP", "via": "PERFORM" },
+    { "from_name": "2200-WRITE-PAYSLIP", "to_name": "WS-PROGRAM-NAME", "via": "CALL", "dynamic": true }
+  ],
+  "expected_paragraphs": [
+    "0000-MAIN-CONTROL",
+    "1000-INITIALIZE",
+    "1100-LOAD-TAX-TABLE",
+    "2000-PROCESS-EMPLOYEES",
+    "2100-COMPUTE-PAY",
+    "2200-WRITE-PAYSLIP",
+    "9000-TERMINATE"
+  ]
+}
