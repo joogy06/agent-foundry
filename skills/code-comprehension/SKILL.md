@@ -8,7 +8,7 @@ description: Use when you want a cheap, standing, read-only GENERATED comprehens
 A cheap, standing, **read-only** generated comprehension front-door. Turns an arbitrary code repo into a **generated, non-drifting** `PROJECT.md` + `docs/components/<id>/COMPONENT.md` — built from a bounded synthetic component partition + structural code edges + per-component LLM intent — so the front-door stops being hand-maintained prose that drifts.
 
 **Status:** PRODUCTION (D-A v1 ship).
-**Design document:** `/mnt/data/dev04/skill_factory/docs/plans/2026-06-08-generated-front-door-design.md` (read §12 → §13 → §11 → §1–§10).
+**Design document:** `/path/to/project/docs/plans/2026-06-08-generated-front-door-design.md` (read §12 → §13 → §11 → §1–§10).
 **Classification:** skill_text (Contract Map N/A). This skill is the *consumer* of synthetic contract-maps; it does not introduce a gated product surface.
 
 ## What this skill is for

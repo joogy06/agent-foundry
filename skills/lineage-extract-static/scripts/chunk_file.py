@@ -42,7 +42,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 # Defaults (env-overrideable per HARD-RULE 6)
 DEFAULT_INLINE_LIMIT_MB = int(os.environ.get("LINEAGE_INLINE_LIMIT_MB", "5"))
@@ -50,6 +50,12 @@ DEFAULT_INLINE_LIMIT_LINES = int(os.environ.get("LINEAGE_INLINE_LIMIT_LINES", "2
 DEFAULT_CHUNK_LINES = int(os.environ.get("LINEAGE_CHUNK_LINES", "2000"))
 DEFAULT_OVERLAP_LINES = int(os.environ.get("LINEAGE_OVERLAP_LINES", "50"))
 DEFAULT_HARD_LIMIT_MB = int(os.environ.get("LINEAGE_HARD_FILE_LIMIT_MB", "50"))
+
+# Structure-recovery chunking defaults (used by the structure-recovery skill,
+# which calls compute_chunk_boundaries with record-aware preferred_break_lines).
+# Kept here so the chunker is the single source of truth for the line caps.
+STRUCT_CHUNK_LINES = int(os.environ.get("STRUCT_CHUNK_LINES", "1500"))
+STRUCT_OVERLAP_LINES = int(os.environ.get("STRUCT_OVERLAP_LINES", "200"))
 
 DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "lineage-extract-static" / "runs"
 
@@ -91,6 +97,9 @@ def detect_language_hint(path: Path) -> str:
         "rb": "ruby",
         "cbl": "cobol",
         "cob": "cobol",
+        "cpy": "copybook",
+        "fd": "flat-file-layout",
+        "layout": "flat-file-layout",
         "jcl": "jcl",
         "md": "markdown",
         "html": "html",
@@ -169,27 +178,110 @@ def compute_chunk_boundaries(
     line_count: int,
     chunk_size_lines: int,
     overlap_lines: int,
+    preferred_break_lines: Optional[Sequence[int]] = None,
 ) -> list[tuple[int, int]]:
     """Return list of (start_line, end_line) tuples (1-indexed, inclusive)
     for the chunks. Overlap_lines is the carry-over: chunk N+1's start_line
     is chunk N's end_line + 1 - overlap_lines, clamped at >=1.
 
     For files with line_count <= chunk_size_lines, returns single tuple.
+
+    `preferred_break_lines` (default None — NOT a mutable []) is an optional,
+    sorted sequence of 1-indexed line numbers where a NEW structure record
+    begins (produced by boundary_hints.safe_break_lines). When None or empty,
+    behavior is BYTE-IDENTICAL to the original greedy chunker. When provided,
+    each greedy cut is snapped DOWN to the nearest preceding safe break so a
+    structure record is never bisected; the next chunk's overlap start is also
+    snapped to a record boundary so the carried-over header stays whole. A single
+    record larger than the chunk cap is NOT bisected — the chunk EXTENDS to hold
+    the whole record (an oversized chunk), and the caller (chunk_file) records
+    gap:record_exceeds_chunk for that span.
     """
     if line_count == 0:
         return [(1, 1)]  # empty file: one degenerate chunk
     if line_count <= chunk_size_lines:
         return [(1, line_count)]
 
-    boundaries: list[tuple[int, int]] = []
-    start = 1
-    while start <= line_count:
-        end = min(start + chunk_size_lines - 1, line_count)
-        boundaries.append((start, end))
+    # Fast path: no hints -> the exact original algorithm (byte-identical).
+    if not preferred_break_lines:
+        boundaries: list[tuple[int, int]] = []
+        start = 1
+        while start <= line_count:
+            end = min(start + chunk_size_lines - 1, line_count)
+            boundaries.append((start, end))
+            if end >= line_count:
+                break
+            # Next chunk starts overlap_lines back from end + 1
+            start = max(end + 1 - overlap_lines, start + 1)  # guarantee progress
+        return boundaries
+
+    # Record-aware path — RECORD-PACKING model.
+    #
+    # `breaks` are sorted, de-duped record-START line numbers (each already
+    # clamped to (1, line_count] by boundary_hints). The record-start list is
+    # therefore [1] + breaks; record r spans [rec_starts[r], rec_starts[r+1]-1]
+    # (the final record runs to line_count). We pack consecutive WHOLE records
+    # into a chunk while the span (measured from the chunk's first record start)
+    # stays within the cap; a single record larger than the cap becomes its own
+    # oversized chunk (caller emits gap:record_exceeds_chunk). For overlap, the
+    # next chunk begins at the record boundary that carries ~overlap_lines of the
+    # tail forward, while strictly advancing the chunk end.
+    breaks = sorted({b for b in preferred_break_lines if 1 < b <= line_count})
+    if not breaks:
+        # Hints supplied but none usable -> behave like the greedy fast path.
+        return compute_chunk_boundaries(line_count, chunk_size_lines, overlap_lines)
+
+    rec_starts = [1] + breaks  # strictly increasing record-start lines
+    n_recs = len(rec_starts)
+
+    def rec_end(idx: int) -> int:
+        """Inclusive last line of record idx."""
+        return (rec_starts[idx + 1] - 1) if idx + 1 < n_recs else line_count
+
+    boundaries = []
+    i = 0  # index of the first record in the current chunk
+    prev_end = 0
+    while i < n_recs:
+        chunk_start = rec_starts[i]
+        # Greedily extend through whole records while within the cap.
+        j = i
+        while (
+            j + 1 < n_recs
+            and (rec_end(j + 1) - chunk_start + 1) <= chunk_size_lines
+        ):
+            j += 1
+        end = rec_end(j)  # inclusive end of the last packed record
+
+        # Guarantee strict end progress (defensive — packing already advances).
+        if end <= prev_end:
+            end = max(end, prev_end + 1)
+        if end > line_count:
+            end = line_count
+        boundaries.append((chunk_start, end))
+        prev_end = end
         if end >= line_count:
             break
-        # Next chunk starts overlap_lines back from end + 1
-        start = max(end + 1 - overlap_lines, start + 1)  # guarantee progress
+
+        # Advance to the next record after the last one we packed.
+        next_i = j + 1
+        if next_i >= n_recs:
+            break
+
+        # Overlap: step back from the next record so ~overlap_lines of the tail
+        # are carried forward. Find the EARLIEST record start s.t. the carried
+        # span (end - rec_start + 1) <= overlap_lines, but never re-open a record
+        # we already fully covered before this chunk, and always advance past i.
+        if overlap_lines > 0:
+            back = next_i
+            while back - 1 > i and (end - rec_starts[back - 1] + 1) <= overlap_lines:
+                back -= 1
+            i = back
+        else:
+            i = next_i
+        # Forward-progress guard: the chunk's FIRST record must advance so ends
+        # keep increasing and the loop terminates.
+        if rec_starts[i] <= chunk_start:
+            i = next_i
     return boundaries
 
 
@@ -236,12 +328,20 @@ def chunk_file(
     inline_limit_lines: int = DEFAULT_INLINE_LIMIT_LINES,
     hard_limit_mb: int = DEFAULT_HARD_LIMIT_MB,
     cache_root: Path = DEFAULT_CACHE_ROOT,
+    preferred_break_lines: Optional[Sequence[int]] = None,
 ) -> dict:
     """Chunk a file. Returns the manifest dict that was written.
 
     Raises FileNotFoundError if file doesn't exist.
     Returns manifest with gap: oversized_file if file > hard_limit_mb (does
     not raise; caller decides whether to continue).
+
+    `preferred_break_lines` (default None — NOT a mutable []) is an optional
+    sorted list of safe record-start line numbers from
+    boundary_hints.safe_break_lines. When None/empty the chunker is
+    byte-identical to before. When provided, chunk cuts snap to record
+    boundaries; any chunk whose span still exceeds chunk_size_lines (a single
+    record larger than the cap) is recorded with gap:record_exceeds_chunk.
     """
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -316,10 +416,36 @@ def chunk_file(
 
     if is_chunked:
         line_boundaries = compute_chunk_boundaries(
-            line_count, chunk_size_lines, overlap_lines
+            line_count,
+            chunk_size_lines,
+            overlap_lines,
+            preferred_break_lines=preferred_break_lines,
         )
     else:
         line_boundaries = [(1, max(line_count, 1))]
+
+    # Record-aware gaps: when break hints were supplied, a chunk whose line span
+    # still exceeds the cap means a single structure record was larger than the
+    # chunk cap and was NOT bisected (oversized chunk). Record it as a gap rather
+    # than silently splitting the record. (No-op when preferred_break_lines is
+    # None/empty: the greedy chunker never produces an over-cap span.)
+    record_gaps: list[dict] = []
+    if preferred_break_lines:
+        for (start_line, end_line) in line_boundaries:
+            span = end_line - start_line + 1
+            if span > chunk_size_lines:
+                record_gaps.append(
+                    {
+                        "kind": "record_exceeds_chunk",
+                        "line": start_line,
+                        "description": (
+                            f"A single structure record spanning lines "
+                            f"{start_line}-{end_line} ({span} lines) exceeds the "
+                            f"chunk cap of {chunk_size_lines}; emitted as an "
+                            f"oversized chunk without bisecting the record."
+                        ),
+                    }
+                )
 
     # Compute byte boundaries
     byte_boundaries = get_byte_positions_for_chunks(file_path, line_boundaries)
@@ -374,7 +500,7 @@ def chunk_file(
         "chunk_count": chunk_count,
         "language_hint": language_hint,
         "binary": False,
-        "gaps": [],
+        "gaps": record_gaps,
         "chunk_size_lines": chunk_size_lines if is_chunked else None,
         "overlap_lines": overlap_lines if is_chunked else None,
     }
@@ -398,7 +524,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=DEFAULT_CACHE_ROOT,
         help=f"Cache root (default: {DEFAULT_CACHE_ROOT})",
     )
+    parser.add_argument(
+        "--preferred-break-lines",
+        default=None,
+        help="Optional record-aware safe break lines (from boundary_hints.py). "
+        "Either a comma-separated list of 1-indexed line numbers, or @PATH to a "
+        "file of newline-separated line numbers. Omit for byte-identical "
+        "(greedy) chunking. Format detection stays OUTSIDE this chunker.",
+    )
     args = parser.parse_args(argv)
+
+    preferred_break_lines: Optional[list[int]] = None
+    if args.preferred_break_lines:
+        spec = args.preferred_break_lines
+        try:
+            if spec.startswith("@"):
+                raw = Path(spec[1:]).read_text(encoding="utf-8").split()
+            else:
+                raw = [tok for tok in spec.replace(",", " ").split()]
+            preferred_break_lines = sorted({int(tok) for tok in raw if tok})
+        except (ValueError, OSError) as e:
+            print(f"ERROR: bad --preferred-break-lines value: {e}", file=sys.stderr)
+            return 1
 
     try:
         manifest = chunk_file(
@@ -410,6 +557,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             inline_limit_lines=args.inline_limit_lines,
             hard_limit_mb=args.hard_limit_mb,
             cache_root=args.cache_root,
+            preferred_break_lines=preferred_break_lines,
         )
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)

@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/structure-finding.v1.json",
+  "title": "structure-finding.v1",
+  "description": "structure-recovery per-chunk emission from the in-session AI CLI's LLM-as-parser analysis (model-neutral prompts under prompts/). Captures DECLARED structural facts for ONE chunk of ONE legacy artifact (SQL DDL/DML, DataStage .dsx read as text, COBOL source + copybook, or flat-file layout doc): the object kind, its qualified name, the declared field tree (name, ordinal, PIC clause, USAGE, declared/normalized type, OCCURS, REDEFINES, RENAMES, group/filler flags, level), declared relationships (PK/FK/join), and gap[] entries for honest disclosure of static-analysis lossiness. CRITICAL SAFETY INVARIANT (design §3.2 / §3.3 / §9 note 1): byte_offset and length on a chunk-level finding MUST be null — byte offsets are computed deterministically DOWNSTREAM by scripts/cobol_offset_calc.py from the declared level-tree, NEVER declared/guessed by the LLM. scripts/validate_finding.py enforces this rejection rule in pure Python (independent of the optional jsonschema library) before any finding is accumulated. The accumulated, offset-computed catalog is a SEPARATE contract: structure-index.v1.json.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "extractor_id",
+    "extractor_version",
+    "file_path",
+    "file_sha256",
+    "chunk_id",
+    "start_line",
+    "end_line",
+    "object_kind",
+    "qualified_name",
+    "fields",
+    "relationships",
+    "gaps",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "extractor_id": { "const": "structure-recovery" },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "SemVer of the extractor that produced this finding."
+    },
+    "file_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative path of the analyzed artifact. Path separator is forward slash on all platforms."
+    },
+    "file_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 of the entire file content (NOT the chunk). Part of the content-addressed store key."
+    },
+    "chunk_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1-indexed chunk number within the file. 1 for single-chunk (inline) artifacts; 0 reserved for file-level rollups produced by accumulate_structure.py."
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed start line of this chunk within the file."
+    },
+    "end_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed end line of this chunk within the file (inclusive)."
+    },
+    "object_kind": {
+      "enum": ["table", "view", "cobol_record", "flatfile_layout"],
+      "description": "Closed enum. table = SQL/DSX physical table or DataStage table-def. view = SQL CREATE VIEW. cobol_record = a COBOL 01-level record layout (incl. copybook). flatfile_layout = a positional/delimited flat-file layout document or .schema block."
+    },
+    "qualified_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "In-artifact identifier of the object. Examples: 'analytics.public.users' (SQL), 'CUSTOMER-RECORD' (COBOL 01-level), 'LANDING/customers.dat' (flat-file). Used as the cross-chunk/cross-file pairing key together with object_kind."
+    },
+    "fields": {
+      "type": "array",
+      "description": "Declared field/column tree for this object. Empty array is valid (e.g. a SELECT * view with no derivable schema, paired with a gap). For COBOL records the fields preserve the declared level hierarchy via the 'level' field and is_group/parent linkage.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "ordinal",
+          "byte_offset",
+          "length",
+          "confidence",
+          "evidence_kind",
+          "enforcement"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Declared field/column name verbatim. For FILLER items the LLM emits 'FILLER' and sets is_filler=true."
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0-indexed declaration order of this field within its parent group (COBOL) or within the table (SQL/flat-file). The pairing/dedup key together with name."
+          },
+          "byte_offset": {
+            "type": "null",
+            "description": "CRITICAL SAFETY INVARIANT: MUST be null at chunk level. The LLM NEVER declares or guesses a byte offset; cobol_offset_calc.py computes it deterministically downstream from the level-tree. validate_finding.py REJECTS any non-null value here (design §3.2 / §9 note 1). The ONLY exception in the pipeline is a flat-file finding with position_declared=true, which carries declared start/end offsets in declared_start/declared_end (NOT here) and is cross-checked at accumulate."
+          },
+          "length": {
+            "type": "null",
+            "description": "CRITICAL SAFETY INVARIANT: MUST be null at chunk level (same rationale as byte_offset). Computed downstream by cobol_offset_calc.py. validate_finding.py REJECTS any non-null value."
+          },
+          "level": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "maximum": 88,
+            "description": "COBOL level number (01, 05, 10, 49, 66 RENAMES, 77 elementary, 88 condition-name). null for non-COBOL (SQL/flat-file) fields. 88/66 levels are zero-byte (cobol_offset_calc.py treats them as occupying no storage)."
+          },
+          "pic_clause": {
+            "type": ["string", "null"],
+            "description": "COBOL PICTURE clause VERBATIM (e.g. 'S9(7)V99', 'X(30)', '9(4) COMP'). null for non-COBOL fields. cobol_offset_calc.py parses this to compute length; it is NEVER summarized by the LLM."
+          },
+          "usage": {
+            "type": ["string", "null"],
+            "description": "COBOL USAGE verbatim, with explicit DISPLAY when omitted and group USAGE propagated to children by the analyze-cobol prompt. Examples: 'DISPLAY', 'COMP-3', 'COMP', 'COMP-1', 'COMP-2', 'BINARY', 'INDEX', 'NATIONAL', 'POINTER'. null for non-COBOL fields."
+          },
+          "declared_type": {
+            "type": ["string", "null"],
+            "description": "Declared SQL/DSX type verbatim (e.g. 'VARCHAR(255)', 'NUMERIC(10,2)', 'TIMESTAMP'). null for COBOL (use pic_clause) unless a comment carries one."
+          },
+          "normalized_type": {
+            "type": ["string", "null"],
+            "description": "A best-effort cross-dialect normalized type label (e.g. 'string', 'integer', 'decimal', 'date', 'datetime', 'boolean', 'binary'). Advisory; derived from declared_type or pic_clause."
+          },
+          "nullable": {
+            "type": ["boolean", "null"],
+            "description": "True/false when explicitly declared (NOT NULL / NULL); null when undeclared/unknown."
+          },
+          "occurs": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "COBOL fixed OCCURS count (table dimension). For OCCURS DEPENDING ON, occurs is the maximum and occurs_depending_on names the controlling field. null when not an array."
+          },
+          "occurs_max": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Upper bound of an OCCURS DEPENDING ON range (the TO value). null when not ODO."
+          },
+          "occurs_depending_on": {
+            "type": ["string", "null"],
+            "description": "Name of the controlling field for OCCURS DEPENDING ON. Presence triggers gap:odo_variable_length and downstream byte_offset_min/byte_offset_max + variable_length:true (cobol_offset_calc.py REFUSES a single authoritative post-ODO offset — Codex Finding 1). null when not ODO."
+          },
+          "redefines": {
+            "type": ["string", "null"],
+            "description": "Name of the field this one REDEFINES (shares storage, non-additive: shares offset, does NOT advance the cursor; a larger redefines extends the group). null when not a redefinition."
+          },
+          "renames": {
+            "type": ["string", "null"],
+            "description": "For level-66 RENAMES items: the THRU range or single field renamed. Zero bytes. null when not a RENAMES item."
+          },
+          "is_group": {
+            "type": ["boolean", "null"],
+            "description": "True for COBOL group items (have children, no PIC). Group length = sum(children) computed downstream. null for non-COBOL."
+          },
+          "is_filler": {
+            "type": ["boolean", "null"],
+            "description": "True for COBOL FILLER items. null/false otherwise."
+          },
+          "sign_separate": {
+            "type": ["boolean", "null"],
+            "description": "True when the PIC carries SIGN ... SEPARATE (adds +1 byte for the sign — cobol_offset_calc.py). null/false otherwise."
+          },
+          "synchronized": {
+            "type": ["boolean", "null"],
+            "description": "True when the field is SYNCHRONIZED/SYNC. Triggers gap:sync_alignment downstream; cobol_offset_calc.py emits RANGED/UNKNOWN offsets, NEVER a confident without-slack value (Codex Finding 1). null/false otherwise."
+          },
+          "position_declared": {
+            "type": ["boolean", "null"],
+            "description": "Flat-file ONLY. True when a positional layout doc (Field|Start|End|Len|Type) explicitly declares byte positions; then declared_start/declared_end carry them (cross-checked against the computed sequence at accumulate; mismatch -> downgrade + gap). MUST be null/absent for SQL/DSX/COBOL (which never declare positions at chunk level)."
+          },
+          "declared_start": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Flat-file ONLY, valid ONLY when position_declared=true: declared 0-indexed (or doc-convention) start position. This is the LONE place a chunk-level finding may carry a position, and it is advisory until accumulate cross-checks it. null otherwise."
+          },
+          "declared_end": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Flat-file ONLY, valid ONLY when position_declared=true: declared end position. null otherwise."
+          },
+          "confidence": {
+            "enum": ["grounded", "inferred", "speculative"],
+            "description": "Per-field confidence (design §5). grounded = declared column/field literally present. inferred = name-resolution heuristic (e.g. INSERT column list, group-propagated USAGE). speculative = interpolation / dynamic / unresolved / COPY REPLACING downstream."
+          },
+          "evidence_kind": {
+            "enum": ["declared_constraint", "declared_column", "inferred_naming", "observed_usage"],
+            "description": "How the field/relationship was learned. declared_constraint = from a PK/FK/UNIQUE/NOT NULL clause. declared_column = from a CREATE/copybook column/field declaration. inferred_naming = from a naming convention (e.g. *_id). observed_usage = from DML/SELECT/usage rather than a declaration."
+          },
+          "enforcement": {
+            "enum": ["declared", "unknown"],
+            "description": "Whether enforcement is declared in the source. declared = the source states it (e.g. NOT NULL, FOREIGN KEY). unknown = static analysis cannot determine enforcement (the default for most inferred facts)."
+          },
+          "boundary_issue": {
+            "type": "boolean",
+            "description": "OPTIONAL. True iff this field came from an unpaired partial chunk; accumulate_structure.py forces it to speculative. Default false."
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Declared/inferred relationships sourced from THIS chunk. SQL PK/FK/UNIQUE -> declared_constraint. SQL JOIN ON -> kind=join (inferred, NOT fk). Convention *_id -> id is an inferred join hint. COBOL cross-record FKs are NEVER emitted at chunk level (they are a speculative, opt-in --infer-relationships cross-file concern — design §6 / K2). Empty array is valid.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "from_field", "evidence_kind", "enforcement", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["pk", "fk", "join", "unique"],
+            "description": "Closed enum. pk = primary key. fk = declared foreign key. join = a JOIN-ON relationship (inferred, advisory, NOT a declared fk). unique = unique constraint."
+          },
+          "from_field": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The field/column on this object participating in the relationship (or the comma-joined column list for a composite key, declared verbatim)."
+          },
+          "to_object": {
+            "type": ["string", "null"],
+            "description": "Qualified name of the referenced object (for fk/join). null for pk/unique or when the target is unresolved in this chunk."
+          },
+          "to_field": {
+            "type": ["string", "null"],
+            "description": "The referenced field on to_object (for fk/join). null when unresolved."
+          },
+          "evidence_kind": {
+            "enum": ["declared_constraint", "declared_column", "inferred_naming", "observed_usage"],
+            "description": "Same closed enum as fields[].evidence_kind. declared_constraint for PK/FK/UNIQUE clauses; inferred_naming for *_id conventions; observed_usage for JOIN ON."
+          },
+          "enforcement": {
+            "enum": ["declared", "unknown"],
+            "description": "declared when the source declares the constraint (FK/PK/UNIQUE); unknown for inferred/observed relationships."
+          },
+          "confidence": {
+            "enum": ["grounded", "inferred", "speculative"],
+            "description": "grounded for declared SQL FK/PK/UNIQUE and DSX key flags; inferred for *_id conventions and JOIN ON; speculative for COBOL cross-record (cross-file pass only) and dynamic targets."
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Honest disclosure of points where static structure extraction is fundamentally lossy. NOT errors — gaps say 'I saw something but cannot extract a confident structural fact'.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "line", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "unresolved_copybook",
+              "odo_variable_length",
+              "sync_alignment",
+              "select_star_no_schema",
+              "rcp_columns",
+              "dynamic_layout",
+              "record_exceeds_chunk",
+              "redaction_applied",
+              "binary_file",
+              "oversized_file",
+              "language_unsupported"
+            ],
+            "description": "Closed enum. unresolved_copybook = COBOL COPY member not resolvable in this chunk. odo_variable_length = OCCURS DEPENDING ON (variable record length). sync_alignment = SYNCHRONIZED slack makes a single offset unsafe. select_star_no_schema = SELECT * with no derivable column schema. rcp_columns = DataStage Runtime Column Propagation hides the schema. dynamic_layout = #PARAM#/templated layout. record_exceeds_chunk = a single structure record is larger than the chunk cap (set by chunk_file.py). redaction_applied = redact.py replaced content. binary_file / oversized_file / language_unsupported = chunker/dispatcher gaps."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed line of the gap site (file-relative, not chunk-relative)."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "One-line explanation. Examples: 'COPY CUSTOMER-CPY — member not in chunk', 'TABLE OCCURS 1 TO 50 DEPENDING ON N-ROWS', 'COMP-3 field is SYNCHRONIZED — alignment slack unknown'."
+          }
+        }
+      }
+    },
+    "confidence": {
+      "enum": ["grounded", "inferred", "speculative"],
+      "description": "Object-level confidence rollup for this finding (the most conservative tier among its fields/relationships, or the declared tier when the object itself is fully declared). design §5."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "OPTIONAL provenance pointer for the object as a whole (file:line). Per-field/per-relationship evidence is carried by evidence_kind; this is the object anchor used by the wiki/DDL renderers to cite file:line.",
+      "additionalProperties": false,
+      "required": ["file_path", "line"],
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-relative path (forward-slash) of the declaration site."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-indexed line of the object's declaration (file-relative)."
+        }
+      }
+    }
+  }
+}
