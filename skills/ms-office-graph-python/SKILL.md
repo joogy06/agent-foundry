@@ -190,7 +190,7 @@ Document the Application Access Policy in code comments or README — it's enfor
 Graph responses for collection endpoints (users, messages, files) are paged with `@odata.nextLink`. The SDK exposes async iteration:
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/msgraph-paging.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — pair with the Throttling pattern below and §15 Security Hardening; full references/ guide planned (v1.1).
 async for message in client.me.messages.get_async_iter(top=50):
     process(message)
 ```
@@ -267,7 +267,7 @@ Code that depends on the "no equivalent" rows must EITHER keep an `exchangelib` 
 For forensic / archival / migration work where talking to a live tenant is not possible or appropriate:
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/offline-mail.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — see the Security note below (size-guard, XXE/zip-bomb) and §15 Security Hardening; full references/ guide planned (v1.1).
 import extract_msg
 msg = extract_msg.Message("saved_email.msg")
 print(msg.sender, msg.to, msg.subject, msg.body[:100])
@@ -302,7 +302,7 @@ The Workflow URL is itself a secret — treat as a bearer token. (HARD-RULE 4 re
 ### Graph `chatMessage` POST
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/teams-graph-message.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — permission/consent notes below and §15 Security Hardening; full references/ guide planned (v1.1).
 from msgraph import GraphServiceClient
 from msgraph.generated.models.chat_message import ChatMessage
 from msgraph.generated.models.item_body import ItemBody
@@ -330,7 +330,7 @@ For Teams app permissions, RSC lets a Teams app request permissions on a per-tea
 SharePoint and OneDrive share the same Graph drive model. Sites, lists, libraries, drives, drive items.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/sharepoint-onedrive.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in §15 Security Hardening below; full references/ guide planned (v1.1).
 # Get the default drive of a SharePoint site by hostname / site path
 site = await client.sites.by_site_id("contoso.sharepoint.com:/sites/marketing").get_async()
 drive = await client.sites.by_site_id(site.id).drive.get_async()
@@ -349,7 +349,7 @@ For SharePoint list operations (custom-schema lists), the `lists` endpoint expos
 If `Mail.Send` via Graph isn't appropriate (legacy SMTP-only integrations), use OAuth XOAUTH2 — Microsoft disabled basic auth (username + password) for SMTP/IMAP/POP in Exchange Online in 2022.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/smtp-xoauth2.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — token-scope notes below and §15 Security Hardening; full references/ guide planned (v1.1).
 import smtplib, base64
 auth_string = f"user={USER_EMAIL}\x01auth=Bearer {ACCESS_TOKEN}\x01\x01"
 smtp = smtplib.SMTP_SSL("smtp.office365.com", 465)
@@ -380,7 +380,7 @@ Some endpoints / features ship later (or not at all) in sovereign clouds. Test p
 **Send an email via Graph as a daemon (service-to-service), with Application Access Policy enforcing per-mailbox scope** — the canonical M365-from-Python pattern.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/graph-send-mail-daemon.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in §15 Security Hardening below; auth detail in ms-office-enterprise-sso-python §6.4; full references/ guide planned (v1.1).
 import asyncio
 from azure.identity import CertificateCredential
 from msgraph import GraphServiceClient

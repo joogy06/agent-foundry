@@ -131,7 +131,7 @@ If the workflow legitimately needs to preserve macros (rare; high-trust internal
 **Read a `.docx`, modify a heading, write to a new file** — most common Word task.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/python-docx-patterns.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below; full references/ guide planned (v1.1).
 from docx import Document
 
 doc = Document("input.docx")

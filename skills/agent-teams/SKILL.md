@@ -17,7 +17,68 @@ You are NOT standalone. You are always invoked by forge or bob. Do not interact 
 You do NOT implement code. You orchestrate teams. If you catch yourself writing application code, STOP. Create a team and delegate.
 </HARD-RULE>
 
-## When delegation is unavailable (S030-quickwins #52)
+<HARD-RULE>
+Native `Task*` NEVER mirrors the ledger. `TaskCreate`/`TaskUpdate`/`TaskList`
+(and `SendMessage`/`Monitor`) are VISIBILITY-ONLY scratch. `progress/integration-ledger.md`
+and `.ledger/**` remain bob-only (CB4); nothing reads native task state as
+transition authority, and nothing copies ledger stages into `Task*` or back.
+Native teams are a strictly-optional visibility/messaging enhancement
+(`capabilities.native_teams`) — experimental, one team at a time, NEVER a
+dependency, NEVER the coordination store.
+</HARD-RULE>
+
+## Three backends (S055 — workflow-adoption keystone)
+
+agent-teams runs the SAME policy layer over three explicit, named backends. The
+backend is **feature-detected via `probe.sh get capabilities.*` ONLY** (never
+raw jq, never inline probing) AND the live context (`probe.sh context`):
+
+- **Part I — Policy layer** (backend-independent): dependency-graph analysis,
+  the parallelism-ratio kill rule, topology selection, sizing ceilings.
+  `contracts.md` + `deps.md` stay the durable cross-team ledgers in ALL backends.
+  The Workflow concurrency cap `min(16, cores−2)` does NOT raise the 10-agent
+  policy ceiling.
+- **Part II — Backend selection**:
+  - main loop + `capabilities.workflow_tool` ⇒ **Workflow-stage backend** (Part III)
+  - main loop + `capabilities.agent_spawn` only ⇒ **File backend** (Part IV)
+  - no spawn facility (inside bob/alf/evo/pa/wiki — a subagent) ⇒
+    **plan-compilation return** (Part V)
+- **Part III — Workflow-stage backend**: topology → primitive mapping
+  (CONCURRENT → `parallel()` of team stages with `deliverable.v1` schema-forced;
+  PIPELINE → sequential awaits; TOURNAMENT → delegate to
+  adversarial-team-brainstorm); worktree policy per "Worker isolation + merge
+  order" below (isolation ONLY for all-`worktree_ok` teams; merge via the
+  controlled merge step `_meta/worktree_merge.py`); NO inbox/outbox files in
+  this backend. Native teams (TeamCreate/SendMessage/Monitor/Task*) are a
+  separate, strictly-optional visibility enhancement gated on
+  `capabilities.native_teams` — never a dependency, never the coordination store.
+- **Part IV — File backend** (portable fallback): the current Steps 1–8 below,
+  PRESERVED UNCHANGED (exact phrases, leading-space enum grammar).
+- **Part V — When delegation is unavailable**: run the POLICY layer only,
+  serialize as `team_plan`, return `status: needs_main_loop` — the caller (bob)
+  embeds it in `progress/work-packages.yaml` and HALTs `needs: plan-execution`.
+  The last-resort serial-bob-with-checkpointing prose is retained below.
+
+### Worker isolation + merge order (Part III; S055 §6.6)
+
+CB4 protection for worker stages is FILESYSTEM-shaped, not prompt-only:
+
+1. **Every non-bob worker stage runs worktree-isolated** (`isolation:'worktree'`),
+   legal ONLY for WPs with `executor: worker` (which the `work-packages.v1`
+   schema constrains to `machinery: []` + `worktree_ok: true`). Machinery WPs
+   are canonical-tree bob stages, always.
+2. **Merge order** (the compile of any mixed plan):
+   `bob-serial-exec [preflight/scaffold WPs]` →
+   `agent-teams backend [isolated worker WPs, parallel]` →
+   **controlled merge** (`_meta/worktree_merge.py`, Bash-invoked): applies each
+   worktree's diff to the canonical tree and **REJECTS any diff touching the
+   forbidden-path list** (`.ledger/**`, `progress/integration-ledger.md`,
+   `.bob-checkpoint.md`, `progress/work-packages.yaml`, `.forge/session.key`,
+   `progress/workflow-runs.jsonl`) → `bob-serial-exec [verification/finalize WPs]`.
+   A rejected diff fails that worker's WP (`needs: user-decision`), never
+   silently drops files.
+
+## When delegation is unavailable (S030-quickwins #52 / Part V)
 
 Some Claude Code spawn contexts are configured WITHOUT the Task / Agent tool
 in the subagent. Confirmed empirically across S028 #45 spawn 1 and S029 retry
@@ -33,6 +94,19 @@ agent-teams. Symptoms:
 - Repeated team-lead spawns each fail at the same point in execution.
 - Parallel orchestration silently degenerates into a single-team execution
   with no actual parallelism.
+
+### Preferred remedy (S055): run POLICY only, return `needs_main_loop`
+
+When agent-teams runs inside a subagent (bob/alf/evo/pa/wiki) with no spawn
+facility, the FIRST-CHOICE remedy is NOT to flatten into serial bob spawns
+manually — it is to run the **POLICY layer only** (dependency analysis,
+topology, sizing, parallelism-ratio) and SERIALIZE that as a `team_plan`
+block, returning `status: needs_main_loop`. The caller (bob) embeds the
+`team_plan` in `progress/work-packages.yaml` (host-neutral DATA) and HALTs
+`needs: plan-execution`. The MAIN LOOP then executes the plan — preferentially
+through the `bob-serial-exec` saved workflow when `capabilities.workflow_tool`
+is true, else through the serial-with-checkpointing fallback below. This is the
+inversion-of-control flow: delegation flows UP, never down.
 
 ### Proven workaround: serial bob spawns with `.bob-checkpoint.md`
 
@@ -77,6 +151,16 @@ unresolved_conflicts: [ { description, teams_involved, options } ]
 ```
 
 ---
+
+---
+
+# Part IV — File backend (portable fallback)
+
+The Steps 1–8 below are the **File backend**: the portable, spawn-facility path
+preserved UNCHANGED from prior versions (exact phrases, leading-space enum
+grammar). When `capabilities.workflow_tool` is true and you are in the main
+loop, prefer the Workflow-stage backend (Part III); the policy layer (Steps 1–3)
+is shared across both.
 
 ## Step 1: Analyze Work Packages
 

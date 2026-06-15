@@ -45,6 +45,22 @@ You are an **evidence engine**, not a self-rewriting agent. Approved changes go 
 **Format 2 — Sweep:** `"Review all skills"` / `"Check all trading skills"`
 **Format 3 — Scheduled:** Same as sweep, reads/writes `.alf/` review history for delta detection.
 **Format 4 — Evergreen sweep (S041):** `alf --sweep <version|freshness|flow-pulse|full|flow-review> [scope] [--feeds <dir>]`. Consumes the deterministic detection feeds produced by the evergreening bus (`~/.claude/state/freshness/` + `inventory-history.jsonl`). Tier scope/feeds/budget come from `_meta/sweep-cadence.md`. Triggered by the SessionStart digest ("run the version sweep") or `_meta/alf_sweep_launcher.sh <tier>`.
+**Format 5 — Workflow-stage finder (S055):** triggered by `ALF_FORMAT: 5` in the stage prompt; ONE target (≤3 micro-batch); ALL inputs inline (feed excerpts + feed sha256 hashes + per-target token guidance). See "Format 5 — workflow-stage finder contract" below.
+
+### Format 5 — workflow-stage finder contract (S055)
+
+When the spawn prompt declares `ALF_FORMAT: 5`, this contract OVERRIDES Formats 1-4:
+
+| | Formats 1-4 | Format 5 |
+|---|---|---|
+| Context | conversational / sweep loop | single stage; ALL inputs in prompt |
+| Output | markdown Evolution Report | schema-forced `alf-finding-batch.v1` ONLY |
+| `.alf/` writes | alf writes reports/ledger/sweep | **NONE** — main loop is the single writer |
+| bob handoff | Step 5 (now inverted, below) | never; `handoff_requests[]` DATA |
+| Scope | target set, sequential | 1 target (≤3 micro-batch) |
+| Degradation | report-header note | `skipped[]` + `limits` (budget honesty, mirror of evo HR8) |
+
+Binding rules: output is the `alf-finding-batch.v1` schema object ONLY; **ZERO writes under `.alf/`** (the synthesis pipeline is the single consumer; the MAIN LOOP is the single `.alf/` writer for the run); NO bob handoff / handoff docs / tasks.md / pa_* — out-of-scope HIGH findings become `handoff_requests[]` data; HR5/HR6 verbatim (consume only prompted feed excerpts; every finding carries `feed_record` or local evidence); budget honesty (`skipped[]` + `limits`). The runtime test asserts a post-run `.alf/` mtime sweep (not only a grep-pin).
 
 ## Output Contract
 
@@ -125,7 +141,7 @@ Latency drop: minutes (3 model calls per dep) → seconds (1 deterministic JSON 
 **Fallback path** — for freshness claims the skill could NOT resolve (`gap_kind: deferred_offline` or `gap_kind: unknown`), or for non-dep references (APIs, tools, patterns), fall back to:
 - `/codex:rescue` (preferred) or raw `codex exec`: current stable version, deprecation status, breaking changes since target's version
 - `web-research` skill for claims that need triangulation (3+ sources for "X is outdated")
-- `mcp__gemini-cli__ask-gemini` with Google Search grounding for real-time freshness checks
+- `timeout 600 agy -p "..." < /dev/null` (Antigravity CLI, stdin closed per the #135 rule) for real-time freshness checks and large-context research
 - Official docs first, then community consensus
 - Mark any inference NOT backed by `dep-currency-check` output as `confidence_level: interpretive`
 
@@ -195,6 +211,25 @@ Entered only for an `alf --sweep <tier>` invocation. **Binding: Step 2g selects 
 
 Feeds are produced by the evergreening bus, never by alf. Every finding cites its feed record (HR6).
 
+**Governance sweep tier (S055, E's ask).** A governance advisory run joins the
+sweep tiers: a DETERMINISTIC launcher-side bash step (NOT a finder stage — it has
+no row in the §5.4 tier→args table) that runs `identity_check.py --watchlist` and
+an orphan-workflow check (a `workflows/README.md` row without a file, or a file
+without a row). It spawns no LLM stages; `sweep-cadence.md` gains a
+machine-readable `budget_tokens` column for the LLM tiers.
+
+**#126 re-scope (S055).** The v1.1 `claude -p` headless stub (launcher header +
+the commented block, the sweep-cadence v1.1 bullet, and the tasks.md #105
+pointer) is DELETED — the alf-sweep workflow is journaled, budgeted, and
+read-only at the finder level, so the concurrent-writer hazard the (never-built)
+flock lease guarded never arises. **#126 is RE-SCOPED to feed-write integrity
+only**: (a) atomic write-rename for every JSON feed producer (`rot_scan.py`,
+`freshness.py reindex`, `identity_check.py`, `drift_runner.py`); (b) a single-call
+flock around the `inventory-history.jsonl` append (the proven `_bob_claim_lock`
+shape, dodging the non-reentrant-flock lifecycle problem). Lock path
+`~/.claude/state/.locks/feeds.lock`. Dropped: persistent lease-holder,
+forge→bob handoff ordering, child inheritance — dead with their consumer.
+
 ### Step 3: Synthesize & Prioritize
 
 Apply 7 lenses to organize findings:
@@ -237,6 +272,22 @@ Top Priority Actions:
 ```
 
 ### Step 5: Handoff (skills/agents/code only, user-approved)
+
+**Step 5 execution-context inversion (S055).** Before spawning bob, check whether
+the agent-spawn facility is in YOUR tool list (capability phrasing per HN — the
+`Agent` tool on Claude Code; see env-adoption tool-mapping for Codex/Copilot):
+
+- **Present** (main loop): the existing direct spawn block (items 1-4 below)
+  runs verbatim.
+- **Absent** (the normal case — alf is itself a subagent): do NOT attempt a
+  spawn (a failed spawn is proof you are a subagent, not a retry candidate).
+  Instead, write an `agent-spawn-request.v1` to
+  `.alf/spawn-requests/<date>-<target>.yaml` (host-neutral DATA — the main-loop
+  consumer renders it into a spawn prompt, never executable; S052), report
+  `HANDOFF_PENDING`, and HALT. The main loop executes the request (direct spawn,
+  or `bob-serial-exec` when `capabilities.workflow_tool` is true). Step 6 gains
+  the re-invocation continuation line: on bob's return the main loop re-invokes
+  alf for the verify-handoff.
 
 1. Generate design doc at `docs/plans/YYYY-MM-DD-evolution-[target]-design.md`
 2. Include: changes, evidence citations, expected outcomes
@@ -314,7 +365,7 @@ Evidence: local observations (file-based) vs external findings (sourced + tiered
 Skills used: challenger, web-research, research-for-skills
 Efficacy telemetry (S039): query.py rollup --window 7d → efficacy-rollup.v1 (read-only; 4 metrics; honesty-gated thresholds in Step 2f)
 Codex plugin: /codex:adversarial-review (challenger), /codex:rescue (research)
-Gemini MCP: ask-gemini (large file analysis, research), brainstorm (ideation)
+Antigravity: timeout 600 agy -p "..." < /dev/null (large file analysis, research, ideation; gemini CLI retired 2026-06-18)
 History: .alf/reports/ + .alf/ledger.md
 Executor: bob (via design doc, not for products)
 ```

@@ -26,13 +26,13 @@ Respect rate limits. Confluence Cloud enforces per-user rate limits. Implement e
 export CONFLUENCE_BASE="https://yoursite.atlassian.net/wiki"
 export CONFLUENCE_USER="you@company.com"
 export CONFLUENCE_TOKEN="your-api-token"
-curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" "${CONFLUENCE_BASE}/rest/api/content?limit=5"
+curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" "${CONFLUENCE_BASE}/api/v2/spaces?limit=5"
 ```
 ```python
 import os, requests
 BASE = os.environ["CONFLUENCE_BASE"]
 AUTH = (os.environ["CONFLUENCE_USER"], os.environ["CONFLUENCE_TOKEN"])
-resp = requests.get(f"{BASE}/rest/api/content", params={"limit": 5}, auth=AUTH)
+resp = requests.get(f"{BASE}/api/v2/spaces", params={"limit": 5}, auth=AUTH)
 ```
 
 ### Personal Access Tokens (Data Center 7.14+) — Bearer token, no username
@@ -48,7 +48,7 @@ token_resp = requests.post("https://auth.atlassian.com/oauth/token", json={
     "client_secret": os.environ["OAUTH_CLIENT_SECRET"], "code": auth_code,
     "redirect_uri": "https://yourapp.com/callback"})
 access_token = token_resp.json()["access_token"]
-# Get cloud_id, then call: /ex/confluence/{cloud_id}/wiki/rest/api/content
+# Get cloud_id, then call: /ex/confluence/{cloud_id}/wiki/api/v2/pages
 ```
 
 | Credential Storage | Use Case |
@@ -59,22 +59,44 @@ access_token = token_resp.json()["access_token"]
 
 ## 2. API Versions
 
-**v1** (`/rest/api/content`) — fully supported on Cloud + Data Center. Offset pagination (`start`+`limit`).
-**v2** (`/api/v2/pages`) — Cloud-primary, cleaner responses, cursor pagination. Data Center support growing.
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: confluence-cloud-api-versions
+    verified_against: "v2 is the current Cloud API for pages/spaces; many v1 endpoints with v2 equivalents are deprecated on Cloud, removal rolling out endpoint-by-endpoint (deadlines repeatedly extended: 2024-12-02 -> 2025-03-31 -> 2025-04-30 -> per-endpoint dates into late 2026, e.g. contentbody/convert to 2026-08-05); CQL search has no announced deprecation; Data Center remains v1"
+    verified_on: "2026-06-10"
+-->
 
-| Use v1 when | Use v2 when |
+**v2 = Cloud default. v1 = Data Center default.**
+
+**v2** (`/api/v2/...` under the `/wiki` context, i.e. `https://yoursite.atlassian.net/wiki/api/v2/pages`) — the current API for Confluence Cloud: pages, spaces, blog posts, comments, attachments. Cleaner responses, cursor pagination (`limit` + `cursor`). NOT available on Data Center.
+**v1** (`/rest/api/...`) — the API for Data Center. On Cloud, v1 still serves CQL search (`/rest/api/search`, no announced deprecation) and some endpoints without v2 equivalents, but v1 content CRUD (`/rest/api/content`) is deprecated for Cloud (see note below). Offset pagination (`start`+`limit`).
+
+> **Deprecation note (verified 2026-06-10):** Atlassian has deprecated many Confluence Cloud v1 endpoints that have v2 equivalents — including `/rest/api/content` page CRUD. Announced removal deadlines were extended repeatedly (2024-12-02 → 2025-03-31 → 2025-04-30, then per-endpoint dates into late 2026, e.g. Convert content body to 2026-08-05); removal is rolling out endpoint-by-endpoint, NOT as a single cut-off, and some v1 groups (CQL search) have no deprecation plans. Do NOT build new Cloud integrations on v1 content CRUD; check the Confluence Cloud changelog for the current per-endpoint status before relying on any deprecated v1 endpoint. This deprecation does NOT apply to Data Center, where v1 remains the supported API.
+
+| Use v2 when (Cloud) | Use v1 when |
 |---|---|
-| Targeting Data Center | Cloud + need cursor pagination |
-| CQL search, content properties, macros | Building new Cloud integrations |
-| Need broadest compatibility | Endpoint exists in v2 |
+| Any Cloud pages/spaces CRUD (default) | Targeting Data Center (v2 unavailable there) |
+| Building new Cloud integrations | CQL search — no v2 equivalent |
+| Need cursor pagination on large result sets | Legacy Cloud scripts pending migration (deprecated — migrate) |
 
-Key v2 endpoints: `GET/POST/PUT/DELETE /api/v2/pages`, `GET /api/v2/spaces`, `GET /api/v2/pages/{id}/children`.
+Key v2 endpoints: `GET/POST/PUT/DELETE /api/v2/pages`, `GET /api/v2/spaces`, `GET /api/v2/pages/{id}/children`, `GET /api/v2/pages/{id}/versions`. With `CONFLUENCE_BASE` ending in `/wiki` (as in §1), call them as `${CONFLUENCE_BASE}/api/v2/...`.
 
 ## 3. Pages CRUD
 
 ### Create
 ```python
-# v1 — Cloud + Data Center
+# v2 — Cloud (default). v2 takes a numeric spaceId, NOT a space key —
+# resolve once: GET {BASE}/api/v2/spaces?keys=DEV → results[0]["id"]
+payload = {"spaceId": "98765", "status": "current", "title": "New Page",
+           "body": {"representation": "storage", "value": "<p>Content here.</p>"}}
+resp = requests.post(f"{BASE}/api/v2/pages", json=payload, auth=AUTH)
+
+# Child page — add parentId
+payload["parentId"] = "123456"  # parent page ID
+```
+```python
+# v1 — Data Center
 payload = {"type": "page", "title": "New Page", "space": {"key": "DEV"},
            "body": {"storage": {"value": "<p>Content here.</p>", "representation": "storage"}}}
 resp = requests.post(f"{BASE}/rest/api/content", json=payload, auth=AUTH)
@@ -85,16 +107,34 @@ payload["ancestors"] = [{"id": "123456"}]  # parent page ID
 
 ### Get by ID / Title
 ```bash
-# By ID with expanded fields
+# v2 — Cloud: by ID with body
+curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" \
+  "${CONFLUENCE_BASE}/api/v2/pages/123456?body-format=storage"
+# v2 — Cloud: by title (optionally scoped with space-id)
+curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" \
+  "${CONFLUENCE_BASE}/api/v2/pages?title=Meeting+Notes&space-id=98765"
+```
+```bash
+# v1 — Data Center: by ID with expanded fields
 curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" \
   "${CONFLUENCE_BASE}/rest/api/content/123456?expand=body.storage,version,ancestors"
-# By title in a space
+# v1 — Data Center: by title in a space
 curl -s -u "${CONFLUENCE_USER}:${CONFLUENCE_TOKEN}" \
   "${CONFLUENCE_BASE}/rest/api/content?title=Meeting+Notes&spaceKey=DEV&expand=version"
 ```
 
 ### Update (MUST increment version)
 ```python
+# v2 — Cloud (id is required in the body and must match the URL)
+page = requests.get(f"{BASE}/api/v2/pages/{page_id}",
+                    params={"body-format": "storage"}, auth=AUTH).json()
+update = {"id": str(page_id), "status": "current", "title": page["title"],
+          "version": {"number": page["version"]["number"] + 1},
+          "body": {"representation": "storage", "value": "<p>Updated.</p>"}}
+resp = requests.put(f"{BASE}/api/v2/pages/{page_id}", json=update, auth=AUTH)
+```
+```python
+# v1 — Data Center
 page = requests.get(f"{BASE}/rest/api/content/{page_id}",
                     params={"expand": "body.storage,version"}, auth=AUTH).json()
 update = {"version": {"number": page["version"]["number"] + 1}, "title": page["title"],
@@ -104,17 +144,23 @@ resp = requests.put(f"{BASE}/rest/api/content/{page_id}", json=update, auth=AUTH
 
 ### Delete / Archive / Move / Copy
 ```bash
+# v2 — Cloud
+curl -X DELETE "${CONFLUENCE_BASE}/api/v2/pages/123456"             # trash
+curl -X DELETE "${CONFLUENCE_BASE}/api/v2/pages/123456?purge=true"  # purge (page must already be trashed)
+# v1 — Data Center
 curl -X DELETE "${CONFLUENCE_BASE}/rest/api/content/123456"           # trash
 curl -X DELETE "${CONFLUENCE_BASE}/rest/api/content/123456?status=trashed"  # purge
 ```
 ```python
-# Move page under new parent
+# Move page under new parent — v1 only (no v2 equivalent as of 2026-06; works on Cloud + Data Center, verify current Cloud status)
 requests.put(f"{BASE}/rest/api/content/{page_id}/move/append/{target_parent_id}", auth=AUTH)
-# Copy page
+# Copy page — v1 only (same caveat)
 requests.post(f"{BASE}/rest/api/content/{page_id}/copy", auth=AUTH, json={
     "copyAttachments": True, "copyLabels": True,
     "destination": {"type": "parent_page", "value": "789012"}})
-# Page version history
+# Page version history — v2 (Cloud)
+resp = requests.get(f"{BASE}/api/v2/pages/{page_id}/versions", params={"limit": 10}, auth=AUTH)
+# Page version history — v1 (Data Center)
 resp = requests.get(f"{BASE}/rest/api/content/{page_id}/version", params={"limit": 10}, auth=AUTH)
 ```
 

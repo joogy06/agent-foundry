@@ -1,11 +1,11 @@
 ---
 name: codex-orchestration
-description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.4) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
+description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.5) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
 ---
 
 # Cross-Model Orchestration — Claude + Codex + Antigravity (agy)
 
-Delegate tasks to **Codex CLI (GPT-5.4)** and the **Antigravity CLI (`agy`)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
+Delegate tasks to **Codex CLI (GPT-5.5)** and the **Antigravity CLI (`agy`)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
 
 <HARD-RULE>
 Always check Codex availability before delegating. Read `tools.codex.installed` from `~/.claude/state/inventory.json` (written by `env-adoption` skill). If the inventory is missing, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check --inventory-only --silent` first. If `tools.codex.installed` is false, fall back to Claude Code agents.
@@ -60,7 +60,7 @@ The **Antigravity CLI** (`agy`) is this host's second-opinion / challenger / res
 **Headless single-prompt mode** is the direct analogue of the old `gemini -p`:
 
 ```bash
-timeout 600 agy -p "<prompt>" < /dev/null
+timeout 600 agy -p --sandbox "<prompt>" < /dev/null
 ```
 
 - **STDIN RULE (mandatory, #135):** `< /dev/null` on every headless agy call — agy reads
@@ -68,8 +68,12 @@ timeout 600 agy -p "<prompt>" < /dev/null
   hang at 0 bytes (`--print-timeout` does not protect; it guards only the print phase). Piped
   input (`cat file | agy -p`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same
   behavior class as `codex exec`'s stdin-block.
+- **SANDBOX RULE (mandatory for analyst/read-only delegation, #157):** `--sandbox` on every agy
+  call that should only READ — agy has write/shell/git tools by default, and an un-sandboxed
+  "analyst" can author and git-commit code (S052 rogue auto-commit incident). Omit `--sandbox`
+  only when the task explicitly requires writes, and say so in the prompt.
 - Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself remains an available fallback until Google retires it on 2026-06-18, but route new delegation through agy.)
-- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5 a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
+- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current 1.0.7) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
 - For long-running prompts raise the wait timeout: `agy -p --print-timeout 15m "<prompt>"` (default `5m0s`).
 - Append a `served_by` probe line to the prompt if you need provenance — self-reported model identity is unreliable, so capture it at the call layer.
 
@@ -79,25 +83,25 @@ timeout 600 agy -p "<prompt>" < /dev/null
 
 ```bash
 # Basic headless mode (plain-text stdout — no JSON output mode)
-agy -p "Review this code for security issues" < /dev/null
+agy -p --sandbox "Review this code for security issues" < /dev/null
 
 # With piped context
-cat src/main.py | agy -p "Find N+1 query problems"
+cat src/main.py | agy -p --sandbox "Find N+1 query problems"
 
 # Reference a workspace directory instead of piping (repeatable)
-agy -p --add-dir "$PROJECT_DIR" "Review for security issues in this project" < /dev/null
+agy -p --sandbox --add-dir "$PROJECT_DIR" "Review for security issues in this project" < /dev/null
 
 # Structured brainstorming — frame the methodology inside the prompt
-agy -p "Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately." < /dev/null
+agy -p --sandbox "Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately." < /dev/null
 
 # Parallel with Codex (triple-model validation)
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 AGY_WORK=$(mktemp -d /tmp/agy-XXXXXXXXXX)
 
-codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
-  -o "$CODEX_WORK/review.md" "Review for security issues" &
-agy -p --add-dir "$PROJECT_DIR" "Review for security issues in this project" \
-  > "$AGY_WORK/review.txt" &
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
+  -o "$CODEX_WORK/review.md" "Review for security issues" < /dev/null &
+timeout 600 agy -p --sandbox --add-dir "$PROJECT_DIR" "Review for security issues in this project" \
+  > "$AGY_WORK/review.txt" < /dev/null &
 wait
 ```
 
@@ -142,7 +146,7 @@ if [ "$MODE" = "bridge" ]; then
     "$PROMPT_BODY"
 else
   # Local path — agy returns plain text on stdout
-  agy -p "$PROMPT_BODY" < /dev/null
+  agy -p --sandbox "$PROMPT_BODY" < /dev/null
 fi
 ```
 
@@ -168,7 +172,7 @@ For COMPLEX tasks, run all three models for maximum coverage:
 | Model | Role | Strength |
 |-------|------|----------|
 | Claude (Opus 4.8) | Orchestrator, architect | 1M context, skills/agents, MCP, conversation memory |
-| Codex (GPT-5.4) | Challenger, code review | Independent perspective, web search, structured review output |
+| Codex (GPT-5.5) | Challenger, code review | Independent perspective, web search, structured review output |
 | Antigravity (`agy`) | Analyst, research | Independent third-model perspective, headless `agy -p` delegation, brainstorming |
 
 **Diverge → Challenge → Converge:**
@@ -183,11 +187,11 @@ For COMPLEX tasks, run all three models for maximum coverage:
 
 | Component | Version / Value |
 |---|---|
-| Codex CLI | v0.137.0 (`codex-cli`) |
-| Codex Plugin | v1.0.2 (`@openai/codex-plugin-cc`) |
-| Antigravity CLI | v1.0.5 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
-| Default Codex model | GPT-5.4 (migrated from GPT-5.2) |
-| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5 (no short `-m`), but omit `--model` unless explicitly needed |
+| Codex CLI | v0.139.0 (`codex-cli`) |
+| Codex Plugin | v1.0.4 (`@openai/codex-plugin-cc`) |
+| Antigravity CLI | v1.0.7 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
+| Default Codex model | GPT-5.5 (migrated from GPT-5.4) |
+| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5+ (current 1.0.7; no short `-m`), but omit `--model` unless explicitly needed |
 | Reasoning effort | xhigh |
 | Multi-agent | enabled |
 | Claude Code model | Claude Opus 4.8 (1M context) |
@@ -197,7 +201,7 @@ For COMPLEX tasks, run all three models for maximum coverage:
 
 ```toml
 # ~/.codex/config.toml (as of 2026-03-24)
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
@@ -206,13 +210,14 @@ multi_agent = true
 
 [notice.model_migrations]
 "gpt-5.2" = "gpt-5.4"
+"gpt-5.4" = "gpt-5.5"
 ```
 
 ### Available Models (2026)
 
 ```bash
 # Override model per-task
-codex exec -m gpt-5.4 ...        # default, strongest reasoning
+codex exec -m gpt-5.5 ...        # default, strongest reasoning
 codex exec -m o3 ...              # OpenAI reasoning model
 codex exec -m gpt-4.1 ...        # faster, lower cost
 codex exec --oss ...              # local open-source (Ollama/LMStudio)
@@ -220,9 +225,9 @@ codex exec --oss ...              # local open-source (Ollama/LMStudio)
 
 ### Cross-Model Advantage
 
-Claude Opus 4.8 (1M context) and GPT-5.4 have different strengths. Use both:
+Claude Opus 4.8 (1M context) and GPT-5.5 have different strengths. Use both:
 
-| Strength | Claude Opus 4.8 | GPT-5.4 via Codex |
+| Strength | Claude Opus 4.8 | GPT-5.5 via Codex |
 |---|---|---|
 | Context window | 1M tokens | ~256K tokens |
 | Tool ecosystem | MCP, skills, agents, Read/Edit/Grep | Shell, file I/O, web search |
@@ -266,14 +271,14 @@ echo "prompt" | codex exec -
 #   -o, --output-last-message FILE Write final response to file
 #   --json                         Stream JSONL events to stdout
 #   --output-schema FILE           Enforce structured JSON output
-#   -m, --model MODEL              Override model (default: gpt-5.4)
+#   -m, --model MODEL              Override model (default: gpt-5.5)
 #   -C, --cd DIR                   Set working directory
 #   -s, --sandbox MODE             read-only | workspace-write | danger-full-access
 #   --full-auto                    Sandboxed auto-execution
 #   -i, --image FILE               Attach image(s)
 #
 # Note: `--search` does NOT exist as a flag in current Codex CLI (verified 2026-04-08).
-# Codex web search is enabled automatically by GPT-5.4 tool use when the sandbox allows it.
+# Codex web search is enabled automatically by GPT-5.x tool use when the sandbox allows it.
 # Earlier versions of this skill mentioned --search; that was incorrect.
 ```
 
@@ -299,9 +304,9 @@ CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 
 # Delegate a research task, capture output
-codex exec --ephemeral --skip-git-repo-check \
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/research-output.txt" \
-  "Research the top 5 approaches to container orchestration for single-node production deployments."
+  "Research the top 5 approaches to container orchestration for single-node production deployments." < /dev/null
 
 # Read the result back into Claude Code
 # Read: $CODEX_WORK/research-output.txt
@@ -330,7 +335,7 @@ check_codex() {
 
   # Quick test (timeout after 10s)
   if ! timeout 10 codex exec --ephemeral --skip-git-repo-check \
-    -o /dev/null "Reply OK" 2>/dev/null; then
+    -o /dev/null "Reply OK" < /dev/null 2>/dev/null; then
     echo "UNAVAILABLE: codex auth/subscription issue"
     return 1
   fi
@@ -362,7 +367,7 @@ Never use `--dangerously-bypass-approvals-and-sandbox` or `danger-full-access` u
 | Delegate to Codex | Keep in Claude |
 |---|---|
 | Second opinion / challenger review | Primary implementation |
-| Web research (Codex's GPT-5.4 tool use does this automatically) | File editing / code writing |
+| Web research (Codex's GPT-5.x tool use does this automatically) | File editing / code writing |
 | Idea generation / brainstorming | Tool-heavy workflows (MCP, Grep, Read) |
 | Independent prototype exploration | Tasks needing conversation context |
 | Code review (codex review) | Tasks needing memory access |
@@ -435,14 +440,14 @@ For advanced patterns, templates, and examples, see:
 
 | Fact | Status |
 |---|---|
-| `codex exec --search` flag | **DOES NOT EXIST**. Codex web search is automatic via GPT-5.4 tool use when the sandbox allows. |
-| Codex CLI version | 0.137.0 (verified locally 2026-06-05 via `codex --version`; prompt-as-arg and `echo … \| codex exec -` patterns both re-confirmed working with `-o`) |
+| `codex exec --search` flag | **DOES NOT EXIST**. Codex web search is automatic via GPT-5.x tool use when the sandbox allows. |
+| Codex CLI version | 0.139.0 (verified locally 2026-06-10 via `codex --version`) |
 
 ## Gotchas
 
 | Gotcha | Mitigation |
 |---|---|
-| **`codex exec` blocks reading stdin in non-interactive shells.** If you invoke `codex exec` with no prompt argument (or with the explicit `-` stdin form) from a background / non-interactive shell, it hangs waiting on stdin instead of erroring out (observed 2026-06-04). | Always supply the prompt explicitly: either as the trailing arg (`codex exec "…"`) or piped (`echo "…" \| codex exec -` / `cat brief.md \| codex exec -`). Never leave stdin dangling in a background job; wrap with `timeout` so a hang is bounded. |
+| **`codex exec` blocks reading stdin in non-interactive shells — even with an argv prompt.** With no prompt argument (or the explicit `-` stdin form) it hangs waiting on stdin (observed 2026-06-04); #155 (S049) established that in background/harness shells `codex exec "<argv prompt>"` ALSO reads stdin to EOF and hangs to timeout. | Close stdin on EVERY headless invocation: `codex exec "…" < /dev/null` (argv form) or piped (`cat brief.md \| codex exec -` — the pipe EOFs). Always wrap with `timeout` so any residual hang is bounded. |
 | **Long-running Codex tasks may exit non-zero before writing synthesis** even when the research itself completes successfully. The `-o` output file may contain useful results despite a non-zero exit code. | Always check the output file before treating non-zero exit as fatal failure. Pattern: `codex exec ... -o "$OUT"; if [ -s "$OUT" ]; then echo "got result"; fi` |
 | `codex exec` with `--ephemeral` does NOT pollute history but the prompt is still in the running process — avoid secrets | Use env vars or file references. See HARD-RULE at top of file. |
 | Background Codex jobs via `/codex:review --background` need explicit polling | Use `/codex:status` and `/codex:result` to retrieve when done. |
@@ -451,6 +456,14 @@ For advanced patterns, templates, and examples, see:
 anchors:
   - kind: tool_version
     subject: codex
-    verified_against: "0.137.0"
-    verified_on: "2026-06-05"
+    verified_against: "0.139.0"
+    verified_on: "2026-06-10"
+  - kind: tool_version
+    subject: agy
+    verified_against: "1.0.7"
+    verified_on: "2026-06-10"
+  - kind: tool_version
+    subject: codex-plugin
+    verified_against: "1.0.4"
+    verified_on: "2026-06-10"
 -->

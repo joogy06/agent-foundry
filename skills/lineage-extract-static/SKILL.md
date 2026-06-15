@@ -1,6 +1,6 @@
 ---
 name: lineage-extract-static
-description: "Use when extracting data/process lineage from a codebase or file tree — Python/SQL/DSX/Control-M/dbt/COBOL/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Gemini CLI, Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\"."
+description: "Use when extracting data/process lineage from a codebase or file tree — Python/SQL/DSX/Control-M/dbt/COBOL/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Antigravity CLI (agy), Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\"."
 ---
 
 # lineage-extract-static — Cross-System Data/Process Lineage Skill
@@ -44,7 +44,7 @@ The skill is the **framework**, the in-session AI CLI is the **parser**. There a
 - **6 reference docs** in `references/*.md` — OL spec, confidence classifier, dataset identity, output formats, chunking strategy, anti-patterns.
 - **3 JSON schemas** in `schemas/` — lineage-finding.v1, lineage-manifest.v1, openlineage-2.0.2-vendored.
 
-Scripts have NO LLM calls. Prompts have NO Python code. The two halves are interoperable across Claude Code / Codex CLI / Gemini CLI / Copilot CLI because the prompts are model-neutral (HARD-RULE 8).
+Scripts have NO LLM calls. Prompts have NO Python code. The two halves are interoperable across Claude Code / Codex CLI / Antigravity CLI (agy) / Copilot CLI because the prompts are model-neutral (HARD-RULE 8).
 
 ## Invocation flow
 
@@ -111,7 +111,7 @@ lineage-extract-static diff <baseline.json> <head.json>
 
 7. **XSS-safe rendering.** Every user-controlled string (file paths, dataset names, evidence snippets) interpolated into HTML via `html.escape()` server-side + `textContent =` (never `innerHTML =`) client-side. Required test `test_html_escape_hostile_filenames` enforces this. Hostile filenames must NOT execute.
 
-8. **Cross-tool portability.** Prompts in `prompts/*.md` are model-neutral — no Anthropic-specific anchors, no Claude-only facets, no `<>` tags. Tested against Claude Code + Codex CLI + Gemini CLI + Copilot CLI.
+8. **Cross-tool portability.** Prompts in `prompts/*.md` are model-neutral — no Anthropic-specific anchors, no Claude-only facets, no `<>` tags. Tested against Claude Code + Codex CLI + Gemini CLI (pre-retirement) + Copilot CLI; the gemini CLI retired 2026-06-18 — use Antigravity CLI (agy) instead.
 
 ## Confidence taxonomy (bright-line classifier)
 
@@ -166,10 +166,10 @@ Basename-only merge is OFF by default. Behind `--merge-by-basename` flag (adviso
 Prompts in `prompts/*.md` are tested against all four AI CLIs:
 - Claude Code (Claude Opus 4.7)
 - Codex CLI (GPT-5.4)
-- Gemini CLI (Gemini 3.1 Pro)
+- Antigravity CLI (agy) — replaces Gemini CLI, retired 2026-06-18
 - Copilot CLI (GPT-5.4 backend)
 
-Run `verify-skill-portability.sh` from `~/.claude/skills/cross-tool-portability/` to confirm. HARD-RULE 8.
+Run `~/.claude/skills/research-for-skills/cross-tool-portability/scripts/verify-skill-portability.sh` to confirm. HARD-RULE 8.
 
 ## Composition with other skills
 

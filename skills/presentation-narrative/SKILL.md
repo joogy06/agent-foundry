@@ -13,13 +13,15 @@ right narrative flow, generating a structured slide outline with action titles
 and visual tags, and presenting it for approval before any visual work begins.
 
 **Scope:** Narrative flow selection, slide outline generation, audience
-adaptation, and content structuring. Does NOT handle visual design, export, or
-delivery — those are handled by siblings.
+adaptation, content structuring, and per-slide speaker notes (mandated by Hard
+Rule 8). Does NOT handle visual design, styling, or final assembly — those are
+handled by siblings.
 
 **Siblings:**
-- `presentation-visuals` — diagram/chart generation, slide styling, layout
-- `presentation-export` — file export (PPTX, PDF, Google Slides)
-- `presentation-delivery` — speaker notes polish, rehearsal tips, timing
+- `presentation-datavis` — charts, tables, data visualization, data-driven slides
+- `presentation-diagrams` — architecture diagrams, flowcharts, system visuals
+- `presentation-styling` — templates, branding, colour palettes, layout conventions
+- `presentation-renderer` — final assembly, PPTX/HTML export, format conversion
 
 ## Triggers
 
@@ -34,9 +36,10 @@ Invoke this skill when the user:
 
 | Need | Redirect to |
 |---|---|
-| Generating diagrams, charts, or visual assets | `presentation-visuals` |
-| Exporting to PPTX, PDF, or Google Slides | `presentation-export` |
-| Polishing speaker notes or rehearsal coaching | `presentation-delivery` |
+| Charts, data visualization, data-driven slides | `presentation-datavis` |
+| Architecture diagrams, flowcharts, system visuals | `presentation-diagrams` |
+| Template, branding, styling, layout conventions | `presentation-styling` |
+| Exporting to PPTX or HTML, final assembly | `presentation-renderer` |
 | Full end-to-end orchestration (intake to export) | `presentation-builder` (parent) |
 
 ---
@@ -146,7 +149,8 @@ Always produce the outline in this exact structure:
    Bad: "Q3 Revenue". Good: "Q3 Revenue Exceeded Target by 12%".
 4. **One idea per slide.** If a slide has two distinct points, split it.
 5. **Tag visual needs explicitly:** `[DIAGRAM]`, `[CHART]`, `[IMAGE]`,
-   `[TABLE]` — these tags drive parallel dispatch to `presentation-visuals`.
+   `[TABLE]` — these tags drive parallel dispatch: `[CHART]`/`[TABLE]` to
+   `presentation-datavis`, `[DIAGRAM]` to `presentation-diagrams`.
 6. **Use "professional" language** for banking/executive audiences and
    **"accessible" language** for mixed audiences.
 7. **Never exceed audience-appropriate slide count** without explicit user
@@ -186,10 +190,11 @@ Follow this sequence every time:
 - Iterate until the user approves.
 
 ### Step 6: Return to Parent
-- Pass the approved outline back to `presentation-builder` for dispatch to
-  `presentation-visuals` and `presentation-export`.
-- If invoked standalone (no parent), offer to generate speaker notes in detail
-  or hand off to sibling skills.
+- Pass the approved outline back to `presentation-builder` for parallel
+  dispatch to `presentation-datavis`, `presentation-diagrams`, and
+  `presentation-styling`, with final assembly by `presentation-renderer`.
+- If invoked standalone (no parent), offer to expand the speaker notes in
+  detail or hand off to sibling skills.
 
 ---
 

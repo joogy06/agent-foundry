@@ -18,15 +18,17 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Available models (may need updating as Google releases new versions)
+# Available models (verified LIVE against the API on 2026-06-10)
 MODELS = {
-    "flash-image": "gemini-3.1-flash-image-preview",   # Default - image gen & editing, low latency
+    "flash-image": "gemini-3.1-flash-image",            # Default - STABLE image gen & editing, low latency
+    "flash-image-preview": "gemini-3.1-flash-image-preview",  # Preview channel of the default
+    "pro-image": "gemini-3-pro-image",                  # Pro-tier image model (stable)
     "pro": "gemini-3.1-pro-preview",                    # Best quality, complex agentic workloads
     "flash-lite": "gemini-3.1-flash-lite-preview",      # Most affordable, high-volume
     "flash": "gemini-3-flash-preview",                   # Enhanced multimodal & coding
-    "pro-3": "gemini-3-pro-preview",                     # Previous gen pro — Expires 3/26/26
+    "pro-3": "gemini-3-pro-preview",                     # Previous gen pro (still served as of 2026-06-10)
 }
-DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+DEFAULT_MODEL = "gemini-3.1-flash-image"
 
 
 def generate(args):
@@ -120,9 +122,11 @@ def generate(args):
             if img_cfg_kwargs:
                 config_kwargs["image_config"] = types.ImageConfig(**img_cfg_kwargs)
 
-    # Thinking config — only when non-default
-    if args.thinking_level != "HIGH":
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=args.thinking_level)
+    # Thinking config — only when non-default. Valid API enum (SDK 2.8.0):
+    # MINIMAL | LOW | MEDIUM | HIGH ("NONE" was rejected with 400 INVALID_ARGUMENT).
+    thinking_level = "MINIMAL" if args.thinking_level == "NONE" else args.thinking_level
+    if thinking_level != "HIGH":
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
 
     config = types.GenerateContentConfig(**config_kwargs)
 
@@ -239,7 +243,8 @@ def generate_curl(args):
     # Only add imageConfig and thinkingConfig for Vertex AI (Gemini API doesn't support them)
     if not is_gemini_api:
         gen_config["imageConfig"] = image_config
-        gen_config["thinkingConfig"] = {"thinkingLevel": args.thinking_level}
+        # API enum: MINIMAL | LOW | MEDIUM | HIGH (no NONE)
+        gen_config["thinkingConfig"] = {"thinkingLevel": "MINIMAL" if args.thinking_level == "NONE" else args.thinking_level}
 
     request_body = {
         "contents": [{"role": "user", "parts": request_parts}],
@@ -333,12 +338,14 @@ def main():
     p = argparse.ArgumentParser(
         description="Vertex Banana - Image generation via Google Vertex AI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Models (use shorthand or full ID):
-  flash-image  gemini-3.1-flash-image-preview  (default, image gen & editing)
-  pro          gemini-3.1-pro-preview           (best quality)
-  flash-lite   gemini-3.1-flash-lite-preview    (fast, affordable)
-  flash        gemini-3-flash-preview            (general purpose)
-  pro-3        gemini-3-pro-preview              (previous gen pro)""",
+        epilog="""Models (use shorthand or full ID; verified live 2026-06-10):
+  flash-image          gemini-3.1-flash-image          (default, STABLE image gen & editing)
+  flash-image-preview  gemini-3.1-flash-image-preview  (preview channel)
+  pro-image            gemini-3-pro-image               (pro-tier image model, stable)
+  pro                  gemini-3.1-pro-preview           (best quality)
+  flash-lite           gemini-3.1-flash-lite-preview    (fast, affordable)
+  flash                gemini-3-flash-preview            (general purpose)
+  pro-3                gemini-3-pro-preview              (previous gen pro)""",
     )
     p.add_argument("prompt", help="Image generation or editing prompt")
     p.add_argument("-o", "--output-dir", default="./vertex-banana-output",
@@ -363,8 +370,8 @@ def main():
 
     # Generation config
     p.add_argument("--thinking-level", default="HIGH",
-                   choices=["NONE", "LOW", "MEDIUM", "HIGH"],
-                   help="Thinking level (default: HIGH)")
+                   choices=["MINIMAL", "LOW", "MEDIUM", "HIGH", "NONE"],
+                   help="Thinking level (default: HIGH; NONE is a legacy alias for MINIMAL)")
     p.add_argument("--temperature", type=float, default=1.0,
                    help="Temperature (default: 1.0)")
     p.add_argument("--top-p", type=float, default=0.95,

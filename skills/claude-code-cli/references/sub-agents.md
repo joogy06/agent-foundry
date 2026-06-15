@@ -241,6 +241,30 @@ Request a specific subagent by mentioning it in your command:
 > Ask the debugger subagent to investigate this error
 ```
 
+## Agent tool call-time options (2.1.170)
+
+When the main conversation spawns a subagent programmatically (the `Agent` tool, historically `Task`), the call itself accepts per-invocation options layered on top of the agent's file-level configuration:
+
+| Option | Effect |
+| :----- | :----- |
+| `name` | Names the spawned instance so it is addressable later — e.g. as a `SendMessage` recipient |
+| `team_name` | Groups the instance into a named team for multi-agent coordination |
+| `run_in_background: true` | Spawns asynchronously — the main loop keeps working and is auto-notified when the agent completes |
+| `isolation: 'worktree'` | Runs the agent in its own git worktree; the worktree is auto-cleaned if it ends up unchanged |
+| `mode` | Per-call permission mode: `plan`, `acceptEdits`, `dontAsk`, or `bypassPermissions` |
+| `model` | Per-call model override (alias or full model name) — beats the agent file's `model` field for that invocation |
+
+These are call-time knobs: the same agent definition can run foreground/synchronous in one call and background/worktree-isolated in the next.
+
+### CRITICAL: subagents cannot spawn subagents
+
+**Spawned-agent contexts do NOT have the `Agent`/`Task`/`Workflow` tools.** This is an officially documented hard restriction, not a permissions setting you can flip: delegation is exactly one level deep. A subagent that "decides" mid-run to fan out to its own helpers will simply find no spawning tool in its toolset.
+
+Practical consequences (and the documented reason for two local design decisions):
+
+* **The local `bob` agent uses serial-with-checkpointing**, not parallel team-lead spawning — bob's own context cannot create agent teams, so multi-WP work runs serially with `.bob-checkpoint.md` state tracking (see `custom-ecosystem.md`).
+* **Agents must invert control.** An agent that needs orchestration emits a *plan* (work packages, transition requests, structured TODO output) back to the main conversation, and the **main loop** does the actual spawning. Design agent prompts to return "here is what to spawn next", never "I will spawn it myself".
+
 ## Example subagents
 
 ### Code reviewer

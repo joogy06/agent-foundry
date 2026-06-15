@@ -1,6 +1,6 @@
 ---
 name: vertex-banana
-description: Use when the user asks to generate or edit images specifically via Google Vertex AI or Gemini image models — text-to-image generation, image editing, various aspect ratios and sizes. Fallback option when nano-banana is unavailable.
+description: Use when the user asks to create, generate, make, draw, design, or edit any image or visual content — blog featured images, YouTube thumbnails, icons, diagrams, patterns, illustrations, photos, visual assets, graphics, artwork, pictures. REQUIRED for all image generation requests — PRIMARY image skill (direct Google Vertex AI / Gemini image API via VERTEX_API_KEY, no gemini CLI dependency; SDK + models verified live 2026-06-10). Replaces nano-banana (legacy — gemini CLI retired 2026-06-18).
 allowed-tools: Bash(python3 *vertex_banana.py*), Bash(pip install *google-genai*), Bash(curl *aiplatform.googleapis.com*), Bash([ -n "$VERTEX_API_KEY" ]), Bash(ls *vertex-banana*), Bash(identify *)
 ---
 
@@ -153,7 +153,7 @@ EOF
 **Step 2: Send request**
 
 ```bash
-MODEL_ID="gemini-3.1-flash-image-preview"
+MODEL_ID="gemini-3.1-flash-image"
 
 curl -s -X POST \
   -H "Content-Type: application/json" \
@@ -190,15 +190,19 @@ print(f'{n} image(s) generated' if n else 'No images in response')
 
 ## Available Models
 
-> **Note:** These model IDs may need updating as Google releases new versions.
+> **Note:** All model IDs below verified LIVE against the API on 2026-06-10 (`client.models.list()`). They may still change as Google rotates previews.
 
 | Shorthand | Model ID | Description |
 |-----------|----------|-------------|
-| `flash-image` | `gemini-3.1-flash-image-preview` | **Default.** Image gen & editing, high quality, low latency |
+| `flash-image` | `gemini-3.1-flash-image` | **Default.** STABLE channel — image gen & editing, high quality, low latency |
+| `flash-image-preview` | `gemini-3.1-flash-image-preview` | Preview channel of the default |
+| `pro-image` | `gemini-3-pro-image` | Pro-tier image model (stable) |
 | `pro` | `gemini-3.1-pro-preview` | Best quality, complex agentic workloads |
 | `flash-lite` | `gemini-3.1-flash-lite-preview` | Most affordable, high-volume agents & large-scale data |
 | `flash` | `gemini-3-flash-preview` | Enhanced multimodal & coding capabilities |
-| `pro-3` | `gemini-3-pro-preview` | Previous gen pro — Expires 3/26/26 |
+| `pro-3` | `gemini-3-pro-preview` | Previous gen pro (still served as of 2026-06-10) |
+
+**Thinking level**: valid API values are `MINIMAL | LOW | MEDIUM | HIGH` (default HIGH). `NONE` is rejected by the API with 400 INVALID_ARGUMENT — the script maps the legacy `NONE` choice to `MINIMAL`.
 
 ## Common Sizes & Aspect Ratios
 
@@ -240,7 +244,7 @@ This skill replaces the older `nano-banana` skill (which used Gemini CLI + nanob
 | Problem | Solution |
 |---------|----------|
 | `VERTEX_API_KEY` not set | `export VERTEX_API_KEY="your-key"` |
-| `google-genai` not installed | `pip install --upgrade google-genai` |
+| `google-genai` not installed | `pip install --upgrade google-genai` (verified working on 2.8.0, 2026-06-10; 1.x also works) |
 | 429 RESOURCE_EXHAUSTED | Rate limit — wait and retry, or check quota in Cloud Console |
 | 400 INVALID_ARGUMENT | Try simplifying options or check model name |
 | 400 Multi-modal output not supported | Use `flash-image` model — only one supporting image output |
@@ -262,3 +266,15 @@ This skill replaces the older `nano-banana` skill (which used Gemini CLI + nanob
 | Sending requests without error handling for quota limits | Vertex AI has per-minute and per-day quotas; unhandled 429 errors crash the workflow | Implement exponential backoff retry; catch 429 responses; fall back to nano-banana or queue for later |
 | Using high-resolution output for web thumbnails | Unnecessarily large images waste bandwidth, slow page loads, and consume more API quota | Request appropriate resolution for the use case; downscale large outputs before serving on web |
 | Not validating prompt against content policy before submission | Policy violations return errors after consuming API quota; repeated violations may restrict account | Review prompts for policy compliance (no violent, explicit, or deceptive content); handle policy errors gracefully |
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: tool_version
+    subject: google-genai
+    verified_against: "2.8.0"
+    verified_on: "2026-06-10"
+  - kind: api_surface
+    subject: vertex-image-models
+    verified_against: "gemini-3.1-flash-image (stable default), gemini-3-pro-image, previews live"
+    verified_on: "2026-06-10"
+-->

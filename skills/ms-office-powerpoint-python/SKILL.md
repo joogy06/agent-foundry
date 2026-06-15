@@ -129,7 +129,7 @@ Always start layout-driven. Fall back to shape-driven only when the template doe
 **Open a template, create slides from data, save** — most common PowerPoint task.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/python-pptx-patterns.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below; full references/ guide planned (v1.1).
 from pptx import Presentation
 from pptx.util import Inches
 

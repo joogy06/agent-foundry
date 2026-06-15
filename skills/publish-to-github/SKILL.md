@@ -99,12 +99,30 @@ Steps Claude follows:
    - Update skill/agent counts.
    - Show the user the diff before committing.
 
-6. **Print git commands**
+6. **Publish gate — 3-tree `_meta` identity (S043 / #119 C2)**
+   - When staging to the agent-foundry public repo via `scripts/stage-to-public.sh`,
+     the script now reconciles the safety-critical `_meta` subset (`gates.py`,
+     `claims.py`, `identity_check.py`, `classify*.py`, the arbiter spawners, the
+     HARD-RULE scan/apply machinery, …) **from prod (`~/.claude`) into the public
+     repo BEFORE `git add`**, then runs:
+     ```bash
+     python3 ~/.claude/skills/_meta/gates.py G_IDENTITY <public_repo> \
+       --pair prod-foundry --strict --foundry-root <public_repo>
+     ```
+   - **Exit 2 BLOCKS the publish** — you cannot push a state that leaves the
+     published `_meta` drifted from prod. This is the *authoritative* check (it
+     lives in the script, not a hook, because `--no-verify` silently bypasses
+     hooks with no log — C7). The agent-foundry pre-push hook, if installed, is
+     verify-only defense-in-depth.
+   - This makes the standing prod-vs-agent-foundry lag **self-healing**: the next
+     publish reconciles it automatically.
+
+7. **Print git commands**
    - First publish: `git init` → `add` → `commit` → `remote add` → `push`
    - Re-publish: detect existing remote in config, print equivalent commands
    - Never auto-execute git commands without explicit user confirmation.
 
-7. **Print rollback / re-run instructions**
+8. **Print rollback / re-run instructions**
 
 ### `check` — security scan only
 
@@ -171,6 +189,14 @@ See `templates/publish-config.example.json` for the full schema. Top-level struc
 
 The `source.root` is the base directory the script walks. Defaults to `~/.claude`.
 The `source.subdirs` are the subdirectories to copy. Defaults to `skills` and `agents`.
+
+**S055 — `workflows` subdir (workflow-adoption keystone):** the saved-workflow
+library at `~/.claude/workflows/` publishes through the generic subdir walk
+(zero engine change — it is just another entry in `source.subdirs`). **No scrub
+rule may target `workflows/`** (G-W3): workflow files carry only
+ecosystem-relative paths (`progress/`, `.alf/`, `.ledger/`), so prod↔foundry is
+byte-identical. Scrubbing `workflows/` is exactly the self-watch divergence
+that tripped `identity_check` in the P0c false positive — do not add one.
 
 **Note on bundling directories**: When `bundle_files` points `source` at a directory, the recursive copy SKIPS hidden files (`.foo`) and underscore-prefixed files (`_bar`). To include such a file, add a per-file `bundle_files` entry pointing directly at it instead of its parent directory.
 

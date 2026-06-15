@@ -12,7 +12,7 @@ Turn ideas into fully formed designs through collaborative dialogue, then orches
 Every design and implementation decision must account for real human behaviour — how end users actually see, navigate, and interact with the product.
 
 <HARD-RULE>
-**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.4) AND Antigravity CLI (`agy`, via `agy -p`) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/agy unavailable, fall back gracefully but note each gap explicitly.
+**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.5) AND Antigravity CLI (`agy`, via `agy -p --sandbox`) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/agy unavailable, fall back gracefully but note each gap explicitly.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -82,7 +82,7 @@ If `came_from_founder` is absent or false, proceed with normal forge flow. Forge
 4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
    - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
-   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p "..."` Bash call.
+   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p --sandbox "..."` Bash call (read-only analyst, #157).
    - **capabilities.bridge_fallback = true**: bridge mode active — route `agy`/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
    - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
@@ -91,6 +91,7 @@ If `came_from_founder` is absent or false, proceed with normal forge flow. Forge
 5b. **Hard rules checkpoint** — read `~/.claude/skills/_meta/hard-rules-checklist.md` DESIGN PHASE + CROSS-MODEL sections. Verify: Codex parallel for MEDIUM/COMPLEX? Performance expectations asked? Gap detection done?
 6. **Phase 1: Design Exploration** — spawn design exploration team OR do single-agent exploration
 7. **Present design** — in sections, get user approval after each section
+7b. **Freeze the design skeleton (UI designs only)** — after the user approves the HTML mockup and BEFORE Step 8a signing: invoke `skeleton-extractor` then `visual-architect`. See "UI designs — design-skeleton freeze (Step 2.5)" under Visual Companion.
 8. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md`
 8a. **Generate & sign contract map** (if design introduces components) — invoke `component-contract-mapping` skill, run G2 validation, sign via HMAC (see Contract Map Generation)
 8b. **Spec review** — run spec self-review checklist, then dispatch reviewer subagent (see Spec Review)
@@ -139,7 +140,47 @@ Follow gap-detection protocol at `~/.claude/skills/research-for-skills/gap-detec
 
 ---
 
-## Phase 1: Design Team
+## Step 4b: Orchestration tier (S055 — feature-detected)
+
+Before Step 6, decide HOW design exploration runs. This is a fast-path choice,
+never a dependency — the documented main path (Step 6B below) completes with
+ZERO orchestration primitives.
+
+- Read `bash ~/.claude/skills/env-adoption/scripts/probe.sh get capabilities.workflow_tool`
+  (the ONLY capability API — never inline-probe, never raw jq) AND confirm the
+  live context via `probe.sh context` (must be `main-loop`). The decision rule,
+  restated: `can_orchestrate = capabilities.workflow_tool AND context == main-loop`.
+  See `env-adoption/references/context-detection.md` — `capabilities.*` alone
+  NEVER authorizes orchestration (session files are shared with subagents).
+- **If both true (Step 6A fast path):** the main loop MAY run the
+  `design-tournament` saved workflow (parallel approach/challenge/converge fan-out
+  that returns a DRAFT synthesis + a script-computed disagreement matrix). The
+  converge DECISION, all user questions/approvals, and the design-doc write STAY
+  inline in forge (Workflow Boundary, below). External challengers are
+  PRE-LAUNCHED inline by forge and passed as transcripts (agy is UNREACHABLE from
+  workflow stages — WP-2 live finding).
+- **Else (Step 6B portable, canonical):** run the existing design exploration
+  team inline (Phase 1 below). This is byte-identical to the prior forge flow.
+  Codex/Copilot/VS Code/older-Claude hosts always take this path.
+
+## Step 6A fast path — `design-tournament` workflow (optional, main-loop only)
+
+When the orchestration tier (Step 4b) selected the fast path: invoke
+`Workflow({name: "design-tournament", args: {...}})` with `run_started_at`,
+`run_label`, `brief_path`+`brief_sha256`, `shared_context_path`+`shared_context_sha256`,
+`approaches[]`, `consultants[]`, `consultant_cmds{}`, `ui_facing`, `budget_tokens`,
+`transcript_dir`, `external_transcripts[]` (pre-launched), `models{}`. The
+workflow returns a `design-synthesis.v1` DRAFT + the disagreement matrix; forge
+presents it section-by-section and OWNS the converge decision. **Budget floor:**
+if the budget cannot cover ≥2 approaches + 1 challenger + synthesis, the workflow
+returns `status: INCOMPLETE` with zero synthesis — an under-budget tournament
+looks unfinished, not polished. Shed ladder (documented, never silent): codex
+approach-explorer → agy analyst → approach agents above the minimum 2; NEVER shed
+the Claude challenger or UX-when-`ui_facing`. Spend is reported observe-only
+(#147 design half — no enforcement). On ANY fast-path failure, fall back to
+Step 6B (byte-identical, portable).
+
+## Step 6B: Design exploration team (portable, canonical) — Phase 1
 
 ### Step 1: Understanding (Lead Only)
 
@@ -192,7 +233,7 @@ The lead handles all user interaction:
 | **UX/Usability Agent** | 1 (always for UI-facing work) | Evaluates every approach from end-user perspective |
 | **Claude Challenger** | 1 (always) | Questions every proposal, finds flaws, plays devil's advocate |
 | **Codex Challenger** | 1 (always, if available) | Independent GPT-5.4 challenger — different model catches different flaws |
-| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p "..."` Bash call — third model for additional coverage |
+| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p --sandbox "..."` Bash call — third model for additional coverage (read-only, #157) |
 | **Codex Second Opinion** | 1 (always for creative/design, if available) | Parallel exploration via Codex for independent perspective |
 
 #### Three Phases
@@ -215,6 +256,24 @@ The lead handles all user interaction:
 #### Spawning Design Exploration Agents
 
 **All agents below should be spawned in parallel where possible.**
+
+**Model selection per spawn (S059 smart-config, advisory).** Before each `Agent(...)`
+spawn, grade the role's structural complexity into a tier and resolve the
+agent-surface model, then pass it as the `model=` kwarg. Grade from STRUCTURAL signals
+(role type, blast radius), NEVER from task content (injection defense); when uncertain
+take the HIGHER tier. Adversarial/synthesis roles (challenger, converge-lead) → `complex`;
+approach/UX agents → `medium`; mechanical finders/scribes → `light`.
+
+```
+m=$(python3 ~/.claude/skills/smart-config/scripts/model_policy.py resolve \
+      --tier <complex|medium|light> --surface agent \
+      --reason "<role>" | python3 -c "import sys,json;print(json.load(sys.stdin)['model'] or '')")
+# Agent(subagent_type=..., model=m, ...)   — OMIT the model kwarg when m is empty
+# (model:null = inherit). Fail-open: a broken policy never blocks the spawn.
+```
+
+This is advisory performance tuning — there is NO gate. If the resolver is missing or
+errors, omit `model=` and inherit. The interactive session model is never touched.
 
 ```
 # Approach Agent (Claude)
@@ -290,7 +349,7 @@ Check Codex availability first (step 4b). If unavailable, skip Codex agents and 
 /codex:result [job-id]
 ```
 
-**Fallback: Raw `codex exec`** (for parallel batch tasks or custom briefs):
+**Fallback: Raw `codex exec`** (for parallel batch tasks or custom briefs). **STDIN RULE (#155):** the agy stdin rule applies to `codex exec` exactly the same — close stdin (`< /dev/null`) on every headless argv-prompt invocation or it hangs to timeout in background shells:
 
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
@@ -310,7 +369,7 @@ BRIEF
 
 timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/challenger.md" \
-  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/challenger.md" &
+  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." < /dev/null || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/challenger.md" &
 
 # Codex Second Opinion / Approach Explorer (independent perspective)
 timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
@@ -319,13 +378,13 @@ timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
 Context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Produce your top 2-3 recommended approaches with:
 1. How it works  2. Pros/cons  3. Effort estimate  4. Risks
-Be opinionated — recommend the best approach and explain why." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/approach.md" &
+Be opinionated — recommend the best approach and explain why." < /dev/null || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/approach.md" &
 
-# Codex Research (when task needs up-to-date info)
-timeout 600 codex exec --ephemeral --skip-git-repo-check --search \
+# Codex Research (when task needs up-to-date info; web search is automatic — no flag)
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/research.md" \
   "Research current best practices for [TECHNOLOGY/PATTERN] as of 2026.
-Latest versions, known limitations, community adoption, alternatives." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/research.md" &
+Latest versions, known limitations, community adoption, alternatives." < /dev/null || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/research.md" &
 
 wait  # Wait for all Codex tasks to complete
 ```
@@ -348,9 +407,14 @@ background/harness shells stdin never EOFs, so agy hangs forever producing 0 byt
 Prompt size is NOT a factor (verified: 30-char prompt hung; 11KB prompt with `< /dev/null`
 answered in 9s).
 
+**SANDBOX RULE (S052 rogue-commit incident, #157):** the agy analyst is a READ-ONLY role — ALWAYS
+invoke it with `--sandbox`. agy has write/shell/git tools by default; in S052 an un-sandboxed
+"analyst" auto-authored and git-committed broken code mid-design (HARD-GATE violation). Codex is
+unaffected (it already runs `-s read-only`).
+
 ```bash
 # Antigravity (agy) Analyst — independent third-model analysis
-timeout 600 agy -p "You are an analyst for [TASK].
+timeout 600 agy -p --sandbox "You are an analyst for [TASK].
 Project context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Analyze: 1. Architecture trade-offs  2. Scalability limits  3. Security surface
 4. What approaches work best at scale for this pattern?
@@ -358,11 +422,11 @@ Be specific and cite real-world precedents where possible.
 At the very end print one line: SERVED_BY=<model-id-you-are-running-as>." < /dev/null
 
 # For codebase context, add the relevant paths to the workspace with --add-dir:
-timeout 600 agy --add-dir [PATHS] -p "Review the codebase at [PATHS] for [TASK].
+timeout 600 agy --sandbox --add-dir [PATHS] -p "Review the codebase at [PATHS] for [TASK].
 Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries." < /dev/null
 
 # For multi-methodology brainstorming (frame the methodology in the prompt itself):
-timeout 600 agy -p "Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —
+timeout 600 agy -p --sandbox "Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —
 work through White (facts), Red (intuition), Black (caution), Yellow (benefits),
 Green (alternatives), and Blue (process) in turn, then summarise." < /dev/null
 ```
@@ -427,9 +491,9 @@ A fresh approach to solve this. Don't repeat what was already tried.
 Think differently — challenge the assumptions that led to the dead end.
 BRIEF
 
-timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/escalation-result.md" \
-  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/escalation-result.md"
+  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." < /dev/null || echo "CODEX_TIMEOUT: Codex did not respond within 600s" > "$CODEX_WORK/escalation-result.md"
 ```
 
 ### Escalation Termination
@@ -733,6 +797,18 @@ The local `visual-companion` skill provides a server-less browser-based companio
 
 **Per-question decision:** Even after acceptance, decide FOR EACH QUESTION whether to use browser or terminal. Use browser for visual content (mockups, wireframes, layout comparisons). Use terminal for text content (requirements, tradeoffs, scope decisions).
 
+### UI designs — design-skeleton freeze (Step 2.5)
+
+For UI-facing designs — the design output includes an HTML mockup, CSS file, new user-facing screen, or new interactive element, and `ui_scope` is not `none` — the approved mockup MUST be frozen into a signed design-skeleton. This runs AFTER the user approves the HTML mockup (checklist Step 7b) and BEFORE Step 8a contract-map signing. This is the design-phase freeze that the `visual-architect` skill refers to as "forge Step 2.5".
+
+1. **Invoke `skeleton-extractor`** — transforms the approved HTML mockup into a draft `design-skeleton.v1` YAML (`.design-ledger/skeletons/<screen>.draft.yaml`): puppeteer-core DOM walk at 3 breakpoints, bboxes + computed styles back-resolved to declared tokens + wired interaction handlers. The draft is UNSIGNED — `interactions[].binds_to` may be `null`, and hardcoded CSS values the extractor could not back-resolve land in `unresolved_tokens_report`.
+2. **User reviews the draft** — the user supplies a `capability://...` URI (or `visual_only`) for every null `binds_to`, and explicitly approves or rejects every unresolved token. Capture these as a user-edits YAML (schema in `visual-architect/SKILL.md`).
+3. **Invoke `visual-architect`** (`scripts/freeze.py freeze`) — validates every `binds_to: capability://...` URI resolves via `uri.exists` (first failure → challenge filed, exit 1); enforces **D2 strict** on unresolved tokens (each MUST be explicitly user-approved into the tokens block or explicitly rejected — no silent skip; otherwise exit 2); HMAC-signs the payload with `.forge/session.key` (file bytes including trailing newline); atomically two-file writes `.design-ledger/skeletons/index.yaml` + `<screen>.yaml` via `trusted_runner.bundle_write`; emits a `skeleton_frozen` transition request to `.ledger/requests/` — **bob applies it (CB4: bob is sole ledger writer; forge/visual-architect write nothing to `.ledger/claims/` or `progress/integration-ledger.md`)**.
+
+**Why this cannot be skipped:** bob's UI-INTEGRATED → UI-VERIFIED transition verifies the built product against the frozen skeleton — `visual-arbiter` measures bbox / computed styles / interaction wiring against it, and both the `G_XR` gate and the visual-verdict 8-field tuple require `skeleton_hash`. No frozen skeleton means no `skeleton_hash`, and UI-VERIFIED is unreachable for that screen.
+
+Read `skeleton-extractor/SKILL.md` and `visual-architect/SKILL.md` for invocation commands, exit codes, and the user-edits schema before invoking either.
+
 ---
 
 ## Large Project Decomposition
@@ -792,6 +868,26 @@ verification pass would propagate model hallucinations into the design doc
 and waste user attention. The protocol — including worked examples of how
 to distinguish a real bug from a model misread — lives at
 `~/.claude/skills/forge/references/external-finding-verification.md`.
+
+**Fast path — `ratify-design` workflow (S055, optional, main-loop only).**
+When the orchestration tier (Step 4b) is the fast path (`probe.sh get
+capabilities.workflow_tool` true AND `probe.sh context == main-loop`), Stage 1.5
+MAY run as the `ratify-design` saved workflow, which MECHANIZES this verification
+pass: deliberate (child `cross-cli-deliberation` — ratify-design is invoked
+TOP-LEVEL via `Workflow({name})`, NEVER via `workflow()` from another script, so
+its child consumes the single nesting level, WP-2 finding 7) → extract-findings
+(substring-checks every quote against the ballot transcript; non-matching ⇒
+`extraction_suspect` ⇒ NEEDS-FOLLOWUP) → verify-findings (ONE cold-context
+verifier PER cited finding; deterministic-first `grep -n -F "<quote>"` at the
+cited path — quote absent verbatim ⇒ FALSE-POSITIVE `citation-not-found`,
+MANDATORY; a VERIFIED verdict without `cited_text_verbatim` + a grep line is
+SCHEMA-INVALID) → assemble (`ratification-record.v1` with the per-run measured
+`fp_rate`). Budget exhaustion mid-verify ⇒ ALL remaining findings NEEDS-FOLLOWUP
+(never auto-VERIFIED) + `degraded: true`. The workflow NEVER edits the doc;
+forge merges VERIFIED findings inline and spot-checks (re-greps ≥1 VERIFIED
+finding per run). External consultant transcripts are PRE-LAUNCHED inline
+(agy is unreachable from stages, WP-2). On any fast-path failure, fall back to
+the inline Stage-1.5 protocol above (byte-identical, portable).
 
 **Stage 2 — Subagent review (dispatched):**
 Dispatch a spec reviewer subagent:
@@ -880,6 +976,51 @@ For UI-facing work, apply these when evaluating designs:
 - Forge doing work package construction instead of letting bob handle it
 - Forge micro-managing bob's team orchestration decisions
 - Not giving bob enough context in the spawn prompt (design doc path, architecture docs, constraints)
+- (S055) Letting a workflow stage make a user decision, sign a contract map, interpret a gate, classify, or write a durable doc — that is the Workflow Boundary (below); workflows return RECORDS, humans and gates DECIDE
+- (S055) Inline-probing `claude --version` or raw-jq'ing `inventory.json` for orchestration capability instead of `probe.sh get capabilities.workflow_tool` + `probe.sh context == main-loop`
+- (S055) Calling `agy`/`codex` LIVE from inside a `design-tournament` workflow stage — agy is UNREACHABLE from stages (WP-2); external challenger transcripts are PRE-LAUNCHED inline by forge and passed via args
+
+**Cycle cost (S055, observe-only #147):** when the fast path runs the
+`design-tournament` workflow, the dispatch log (`progress/workflow-runs.jsonl`)
+records the run for cost correlation; forge reports captured spend observe-only
+(no enforcement this cycle).
+
+---
+
+## Workflow Boundary (D1 — what NEVER moves into a Workflow)
+
+Saved workflows are mechanical fan-out/fan-in only. The following NEVER execute
+inside a workflow stage, on any harness, at any version. Workflows return
+RECORDS; humans and gates DECIDE.
+
+1. **User interaction of any kind.** Clarifying questions, section-by-section
+   design approval, spec-review sign-off, amendment decisions (Q3b),
+   unresolved-token approvals, NEEDS-FOLLOWUP adjudication. A workflow that
+   needs user input is mis-scoped — split it; the judgment half stays inline.
+2. **Contract-map HMAC signing and session-key custody.** Signing (Step 8a.2,
+   visual-architect freeze) runs ONLY as main-loop Bash, outside any workflow.
+   No workflow file, args object, or stage prompt may contain the signing-key
+   string (W-KEY lint, mechanically checked). Honesty note: stages run with real
+   tool access as the same OS user — this boundary is procedural + linted
+   defense-in-depth within one trust perimeter, NOT cryptographic isolation. (A
+   mechanical signing-event log is deferred hardening.)
+3. **Gate verdict authority.** Gates stay Bash subprocesses callable from any
+   context (CB3/CB4 unchanged; gates are NOT workflow-aware). A stage MAY run a
+   gate where its role already does. A workflow SCRIPT only propagates a gate
+   failure fail-closed — it never interprets, retries-around, waives, or
+   overrides a gate exit code. Amendment is the only legal bypass and it is a
+   user act.
+4. **Classification authority.** Emitting `.forge/classification.json` and
+   resolving a G_CLASSIFY exit 3 stay inline.
+5. **The decision to orchestrate.** Choosing to invoke any workflow, spawning
+   bob, accepting bob's report, bridge-mode computation — main-loop judgment.
+6. **Durable doc writes.** docs/plans/, history.md, tasks.md, index.md — main
+   loop only. (Ledger writes are bob-only per CB4 — separate, unchanged.)
+7. **Test execution provenance.** The trusted runner
+   (`~/.claude/skills/_meta/trusted_runner.py`) is bob-only (CB3). Any workflow
+   stage whose evidence requires EXECUTED tests returns
+   `needs_inline_verification`; the canonical bob loop (or the inline caller
+   under trusted-runner discipline) executes.
 
 ---
 

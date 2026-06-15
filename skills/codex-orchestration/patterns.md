@@ -6,13 +6,17 @@ Reference file for advanced Codex integration patterns. Load when needed — the
 
 ## Handover Patterns via Session-Scoped Temp Directories
 
+> **STDIN RULE (#155/#135):** every headless `codex exec` with an argv prompt MUST close stdin
+> (`< /dev/null`) and carry a shell `timeout` — in background/harness shells codex reads non-TTY
+> stdin to EOF and hangs otherwise. Piped forms (`cat brief | codex exec -`) are inherently safe.
+
 ### Pattern 1: Claude → Codex → Claude (Simple)
 
 ```
 1. CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 2. Claude writes context to $CODEX_WORK/task.md
-3. Claude calls: codex exec --ephemeral -o "$CODEX_WORK/result.md" \
-     "Read $CODEX_WORK/task.md and follow the instructions inside"
+3. Claude calls: timeout 600 codex exec --ephemeral -o "$CODEX_WORK/result.md" \
+     "Read $CODEX_WORK/task.md and follow the instructions inside" < /dev/null
 4. Claude reads $CODEX_WORK/result.md
 5. Claude integrates findings into its response
 ```
@@ -53,10 +57,10 @@ Write your findings to this file, replacing its contents.
 BRIEF
 
 # Step 2: Codex processes the brief
-codex exec --ephemeral -C /path/to/project \
+timeout 600 codex exec --ephemeral -C /path/to/project \
   -s read-only \
   -o "$CODEX_WORK/challenger-result.md" \
-  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review described within. Read any files referenced in the brief."
+  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review described within. Read any files referenced in the brief." < /dev/null
 
 # Step 3: Claude reads the result
 # Read: $CODEX_WORK/challenger-result.md
@@ -71,22 +75,22 @@ CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 # Each writes to its own output file
 
 # Task 1: Research
-codex exec --ephemeral --skip-git-repo-check \
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/research.md" \
-  "Research best practices for PostgreSQL connection pooling with PgBouncer" &
+  "Research best practices for PostgreSQL connection pooling with PgBouncer" < /dev/null &
 PID1=$!
 
 # Task 2: Code review
-codex exec --ephemeral -C /path/to/project \
+timeout 600 codex exec --ephemeral -C /path/to/project \
   -s read-only \
   -o "$CODEX_WORK/review.md" \
-  "Review src/database.ts for connection leak risks and suggest fixes" &
+  "Review src/database.ts for connection leak risks and suggest fixes" < /dev/null &
 PID2=$!
 
 # Task 3: Idea generation
-codex exec --ephemeral --skip-git-repo-check --search \
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/ideas.md" \
-  "Generate 5 alternative approaches to rate limiting in a Node.js API. Include pros/cons." &
+  "Generate 5 alternative approaches to rate limiting in a Node.js API. Include pros/cons." < /dev/null &
 PID3=$!
 
 # Wait for all to complete
@@ -108,10 +112,10 @@ wait $PID1 $PID2 $PID3
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 
 # Use --json to monitor progress in real time
-codex exec --ephemeral --skip-git-repo-check --json \
+timeout 1200 codex exec --ephemeral --skip-git-repo-check --json \
   -C /path/to/project \
   "Comprehensive security audit of this project" \
-  2>/dev/null > "$CODEX_WORK/audit-events.jsonl" &
+  2>/dev/null > "$CODEX_WORK/audit-events.jsonl" < /dev/null &
 CODEX_PID=$!
 
 # Monitor progress (from Claude Code or another terminal)
@@ -149,11 +153,11 @@ Steps:
 EOF
 
 # In the Codex prompt, instruct it to update the progress file:
-codex exec --ephemeral -C /path/to/project \
+timeout 1200 codex exec --ephemeral -C /path/to/project \
   -s workspace-write \
   --add-dir "$CODEX_WORK" \
   -o "$CODEX_WORK/audit-result.md" \
-  "Perform a security audit. Update $CODEX_WORK/task-progress.md after completing each step. Mark steps with [x] as you go."
+  "Perform a security audit. Update $CODEX_WORK/task-progress.md after completing each step. Mark steps with [x] as you go." < /dev/null
 ```
 
 ---

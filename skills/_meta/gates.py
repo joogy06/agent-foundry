@@ -200,6 +200,28 @@ CONTRACT_SCOPE_CRITICAL_GLOBS: Tuple[str, ...] = (
 
 
 # ---------------------------------------------------------------------------
+# CONTRACT_SCOPE_UNDECIDED_EMIT_CAP — #61 explosion guard (design §C1 / F1).
+#
+# Per-invocation cap on NON-CRITICAL (advisory) undeclared paths emitted as
+# individual `undecided` scope_delta records. A sparse contract-map against a
+# large repo can produce thousands of advisory records in a single run (the
+# 2026-05-13 burst of 2,691; #61). When the number of NEW advisory paths in
+# one invocation exceeds this cap, the gate emits ONE summary record
+# (path="<scope-overflow>") instead of the per-path flood, preserving the
+# signal (undeclared scope exists) without the record explosion.
+#
+# Critical-glob matches are NEVER capped — they always emit individually and
+# still block (exit 2). Only advisory bulk is summarized.
+# ---------------------------------------------------------------------------
+
+CONTRACT_SCOPE_UNDECIDED_EMIT_CAP = 50
+
+# Sentinel path for the C1 summary/overflow record. Deduped on
+# (path="<scope-overflow>", severity) so it emits once per pending state.
+CONTRACT_SCOPE_OVERFLOW_PATH = "<scope-overflow>"
+
+
+# ---------------------------------------------------------------------------
 # G1 — contract map exists, signed, AND bound to the ledger
 # ---------------------------------------------------------------------------
 
@@ -2738,16 +2760,19 @@ def check_G_CONTRACT_SCOPE(
     import extractors as _extractors  # noqa: E402
     import scope_delta as _scope_delta  # noqa: E402
 
-    # S030 #61: per-invocation dedup. Build the set of pre-existing undecided
-    # records ONCE so we can skip re-emitting on every invocation.
-    # Dedup key is (path, content_hash, severity). A change in any field
-    # (e.g. file mutated, severity escalated, status moved off-undecided)
-    # MUST produce a fresh record.
+    # S030 #61 (C2 hot-file-churn fix): per-invocation dedup. Build the set of
+    # pre-existing undecided records ONCE so we can skip re-emitting on every
+    # invocation. Dedup key is (path, severity) — content_hash is INTENTIONALLY
+    # NOT in the key. An `undecided` record means the path is already pending a
+    # user decision; a later content change at the same (path, severity) needs
+    # no new pending entry (this stopped the integration-ledger.md ×16 churn).
+    # Severity IS still a key field, so an advisory→critical escalation still
+    # emits a fresh record. Status moved off-undecided (excluded/amended) is
+    # intentionally not in this set, so resolved findings re-flag if they recur.
     existing_undecided_keys: set = set()
     for _rec in _scope_delta.read_records(project_root, status_filter="undecided"):
         existing_undecided_keys.add((
             _rec.get("path"),
-            _rec.get("content_hash"),
             _rec.get("severity"),
         ))
 
@@ -2764,6 +2789,34 @@ def check_G_CONTRACT_SCOPE(
 
     critical_records: List[str] = []
     advisory_records: List[str] = []
+
+    # C1 (#61 explosion guard): collect NEW advisory undeclared paths instead
+    # of emitting each inline. If the per-invocation count exceeds
+    # CONTRACT_SCOPE_UNDECIDED_EMIT_CAP, we emit ONE summary record after the
+    # walk rather than the per-path flood. Critical paths are NEVER deferred —
+    # they emit individually inside the loop and always block.
+    pending_advisory: List[Dict[str, Any]] = []
+
+    def _emit_record(record: Dict[str, Any]) -> bool:
+        """Write an undecided record with (path, severity) per-invocation dedup.
+
+        Returns True iff a NEW record was written, False if deduped against an
+        existing/already-emitted undecided record for the same (path, severity).
+        """
+        # C2: dedup key is (path, severity) — content_hash dropped (see the
+        # existing_undecided_keys construction above for the rationale).
+        dedup_key = (record["path"], record["severity"])
+        if dedup_key in existing_undecided_keys:
+            return False
+        try:
+            _scope_delta.write_record(project_root, record)
+        except FileExistsError:
+            # Duplicate delta-id (extremely unlikely with timestamp+hex);
+            # mint a fresh one and retry once.
+            record["delta_id"] = _scope_delta.new_delta_id()
+            _scope_delta.write_record(project_root, record)
+        existing_undecided_keys.add(dedup_key)
+        return True
 
     for rel in actual_paths:
         is_critical_match = _gcs_matches_critical(rel)
@@ -2832,44 +2885,78 @@ def check_G_CONTRACT_SCOPE(
             record["extractor_meta"]["baseline_marker"] = (
                 "pre_existing_critical_modified"
             )
+
         if severity == "critical":
+            # C1: critical paths ALWAYS emit individually and still block —
+            # never capped, never summarized.
             record["critical_reason"] = (
                 f"path matches CONTRACT_SCOPE_CRITICAL_GLOBS and is not in "
                 f"components[].source_paths or flows[].source_paths"
             )
-
-        # S030 #61: per-invocation dedup. If an undecided record with the
-        # same (path, content_hash, severity) already exists, skip emission.
-        # Only `undecided` records dedupe — excluded/amended records are
-        # intentionally NOT dedup keys (re-emit so the user sees them
-        # again if the situation re-arises post-resolution).
-        dedup_key = (record["path"], record["content_hash"], record["severity"])
-        if dedup_key in existing_undecided_keys:
-            # Already-undecided record covers this finding. Track it so the
-            # exit-code calculation still treats critical as blocking.
-            if severity == "critical":
-                critical_records.append("dedup:" + record["path"])
+            if _emit_record(record):
+                critical_records.append(record["delta_id"])
             else:
-                advisory_records.append("dedup:" + record["path"])
-            continue
-
-        try:
-            _scope_delta.write_record(project_root, record)
-        except FileExistsError:
-            # Duplicate delta-id (extremely unlikely with timestamp+hex);
-            # mint a fresh one and retry once.
-            record["delta_id"] = _scope_delta.new_delta_id()
-            _scope_delta.write_record(project_root, record)
-
-        # Add the new record's key so subsequent iterations within this
-        # same invocation also dedupe (defense-in-depth; the workspace walk
-        # is unique-on-path so this is informational).
-        existing_undecided_keys.add(dedup_key)
-
-        if severity == "critical":
-            critical_records.append(record["delta_id"])
+                # Already-undecided record covers this finding. Track it so
+                # the exit-code calculation still treats critical as blocking.
+                critical_records.append("dedup:" + record["path"])
         else:
-            advisory_records.append(record["delta_id"])
+            # C1: defer advisory paths; the flood-vs-summary decision is made
+            # after the walk completes.
+            pending_advisory.append(record)
+
+    # C1 (#61 explosion guard): decide flood vs. summary for advisory paths.
+    # Count only NEW (non-deduped) advisory paths against the cap so a healthy
+    # ledger with a few stray files still gets per-path records, and only a
+    # genuine flood (a sparse map vs. a large repo) trips the summary path.
+    new_advisory = [
+        rec for rec in pending_advisory
+        if (rec["path"], rec["severity"]) not in existing_undecided_keys
+    ]
+    if len(new_advisory) > CONTRACT_SCOPE_UNDECIDED_EMIT_CAP:
+        # Over the cap → emit ONE summary record instead of the per-path flood.
+        # Preserves the signal (undeclared scope exists) without the explosion.
+        # Deduped on (path="<scope-overflow>", "advisory") so it emits once per
+        # pending state (the standard (path, severity) dedup key handles this).
+        sample_paths = [rec["path"] for rec in new_advisory[:20]]
+        summary_record = {
+            "delta_id": _scope_delta.new_delta_id(),
+            "schema_version": "scope_delta.v1",
+            "created_at": _scope_delta._now_iso(),
+            "created_by": "G_CONTRACT_SCOPE",
+            "project_root": str(project_root),
+            "contract_map_hash": contract_map_hash,
+            "contract_map_revision": contract_map_revision,
+            "artifact_kind": "generated_artifact",
+            "operation": "added",
+            "path": CONTRACT_SCOPE_OVERFLOW_PATH,
+            "content_hash": None,
+            "contract_ref": None,
+            "consumer_refs": [],
+            "severity": "advisory",
+            "requesting_wp": requesting_wp,
+            "detection_point": detection_point,
+            "status": "undecided",
+            "extractor_meta": {
+                "overflow": True,
+                "undeclared_count": len(new_advisory),
+                "sample_paths": sample_paths,
+                "advice": (
+                    "contract-map likely sparse vs workspace; declare "
+                    "components or widen excluded_paths"
+                ),
+            },
+        }
+        if _emit_record(summary_record):
+            advisory_records.append(summary_record["delta_id"])
+        else:
+            advisory_records.append("dedup:" + CONTRACT_SCOPE_OVERFLOW_PATH)
+    else:
+        # Under the cap → per-path records as before (with C2 dedup).
+        for rec in pending_advisory:
+            if _emit_record(rec):
+                advisory_records.append(rec["delta_id"])
+            else:
+                advisory_records.append("dedup:" + rec["path"])
 
     # Always print a structured one-line summary so callers can parse.
     summary = (

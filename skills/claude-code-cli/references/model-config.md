@@ -18,11 +18,27 @@ remembering exact version numbers:
 | Model alias      | Behavior                                                                                                                                         |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **`default`**    | Recommended model setting, depending on your account type                                                                                        |
-| **`sonnet`**     | Uses the latest Sonnet model (currently Sonnet 4.5) for daily coding tasks                                                                       |
-| **`opus`**       | Uses Opus model (currently Opus 4.1) for specialized complex reasoning tasks                                                                     |
-| **`haiku`**      | Uses the fast and efficient Haiku model for simple tasks                                                                                         |
+| **`sonnet`**     | Uses the latest Sonnet model (currently Sonnet 4.6) for daily coding tasks                                                                       |
+| **`opus`**       | Uses the latest Opus model (currently Opus 4.8) for specialized complex reasoning tasks                                                          |
+| **`haiku`**      | Uses the fast and efficient Haiku model (currently Haiku 4.5) for simple tasks                                                                   |
 | **`sonnet[1m]`** | Uses Sonnet with a [1 million token context window](/en/docs/build-with-claude/context-windows#1m-token-context-window) window for long sessions |
 | **`opusplan`**   | Special mode that uses `opus` during plan mode, then switches to `sonnet` for execution                                                          |
+
+### Current model lineup (verified 2026-06-10)
+
+Full model names behind the aliases, as of 2026-06-10 (re-verify with `/status` — the alias table above tracks "latest", so the snapshot below ages):
+
+| Model | Full model name | Notes |
+| ----- | --------------- | ----- |
+| Fable 5 | `claude-fable-5` | Frontier model; this machine's sessions run `claude-fable-5[1m]` (verified live) |
+| Opus 4.8 | `claude-opus-4-8` | `opus` alias target |
+| Sonnet 4.6 | `claude-sonnet-4-6` | `sonnet` alias target |
+| Haiku 4.5 | `claude-haiku-4-5-20251001` | `haiku` alias target |
+
+* The `[1m]` suffix selects the 1-million-token-context variant of a model (e.g. `claude-fable-5[1m]`).
+* **Fast mode**: Opus with faster output; toggle with `/fast` during a session.
+
+> **Historical**: earlier revisions of this file (Apr 2026 vintage) listed `sonnet` = Sonnet 4.5 and `opus` = Opus 4.1, with the Bedrock example id `anthropic.claude-sonnet-4-5-20250929-v1:0`. Those rows describe a superseded lineup — kept here only so old notes referencing them still make sense.
 
 ### Setting your model
 
@@ -84,7 +100,10 @@ enable a
 
 ```bash  theme={null}
 # Example of using a full model name with the [1m] suffix
-/model anthropic.claude-sonnet-4-5-20250929-v1:0[1m]
+/model claude-fable-5[1m]
+
+# Bedrock-style ids take the suffix the same way (historical Sonnet 4.5 example:
+# anthropic.claude-sonnet-4-5-20250929-v1:0[1m] — that snapshot is superseded)
 ```
 
 Note: Extended context models have

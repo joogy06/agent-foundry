@@ -191,6 +191,77 @@ def _parse_date(ds: str):
     return None
 
 
+# ── S059 smart-config: model-policy digest segment (design §6.1) ──────────────
+# A ONE-LINE segment (V-3 budget discipline — no subprocess, small bounded reads):
+#   "model-policy: INVALID — fail-open active"  when `validate` fails, AND/OR
+#   a spawns-vs-graded-decisions ratio so grading atrophy (R-1) is visible per session.
+# Denominator: the per-project spawn-runs.jsonl sidecar (S046, project-local). Numerator:
+# the project's model-decisions.jsonl (lines = graded resolves). Best-effort; silent on
+# any error. NO subprocess — we read the same policy files the resolver reads and do a
+# minimal in-process validity check (presence + parseable + version==1).
+
+def _slug(project_root: str) -> str:
+    import re
+    return re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(project_root))
+
+
+def _policy_invalid() -> bool:
+    """Cheap in-process validity check of the merged global+project policy (cwd).
+    True only when a policy file EXISTS but is unparseable / wrong-version (a real
+    misconfig worth surfacing). Missing files are valid (zero-config no-op)."""
+    try:
+        import yaml  # type: ignore
+    except Exception:
+        return False  # no yaml -> resolver fails open too; nothing to surface
+    bad = False
+    for p in (HOME / ".claude" / "model-policy.yaml",
+              Path(os.getcwd()) / ".claude" / "model-policy.yaml"):
+        try:
+            if not p.is_file():
+                continue
+            data = yaml.safe_load(p.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or data.get("version") != 1:
+                bad = True
+        except Exception:
+            bad = True
+    return bad
+
+
+def _spawn_vs_decisions() -> str | None:
+    """Return 'graded N/M spawns' for the cwd project, or None when there is nothing
+    meaningful to show (no spawns recorded)."""
+    try:
+        root = os.getcwd()
+        spawns_f = Path(root) / ".process-observations" / "spawn-runs.jsonl"
+        decisions_f = HOME / ".claude" / "projects" / _slug(root) / "model-decisions.jsonl"
+        spawns = 0
+        if spawns_f.is_file():
+            with spawns_f.open("r", encoding="utf-8") as fh:
+                spawns = sum(1 for ln in fh if ln.strip())
+        if spawns == 0:
+            return None  # no denominator -> nothing to nudge about
+        graded = 0
+        if decisions_f.is_file():
+            with decisions_f.open("r", encoding="utf-8") as fh:
+                graded = sum(1 for ln in fh if ln.strip())
+        return f"graded {graded}/{spawns} spawns"
+    except Exception:
+        return None
+
+
+def _model_policy_segment() -> str | None:
+    """One compact segment for the digest, or None when silent."""
+    bits = []
+    if _policy_invalid():
+        bits.append("INVALID — fail-open active")
+    ratio = _spawn_vs_decisions()
+    if ratio:
+        bits.append(ratio)
+    if not bits:
+        return None
+    return "model-policy: " + "; ".join(bits)
+
+
 # ── digest assembly (the policy table) ───────────────────────────────────────
 
 def build_digest(today: date, now: datetime) -> tuple[str | None, dict]:
@@ -269,6 +340,22 @@ def build_digest(today: date, now: datetime) -> tuple[str | None, dict]:
             mism = ident.get("mismatch_count", "")
             parts.append(f"gates 3-tree MISMATCH{f' ({mism})' if mism else ''} [CRITICAL]")
             nudged_any = True  # always-on class
+
+    # --- S059 model-policy status (design §6.1) ---
+    # INVALID is an always-on class (real misconfig, surfaces standalone). The
+    # spawns-vs-decisions ratio is a RIDER: it only joins an already-non-empty digest
+    # (it is informational atrophy signal, not a standalone nudge). One line either way.
+    mp_invalid = _policy_invalid()
+    if mp_invalid:
+        parts.append("model-policy: INVALID — fail-open active")
+        nudged_any = True  # always-on class
+    if parts:
+        ratio = _spawn_vs_decisions()
+        if ratio and not mp_invalid:
+            parts.append(f"model-policy: {ratio}")
+        elif ratio and mp_invalid:
+            # already added INVALID; fold the ratio into the same segment
+            parts[-1] = parts[-1] + f"; {ratio}"
 
     # --- inventory age (informational tail, shown only when we already have a digest) ---
     inv = _read_json(INVENTORY)

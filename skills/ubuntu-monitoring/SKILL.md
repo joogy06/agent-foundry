@@ -1,9 +1,22 @@
 ---
 name: ubuntu-monitoring
-description: Use when setting up monitoring and logging on Ubuntu 24.04 LTS — Prometheus and node_exporter, Grafana dashboards, Loki/Promtail log aggregation, ELK stack (Elasticsearch, Logstash, Kibana), alerting with Alertmanager, systemd journal management, rsyslog, and health check patterns. Part of the ubuntu-* skill family.
+description: Use when setting up monitoring and logging on Ubuntu 24.04 LTS — Prometheus and node_exporter, Grafana dashboards, Loki/Alloy log aggregation (Promtail legacy), ELK stack (Elasticsearch, Logstash, Kibana), alerting with Alertmanager, systemd journal management, rsyslog, and health check patterns. Part of the ubuntu-* skill family.
 ---
 
 # Ubuntu Server 24.04 LTS — Monitoring and Logging
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: log-shipping-stack
+    verified_against: "Promtail EOL 2026-03-02 (LTS since 2025-02-13); Grafana Alloy is the supported log shipper — Alloy 1.16.x current"
+    verified_on: "2026-06-10"
+  - kind: status_snapshot
+    subject: version-pins
+    verified_against: "Prometheus 3.12.0, node_exporter 1.11.1, Alertmanager 0.32.1, Loki 3.7.2, blackbox_exporter 0.28.0"
+    verified_on: "2026-06-10"
+volatility: high
+-->
 
 Companion skill to `ubuntu-server-admin`. Covers metrics collection, visualization, log aggregation, alerting, and health checks on Ubuntu Server 24.04.4 LTS (Noble Numbat).
 
@@ -34,14 +47,15 @@ sudo mkdir -p /etc/prometheus /var/lib/prometheus
 sudo chown prometheus:prometheus /var/lib/prometheus
 
 # Download and install (check https://prometheus.io/download/ for latest)
-PROM_VER="2.53.3"
+PROM_VER="3.12.0"   # verified current 2026-06-10
 cd /tmp
 curl -LO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-amd64.tar.gz"
 tar xzf "prometheus-${PROM_VER}.linux-amd64.tar.gz"
 sudo cp "prometheus-${PROM_VER}.linux-amd64"/{prometheus,promtool} /usr/local/bin/
-sudo cp -r "prometheus-${PROM_VER}.linux-amd64"/{consoles,console_libraries} /etc/prometheus/
 sudo chown -R prometheus:prometheus /etc/prometheus
 ```
+
+Note: Prometheus 3.x tarballs no longer ship the example `consoles/` and `console_libraries/` directories (removed in 3.0). If you are upgrading an existing 2.x install rather than doing a fresh install, read the official 2.x → 3.x migration guide first.
 
 ### Configuration — `/etc/prometheus/prometheus.yml`
 
@@ -147,7 +161,7 @@ promtool check rules /etc/prometheus/rules/recording.yml
 ```bash
 sudo useradd -r -s /usr/sbin/nologin node_exporter
 
-NODE_VER="1.8.2"
+NODE_VER="1.11.1"   # verified current 2026-06-10
 cd /tmp
 curl -LO "https://github.com/prometheus/node_exporter/releases/download/v${NODE_VER}/node_exporter-${NODE_VER}.linux-amd64.tar.gz"
 tar xzf "node_exporter-${NODE_VER}.linux-amd64.tar.gz"
@@ -318,7 +332,7 @@ sudo systemctl restart grafana-server
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin alertmanager
-AM_VER="0.27.0"
+AM_VER="0.32.1"   # verified current 2026-06-10
 cd /tmp
 curl -LO "https://github.com/prometheus/alertmanager/releases/download/v${AM_VER}/alertmanager-${AM_VER}.linux-amd64.tar.gz"
 tar xzf "alertmanager-${AM_VER}.linux-amd64.tar.gz"
@@ -474,13 +488,15 @@ amtool --alertmanager.url=http://localhost:9093 silence expire <silence-id>
 
 ---
 
-## 5. Loki + Promtail
+## 5. Loki + Grafana Alloy (Log Shipping)
+
+> **Log-shipper status (verified 2026-06-10):** Grafana deprecated **Promtail** in February 2025 (LTS from 2025-02-13) in favor of **Grafana Alloy**, and Promtail reached **end of life on 2026-03-02** — no further updates, including security fixes. **Use Alloy for ALL new installs.** The Promtail material is kept below only as a clearly-marked LEGACY/migration appendix for existing deployments.
 
 ### Loki Installation
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin loki
-LOKI_VER="3.1.1"
+LOKI_VER="3.7.2"   # verified current 2026-06-10
 cd /tmp
 curl -LO "https://github.com/grafana/loki/releases/download/v${LOKI_VER}/loki-linux-amd64.zip"
 sudo apt install -y unzip
@@ -552,7 +568,105 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-### Promtail Installation and Config
+### Grafana Alloy — Log Shipper (PRIMARY)
+
+Alloy is Grafana's OpenTelemetry-based collector and the supported replacement for Promtail (Alloy 1.16.x current as of 2026-06). It installs from the same Grafana apt repository configured in section 3 — if you already added that repo, just install the package:
+
+```bash
+# Repo already added in section 3? Then simply:
+sudo apt update
+sudo apt install -y alloy
+
+# Otherwise add the Grafana repo first (same as section 3):
+curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/grafana.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
+  | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo apt update && sudo apt install -y alloy
+```
+
+The package installs a systemd service named `alloy` running as the `alloy` user, with config at `/etc/alloy/config.alloy` and service options (e.g. `CUSTOM_ARGS`) in `/etc/default/alloy`. Grant it read access to the journal and privileged log files instead of running it as root:
+
+```bash
+sudo usermod -aG systemd-journal,adm alloy   # journal + /var/log/syslog,auth.log (root:adm on Ubuntu)
+```
+
+### Alloy Config — `/etc/alloy/config.alloy`
+
+Alloy uses its own HCL-like syntax (not YAML). Pipeline: journal + file sources → optional relabel → `loki.write` push to Loki on :3100.
+
+```alloy
+// ── Systemd journal ────────────────────────────────────────────
+loki.relabel "journal" {
+  forward_to = []   // rules-only component; consumed via .rules below
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "hostname"
+  }
+}
+
+loki.source.journal "system" {
+  max_age       = "12h"
+  labels        = { job = "systemd-journal" }
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+// ── Plain log files ────────────────────────────────────────────
+local.file_match "system_logs" {
+  path_targets = [
+    { __address__ = "localhost", __path__ = "/var/log/syslog",      job = "syslog" },
+    { __address__ = "localhost", __path__ = "/var/log/auth.log",    job = "authlog" },
+    { __address__ = "localhost", __path__ = "/var/log/myapp/*.log", job = "app" },
+  ]
+}
+
+loki.source.file "system_logs" {
+  targets    = local.file_match.system_logs.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+// ── Push to Loki ───────────────────────────────────────────────
+loki.write "local" {
+  endpoint {
+    url = "http://localhost:3100/loki/api/v1/push"
+  }
+  external_labels = {}
+}
+```
+
+```bash
+# Syntax check (parses + formats the file; errors on invalid config)
+alloy fmt /etc/alloy/config.alloy
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now loki alloy
+sudo systemctl reload alloy    # after later config edits
+sudo ufw allow from 10.0.0.0/8 to any port 3100 proto tcp
+```
+
+Alloy serves a debug UI on `127.0.0.1:12345` by default (component health, live pipeline graph) — check it when logs are not arriving.
+
+---
+
+### LEGACY — Promtail (EOL, migration only)
+
+> **Do NOT use Promtail for new installs.** Deprecated February 2025; end of life since 2026-03-02 (no security fixes). This appendix exists only for understanding/migrating existing Promtail deployments.
+
+**Migrating an existing deployment:** Alloy ships a converter that translates a Promtail YAML config into Alloy syntax:
+
+```bash
+alloy convert --source-format=promtail --output=/etc/alloy/config.alloy /etc/promtail/promtail.yml
+# Review the output, then disable promtail and enable alloy:
+sudo systemctl disable --now promtail
+sudo systemctl enable --now alloy
+```
+
+#### Legacy Promtail Install (reference only)
 
 ```bash
 cd /tmp
@@ -563,7 +677,7 @@ sudo chmod +x /usr/local/bin/promtail
 sudo mkdir -p /etc/promtail
 ```
 
-### Promtail Config — `/etc/promtail/promtail.yml`
+#### Legacy Promtail Config — `/etc/promtail/promtail.yml`
 
 ```yaml
 server:
@@ -612,7 +726,7 @@ scrape_configs:
           __path__: /var/log/myapp/*.log
 ```
 
-### Promtail Systemd Service — `/etc/systemd/system/promtail.service`
+#### Legacy Promtail Systemd Service — `/etc/systemd/system/promtail.service`
 
 ```ini
 [Unit]
@@ -630,13 +744,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Note: Promtail runs as root to read journal and privileged log files.
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now loki promtail
-sudo ufw allow from 10.0.0.0/8 to any port 3100 proto tcp
-```
+Note: Promtail ran as root to read journal and privileged log files — one more reason to prefer Alloy (group-based access, see above). End of legacy appendix.
 
 ### LogQL Query Examples
 
@@ -1033,7 +1141,7 @@ sudo systemctl enable --now health-check.timer
 ### Uptime Monitoring with Blackbox Exporter
 
 ```bash
-BB_VER="0.25.0"
+BB_VER="0.28.0"   # verified current 2026-06-10
 cd /tmp
 curl -LO "https://github.com/prometheus/blackbox_exporter/releases/download/v${BB_VER}/blackbox_exporter-${BB_VER}.linux-amd64.tar.gz"
 tar xzf "blackbox_exporter-${BB_VER}.linux-amd64.tar.gz"
@@ -1092,7 +1200,8 @@ Prometheus scrape config for blackbox:
 | No persistent storage for Prometheus | Prometheus restart loses all metric history; cannot do capacity planning or trend analysis | Configure `--storage.tsdb.path` on persistent volume; set retention with `--storage.tsdb.retention.time` |
 | Monitoring system metrics only (CPU, RAM, disk) | Server metrics look healthy while application returns errors; users report outage before monitoring detects it | Add application health checks, HTTP status code monitoring, response latency tracking alongside infrastructure metrics |
 | Grafana dashboards without variable templates | One dashboard per server/service; 50 servers = 50 dashboards to maintain; inconsistent layouts | Use Grafana template variables (instance, job, namespace); one dashboard serves all instances with dropdown selection |
-| Not forwarding logs to central system | Logs only on individual servers; cross-service debugging requires SSH to each server; compliance audits fail | Deploy Promtail/Loki or Filebeat/ELK; forward all application and system logs; retain per compliance requirements |
+| Not forwarding logs to central system | Logs only on individual servers; cross-service debugging requires SSH to each server; compliance audits fail | Deploy Alloy→Loki or Filebeat→ELK; forward all application and system logs; retain per compliance requirements |
+| Fresh installs still shipping logs with Promtail | Promtail is EOL since 2026-03-02 — no updates, no security fixes; new deployments start life unsupported | Use Grafana Alloy for all new installs; migrate existing Promtail configs with `alloy convert --source-format=promtail` |
 
 ---
 

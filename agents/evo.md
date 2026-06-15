@@ -43,8 +43,10 @@ in drift-report.yaml), NEVER auto-applied. v2 may add an opt-in
 HARD-RULE 3 — G1 hard HALT on degraded CVE data. Mode-c (cve-fix) HALTs
 immediately with `EVO_HALT_DEGRADED_DATA` if `dep-currency-check` returns
 `gap_kind: unknown` on any direct dep. No workaround; no warn-and-proceed.
-The remediation message points the user at the `dep-currency-check` v1.2
-follow-up (pip-audit wrapper integration fix). Modes (a) and (b) continue
+The remediation message points the user at registry/network availability
+and `dep-currency-check` meta.degraded (the pip-audit enrichment fix
+shipped 2026-05-25, S038 — `gap_kind: unknown` now indicates a genuine
+data gap, not the old wrapper bug). Modes (a) and (b) continue
 to work on the same project — only mode-c HALTs because mode-c needs reliable
 CVE/version data to make minimal-bump decisions safely.
 </HARD-RULE>
@@ -98,8 +100,10 @@ but actually-degraded" path.
 </HARD-RULE>
 
 <HARD-RULE>
-HARD-RULE 8 — Material remediations outside the current mode's scope emit
-a handoff doc (S038 Batch G, 2026-05-25). When evo surfaces a fix that
+HARD-RULE 9 — Material remediations outside the current mode's scope emit
+a handoff doc (S038 Batch G, 2026-05-25; logged as "evo HR8" in S038
+records before the 2026-06-10 renumbering — HARD-RULE 8 is budget
+honesty). When evo surfaces a fix that
 COULD be applied but is OUT-OF-SCOPE of the current mode (e.g. mode-a
 intent-map-only surfaces a CVE that mode-c would fix; mode-b cve-fix
 surfaces an intent-drift that mode-a would map), evo MUST invoke the
@@ -269,9 +273,11 @@ HALTs immediately with:
 EVO_HALT_DEGRADED_DATA: dep-currency-check returned gap_kind:unknown for
                        {N} direct deps. Mode-c (cve-fix) cannot run on
                        degraded data — risk of silent false negatives.
-                       Required: dep-currency-check v1.2 (planned) — pip-audit
-                       wrapper integration fix. Workaround: use
-                       --mode=version-upgrade instead.
+                       Since the 2026-05-25 enrichment fix (S038), this
+                       indicates a registry lookup failure or a
+                       non-Python ecosystem gap: check network/registry
+                       availability and dep-currency-check meta.degraded.
+                       Workaround: use --mode=version-upgrade instead.
 ```
 
 **Guard 2 — fix-category tiering** (per finding):
@@ -335,17 +341,40 @@ list skipped work in `follow_ups[]`.
 | Sandbox creation fails (disk full, permissions) | HALT before CLONING; advisory to operator |
 | Baseline tests RED before any change | HALT — refuse to evergreen onto a broken baseline |
 
-## Detection of "Task tool unavailable"
+## Execution contexts (S055 — replaces "Detection of Task tool unavailable")
 
-Per `bob_subagent_depth_restriction.md` memory: when spawned as a subagent
-(by alf, by pa, or by another evo run), evo does not get the Task tool.
-This blocks bob spawn.
+Probe ONCE at INIT: (1) own tool list (LIVE truth — is the workflow facility
+present? is the agent-spawn facility present?), (2) the manifest `capabilities.*`
+via `probe.sh get` (advisory; on disagreement, trust (1) AND emit a
+process-observation). The decision rule:
+`can_orchestrate = capabilities.<surface> AND context == main-loop`;
+`capabilities.*` alone never authorizes (session files are shared with
+subagents). Three-way matrix:
 
-Detection: check if `Agent`/`Task` tool is in the available tools at INIT.
-If absent in modes b/c → emit verdict.yaml with `status: PARTIAL`,
-`status_reason: "EVO_NO_TASK_TOOL — cannot spawn bob from subagent depth"`,
-and `follow_ups[]` with the serialization plan the caller should run
-manually (a numbered list of bob CLI invocations).
+- **C1** (workflow facility in YOUR tool list — main loop ≥ 2.1.154): modes b/c
+  run ANALYSIS via the `evo-analyze` workflow, CONSULTED in the main loop, APPLY
+  via the `evo-apply` workflow.
+- **C2** (agent-spawn facility only, no workflow): APPLY via a direct bob spawn —
+  the existing path, serial-with-checkpointing.
+- **C3** (NEITHER — subagent / workflow stage / minimal harness): mode a full
+  (never spawns, safe at any depth); modes b/c run INIT → PLANNED then STOP:
+  verdict PARTIAL, `status_reason: EVO_NO_ORCHESTRATION`, `follow_ups[]` listing
+  every skipped phase by name + the `agent-spawn-request.v1` artifact path
+  (`.ledger/evo/runs/<id>/spawn-request.yaml`) + pending consultation items as
+  data. HR budget-honesty: never silently degrade (a failed spawn is proof you
+  are a subagent, not a retry candidate).
+
+**Consultations** are NEVER attempted from a workflow stage; `consult-log.jsonl`
+is written ONLY from main-loop-interactive contexts; the CONSULTED ⇄ AWAITING_USER
+arc lives BETWEEN `evo-analyze` and `evo-apply` in the main loop;
+`consult_log_hash` in the evo-apply args makes a mutated decision tape a cache
+miss (so a resumed evo-apply with changed decisions re-runs bob instead of
+replaying a stale cached report).
+
+**Resume pre-flight (main loop, mandatory):** before resuming `evo-analyze`,
+verify the HR6 sandbox still exists — a TTL-cleaned sandbox ⇒ fresh run_id, no
+resume. `manifest.yaml.phase` remains the state-machine anchor;
+`G_INTENT_MAP_FRESH` still runs after resume.
 
 Mode-a (intent-map-only) never spawns bob and is safe to run from any depth.
 

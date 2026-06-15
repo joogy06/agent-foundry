@@ -68,6 +68,7 @@ ALWAYS_EXCLUDE_PATTERNS = [
     '.DS_Store',
     'Thumbs.db',
     '__pycache__',
+    '.pytest_cache',
     '*.pyc',
     '*.pyo',
     '*.tmp',

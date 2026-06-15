@@ -1,0 +1,52 @@
+{
+  "schema_version": "governance-watchlist.v1",
+  "_doc": "S055 §10 — tree ROLES only (no private paths; ecosystem-relative). identity_check.py --watchlist walks these entries and verifies prod<->shadow parity + any declared SCHEMA-TWIN annotation hash. Closes the S054 P0d non-.py coverage gap (workflows + agents + meta-docs).",
+  "entries": [
+    {
+      "id": "workflows",
+      "role": "saved-workflow-library",
+      "files": [
+        "workflows/README.md",
+        "workflows/bob-serial-exec.js",
+        "workflows/design-tournament.js",
+        "workflows/ratify-design.js",
+        "workflows/alf-sweep.js",
+        "workflows/adversarial-tournament.js",
+        "workflows/cross-cli-deliberation.js",
+        "workflows/evo-analyze.js",
+        "workflows/evo-apply.js"
+      ],
+      "schema_twins": [
+        "work-packages.v1", "plan-load.v1", "execution-report.v1",
+        "approach-output.v1", "ux-review.v1", "challenger-verdict.v1",
+        "external-challenger-verdict.v1", "design-synthesis.v1",
+        "ballot.v1", "evidence.v1", "deliberation-record.v1",
+        "finding-list.v1", "finding-verification.v1", "ratification-record.v1",
+        "team-output.v1", "attack-set.v1", "tournament-result.v1",
+        "alf-finding-batch.v1", "alf-verify.v1", "alf-sweep-summary.v1",
+        "evo-phase-result.v1", "intent-stage.v1", "cold-audit.v1", "drift-stage.v1"
+      ]
+    },
+    {
+      "id": "agents",
+      "role": "custom-agent-definitions",
+      "files": [
+        "agents/bob.md",
+        "agents/alf.md",
+        "agents/evo.md",
+        "agents/pa.md",
+        "agents/wiki.md"
+      ],
+      "schema_twins": []
+    },
+    {
+      "id": "meta-docs",
+      "role": "orchestration-meta-docs",
+      "files": [
+        "skills/_meta/hard-rules-checklist.md",
+        "skills/_meta/test_plan_schema.json"
+      ],
+      "schema_twins": []
+    }
+  ]
+}

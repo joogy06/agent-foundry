@@ -109,6 +109,18 @@ Write using rules in `authoring-rules.md`. Key gates:
 - **Ambiguity gate — REQUIRED for generation-type skills** (skills whose primary output is an artifact: documents, images, pages, decks, code, posts). The SKILL.md must include a short "ask before generating" gate naming the 2-4 request dimensions that change the output materially, with the instruction to ask ONE compact clarifying question when they're missing rather than silently generating a guessed version. (Pattern precedent: forge Step 3 one-at-a-time questions, career-coach "No advice without context", career-application-writer Stage-0 intake + cold-start rule. Rationale: LLMs confidently answer the version of the question they think was meant; the cheapest quality lever is resolving ambiguity before generation.)
 - **FRESHNESS:v1 anchor (Evergreening v1, S041) — MANDATORY for new skills** that carry any version/date/model-ID anchor. Add an HTML-comment `<!-- FRESHNESS:v1 ... -->` block (NEVER frontmatter — works in SKILL.md AND frontmatter-less references) declaring the tool/date/model you verified against, so the evergreen rot scanner can grade the skill instead of treating it as UNANNOTATED. Validate with `python3 ~/.claude/skills/_meta/freshness.py lint <file>` (advisory). Convention spec: `docs/plans/2026-06-04-evergreening-design.md` §6.5. (Same convention applies when the superpowers `writing-skills` plugin authors a skill — the FRESHNESS block is host-agnostic.)
 
+#### Harness-orchestration authoring gate (HO-1..HO-7, S055) — MANDATORY when a skill might fan out
+
+A skill that wants to fan work out across agents/workflows MUST satisfy ALL of these. Full guidance + copy-paste templates: `references/harness-orchestration.md`.
+
+- **HO-1 OPTIONAL** — orchestration is a fast path, never a dependency; the documented MAIN path completes with ZERO orchestration primitives.
+- **HO-2 FEATURE-DETECTED** — capability checks via `probe.sh get capabilities.*` ONLY (never inline probing, never raw jq on inventory.json); **`capabilities.*` alone NEVER authorizes orchestration — the context conjunct (`probe.sh context == main-loop` / tool-list check) is mandatory** (session files are shared with subagents).
+- **HO-3 FALLBACK-FIRST** — the portable flow is the PRIMARY instructions; the fast path is a clearly-fenced enhancement using the conditional template.
+- **HO-4 CONTEXT-AWARE** — the skill states its subagent behavior: portable flow, or emit a plan ARTIFACT (data, never executable JS — S052) and halt.
+- **HO-5 SCHEMA TWINS** — canonical JSON Schema in the skill's `schemas/`; the companion workflow embeds the SCHEMA-TWIN-annotated literal (G-W2); the schema is REGISTERED (`_meta/schemas/registry.v1.json`).
+- **HO-6 COMPANION WORKFLOW** — ship one ONLY IF: inline-main-loop primary callers AND stable reusable fan-out (≥3 sequential stages or ≥2 parallel agents) AND deterministic stage boundaries AND schema-checkable outputs. MUST NOT when: knowledge-only skill; mid-flow user interaction (G-W4); machinery-under-worktree (G-W6); primary callers are agents. Shipping triggers G-W7 registration.
+- **HO-7 HOST-NEUTRAL** — all protocol text names CAPABILITIES, not Claude-only tool names ("the agent-spawn facility (`Agent` on Claude Code; see tool-mapping for Codex/Copilot)"); every plan/report artifact is host-neutral data executable serially by any host; only workflow compilation is described as Claude-main-loop-only; the skill DESCRIPTION never names Workflow/native teams (CSO pollution on other hosts).
+
 ### Step 8: Review Gates
 
 **Local checks:** frontmatter, word count, description format, anti-patterns table, CSO keywords.
@@ -132,14 +144,16 @@ Integrate feedback. If "revise": fix and re-run. If "rewrite": return to Step 7.
 3. If skill proves defective after deploy: `mv SKILL.md.bak SKILL.md` to restore
 4. Log backup action in `creation-log.jsonl`
 5. Verify no naming conflicts
-6. **Symlink to Codex** (mandatory unless in skip list):
+6. **Symlink to Codex** (mandatory unless the skill dir contains a `.no-codex-symlink` sentinel):
    ```bash
-   ln -sfn "$HOME/.claude/skills/$SKILL_NAME" "$HOME/.codex/skills/$SKILL_NAME"
+   if [ ! -e "$HOME/.claude/skills/$SKILL_NAME/.no-codex-symlink" ]; then
+     ln -sfn "$HOME/.claude/skills/$SKILL_NAME" "$HOME/.codex/skills/$SKILL_NAME"
+   fi
    ```
-4. Verify skill appears in available skills list
+7. Verify skill appears in available skills list
 
-**Skip list** (Claude-specific — do NOT symlink):
-agent-teams, codex-orchestration, forge, nano-banana, vertex-banana, research-for-skills, challenger
+**Symlink gating rule** (single source of truth — no hardcoded list to maintain):
+symlink every new skill into `~/.codex/skills/` UNLESS the skill dir contains a `.no-codex-symlink` sentinel file (affordance-advisor precedent — host-gated skills that must not load on other CLIs). To exempt a skill, drop the sentinel: `touch ~/.claude/skills/<name>/.no-codex-symlink`.
 
 ### Step 10: Log & Learn
 
@@ -156,7 +170,7 @@ See `improvement-loop.md` for failure tracking and refresh thresholds.
 2. Run comparison engine against current plugin versions
 3. Run targeted `web-research` for specific gaps
 4. Update skill, addressing each promoted eval case
-5. Verify Codex symlink: `test -L ~/.codex/skills/<name> || ln -sfn ...`
+5. Verify Codex symlink (skip if `.no-codex-symlink` sentinel present): `test -e ~/.claude/skills/<name>/.no-codex-symlink || test -L ~/.codex/skills/<name> || ln -sfn ...`
 6. Log update to `creation-log.jsonl`
 
 ## Integration with Forge
@@ -215,3 +229,4 @@ The sub-skill files:
 | Deploy without testing | Apply `development-lifecycle` TDD methodology and the testing patterns in `authoring-rules.md` |
 | Summarize workflow in description | Causes Claude to shortcut and skip skill body |
 | Write skills >1200 words inline | Use separate reference files for heavy content |
+| Make a skill depend on Workflow/native teams | Breaks Codex/Copilot and all subagent contexts | HO gate (HO-1..HO-7): optional + feature-detected + fallback-first + host-neutral |

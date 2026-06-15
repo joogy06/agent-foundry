@@ -121,21 +121,16 @@ ls ~/.codex/skills/<name>/SKILL.md
 
 If Claude and Codex resolve and the agy import succeeded, the skill is available to the skill-aware CLIs. For Copilot, verify the AGENTS.md reference is in place in any project that should use it.
 
-## Skip list (Claude-specific skills NOT to symlink)
+## Symlink gating — the .no-codex-symlink sentinel
 
-Some skills depend on Claude Code internals and should NOT be symlinked to other tools:
+Symlink every skill into `~/.codex/skills/` UNLESS the skill directory contains a
+`.no-codex-symlink` sentinel file (affordance-advisor precedent — host-gated skills
+that must not load on other CLIs). There is NO hardcoded skip list to maintain:
 
-```
-agent-teams
-codex-orchestration
-forge
-nano-banana
-vertex-banana
-research-for-skills
-challenger
+```bash
+[ -e ~/.claude/skills/<skill>/.no-codex-symlink ] || ln -sfn ~/.claude/skills/<skill> ~/.codex/skills/<skill>
 ```
 
-These reference Claude-specific files, hooks, or agent definitions. They will fail or be confusing on other tools. Keep them Claude-only.
 
 ## Refresh cycle
 

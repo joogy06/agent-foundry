@@ -19,7 +19,7 @@ stores it **once** in a **content-addressed library** (`~/.codelib`), and expose
   DAG + sortable symbol/occurrence/relationship tables + client-side search + CSV /
   ndjson exports, XSS-safe and air-gap-safe.
 
-It is a **framework**: the in-session AI CLI (Claude Code / Codex CLI / Gemini CLI /
+It is a **framework**: the in-session AI CLI (Claude Code / Codex CLI / Antigravity CLI (agy) /
 Copilot CLI) is the parser via model-neutral prompts; `scripts/` has NO per-format AST
 parsers (the `lineage-extract-static` precedent). Scope: **COBOL + DataStage
 DSX + ETL + Pick/MultiValue BASIC**. Both triggers: **skill** (one artifact/dir) and
@@ -136,7 +136,7 @@ project-local store.
 5. **Single-writer store + flock'd promote** — producers NEVER write
    `catalog/latest.json` (CB4); the catalog is promoted only under
    `fcntl.flock(.promote.lock)` + atomic `os.replace`. `test_concurrent_promote`.
-6. **Model-neutral prompts** (Claude Code / Codex CLI / Gemini CLI / Copilot CLI — no
+6. **Model-neutral prompts** (Claude Code / Codex CLI / Antigravity CLI (agy) / Copilot CLI — no
    vendor anchors, no instruction XML tags).
 7. **DoS caps** — 50 MB/file skip-with-warn, 2000-line chunks, 0700 cache (reused from
    lineage).

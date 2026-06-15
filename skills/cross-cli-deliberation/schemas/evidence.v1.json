@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/evidence.v1.json",
+  "title": "evidence.v1",
+  "description": "S055 §5.6 — a Gate-2 burden-of-falsification evidence package from one dissenting consultant, WRAPPED in the W-EXT envelope. Owner: cross-cli-deliberation. One of three admissible classes. `constraint_violation` => deterministic grep of the quoted source by the script; `reproduction/executable_test` => `needs_inline_verification` (the workflow NEVER executes tests — trusted-runner provenance is bob-only, CB3; the inline caller runs the evidence under canonical trusted-runner discipline).",
+  "type": "object",
+  "required": ["consultant", "evidence_class", "invocation", "raw_transcript", "transcript_sha256", "absence"],
+  "additionalProperties": false,
+  "properties": {
+    "consultant": { "type": "string", "minLength": 1 },
+    "evidence_class": { "enum": ["reproduction", "constraint_violation", "efficiency_regression"] },
+    "reproduction_subform": { "enum": ["executable_test", "procedural_trace", "failure_mechanics_trace", null] },
+    "needs_inline_verification": {
+      "type": "boolean",
+      "description": "True for reproduction/executable_test — the workflow refuses to execute; the inline caller runs it under trusted-runner discipline (CB3)."
+    },
+    "constraint_quote": {
+      "type": ["string", "null"],
+      "description": "For constraint_violation: a verbatim quote the script greps in the cited source."
+    },
+    "constraint_source_path": { "type": ["string", "null"] },
+    "regression_metric": { "type": ["object", "null"], "additionalProperties": true },
+    "invocation": {
+      "type": "object",
+      "required": ["command", "exit_code", "timeout_s", "stdin_closed"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string" },
+        "exit_code": { "type": ["integer", "null"] },
+        "timeout_s": { "type": "integer" },
+        "stdin_closed": { "type": "boolean" }
+      }
+    },
+    "raw_transcript": { "type": "string" },
+    "transcript_path": { "type": ["string", "null"] },
+    "transcript_sha256": { "type": "string" },
+    "served_by": { "type": ["string", "null"] },
+    "absence": {
+      "type": "object",
+      "required": ["unreachable"],
+      "additionalProperties": false,
+      "properties": {
+        "unreachable": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "executable_test reproduction MUST flag needs_inline_verification (workflow never executes tests).",
+      "if": {
+        "properties": { "reproduction_subform": { "const": "executable_test" } },
+        "required": ["reproduction_subform"]
+      },
+      "then": {
+        "properties": { "needs_inline_verification": { "const": true } },
+        "required": ["needs_inline_verification"]
+      }
+    }
+  ]
+}

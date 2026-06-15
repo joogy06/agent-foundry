@@ -1,6 +1,6 @@
 ---
 name: windows-powershell
-description: Use when writing or debugging PowerShell scripts — PowerShell 7.x and Windows PowerShell 5.1 (including PS 5.1 BOM-less script encoding hazards, mojibake on non-ASCII chars, Windows-1252 default), pipeline and object manipulation, error handling (try/catch/ErrorAction, native-stderr silencing under $ErrorActionPreference='Stop'), advanced-function common-parameter conflicts (-Verbose / -v collision, "specified more than once"), native-command splatting (empty-string arg drop on PS 5.1), modules and package management (PSGallery), remoting (WinRM, SSH), Desired State Configuration (DSC), scheduled tasks, WMI/CIM queries, registry operations, file system operations, string/regex, JSON/XML/CSV handling, process management (Start-Process PID-without-health, tree-kill via Win32_Process BFS), and cross-platform considerations (Linux→Windows primitive porting, nohup / kill / pgrep equivalents). Parent skill for the windows-ps-* skill family.
+description: Use when writing or debugging PowerShell scripts — PowerShell 7.x and Windows PowerShell 5.1 (including PS 5.1 BOM-less script encoding hazards, mojibake on non-ASCII chars, Windows-1252 default), pipeline and object manipulation, error handling (try/catch/ErrorAction, native-stderr silencing under $ErrorActionPreference='Stop'), advanced-function common-parameter conflicts (-Verbose / -v collision, "specified more than once"), native-command splatting (empty-string arg drop on PS 5.1), modules and package management (PSGallery), remoting (WinRM, SSH), Desired State Configuration (DSC), scheduled tasks, WMI/CIM queries, registry operations, file system operations (Split-Path -LiteralPath/-Parent parameter-set collision on PS 7.6), string/regex, JSON/XML/CSV handling, process management (Start-Process PID-without-health, tree-kill via Win32_Process BFS), and cross-platform considerations (Linux→Windows primitive porting, nohup / kill / pgrep equivalents). Parent skill for the windows-ps-* skill family.
 ---
 
 # Windows PowerShell Administration
@@ -524,6 +524,26 @@ Remove-Item "C:\Temp\OldFolder" -Recurse -Force -WhatIf   # Test first!
 New-Item "C:\Logs\Archive" -ItemType Directory -Force
 New-Item "C:\Logs\new.log" -ItemType File -Force
 ```
+
+### `Split-Path -LiteralPath … -Parent` parameter-set collision (PS 7.6)
+
+On **PowerShell 7.6.x**, combining `-LiteralPath` with `-Parent` throws
+`Parameter set cannot be resolved using the specified named parameters` —
+the two parameters resolve to colliding parameter sets in this version
+(field-confirmed on 7.6.1; positional/`-Path` form is unaffected).
+
+```powershell
+# BROKEN on PS 7.6.x:
+$dir = Split-Path -LiteralPath $MyInvocation.MyCommand.Path -Parent
+
+# Safe alternatives:
+$dir = Split-Path $script:SomePath -Parent      # positional -Path binding
+$dir = $PSScriptRoot                            # script's own directory — preferred
+$dir = [System.IO.Path]::GetDirectoryName($p)   # .NET, no parameter sets at all
+```
+
+For "directory containing this script", always prefer `$PSScriptRoot` — it
+sidesteps the collision entirely and works on PS 3.0+.
 
 ---
 

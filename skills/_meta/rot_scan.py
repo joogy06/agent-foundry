@@ -47,6 +47,7 @@ REPORT_SCHEMA = "rot-report.v1"
 HOME = Path(os.environ.get("HOME", str(Path.home())))
 SKILLS_ROOT = HOME / ".claude" / "skills"
 AGENTS_ROOT = HOME / ".claude" / "agents"
+WORKFLOWS_ROOT = HOME / ".claude" / "workflows"  # S055 — scanned for *.md + *.js
 INVENTORY_FILE = HOME / ".claude" / "state" / "inventory.json"
 STATE_FRESH = HOME / ".claude" / "state" / "freshness"
 REPORT_FILE = STATE_FRESH / "rot-report.json"
@@ -404,6 +405,14 @@ def iter_targets(skills_root: Path, agents_root: Path, exclude_fixtures: bool = 
             yield f
     if agents_root.is_dir():
         for f in sorted(agents_root.glob("*.md")):
+            yield f
+    # S055: the workflows root carries FRESHNESS:v1 anchors in JS block comments;
+    # scan *.md (README) + *.js so a stale tool_version anchor in a workflow is
+    # graded just like a stale anchor in a skill. ONLY on a real LIBRARY scan
+    # (skills_root == the live SKILLS_ROOT) — a fixture-scoped scan (golden tests
+    # pass a fixture skills_root) must NOT pull in the live workflows tree.
+    if skills_root == SKILLS_ROOT and WORKFLOWS_ROOT.is_dir():
+        for f in sorted(WORKFLOWS_ROOT.glob("*.md")) + sorted(WORKFLOWS_ROOT.glob("*.js")):
             yield f
 
 

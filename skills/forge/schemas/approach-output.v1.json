@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/approach-output.v1.json",
+  "title": "approach-output.v1",
+  "description": "S055 §5.1 — schema-forced output of a design-tournament `diverge` approach stage (one per approach agent). Owner: forge. Home: skills/forge/schemas/. Consumed by the design-tournament `converge` script + forge inline. Host-neutral data.",
+  "type": "object",
+  "required": ["approach_id", "title", "summary", "key_decisions", "tradeoffs"],
+  "additionalProperties": false,
+  "properties": {
+    "approach_id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "key_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["decision", "rationale"],
+        "additionalProperties": false,
+        "properties": {
+          "decision": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "tradeoffs": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "estimated_complexity": { "enum": ["S", "M", "L", "XL"] },
+    "ui_facing": { "type": "boolean" }
+  }
+}

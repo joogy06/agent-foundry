@@ -151,8 +151,8 @@ CRITICAL:
   and the arbiter will filter it.
 ```
 
-Spawn all teams simultaneously in one message (Claude via `Agent`, Codex via `codex exec`, Gemini via
-`mcp__gemini-cli__ask-gemini`).
+Spawn all teams simultaneously in one message (Claude via `Agent`, Codex via `codex exec`, Antigravity
+via `timeout 600 agy -p "..." < /dev/null` as a background Bash task).
 
 ### Round 2: Cross-fire
 
@@ -205,13 +205,37 @@ See `references/team-angles.md` for the full library. Common angles:
 | `contrarian` | Attacks consensus, finds counter-positioning | Codex (default) |
 | `first-principles` | Reasoning from physics / unit economics / constraints | Codex |
 | `arbitrage` | Finds price / information / capability gaps | Codex |
-| `blue-ocean` | Creates new demand categories | Gemini |
+| `blue-ocean` | Creates new demand categories | Antigravity (agy) |
 | `constraint-inverted` | Starts from what's forbidden / impossible today | Claude |
 
 Callers pass the list they want; the primitive does NOT prescribe which angles to use — that is
 domain knowledge owned by the caller.
 
 ---
+
+## Fast path — `adversarial-tournament` workflow (S055, optional, main-loop only)
+
+When the orchestrator is the main loop with the orchestration surface available
+(`probe.sh get capabilities.workflow_tool` true AND `probe.sh context ==
+main-loop` — the ONLY capability API; `capabilities.*` alone never authorizes,
+session files are shared with subagents), the four rounds MAY run as the
+`adversarial-tournament` saved workflow: parallel `diverge` (one isolated agent
+per team angle, `team-output.v1` with `initial_kill_criteria` minItems:2 — role
+collapse mechanically prevented) → parallel `crossfire` (each attacker sees ONLY
+other teams' outputs, `attack-set.v1` minItems:1 per target makes "all good"
+schema-invalid; the script validates target coverage with a deterministic single
+retry on a sycophantic miss) → `refine` → single `arbiter` (`tournament-result.v1`;
+the script forces confidence to `speculative` when `grounding_sources` is empty —
+DOWNGRADE only, never upgrade). Below the budget floor before `refine` ⇒ skip
+refine, cap confidence `low`, `meta.degraded_to: "quick_tournament"` (documented
+mode, not silent loss). The script REFUSES configs that would drop kill criteria.
+
+Stays inline: question scoping, angle selection, grounding-feed acquisition
+(reddit/gdelt run BEFORE and passed as `context_paths`), final selection, all
+user decisions. External team overrides ride W-EXT wrappers with args-supplied
+commands. The schemas live in `schemas/`; `design-tournament` does NOT wrap this
+workflow (B's ruling — standalone callers are this skill's own inline
+invocations). On any fast-path failure, fall back to the inline four rounds below.
 
 ## Implementation Notes
 
@@ -231,19 +255,22 @@ angles):
 timeout 600 codex exec --ephemeral --skip-git-repo-check -s read-only \
   -o "$WORK/team-contrarian-round1.md" \
   "You are the contrarian team. Question: $QUESTION. Data: see $CONTEXT_FILE.
-   Produce $N outputs per the format in $OUTPUT_SPEC."
+   Produce $N outputs per the format in $OUTPUT_SPEC." < /dev/null
 ```
 
-**Gemini teams** — use `mcp__gemini-cli__ask-gemini` for large-context or Google-search-grounded
-angles (`blue-ocean`, `trend-first` with deep event history):
+**Antigravity (agy) teams** — use the agy CLI for large-context angles (`blue-ocean`, `trend-first`
+with deep event history). Output is plain text on stdout — the orchestrator parses it (STDIN RULE:
+stdin MUST be closed or agy hangs in background shells, #135):
 
+```bash
+timeout 600 agy -p "You are the blue-ocean team. Question: ... Data: see $CONTEXT_FILE. Produce $N outputs per the format in $OUTPUT_SPEC." < /dev/null > "$WORK/team-blue-ocean-round1.md"
 ```
-mcp__gemini-cli__ask-gemini(prompt: "You are the blue-ocean team. Question: ... Data: ... Produce N outputs.")
-```
+
+(The old gemini MCP route is gone; the gemini CLI retired 2026-06-18.)
 
 ### Bridge Mode
 
-If `bridge-mode-detect.sh` reports `bridge`, Gemini calls route through `bridge request --tool gemini`
+If `bridge-mode-detect.sh` reports `bridge`, agy calls route through `bridge request --tool agy`
 per the `git-cli-bridge` skill. The primitive does not hardcode bridge mode; it inherits the caller's
 session mode. Codex is unaffected (it always runs locally).
 
@@ -288,7 +315,7 @@ exists only for exploration / discovery modes.
 | Hiding attacks from the refining team | Teams can't absorb critique they don't see; refine becomes cosmetic | Pipe attack_history directly into each team's Round 3 prompt |
 | Skipping the arbiter because the outputs "look good enough" | Without synthesis, hybrid insights are lost and confidence assignment is unreliable | Always run Round 4, even for small tournaments; the arbiter is the quality gate |
 | Letting the arbiter promote to `high` confidence without data grounding | LLM-vs-LLM confidence is meaningless; external grounding is the anti-hallucination seatbelt | Enforce the grounding rule in arbiter code: no external cite = cap at `speculative` |
-| Forcing a single model on all teams | Different models have different blind spots; homogeneous teams have correlated failures | Use model diversity (Claude + Codex + Gemini mixed) especially for contrarian / devil's-advocate roles |
+| Forcing a single model on all teams | Different models have different blind spots; homogeneous teams have correlated failures | Use model diversity (Claude + Codex + Antigravity mixed) especially for contrarian / devil's-advocate roles |
 | Prescribing team angles the caller didn't request | Domain knowledge lives in the caller (founder-ideation, forge, etc.); the primitive is lens-agnostic | Accept `team_angles` as input, never hardcode a default set inside the primitive |
 
 ---

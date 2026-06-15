@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/external-challenger-verdict.v1.json",
+  "title": "external-challenger-verdict.v1",
+  "description": "S055 §5.1 / R10 — challenger-verdict.v1 WRAPPED in the full W-EXT external-model anti-laundering envelope (codex/agy challenger stages). Owner: forge. Two-layer verbatim enforcement: the schema carries the raw transcript + tee'd file + sha256; the consumer cross-checks every extracted verdict substring against raw_transcript.",
+  "type": "object",
+  "required": ["verdict_body", "invocation", "raw_transcript", "transcript_sha256", "served_by", "absence"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict_body": {
+      "description": "The challenger-verdict.v1 shape extracted from the transcript (or null when absent.unreachable).",
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "verdict": { "enum": ["ACCEPTABLE", "ACCEPTABLE_WITH_FIXES", "REJECT"] },
+        "findings": { "type": "array" },
+        "targets_approach": { "type": ["string", "null"] }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "required": ["command", "exit_code", "timeout_s", "stdin_closed"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "description": "Composed inline by the invoking skill (args-supplied), MUST include the guard set (agy --sandbox / codex -s read-only, < /dev/null, timeout)." },
+        "exit_code": { "type": ["integer", "null"] },
+        "timeout_s": { "type": "integer" },
+        "stdin_closed": { "type": "boolean" }
+      }
+    },
+    "raw_transcript": {
+      "type": "string",
+      "description": "Byte-for-byte stdout. Truncation ONLY with an explicit marker."
+    },
+    "transcript_path": { "type": ["string", "null"] },
+    "transcript_sha256": { "type": "string" },
+    "served_by": {
+      "type": ["string", "null"],
+      "description": "Observed-but-UNTRUSTED model identity (probe line)."
+    },
+    "absence": {
+      "type": "object",
+      "required": ["unreachable"],
+      "additionalProperties": false,
+      "properties": {
+        "unreachable": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

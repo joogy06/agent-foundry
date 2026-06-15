@@ -1,6 +1,6 @@
 ---
 name: code-comprehension
-description: Use when you want a cheap, standing, read-only GENERATED comprehension front-door (PROJECT.md + per-component COMPONENT.md) for an arbitrary code repository that has no durable contract-map — turns a code tree into non-drifting architecture docs built from a bounded synthetic component partition + structural code edges (AST/regex) + per-component LLM functional intent. Claimless and CB4-safe by construction (writes ONLY to .comprehension/ scratch + generated docs — NOTHING under .ledger/ or progress/). Composes wiring-extract-static (--standalone), intent-extract (--standalone), the wiring-reconcile pure merge core, and intent-map-render pure functions. Edges are labeled "structural (AST/regex)" — SCIP is deferred to v2. Shadow-first - generates to a SHADOW path for side-by-side parity before any adoption; --migrate (overwrite real docs) is human-gated and separate. Also trigger on "generate PROJECT.md", "document this codebase", "comprehension front-door", "architecture docs for a repo without a contract-map", "what are the components of this code".
+description: Use when you want a cheap, standing, read-only GENERATED comprehension front-door (PROJECT.md + per-component COMPONENT.md) for an arbitrary code repository that has no durable contract-map — turns a code tree into non-drifting architecture docs built from a bounded synthetic component partition + structural code edges (AST/regex) + per-component LLM functional intent. Claimless, CB4-safe: writes ONLY to .comprehension/ scratch + generated docs (nothing under .ledger/ or progress/). Composes wiring-extract-static (--standalone), intent-extract (--standalone), the wiring-reconcile pure merge core, and intent-map-render pure functions. Shadow-first - generates to a SHADOW path for side-by-side parity before adoption; --migrate (overwrite real docs) is human-gated and separate. Also trigger on "generate PROJECT.md", "document this codebase", "comprehension front-door", "architecture docs for a repo without a contract-map", "what are the components of this code".
 ---
 
 # code-comprehension (v1)
@@ -8,7 +8,7 @@ description: Use when you want a cheap, standing, read-only GENERATED comprehens
 A cheap, standing, **read-only** generated comprehension front-door. Turns an arbitrary code repo into a **generated, non-drifting** `PROJECT.md` + `docs/components/<id>/COMPONENT.md` — built from a bounded synthetic component partition + structural code edges + per-component LLM intent — so the front-door stops being hand-maintained prose that drifts.
 
 **Status:** PRODUCTION (D-A v1 ship).
-**Design document:** `/path/to/project/docs/plans/2026-06-08-generated-front-door-design.md` (read §12 → §13 → §11 → §1–§10).
+**Design document:** `/mnt/data/dev04/skill_factory/docs/plans/2026-06-08-generated-front-door-design.md` (read §12 → §13 → §11 → §1–§10).
 **Classification:** skill_text (Contract Map N/A). This skill is the *consumer* of synthetic contract-maps; it does not introduce a gated product surface.
 
 ## What this skill is for

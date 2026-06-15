@@ -627,14 +627,20 @@ With severely limited context windows:
 
 ---
 
-## Gemini 1M Context Window
+## Long-Context Second-Model Delegation
 
-For files that are very large but still need holistic analysis (not just grep-targeted), Gemini's 1M token context window can process larger chunks than Claude's working context allows. Use `mcp__gemini-cli__ask-gemini` to:
+For files that are very large but still need holistic analysis (not just grep-targeted), delegate to a second model with a large context window via the Antigravity CLI (stdin closed — mandatory, see `antigravity-cli` skill):
+
+```bash
+timeout 600 agy -p "Analyze this file for <patterns>: $(cat /path/to/chunk)" < /dev/null
+```
+
+Use it to:
 - Analyze chunks of 5,000-10,000 lines at once for pattern detection
 - Summarize entire large files when sequential chunking loses cross-section patterns
-- Cross-validate findings from Claude's chunked analysis against Gemini's single-pass view
+- Cross-validate findings from Claude's chunked analysis against a single-pass second-model view
 
-This is optional and complements (not replaces) the chunked strategies above.
+This is optional and complements (not replaces) the chunked strategies above. See `codex-orchestration` for the full delegation patterns. (The old `mcp__gemini-cli__ask-gemini` route is gone; gemini CLI retired 2026-06-18.)
 
 ## Anti-Patterns
 

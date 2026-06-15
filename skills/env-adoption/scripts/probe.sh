@@ -22,15 +22,54 @@ RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SESSION_DIR="$RUNTIME_DIR/env-adoption"
 BRIDGE_DETECT="$HOME/.claude/skills/git-cli-bridge/scripts/bridge-mode-detect.sh"
 STALENESS_HOURS=24
+INVENTORY_SCHEMA_VERSION=2
+SESSION_SCHEMA_VERSION=2
+
+# Harness version gates (orchestration surfaces — S055 workflow-adoption keystone).
+# These are the ONLY numbers gating Q1 (host capability); every consumer reads
+# the resulting boolean manifest field via `probe.sh get`, never these constants.
+WORKFLOW_TOOL_MIN="2.1.154"   # Workflow tool main-loop surface
+NATIVE_TEAMS_MIN="2.1.32"     # native TeamCreate/SendMessage/Monitor (experimental, env-gated)
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 die()  { printf 'env-adoption: %s\n' "$1" >&2; exit 1; }
 now_iso() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-# Session ID: prefer CLAUDE_SESSION_ID or FORGE_SESSION_ID, else derive from PPID.
+# version_ge A B  ->  exit 0 iff A >= B (semver-ish, dot-separated, numeric).
+# Pure-bash IFS compare — NO `sort -V` dependency (S055). Missing/empty/unparseable
+# A fails closed (returns 1) so every uncertainty path yields the conservative
+# answer. Non-numeric components are treated as 0.
+version_ge() {
+  local a="${1:-}" b="${2:-}"
+  [ -z "$a" ] && return 1
+  [ -z "$b" ] && return 1
+  # Strip any leading non-digit garbage (e.g. "v2.1.154" -> "2.1.154").
+  a="${a#v}"; b="${b#v}"
+  local IFS=.
+  # shellcheck disable=SC2206
+  local av=($a) bv=($b)
+  local i max=${#av[@]}
+  [ ${#bv[@]} -gt "$max" ] && max=${#bv[@]}
+  local x y
+  for ((i=0; i<max; i++)); do
+    x=${av[i]:-0}; y=${bv[i]:-0}
+    # Non-numeric -> 0 (fail-safe; never errors).
+    case "$x" in ''|*[!0-9]*) x=0 ;; esac
+    case "$y" in ''|*[!0-9]*) y=0 ;; esac
+    if [ "$x" -gt "$y" ]; then return 0; fi
+    if [ "$x" -lt "$y" ]; then return 1; fi
+  done
+  return 0   # equal
+}
+
+# Session ID: prefer the harness-canonical CLAUDE_CODE_SESSION_ID, then the
+# legacy CLAUDE_SESSION_ID, then FORGE_SESSION_ID, else derive from PPID.
+# (S055 fix: CLAUDE_CODE_SESSION_ID is the real key the harness sets and that
+# children inherit; without it the ppid-$$ fallback always fired, producing
+# stale tmpfs session files and a 5-8s re-probe on practically every get.)
 session_id() {
-  printf '%s' "${CLAUDE_SESSION_ID:-${FORGE_SESSION_ID:-ppid-$$}}"
+  printf '%s' "${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-${FORGE_SESSION_ID:-ppid-$$}}}"
 }
 
 session_file() {
@@ -83,6 +122,49 @@ detect_bridge() {
   else
     printf '{"installed": false}'
   fi
+}
+
+# native_teams experimental gate: env var OR a settings.json experimental flag.
+# Fail-closed — any malformed/missing settings yields "false" (never a guess).
+# The LIVE env var name is CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS (confirmed in the
+# WP-2 live-shape experiment 2026-06-11, forge #159 — it is set on this host and
+# visible inside workflow stages). The CLAUDE_NATIVE_TEAMS / CLAUDE_CODE_NATIVE_TEAMS
+# aliases are accepted defensively in case the harness renames again.
+native_teams_env_gate() {
+  if [ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" = "1" ] \
+     || [ "${CLAUDE_NATIVE_TEAMS:-}" = "1" ] \
+     || [ "${CLAUDE_CODE_NATIVE_TEAMS:-}" = "1" ]; then
+    echo "true"; return
+  fi
+  local settings="$HOME/.claude/settings.json"
+  if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
+    local flag
+    flag=$(jq -r '(.experimental.agentTeams // .experimental.nativeTeams // .experimental.native_teams // false)' "$settings" 2>/dev/null) || flag="false"
+    [ "$flag" = "true" ] && { echo "true"; return; }
+  fi
+  echo "false"
+}
+
+# detect_harness <claude_version_string_or_empty>
+# Q1 — does THIS HOST have an orchestration-capable Claude Code? Derives three
+# booleans from the Claude version probed in the SAME run (no second binary
+# call). Fail-closed: empty/unparseable version => workflow_tool/native_teams
+# false, agent_spawn false. (S055 §3.2)
+detect_harness() {
+  local cv="${1:-}"
+  local workflow_tool="false" native_teams="false" agent_spawn="false"
+  local cv_json="null"
+  if [ -n "$cv" ]; then
+    cv_json="\"$cv\""
+    # agent_spawn: claude installed AND version parseable.
+    agent_spawn="true"
+    version_ge "$cv" "$WORKFLOW_TOOL_MIN" && workflow_tool="true"
+    if version_ge "$cv" "$NATIVE_TEAMS_MIN"; then
+      [ "$(native_teams_env_gate)" = "true" ] && native_teams="true"
+    fi
+  fi
+  printf '{"claude_version": %s, "workflow_tool": %s, "native_teams": %s, "agent_spawn": %s}' \
+    "$cv_json" "$workflow_tool" "$native_teams" "$agent_spawn"
 }
 
 # ── tier computation ───────────────────────────────────────────────────────────
@@ -142,11 +224,18 @@ do_check() {
     esac
   done
 
-  # Skip inventory probe if fresh (unless --force)
-  local age
+  # Skip inventory probe if fresh (unless --force).
+  # S055 freshness conjunct: reuse ONLY iff age < 24h AND .version >= 2.
+  # A fresh-but-v1 inventory (pre-harness-block) auto-migrates via a real probe.
+  local age inv_version=0
   age=$(inventory_age_hours)
-  if [ "$force" -eq 0 ] && [ "$age" -lt "$STALENESS_HOURS" ] && [ -f "$INVENTORY_FILE" ]; then
-    # Inventory is fresh — read existing
+  if [ -f "$INVENTORY_FILE" ] && command -v jq >/dev/null 2>&1; then
+    inv_version=$(jq -r '(.version // 0)' "$INVENTORY_FILE" 2>/dev/null) || inv_version=0
+    case "$inv_version" in ''|*[!0-9]*) inv_version=0 ;; esac
+  fi
+  if [ "$force" -eq 0 ] && [ "$age" -lt "$STALENESS_HOURS" ] && [ -f "$INVENTORY_FILE" ] \
+     && [ "$inv_version" -ge "$INVENTORY_SCHEMA_VERSION" ]; then
+    # Inventory is fresh AND schema-current — read existing
     local inv
     inv=$(cat "$INVENTORY_FILE")
   else
@@ -181,10 +270,16 @@ do_check() {
     osv_scanner_j=$(detect_tool osv-scanner)
     govulncheck_j=$(detect_tool govulncheck)
 
+    # Harness block (Q1) — derived from the Claude version probed THIS run.
+    local claude_version harness_j
+    claude_version=$(printf '%s' "$claude_j" | jq -r '.version // empty' 2>/dev/null) || claude_version=""
+    harness_j=$(detect_harness "$claude_version")
+
     # Build inventory JSON
     local inv
     inv=$(jq -n \
       --argjson claude "$claude_j" \
+      --argjson harness "$harness_j" \
       --argjson codex "$codex_j" \
       --argjson agy "$agy_j" \
       --argjson copilot "$copilot_j" \
@@ -206,8 +301,9 @@ do_check() {
       --argjson govulncheck "$govulncheck_j" \
       --arg last_probed "$(now_iso)" \
       '{
-        version: 1,
+        version: 2,
         last_probed: $last_probed,
+        harness: $harness,
         tools: {
           claude: $claude,
           codex: $codex,
@@ -270,6 +366,10 @@ do_check() {
   local sess=""
   if [ "$inventory_only" -eq 0 ]; then
     mkdir -p "$SESSION_DIR"
+
+    # S055: prune stale session files (>7 days). The old ppid-$$ keying left
+    # 17 stale tmpfs files observed in the field; pruning keeps the dir small.
+    find "$SESSION_DIR" -name 'session-*.json' -mtime +7 -delete 2>/dev/null || true
 
     # Bridge mode — compose with bridge-mode-detect.sh
     local bridge_mode="unknown"
@@ -339,6 +439,41 @@ do_check() {
       contract_pipeline=true
     fi
 
+    # ── Orchestration capabilities (Q2 — S055) ───────────────────────────────
+    # Each capability is conjoined with `current_cli == "claude-code"`: a session
+    # under Codex/Copilot is NEVER capabilities.workflow_tool true even if the
+    # host has a workflow-capable Claude installed. claude_version_live is a
+    # LIVE re-parse (the 24h inventory cache demonstrably lags same-day
+    # auto-updates). native_teams additionally requires the LIVE env gate.
+    #
+    # CRITICAL: capabilities.* answers Q2 for the HOST session ONLY. It NEVER
+    # authorizes orchestration on its own — session files are keyed by the ROOT
+    # session ID and SHARED with subagents (children inherit
+    # CLAUDE_CODE_SESSION_ID), so a subagent reading capabilities.workflow_tool
+    # sees the PARENT's value. The context conjunct (probe.sh context ==
+    # main-loop / tool-list check) is mandatory and lives at the consumer.
+    local current_cli_now claude_version_live="null"
+    current_cli_now=$(printf '%s' "$inv_data" | jq -r '.current_cli // "unknown"')
+    local cvl_raw
+    cvl_raw=$(timeout 2 claude --version 2>&1 | head -1) || cvl_raw=""
+    if [ -n "$cvl_raw" ]; then
+      local cvl
+      cvl=$(printf '%s' "$cvl_raw" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1) || cvl=""
+      [ -n "$cvl" ] && claude_version_live="\"$cvl\""
+    fi
+    local cap_workflow_tool=false cap_native_teams=false cap_agent_spawn=false
+    if [ "$current_cli_now" = "claude-code" ]; then
+      local cvl_str
+      cvl_str=$(printf '%s' "$claude_version_live" | tr -d '"')
+      if [ -n "$cvl_str" ] && [ "$cvl_str" != "null" ]; then
+        cap_agent_spawn=true
+        version_ge "$cvl_str" "$WORKFLOW_TOOL_MIN" && cap_workflow_tool=true
+        if version_ge "$cvl_str" "$NATIVE_TEAMS_MIN"; then
+          [ "$(native_teams_env_gate)" = "true" ] && cap_native_teams=true
+        fi
+      fi
+    fi
+
     sess=$(jq -n \
       --arg session_id "$(session_id)" \
       --arg created "$(now_iso)" \
@@ -347,13 +482,18 @@ do_check() {
       --argjson gh_authenticated "$gh_auth" \
       --argjson gh_user "$gh_user" \
       --argjson codex_plugin_ready "$codex_plugin_ready" \
+      --argjson claude_version_live "$claude_version_live" \
       --argjson triple_model "$triple_model" \
       --argjson codex_challenger "$codex_challenger" \
       --argjson agy_analyst "$agy_analyst" \
       --argjson bridge_fallback "$bridge_fallback" \
       --argjson container_workflows "$container_workflows" \
       --argjson contract_pipeline "$contract_pipeline" \
+      --argjson workflow_tool "$cap_workflow_tool" \
+      --argjson native_teams "$cap_native_teams" \
+      --argjson agent_spawn "$cap_agent_spawn" \
       '{
+        schema_version: 2,
         session_id: $session_id,
         created: $created,
         bridge_mode: $bridge_mode,
@@ -361,13 +501,17 @@ do_check() {
         gh_authenticated: $gh_authenticated,
         gh_user: $gh_user,
         codex_plugin_ready: $codex_plugin_ready,
+        claude_version_live: $claude_version_live,
         capabilities: {
           triple_model: $triple_model,
           codex_challenger: $codex_challenger,
           agy_analyst: $agy_analyst,
           bridge_fallback: $bridge_fallback,
           container_workflows: $container_workflows,
-          contract_pipeline: $contract_pipeline
+          contract_pipeline: $contract_pipeline,
+          workflow_tool: $workflow_tool,
+          native_teams: $native_teams,
+          agent_spawn: $agent_spawn
         }
       }')
 
@@ -478,6 +622,42 @@ do_get() {
   esac
 }
 
+# ── context (live Q3 — NEVER cached) ───────────────────────────────────────────
+
+# do_context — pure env evaluation, no file reads, no caching, <5ms.
+# Answers Q3 ("can THIS context call orchestration RIGHT NOW?") for bash paths.
+# Output (one token on stdout):
+#   main-loop                      CLAUDECODE==1, no child marker
+#   child-session                  CLAUDECODE==1 + a child/subagent marker
+#   non-claude-host[:<host-id>]    CLAUDECODE!=1, host-id via affordance-advisor
+#                                  precedence (CODEX_VERSION -> COPILOT_* -> VS
+#                                  Code markers -> bare non-claude-host)
+#
+# Decision rule restated for every consumer:
+#   can_orchestrate = capabilities.<surface> AND context == main-loop
+# `capabilities.*` alone NEVER authorizes orchestration — see context-detection.md.
+do_context() {
+  if [ "${CLAUDECODE:-}" != "1" ]; then
+    # Non-Claude host. Resolve host-id via the affordance-advisor precedence.
+    if [ -n "${CODEX_VERSION:-}" ]; then
+      printf 'non-claude-host:codex\n'
+    elif [ -n "${COPILOT_AGENT_ID:-}" ] || [ -n "${COPILOT_CLI:-}" ] || [ -n "${GH_COPILOT_VERSION:-}" ]; then
+      printf 'non-claude-host:copilot\n'
+    elif [ -n "${VSCODE_PID:-}" ] || [ -n "${VSCODE_CWD:-}" ] || [ "${TERM_PROGRAM:-}" = "vscode" ]; then
+      printf 'non-claude-host:vscode\n'
+    else
+      printf 'non-claude-host\n'
+    fi
+    return 0
+  fi
+  # CLAUDECODE == 1 — a Claude Code context. Child marker => subagent.
+  if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ] || [ -n "${CLAUDE_CODE_SUBAGENT:-}" ]; then
+    printf 'child-session\n'
+    return 0
+  fi
+  printf 'main-loop\n'
+}
+
 # ── setup (interactive guided install) ─────────────────────────────────────────
 
 do_setup() {
@@ -582,8 +762,24 @@ cmd="${1:-check}"
 shift || true
 
 case "$cmd" in
-  check) do_check "$@" ;;
-  get)   do_get "$@" ;;
-  setup) do_setup "$@" ;;
-  *)     die "unknown command: $cmd. Usage: probe.sh {check|get|setup} [flags]" ;;
+  check)   do_check "$@" ;;
+  get)     do_get "$@" ;;
+  context) do_context "$@" ;;
+  setup)   do_setup "$@" ;;
+  *)       die "unknown command: $cmd. Usage: probe.sh {check|get|context|setup} [flags]" ;;
 esac
+
+# <!-- FRESHNESS:v1
+# anchors:
+#   - kind: tool_version
+#     subject: claude-code-workflow-surface
+#     verified_against: "2.1.173 (gating is by harness.* manifest field, never this number)"
+#     verified_on: "2026-06-11"
+#     volatility: high
+#   - kind: status_snapshot
+#     subject: native-teams-experimental-gate
+#     verified_against: "official but experimental, env-gated (CLAUDE_NATIVE_TEAMS / settings.experimental.nativeTeams)"
+#     verified_on: "2026-06-11"
+#     volatility: high
+# -->
+

@@ -102,7 +102,7 @@ Cross-fire is the round where homogeneous models are most damaging. If all attac
 model, they will miss the same flaws. Recommended mix:
 
 - **contrarian attacker** → Codex (critical role — often the only team that finds structural flaws)
-- **at least one other attacker** → Claude or Gemini (for diversity)
+- **at least one other attacker** → Claude or Antigravity/agy (for diversity)
 - Never run all 4 attackers on the same provider
 
 ## Refine Rules (Round 3)

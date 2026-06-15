@@ -1,6 +1,6 @@
 ---
 name: docker-security
-description: Use when hardening Docker deployments — image scanning (Trivy, Scout, Snyk), rootless Docker, user namespaces, seccomp profiles, AppArmor/SELinux integration, Docker Content Trust (image signing), secrets management, read-only containers, Linux capability dropping, CIS Docker Benchmark, supply chain security, and runtime security monitoring. Part of the docker-* skill family. OS-agnostic.
+description: Use when hardening Docker deployments — image scanning (Trivy, Scout, Snyk), rootless Docker, user namespaces, seccomp profiles, AppArmor/SELinux integration, image signing (Sigstore cosign, Notation — Docker Content Trust retired 2025), secrets management, read-only containers, Linux capability dropping, CIS Docker Benchmark, supply chain security, and runtime security monitoring. Part of the docker-* skill family. OS-agnostic.
 ---
 
 # Docker Security
@@ -150,60 +150,100 @@ docker buildx imagetools inspect myapp:latest --format '{{json .SBOM}}'
 
 ---
 
-## 2. Docker Content Trust (Image Signing)
+## 2. Image Signing
 
-```bash
-# Enable DCT globally — all push/pull/build/run operations require signed images
-export DOCKER_CONTENT_TRUST=1
+**Current guidance (verified 2026-06-10):** sign and verify images with **Sigstore cosign** (keyless or key-based) or **Notation** (Notary Project / Notary v2), and pin base images by digest. **Docker Content Trust (DCT) is RETIRED** — Docker announced its retirement in 2025; see the legacy reference at the end of this section for the timeline.
 
-# Push a signed image (generates signing keys on first use)
-docker push registry.example.com/myapp:v1.0.0
-# First push prompts for root key passphrase and repository key passphrase
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: image-signing-landscape
+    verified_against: "DCT retired (DOI certs expiring since 2025-08, no new registries since 2025-09-30, data deletion 2028-03-31); cosign and Notation are the recommended replacements"
+    verified_on: "2026-06-10"
+  - kind: retirement
+    subject: docker-content-trust
+    retire_on: "2028-03-31"
+volatility: medium
+-->
 
-# Pull only signed images (fails if unsigned)
-docker pull registry.example.com/myapp:v1.0.0
-
-# Disable DCT temporarily for a single command
-DOCKER_CONTENT_TRUST=0 docker pull unsigned-image:latest
-
-# Inspect trust data
-docker trust inspect --pretty registry.example.com/myapp
-
-# View signing keys
-docker trust key list
-notary -s https://notary.docker.io key list
-
-# Add a delegation key (team signing)
-docker trust key generate alice
-docker trust signer add --key alice.pub alice registry.example.com/myapp
-
-# Sign an existing image
-docker trust sign registry.example.com/myapp:v1.0.0
-
-# Revoke trust for a tag
-docker trust revoke registry.example.com/myapp:v1.0.0
-```
-
-### cosign (Sigstore — keyless signing)
+### cosign (Sigstore) — primary recommendation
 
 ```bash
 # Install cosign
 go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+# Or download a release binary: https://github.com/sigstore/cosign/releases
 
-# Sign image (keyless, uses OIDC identity)
-cosign sign myregistry.example.com/myapp:v1.0.0
+# ALWAYS sign by digest, not tag — tags are mutable
+DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' myregistry.example.com/myapp:v1.0.0)
 
-# Sign image with key pair
+# Sign image (keyless — uses your OIDC identity, records to the Rekor transparency log)
+cosign sign "$DIGEST"
+
+# Sign image with a key pair (air-gapped / no-OIDC environments)
 cosign generate-key-pair
-cosign sign --key cosign.key myregistry.example.com/myapp:v1.0.0
+cosign sign --key cosign.key "$DIGEST"
 
-# Verify signature
+# Verify a key-based signature
 cosign verify --key cosign.pub myregistry.example.com/myapp:v1.0.0
 
-# Verify keyless signature
+# Verify a keyless signature (pin BOTH identity and issuer)
 cosign verify --certificate-identity user@example.com \
   --certificate-oidc-issuer https://accounts.google.com \
   myregistry.example.com/myapp:v1.0.0
+
+# Keyless in CI (e.g., GitHub Actions OIDC) — verify the workflow identity
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/myorg/myapp/\.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  myregistry.example.com/myapp:v1.0.0
+```
+
+### Notation (Notary Project / Notary v2)
+
+```bash
+# Install notation — see https://notaryproject.dev for current releases
+# Generate a test key + self-signed cert (production: use a CA-issued cert
+# or a KMS plugin — Azure Key Vault, AWS Signer, HashiCorp Vault)
+notation cert generate-test --default "myorg.example.com"
+
+# Sign (by digest)
+notation sign registry.example.com/myapp@sha256:abc123...
+
+# List signatures on an artifact
+notation ls registry.example.com/myapp@sha256:abc123...
+
+# Configure a trust policy, then verify
+notation policy import trustpolicy.json
+notation verify registry.example.com/myapp@sha256:abc123...
+```
+
+Notation is spec-driven (OCI signatures attached in the registry), supports multiple signatures per artifact, and integrates with enterprise PKI/KMS — it is the natural DCT successor for organizations with existing certificate infrastructure. cosign keyless is the lower-friction choice for OIDC-centric (CI-driven) workflows.
+
+### Docker Content Trust (RETIRED — legacy reference)
+
+> **RETIRED.** Docker announced the retirement of Docker Content Trust in 2025 (announced 2025; verify current status):
+>
+> - **2025-08-08** — the oldest Docker Official Image (DOI) DCT signing certificates began expiring. With `DOCKER_CONTENT_TRUST=1` set, DOI pulls fail; `docker trust inspect` also fails for DOI.
+> - **2025-09-30** — DCT can no longer be enabled on new registries.
+> - **2028-03-31** — all DCT trust data will be permanently deleted and the feature removed.
+>
+> Upstream **Notary v1 is unmaintained**, and fewer than 0.05% of Docker Hub pulls used DCT. Docker's official recommendation is to migrate to **Sigstore cosign or Notation** (above). Do NOT set `DOCKER_CONTENT_TRUST=1` in new setups — and **unset it where present** to avoid pull failures.
+
+The commands below are retained ONLY for auditing/decommissioning legacy DCT estates (e.g., a private registry still running Notary v1):
+
+```bash
+# Find lingering DCT enablement (remove it — causes pull failures since 2025-08)
+env | grep DOCKER_CONTENT_TRUST
+unset DOCKER_CONTENT_TRUST
+
+# Inspect remaining trust data on a legacy private registry
+docker trust inspect --pretty registry.example.com/myapp
+
+# Inventory local signing keys before key destruction
+docker trust key list
+
+# Revoke trust data for a tag during decommissioning
+docker trust revoke registry.example.com/myapp:v1.0.0
 ```
 
 ---
@@ -809,6 +849,11 @@ docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -v /etc:/etc:ro \
   docker/docker-bench-security
 
+# Note: older CIS benchmark versions include a "Content trust enabled"
+# check (DOCKER_CONTENT_TRUST=1). DCT is retired (announced 2025) — treat
+# that check as obsolete; satisfy the signing intent with cosign/Notation
+# verification gates instead (see Section 2).
+
 # Output JSON report
 docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -v /var/lib:/var/lib:ro \
@@ -1010,8 +1055,13 @@ docker pull python:3.12-slim   # Docker Official
 # Use Docker Verified Publisher images
 docker pull bitnami/postgresql
 
-# Check image provenance
-docker trust inspect --pretty nginx
+# Check image provenance/attestations (do NOT use `docker trust inspect` —
+# DCT is retired and it fails for Docker Official Images since 2025-08)
+docker buildx imagetools inspect nginx --format '{{json .Provenance}}'
+docker scout quickview nginx
+
+# Pin by digest regardless of signing tooling
+docker inspect --format='{{index .RepoDigests 0}}' nginx
 
 # Never pull from unverified third-party registries in production
 ```
@@ -1175,7 +1225,7 @@ INFRASTRUCTURE:
   [ ] Docker daemon TLS enabled (if remote API)
   [ ] icc=false or user-defined networks
   [ ] Published ports bound to specific interfaces
-  [ ] Docker Content Trust or cosign for image signing
+  [ ] Image signing with cosign or Notation + digest pinning (Docker Content Trust retired 2025 — unset DOCKER_CONTENT_TRUST)
   [ ] Centralized logging configured
   [ ] Audit rules for Docker files and socket
   [ ] Runtime monitoring (Falco or equivalent)
@@ -1191,7 +1241,7 @@ INFRASTRUCTURE:
 | Anti-Pattern | Why It Fails | Correct Approach |
 |---|---|---|
 | Running containers with `--privileged` flag | Disables all security boundaries; container has full host access; equivalent to running on bare metal | Use specific capabilities (`--cap-add`) for only what is needed; never use --privileged in production |
-| Using images from untrusted registries without verification | Supply chain attacks; malicious layers; cryptominers in base images | Use Docker Content Trust (image signing); scan with Trivy/Scout; pin images by digest, not tag |
+| Using images from untrusted registries without verification | Supply chain attacks; malicious layers; cryptominers in base images | Pin images by digest, not tag; sign/verify with cosign or Notation (Docker Content Trust retired 2025 — do not rely on it); scan with Trivy/Scout |
 | Mounting Docker socket into containers | Any container with socket access can create privileged containers; full host compromise | Use Docker-in-Docker (dind) with TLS for CI; or use socket proxy with read-only API access |
 | Storing secrets in environment variables | Visible in `docker inspect`, process listing, and container logs | Use Docker secrets, tmpfs-mounted files, or external secret managers (Vault, AWS SM) |
 | Not setting read-only root filesystem | Attackers can modify binaries, plant backdoors, or write malware inside the container | Use `--read-only` flag; mount specific writable directories as tmpfs for temp files |

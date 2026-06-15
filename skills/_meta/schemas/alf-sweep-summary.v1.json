@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/alf-sweep-summary.v1.json",
+  "title": "alf-sweep-summary.v1",
+  "description": "S055 §5.4 / §8 — output of the alf-sweep `synthesize` phase (a PURE JS reduce, NOT an LLM stage): apply verdicts, recompute every priority_score from numeric inputs, dedupe (target.path, lens, normalized-title) keep-max, stable sort. Owner: alf. Consumed by the MAIN-LOOP renderer (which writes .alf/ — the workflow writes ZERO .alf/ files). Field content is deterministic (not byte-identity).",
+  "type": "object",
+  "required": ["sweep_id", "tier", "findings", "skipped"],
+  "additionalProperties": false,
+  "properties": {
+    "sweep_id": { "type": "string", "minLength": 1 },
+    "tier": { "enum": ["version", "freshness", "flow-pulse", "full", "flow-review"] },
+    "trigger_event": { "type": ["string", "null"] },
+    "detection_feeds": { "type": "array", "items": { "type": "string" } },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target_path", "lens", "title", "severity", "priority_score", "verdict"],
+        "additionalProperties": true,
+        "properties": {
+          "target_path": { "type": "string" },
+          "lens": { "type": "string" },
+          "title": { "type": "string" },
+          "severity": { "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "ADVISORY"] },
+          "priority_score": { "type": "number", "description": "Recomputed from numeric inputs by the synthesize reduce." },
+          "verdict": { "enum": ["VERIFIED", "FALSE_POSITIVE", "NEEDS_FOLLOWUP", "UNVERIFIED"] }
+        }
+      }
+    },
+    "skipped": { "type": "array", "items": { "type": "string" } },
+    "tokens_spent": { "type": ["integer", "null"], "description": "Reserved until #124." }
+  }
+}

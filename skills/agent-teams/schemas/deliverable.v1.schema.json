@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/deliverable.v1.json",
+  "title": "deliverable.v1",
+  "description": "S055 §4.2 / §12 — the schema-forced output of a team stage (Part III Workflow-stage backend) and the normalized shape of a team outbox TEAM_COMPLETE (Part IV File backend). Owner: agent-teams. Home: skills/agent-teams/schemas/. Consumed by the orchestrating context (bob / main loop). Host-neutral data.",
+  "type": "object",
+  "required": ["work_package_id", "team_id", "status", "files_modified", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "work_package_id": { "type": "string", "minLength": 1 },
+    "team_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["complete", "partial", "failed", "blocked"] },
+    "files_modified": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "blocked_reason": {
+      "type": ["string", "null"],
+      "description": "When status==blocked: one of skill_gap | external_dependency | file_conflict | scope_change | unknown."
+    },
+    "cross_team_notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Published interfaces other teams depend on (mediated by agent-teams, never direct)."
+    },
+    "worktree_path": {
+      "type": ["string", "null"],
+      "description": "Set when the WP ran worktree-isolated (executor: worker); consumed by the controlled merge step."
+    }
+  }
+}

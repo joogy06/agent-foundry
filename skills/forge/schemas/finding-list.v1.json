@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/finding-list.v1.json",
+  "title": "finding-list.v1",
+  "description": "S055 §5.2 — output of a ratify-design `extract-findings` stage (one per ballot). Each finding carries an EXACT citation; the script substring-checks every quote against the ballot's raw_transcript — a non-matching quote => extraction_suspect => NEEDS-FOLLOWUP. Owner: forge. Consumed by ratify-design verify-findings + assemble.",
+  "type": "object",
+  "required": ["ballot_source", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "ballot_source": { "type": "string", "minLength": 1, "description": "Which consultant ballot this was extracted from." },
+    "extraction_suspect": {
+      "type": "boolean",
+      "description": "True when at least one quote failed the substring cross-check against raw_transcript."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding_id", "severity", "claim", "cited_path", "cited_quote"],
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["CRITICAL", "MAJOR", "MINOR"] },
+          "claim": { "type": "string", "minLength": 1 },
+          "cited_path": { "type": "string", "minLength": 1 },
+          "cited_quote": { "type": "string", "minLength": 1, "description": "Verbatim quote that MUST appear at cited_path." }
+        }
+      }
+    }
+  }
+}

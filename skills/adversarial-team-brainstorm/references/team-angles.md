@@ -66,7 +66,7 @@ shift in volume / regulation / attention."
 **Typical input data:** GDELT events, Google Trends data, regulatory change announcements, VC
 investment flows.
 
-**Best model:** Claude or Gemini (Gemini has Google Search grounding for freshness)
+**Best model:** Claude or Antigravity (agy — second model family for freshness cross-checks)
 
 **Spawn prompt snippet:**
 ```
@@ -166,7 +166,7 @@ competitor because the category doesn't exist yet."
 
 **Typical input data:** cross-industry pattern libraries, analogies, emergent technology stacks.
 
-**Best model:** Gemini (1M context for analogy synthesis)
+**Best model:** Antigravity (agy — large-context analogy synthesis)
 
 **Spawn prompt snippet:**
 ```

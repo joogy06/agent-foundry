@@ -44,7 +44,19 @@ INDEX_SCHEMA = "freshness-index.v1"
 HOME = Path(os.environ.get("HOME", str(Path.home())))
 SKILLS_ROOT = HOME / ".claude" / "skills"
 AGENTS_ROOT = HOME / ".claude" / "agents"
+WORKFLOWS_ROOT = HOME / ".claude" / "workflows"
 STATE_FRESH = HOME / ".claude" / "state" / "freshness"
+
+# S055 (M4 / Codex #14): per-root file-extension sets. The workflows root
+# carries FRESHNESS:v1 anchors inside JS block comments (parse_file's _BLOCK_RE
+# already matches the HTML comment regardless of the surrounding JS), so adding
+# the root alone would leave every .js anchor decorative unless the iterator
+# also yields *.js for it.
+ROOT_EXTENSIONS = {
+    str(SKILLS_ROOT): ("*.md",),
+    str(AGENTS_ROOT): ("*.md",),
+    str(WORKFLOWS_ROOT): ("*.md", "*.js"),
+}
 INDEX_FILE = STATE_FRESH / "index.json"
 
 # A FRESHNESS:v1 block is an HTML comment whose body starts with the marker.
@@ -354,15 +366,28 @@ def cmd_restamp(args) -> int:
 # ── reindex ──────────────────────────────────────────────────────────────────
 
 def _iter_md_files(root: Path):
-    if root.is_dir():
-        yield from root.rglob("*.md")
+    """Yield the FRESHNESS-bearing files under a root using the per-root
+    extension set (default *.md; *.md + *.js for any 'workflows' root). Keyed by
+    exact path first, then by basename so a temp/test workflows root also gets
+    the *.js extension."""
+    if not root.is_dir():
+        return
+    exts = ROOT_EXTENSIONS.get(str(root))
+    if exts is None:
+        exts = ("*.md", "*.js") if root.name == "workflows" else ("*.md",)
+    for pat in exts:
+        yield from root.rglob(pat)
 
 
-def build_index(skills_root: Path = SKILLS_ROOT, agents_root: Path = AGENTS_ROOT) -> dict:
-    """Build the by_tool / by_deadline reverse maps from FRESHNESS blocks."""
+def build_index(skills_root: Path = SKILLS_ROOT, agents_root: Path = AGENTS_ROOT,
+                workflows_root: Path = WORKFLOWS_ROOT) -> dict:
+    """Build the by_tool / by_deadline reverse maps from FRESHNESS blocks.
+
+    S055: the workflows root is scanned with *.md + *.js so JS-embedded
+    FRESHNESS anchors land in the index."""
     by_tool: dict[str, list[str]] = {}
     by_deadline: list[dict] = []
-    for root in (skills_root, agents_root):
+    for root in (skills_root, agents_root, workflows_root):
         for f in _iter_md_files(root):
             try:
                 blocks = parse_file(f)

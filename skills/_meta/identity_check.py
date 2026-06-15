@@ -61,6 +61,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -77,13 +78,59 @@ REPORT_FILE = STATE_FRESH / "identity-report.json"
 # The three trees that hold _meta copies. Tree roles are NAMED (C6/§2) so the
 # --pair filter can select the right subset and so missing-clone guidance can
 # name which tree is absent.
+#
+# S054: shadow/foundry paths come from env vars or a config file OUTSIDE the
+# published tree (~/.claude/state/identity-trees.json) — never hardcoded here.
+# Private path literals in this file were path-scrubbed by the publish
+# pipeline, making the published copy of THIS CHECKER hash-differ from
+# prod/shadow and trip its own self-check (the 2026-06-08 "3-tree MISMATCH"
+# false positive). With paths externalized, all three copies stay
+# byte-identical.
 # ---------------------------------------------------------------------------
 PROD_TREE = HOME / ".claude" / "skills" / "_meta"
-SHADOW_TREE = Path("/path/to/skill_factory/skills/_meta")
-FOUNDRY_TREE_DEFAULT = Path("/path/to/agent-foundry/skills/_meta")
+
+_TREES_CONFIG = HOME / ".claude" / "state" / "identity-trees.json"
+
+
+def _configured_tree(env_var: str, config_key: str, role: str) -> Path:
+    """Resolve a tree path from env var, then config file, else a sentinel.
+
+    The sentinel is a path that never exists on disk, so the existing
+    missing-tree machinery applies unchanged (advisory -> partial,
+    strict -> mismatch / ENV_ERROR guidance).
+    """
+    val = os.environ.get(env_var)
+    if val:
+        return Path(val)
+    try:
+        cfg = json.loads(_TREES_CONFIG.read_text(encoding="utf-8"))
+        if cfg.get(config_key):
+            return Path(cfg[config_key])
+    except (OSError, ValueError):
+        pass
+    return Path(f"<unconfigured:{role}>")
+
+
+SHADOW_TREE = _configured_tree(
+    "CLAUDE_IDENTITY_SHADOW_TREE", "shadow_tree", "shadow-tree")
+FOUNDRY_TREE_DEFAULT = _configured_tree(
+    "CLAUDE_IDENTITY_FOUNDRY_TREE", "foundry_tree", "foundry-tree")
+
+# S055: repo-ROOT trees (for the --watchlist coverage that spans workflows/,
+# agents/, skills/_meta/...). PROD repo root is ~/.claude; SHADOW/FOUNDRY repo
+# roots come from identity-trees.json shadow_root/foundry_root.
+PROD_ROOT = HOME / ".claude"
+SHADOW_ROOT = _configured_tree(
+    "CLAUDE_IDENTITY_SHADOW_ROOT", "shadow_root", "shadow-root")
+FOUNDRY_ROOT_DEFAULT = _configured_tree(
+    "CLAUDE_IDENTITY_FOUNDRY_ROOT", "foundry_root", "foundry-root")
 
 # Backwards-compatible ordered default (prod, shadow, agent-foundry).
 DEFAULT_TREES = [PROD_TREE, SHADOW_TREE, FOUNDRY_TREE_DEFAULT]
+
+GOVERNANCE_WATCHLIST = HOME / ".claude" / "skills" / "_meta" / "governance_watchlist.json"
+SCHEMAS_DIR = HOME / ".claude" / "skills" / "_meta" / "schemas"
+REGISTRY_FILE = SCHEMAS_DIR / "registry.v1.json"
 
 # ---------------------------------------------------------------------------
 # CRITICAL_FILES — the safety-critical subset (NOT the whole _meta dir).
@@ -317,6 +364,74 @@ def _print_human(report: dict) -> None:
             print(f"  {tag} {t}")
 
 
+def _registry_paths() -> dict:
+    # Registry `path` values are relative to the skills/ dir (e.g.
+    # "_meta/schemas/work-packages.v1.json", "forge/schemas/...").
+    skills_dir = HOME / ".claude" / "skills"
+    try:
+        rows = json.loads(REGISTRY_FILE.read_text())["schemas"]
+    except (OSError, ValueError, KeyError):
+        return {}
+    return {r["name"]: skills_dir / r["path"] for r in rows}
+
+
+_TWIN_RE = re.compile(r"//\s*SCHEMA-TWIN:\s*(\S+)\s+sha256:([0-9a-f]{16})")
+
+
+def run_watchlist(strict: bool = False, shadow_root: Path | None = None) -> dict:
+    """S055 §10 — walk governance_watchlist.json: for every entry's file, compare
+    PROD_ROOT/<rel> against SHADOW_ROOT/<rel> byte-for-byte AND verify any
+    SCHEMA-TWIN annotation hash inside a workflow file matches its canonical
+    schema. Returns a structured report. Advisory by default (exit 0 with
+    findings); strict makes drift non-zero.
+
+    Self-watched: identity_check.py is itself in the meta-docs class only via the
+    critical-subset; the watchlist's meta-docs entry covers the orchestration
+    docs. Deploy-order (lab edit -> test -> byte-copy to prod -> publish) keeps
+    the two trees aligned within one cycle."""
+    shadow = shadow_root if shadow_root is not None else SHADOW_ROOT
+    report = {"mode": "watchlist", "entries": [], "drift": [], "twin_mismatch": [], "missing": []}
+    try:
+        wl = json.loads(GOVERNANCE_WATCHLIST.read_text())
+    except (OSError, ValueError) as e:
+        report["error"] = f"cannot read governance_watchlist.json: {e}"
+        return report
+
+    reg = _registry_paths()
+    for entry in wl.get("entries", []):
+        eid = entry.get("id")
+        entry_rec = {"id": eid, "role": entry.get("role"), "files_checked": 0, "drift": [], "missing": []}
+        for rel in entry.get("files", []):
+            prod_f = PROD_ROOT / rel
+            shadow_f = shadow / rel
+            if not prod_f.is_file():
+                entry_rec["missing"].append(f"prod:{rel}")
+                report["missing"].append(f"prod:{rel}")
+                continue
+            if not shadow_f.is_file():
+                entry_rec["missing"].append(f"shadow:{rel}")
+                report["missing"].append(f"shadow:{rel}")
+                continue
+            entry_rec["files_checked"] += 1
+            if prod_f.read_bytes() != shadow_f.read_bytes():
+                entry_rec["drift"].append(rel)
+                report["drift"].append(rel)
+            # SCHEMA-TWIN annotation hash check (workflow .js files only).
+            if rel.endswith(".js"):
+                text = prod_f.read_text()
+                for m in _TWIN_RE.finditer(text):
+                    name, hash16 = m.group(1), m.group(2)
+                    canon = reg.get(name)
+                    if canon is None or not canon.is_file():
+                        report["twin_mismatch"].append(f"{rel}: {name} not in registry / canonical missing")
+                        continue
+                    full = hashlib.sha256(canon.read_bytes()).hexdigest()
+                    if not full.startswith(hash16):
+                        report["twin_mismatch"].append(f"{rel}: {name} twin {hash16} != canonical {full[:16]}")
+        report["entries"].append(entry_rec)
+    return report
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         prog="identity_check.py",
@@ -333,6 +448,9 @@ def main(argv=None) -> int:
                         "skills/_meta); also read from PUBLIC_REPO_ROOT env")
     p.add_argument("--json", action="store_true")
     p.add_argument("--no-write", action="store_true")
+    p.add_argument("--watchlist", action="store_true",
+                   help="S055: walk governance_watchlist.json (workflows + agents "
+                        "+ meta-docs prod<->shadow parity + SCHEMA-TWIN hashes)")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--strict", action="store_true",
                       help="presence-required + match-required; non-zero on drift")
@@ -341,6 +459,29 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     strict = bool(args.strict)  # advisory is the default when neither is given
+
+    # S055 --watchlist mode: governance coverage spanning repo-root trees.
+    if args.watchlist:
+        report = run_watchlist(strict=strict)
+        if args.json:
+            sys.stdout.write(json.dumps(report, indent=2) + "\n")
+        else:
+            n_checked = sum(e["files_checked"] for e in report.get("entries", []))
+            sys.stdout.write(f"[watchlist] files checked: {n_checked}\n")
+            for d in report.get("drift", []):
+                sys.stdout.write(f"  DRIFT: {d}\n")
+            for m in report.get("missing", []):
+                sys.stdout.write(f"  MISSING: {m}\n")
+            for tm in report.get("twin_mismatch", []):
+                sys.stdout.write(f"  TWIN-MISMATCH: {tm}\n")
+            if "error" in report:
+                sys.stdout.write(f"  ERROR: {report['error']}\n")
+            if not (report.get("drift") or report.get("missing") or report.get("twin_mismatch") or report.get("error")):
+                sys.stdout.write("  clean — all watchlist entries parity-matched, all twins valid\n")
+        has_issue = bool(report.get("drift") or report.get("missing") or report.get("twin_mismatch") or report.get("error"))
+        if strict and has_issue:
+            return 1
+        return 0
 
     # Resolve the tree set.
     foundry_root = _resolve_foundry_root(args.foundry_root)
@@ -360,10 +501,12 @@ def main(argv=None) -> int:
                         "repo present.\n"
                         "  Fix one of:\n"
                         "    - clone it:  gh repo clone joogy06/agent-foundry "
-                        "/path/to/agent-foundry\n"
+                        "<dest>\n"
                         "    - point at an existing clone:  "
                         "--foundry-root /path/to/agent-foundry\n"
-                        "    - or set PUBLIC_REPO_ROOT=/path/to/agent-foundry\n"
+                        "    - set PUBLIC_REPO_ROOT=/path/to/agent-foundry\n"
+                        "    - or set foundry_tree in "
+                        "~/.claude/state/identity-trees.json\n"
                         "  (prod-shadow is unaffected and can be checked "
                         "standalone.)\n")
                     return 3

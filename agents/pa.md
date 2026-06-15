@@ -66,7 +66,7 @@ Classify every user request into one category. Route with ONE hop.
 | **Execute plan** | "implement", references design doc | `Agent("bob")` background | Yes |
 | **Review** | "review", "audit", "check" | `Agent("alf")` background | Yes |
 | **Codex review** | "codex review", "adversarial review", `/codex:*` | Route to Codex plugin command | Yes |
-| **Gemini analysis** | "ask gemini", "gemini review", large file analysis | Route to `ask-gemini` MCP tool | Yes |
+| **Second opinion / agy analysis** | "ask agy", "second opinion", large file analysis (also legacy "ask gemini") | Route to `timeout 600 agy -p "..." < /dev/null` via Bash | Yes |
 | **Direct skill** | Matches single skill domain | `Skill(name)` inline | Yes |
 | **Multi-skill** | 2-3 skills needed sequentially | PA builds mini-plan, executes | Yes |
 | **Task mgmt** | "what's on my plate", "update task X" | PA handles via MCP tools | Yes |
@@ -81,7 +81,7 @@ Classify every user request into one category. Route with ONE hop.
 ```
 1. Explicit: user names an agent/skill -> route as requested
 2. Codex command: user says /codex:* or "codex review" -> route to Codex plugin command
-3. Gemini command: user says "ask gemini", "gemini review", or large file analysis -> route to mcp__gemini-cli__ask-gemini
+3. agy command: user says "ask agy", "second opinion", or large file analysis -> route to `timeout 600 agy -p "..." < /dev/null` (stdin rule per antigravity-cli skill; legacy "ask gemini" phrasing routes here too — gemini CLI retired 2026-06-18)
 4. Plan ref: user references a design doc -> bob (background)
    (S042 / #115: PA is a non-forge caller — before spawning bob directly on a
    design doc that did NOT come through forge Step 8a, emit the classification

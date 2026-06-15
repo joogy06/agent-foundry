@@ -84,7 +84,47 @@ DEFAULT_TIMEOUT_S = 300  # per-auditor wall time (S030-quickwins #53; was 180s)
 MIN_DISAGREEMENTS = 3    # spec section 11.5 — forced disagreements
 
 CLAUDE_BIN = os.environ.get("AUDIT_CLAUDE_BIN", "claude")
-CLAUDE_MODEL = os.environ.get("AUDIT_CLAUDE_MODEL", "claude-opus-4-6[1m]")
+
+# S059 smart-config: env > policy > hardcoded chain (design §7). The hardcoded
+# fallback is refreshed to the current 1M-context Opus (was the stale
+# claude-opus-4-6[1m]). The headless surface accepts alias[1m] natively (V-1), so a
+# policy that resolves to e.g. "opus[1m]" is passed straight to `claude -p --model`.
+# Fail-open at every step — a missing/broken resolver NEVER changes the audit model.
+_AUDIT_HARDCODED_MODEL = "claude-opus-4-8[1m]"
+
+
+def _resolve_spawn_model(env_var: str, hardcoded: str) -> str:
+    """env > policy > hardcoded. ~15 LOC, fail-open, 10s timeout (design §7).
+
+    1. If the env var is set, it wins (operator override / test pin).
+    2. Else ask the smart-config resolver for the headless 'medium' tier (the
+       verifier arm is a review/verify role -> medium). model:null -> hardcoded.
+    3. Any error / timeout / missing resolver -> hardcoded. Never raises.
+    """
+    val = os.environ.get(env_var)
+    if val:
+        return val
+    try:
+        resolver = os.path.expanduser(
+            "~/.claude/skills/smart-config/scripts/model_policy.py"
+        )
+        proc = subprocess.run(
+            ["python3", resolver, "resolve", "--tier", "medium",
+             "--surface", "headless", "--reason", "metacognitive audit arm",
+             "--no-log"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            obj = json.loads(proc.stdout.strip().splitlines()[-1])
+            m = obj.get("model")
+            if m:
+                return m
+    except Exception:  # noqa: BLE001 - fail-open: policy never breaks the audit
+        pass
+    return hardcoded
+
+
+CLAUDE_MODEL = _resolve_spawn_model("AUDIT_CLAUDE_MODEL", _AUDIT_HARDCODED_MODEL)
 
 CODEX_BIN = os.environ.get("AUDIT_CODEX_BIN", "codex")
 

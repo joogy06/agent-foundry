@@ -13,7 +13,8 @@ Detect hardcoded secrets — API keys, tokens, passwords, PEM private keys, AWS 
 |---|---|---|---|---|
 | **gitleaks** | Fast (regex-based) | Medium | No | Pre-commit / pre-push hooks; CI quick gate |
 | **trufflehog** | Slower (verifies via API calls) | Low (`--only-verified`) | Yes | CI deeper scan; reduce triage noise |
-| **in-house** `scripts/secrets-scan.sh` | Fast (regex catalog of ~18 patterns) | Medium-high (curated allowlist) | No | Defense-in-depth; covers patterns gitleaks may miss; offline-safe |
+| **in-house** `scripts/secrets-scan.sh` | Fast (regex catalog of ~18 patterns) | Medium-high (curated allowlist) | No | Defense-in-depth; covers patterns gitleaks may miss; offline-safe; POSIX shells (Linux/macOS/Git Bash) |
+| **in-house** `scripts/secrets-scan.py` | Fast (same catalog — stdlib-only Python port of the `.sh`, full parity) | Medium-high (same curated allowlist) | No | Cross-platform (Linux/macOS/Windows, Python 3.10+); enterprise Windows where bash/PowerShell are blocked |
 
 The recommended posture in 2026 is **layered**: gitleaks at pre-commit for speed, trufflehog with `--only-verified` in CI to eliminate triage burden, in-house regex as a backstop.
 
@@ -105,9 +106,21 @@ jq '.tools | {gitleaks, trufflehog}' ~/.claude/state/inventory.json
 
 ## 3. Canonical patterns
 
-### 3.1 Local pre-push hook (POSIX, recommended)
+### 3.1 Local pre-push hook (bash for POSIX shells, Python for cross-platform)
 
-The repo at `scripts/install-pre-push-hook.sh` (in your project root) already installs a hook that runs `secrets-scan.sh`. To add gitleaks as a second pre-push pass, append to `.git/hooks/pre-push` (after the existing inhouse scan):
+Two installer/scanner pairs ship in your project root's `scripts/` — pick by environment:
+
+- **POSIX shells (Linux / macOS / Git Bash):** `scripts/install-pre-push-hook.sh` installs a hook that runs `secrets-scan.sh`.
+- **Cross-platform / enterprise Windows** (Execution Policy / AppLocker / Constrained Language Mode blocks PowerShell, but Python is present): `scripts/install-pre-push-hook.py` wires `scripts/secrets-scan.py` — stdlib-only, full parity with the bash pair (same patterns, allowlist, severity tiers, exit codes). Idempotent; backs up any unmanaged pre-push hook to `pre-push.bak`; `--uninstall` removes only the managed hook.
+
+```bash
+# Python pair (Linux, macOS, Windows)
+python3 scripts/install-pre-push-hook.py                      # install into cwd
+python3 scripts/install-pre-push-hook.py --target-repo PATH   # install into a specific repo
+python3 scripts/install-pre-push-hook.py --uninstall          # remove the managed hook
+```
+
+To add gitleaks as a second pre-push pass, append to `.git/hooks/pre-push` (after the existing inhouse scan):
 
 ```bash
 # gitleaks pre-push gate (additional layer)

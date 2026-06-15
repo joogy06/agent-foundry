@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/workflow-run-record.v1.json",
+  "title": "workflow-run-record.v1",
+  "description": "S055 §4.3 — one JSONL line per workflow-run state transition in progress/workflow-runs.jsonl. The MAIN LOOP is the sole writer (via _meta/workflow_dispatch.py). Doubles as the #147 enforcement hook and the #124 cost-correlation point (designed now, enforced never this cycle).",
+  "type": "object",
+  "required": ["state", "workflow", "plan_hash", "plan_revision", "run_label", "at"],
+  "additionalProperties": false,
+  "properties": {
+    "state": {
+      "enum": ["emitted", "claimed", "executing", "complete", "failed"]
+    },
+    "workflow": { "type": "string", "minLength": 1 },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$"
+    },
+    "plan_revision": { "type": "integer", "minimum": 0 },
+    "run_label": { "type": "string", "minLength": 1 },
+    "run_id": {
+      "type": ["string", "null"],
+      "description": "Recorded when state == executing (the Workflow run id)."
+    },
+    "args_sha256": { "type": ["string", "null"] },
+    "resumed_from": {
+      "type": ["string", "null"],
+      "description": "Resume audit: an executing line carrying this after a higher plan_revision line for the same plan = a no-resume-across-amendment violation (mechanically detectable)."
+    },
+    "claim_token": { "type": ["string", "null"] },
+    "at": {
+      "type": "string",
+      "description": "ISO-8601 — caller-stamped (scripts cannot read the clock).",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "detail": {
+      "type": ["object", "string", "null"],
+      "description": "Optional free-form detail (e.g. failure reason)."
+    }
+  }
+}

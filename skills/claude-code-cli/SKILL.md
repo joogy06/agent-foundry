@@ -5,7 +5,7 @@ description: Use when working with the Claude Code CLI (`claude`) — headless a
 
 # Claude Code CLI
 
-Task-indexed reference for Claude Code 2.1.96 (and the 2.1.x line in general). Forked from the superpowers `working-with-claude-code` skill at v0.3.1, refreshed against local ground truth, and extended with three custom files that document this machine's forge/bob/alf/pa/wiki ecosystem.
+Task-indexed reference for Claude Code 2.1.170 (and the 2.1.x line in general). Forked from the superpowers `working-with-claude-code` skill at v0.3.1, refreshed against local ground truth, and extended with custom files that document this machine's forge/bob/alf/pa/wiki ecosystem.
 
 This SKILL.md is the navigation index. Detailed documentation lives in `references/`. Read only what the current task needs.
 
@@ -19,9 +19,9 @@ This SKILL.md is the navigation index. Detailed documentation lives in `referenc
 
 ## Versions covered
 
-| Component | Version (verified locally 2026-04-08) |
+| Component | Version (verified locally 2026-06-10) |
 |---|---|
-| Claude Code CLI | 2.1.96 |
+| Claude Code CLI | 2.1.170 |
 | Plugin: superpowers (source for forked references) | 0.3.1 |
 | Codex plugin | 1.0.2 |
 
@@ -57,6 +57,21 @@ When the local `claude` version drifts from this skill, run `scripts/verify-clau
 | Author a skill (`~/.claude/skills/<name>/SKILL.md`) | `references/skills.md` + the `cross-tool-portability` sub-skill of `research-for-skills` |
 | Cross-tool skill that must work in Antigravity (agy)/Codex/Copilot | `research-for-skills/cross-tool-portability/cross-tool-portability.md` |
 | Skill discovery / progressive disclosure | `references/skills.md` |
+
+### Orchestration, teams, tasks, scheduling
+
+| Task | Read |
+|---|---|
+| Workflow tool — script-driven multi-agent orchestration (`agent()`, `pipeline()`, `parallel()`, budget, journal resume) | `references/orchestration.md` |
+| Saved/named workflows (`.claude/workflows/`, `~/.claude/workflows/`) | `references/orchestration.md` |
+| Effort levels (low→max) and ultracode (v2.1.160+) | `references/orchestration.md` |
+| Session cron (CronCreate/CronList/CronDelete), `/loop` pacing (ScheduleWakeup), RemoteTrigger, `/schedule` cloud routines, `/goal` | `references/orchestration.md` |
+| Why a subagent cannot fan out (Agent/Workflow = main loop ONLY) and the invert-control pattern | `references/orchestration.md` (KEY ASYMMETRY section) |
+| Native agent teams (TeamCreate/SendMessage — experimental, env-gated) | `references/native-teams-tasks.md` |
+| Native task lifecycle (TaskCreate/TaskList/TaskGet/TaskUpdate/TaskStop/TaskOutput, Monitor) | `references/native-teams-tasks.md` |
+| Teammate hooks (TeammateIdle/TaskCreated/TaskCompleted) | `references/native-teams-tasks.md` |
+| Background agents (`run_in_background`, `claude agents` Agent View, `claude --bg --exec`, worktrees + EnterWorktree) | `references/native-teams-tasks.md` |
+| Native teams vs the portable file-based `agent-teams` skill | `references/native-teams-tasks.md` |
 
 ### Plugins and marketplaces
 
@@ -167,7 +182,7 @@ Six modes, exactly:
 ## Top-level subcommands (verified)
 
 ```
-agents       List configured agents
+agents       Manage background agents (Agent View dashboard; --json for scripting)
 auth         Manage authentication (login/logout/status)
 auto-mode    Inspect auto mode classifier configuration
 doctor       Check Claude Code auto-updater health
@@ -177,11 +192,13 @@ mcp          Configure and manage MCP servers
 plugin       Manage Claude Code plugins
               install | uninstall | enable | disable | list | update | validate
               marketplace { add | list | remove | update }
+project      Manage Claude Code project state (purge: delete transcripts/tasks/file history/config)
 setup-token  Set up a long-lived authentication token
+ultrareview  Run a cloud-hosted multi-agent code review of the current branch / a PR (--json, --timeout)
 update       Check for updates and install if available
 ```
 
-`agents` is verified as a top-level command in 2.1.96. Use `claude agents --help` for the current sub-options on this machine.
+Verified against `claude --help` on 2.1.170 (2026-06-10). `agents` is the background-agent Agent View (see `references/native-teams-tasks.md`), not a list of configured subagents. Use `claude agents --help` for the current sub-options on this machine.
 
 ## Headless (`-p`) cheat sheet
 

@@ -151,6 +151,42 @@ codex exec "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md
 
 Where `ballot-prompt.md` follows the template at `references/ballot-template.md`.
 
+## Fast path — `cross-cli-deliberation` workflow (S055, optional, main-loop only)
+
+When the orchestrator is the main loop with `capabilities.workflow_tool` true
+(`probe.sh get capabilities.workflow_tool` AND `probe.sh context == main-loop`
+— the ONLY capability API; `capabilities.*` alone never authorizes), the two
+gates MAY run as the `cross-cli-deliberation` saved workflow: parallel Gate-1
+ballot wrapper stages (`ballot.v1`) → Gate-2 evidence wrappers (`evidence.v1`)
+→ deterministic `assemble` (`deliberation-record.v1`). The schemas are at
+`schemas/`; they are CONSUMED by `ratify-design` (never forked).
+
+**WP-2 live-shape constraints (binding):**
+- **agy is UNREACHABLE from workflow stages** and codex-from-stage is UNTESTED —
+  so consultant transcripts are **PRE-LAUNCHED inline by the caller** (using the
+  Invocation pattern above, with the full guard set) and passed via
+  `args.consultant_transcripts`. A ballot wrapper stage only EXTRACTS the literal
+  ballot from the supplied transcript; it NEVER makes a live external call.
+- **Command custody is args-supplied** (`consultant_cmds`) — no command line is
+  embedded in the workflow file.
+- **Tests are NEVER executed in a stage** (trusted-runner is bob-only, CB3): an
+  `executable_test` reproduction returns `needs_inline_verification`; the inline
+  caller runs it under trusted-runner discipline.
+- This workflow is `MODE=bridge`-incompatible (family bridge rule): bridge hosts
+  use the inline fallback for all external calls.
+
+Stays inline: ballot-prompt authoring + the no-orchestrator-opinion self-check;
+quorum fallback judgment; synthesis + escalation; consultant nullification.
+
+## Context asymmetry (the framing-bug rule)
+
+Consultants see ONLY the files passed to them. **An unstated constraint is a
+non-existent one** from the consultant's vantage; a verdict that violates an
+unstated constraint is a FRAMING BUG, not a model error — fix the context file
+and re-ballot, do not penalize the consultant. Always pass the decision context,
+constraints, and success criteria; NEVER pass the orchestrator's preferred
+outcome (null-hypothesis discipline).
+
 ## Synthesis logic
 
 After all ballots are collected (and any CHANGE_NEEDED evidence is verified):

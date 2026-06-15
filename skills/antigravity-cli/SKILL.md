@@ -180,6 +180,6 @@ infer it from `agy`. (Deep IDE semantic analysis is a deferred v1.1 item.)
 anchors:
   - kind: tool_version
     subject: agy
-    verified_against: "1.0.5"
-    verified_on: "2026-06-05"
+    verified_against: "1.0.7"
+    verified_on: "2026-06-11"
 -->

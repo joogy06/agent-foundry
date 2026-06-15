@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/execution-report.v1.json",
+  "title": "execution-report.v1",
+  "description": "S055 §6.3 — the schema-mapped Execution Report bob emits when the spawn context supplies a structured-output schema. Producer: bob stages / bob standalone. Consumed by the main loop, forge Step 9, evo-apply, alf Step 6. The `needs.kind` enum is THE machine-readable escalation channel of the whole inversion. Host-neutral data.",
+  "type": "object",
+  "required": ["status", "built", "files_changed", "verification"],
+  "additionalProperties": false,
+  "properties": {
+    "status": { "enum": ["COMPLETE", "PARTIAL", "FAILED"] },
+    "wp_id": { "type": ["string", "null"] },
+    "built": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Deliverables, brief descriptions."
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": true,
+        "properties": {
+          "path": { "type": "string" },
+          "change": { "type": "string" }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Concrete artifacts: command -> pass/fail summaries.",
+      "additionalProperties": true
+    },
+    "needs": {
+      "type": ["object", "null"],
+      "description": "The structured escalation channel. Present when status is PARTIAL/FAILED and the main loop must act.",
+      "required": ["kind"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "enum": [
+            "plan-execution",
+            "forge-amendment-mode",
+            "plan-recompile",
+            "budget-floor",
+            "user-decision",
+            "needs_inline_verification"
+          ]
+        },
+        "payload": { "type": ["object", "array", "string", "null"] }
+      }
+    },
+    "known_issues": { "type": "array", "items": { "type": "string" } },
+    "how_to_verify": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -11,7 +11,7 @@ does not generate new outputs from scratch. Its job is to judge survival, not to
 ## Arbiter Model Selection
 
 - Default: **Claude** (good at long-context synthesis across multiple Round 3 documents)
-- Alternative: **Gemini** (when cross-fire involved >50 total attacks — Gemini's 1M context helps)
+- Alternative: **Antigravity (agy)** (when cross-fire involved >50 total attacks — large-context synthesis helps)
 - **Never**: the same model as the contrarian team (correlated blind spots at the final gate)
 
 ---

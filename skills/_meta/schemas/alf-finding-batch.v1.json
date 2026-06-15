@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/alf-finding-batch.v1.json",
+  "title": "alf-finding-batch.v1",
+  "description": "S055 §8 — schema-forced output of an alf Format-5 workflow-stage finder. Owner: alf. Home: _meta/schemas/. The finder writes ZERO files under .alf/ (the synthesis pipeline is the single consumer; the MAIN LOOP is the single .alf/ writer). Out-of-scope HIGH findings become handoff_requests[] DATA (no bob handoff, no tasks.md, no pa_*). Every finding carries feed_record or local evidence (HR5/HR6). Budget honesty via skipped[] + limits.",
+  "type": "object",
+  "required": ["target", "lens", "findings", "skipped", "limits"],
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": true,
+      "properties": { "path": { "type": "string" } }
+    },
+    "lens": { "type": "string", "minLength": 1 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "severity", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "ADVISORY"] },
+          "evidence": {
+            "type": "object",
+            "description": "feed_record (the inventory-history line / rot finding / drift entry / identity row) OR local code evidence (HR6).",
+            "additionalProperties": true,
+            "properties": {
+              "feed_record": { "type": ["string", "object", "null"] },
+              "local": { "type": ["string", "null"] }
+            }
+          },
+          "priority_score": { "type": ["number", "null"], "description": "Recomputed by synthesis from numeric inputs (not trusted from the finder)." },
+          "recommendation": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "handoff_requests": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Out-of-scope HIGH findings as DATA — the finder never spawns bob or writes tasks.md."
+    },
+    "skipped": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Budget honesty (mirror of evo HR8): work not done and why."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "token/file/lookup ceilings that fired."
+    }
+  }
+}

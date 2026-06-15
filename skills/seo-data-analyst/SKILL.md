@@ -7,7 +7,7 @@ description: Use when querying Google Search Console, Google Analytics 4, or Mic
 
 ## Overview
 
-Data-driven SEO requires querying three platforms: **GSC** (search performance), **GA4** (user behavior), and **Clarity** (behavioral/UX signals). This skill covers what an AI agent can access programmatically, rate limits, and practical workflow recipes. See `api-reference.md` for detailed endpoint documentation.
+Data-driven SEO requires querying three platforms: **GSC** (search performance), **GA4** (user behavior), and **Clarity** (behavioral/UX signals). This skill covers what an AI agent can access programmatically, rate limits, and practical workflow recipes.
 
 ## Platform Summary
 

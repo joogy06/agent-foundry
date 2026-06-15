@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/registry.v1.json",
+  "title": "registry.v1",
+  "description": "S055 §12 (frozen — Codex #13 / R9). The single machine registry of every schema in the ecosystem's orchestration surface. No schema ships outside the registry. A generated test (tests/schemas/test_schema_registry.py) walks this file: every canonical path exists + parses; every fixture round-trips; every workflow SCHEMA-TWIN annotation hash matches its canonical file. Rows are added INCREMENTALLY by their owning WPs — the generated test validates whatever the registry lists at run time, so later WPs extend rather than break it.",
+  "schema_version": "registry.v1",
+  "schemas": [
+    {
+      "name": "work-packages.v1",
+      "version": "v1",
+      "path": "_meta/schemas/work-packages.v1.json",
+      "owner": "bob",
+      "producer": "bob (Step 2)",
+      "consumer": "main-loop compiler, bob stages, agent-teams, fallback callers, vs-code-foundry",
+      "ships_in_wp": "WP-4"
+    },
+    {
+      "name": "execution-report.v1",
+      "version": "v1",
+      "path": "_meta/schemas/execution-report.v1.json",
+      "owner": "bob",
+      "producer": "bob stages / bob standalone",
+      "consumer": "main loop, forge Step 9, evo-apply, alf Step 6",
+      "ships_in_wp": "WP-4"
+    },
+    {
+      "name": "plan-load.v1",
+      "version": "v1",
+      "path": "_meta/schemas/plan-load.v1.json",
+      "owner": "bob",
+      "producer": "bob-serial-exec plan-load stage",
+      "consumer": "bob-serial-exec script",
+      "ships_in_wp": "WP-4"
+    },
+    {
+      "name": "agent-spawn-request.v1",
+      "version": "v1",
+      "path": "_meta/schemas/agent-spawn-request.v1.json",
+      "owner": "_meta (shared)",
+      "producer": "alf (Step 5), evo (C3)",
+      "consumer": "main loop",
+      "ships_in_wp": "WP-4"
+    },
+    {
+      "name": "workflow-run-record.v1",
+      "version": "v1",
+      "path": "_meta/schemas/workflow-run-record.v1.json",
+      "owner": "_meta",
+      "producer": "main loop (workflow_dispatch.py)",
+      "consumer": "audits, alf sweeps, #147/#124 hooks",
+      "ships_in_wp": "WP-4"
+    },
+    {
+      "name": "deliverable.v1",
+      "version": "v1",
+      "path": "agent-teams/schemas/deliverable.v1.schema.json",
+      "owner": "agent-teams",
+      "producer": "team stages (Part III) / outbox normalization (Part IV)",
+      "consumer": "orchestrating context (bob / main loop)",
+      "ships_in_wp": "WP-9"
+    },
+    {
+      "name": "approach-output.v1",
+      "version": "v1",
+      "path": "forge/schemas/approach-output.v1.json",
+      "owner": "forge",
+      "producer": "design-tournament diverge stages",
+      "consumer": "design-tournament converge script, forge inline",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "ux-review.v1",
+      "version": "v1",
+      "path": "forge/schemas/ux-review.v1.json",
+      "owner": "forge",
+      "producer": "design-tournament UX stage",
+      "consumer": "design-tournament converge script, forge inline",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "challenger-verdict.v1",
+      "version": "v1",
+      "path": "forge/schemas/challenger-verdict.v1.json",
+      "owner": "forge",
+      "producer": "design-tournament Claude challenger stage",
+      "consumer": "design-tournament converge script, forge inline",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "external-challenger-verdict.v1",
+      "version": "v1",
+      "path": "forge/schemas/external-challenger-verdict.v1.json",
+      "owner": "forge",
+      "producer": "design-tournament codex/agy wrapper stages",
+      "consumer": "design-tournament converge script, forge inline",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "design-synthesis.v1",
+      "version": "v1",
+      "path": "forge/schemas/design-synthesis.v1.json",
+      "owner": "forge",
+      "producer": "design-tournament converge synthesis stage",
+      "consumer": "forge inline (section-by-section presentation)",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "finding-list.v1",
+      "version": "v1",
+      "path": "forge/schemas/finding-list.v1.json",
+      "owner": "forge",
+      "producer": "ratify-design extract-findings stages",
+      "consumer": "ratify-design verify-findings + assemble",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "finding-verification.v1",
+      "version": "v1",
+      "path": "forge/schemas/finding-verification.v1.json",
+      "owner": "forge",
+      "producer": "ratify-design verify-findings stages",
+      "consumer": "ratify-design assemble script",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "ratification-record.v1",
+      "version": "v1",
+      "path": "forge/schemas/ratification-record.v1.json",
+      "owner": "forge",
+      "producer": "ratify-design assemble phase",
+      "consumer": "forge inline (merges VERIFIED findings into the doc)",
+      "ships_in_wp": "WP-11"
+    },
+    {
+      "name": "ballot.v1",
+      "version": "v1",
+      "path": "cross-cli-deliberation/schemas/ballot.v1.json",
+      "owner": "cross-cli-deliberation",
+      "producer": "gate1 wrapper stages",
+      "consumer": "deliberation script, ratify-design (consumed, never forked)",
+      "ships_in_wp": "WP-13"
+    },
+    {
+      "name": "evidence.v1",
+      "version": "v1",
+      "path": "cross-cli-deliberation/schemas/evidence.v1.json",
+      "owner": "cross-cli-deliberation",
+      "producer": "gate2 wrapper stages",
+      "consumer": "deliberation script, inline verifier",
+      "ships_in_wp": "WP-13"
+    },
+    {
+      "name": "deliberation-record.v1",
+      "version": "v1",
+      "path": "cross-cli-deliberation/schemas/deliberation-record.v1.json",
+      "owner": "cross-cli-deliberation",
+      "producer": "assemble phase",
+      "consumer": "inline skill, ratify-design",
+      "ships_in_wp": "WP-13"
+    },
+    {
+      "name": "team-output.v1",
+      "version": "v1",
+      "path": "adversarial-team-brainstorm/schemas/team-output.v1.json",
+      "owner": "adversarial-team-brainstorm",
+      "producer": "tournament diverge/refine stages",
+      "consumer": "tournament script, caller",
+      "ships_in_wp": "WP-15"
+    },
+    {
+      "name": "attack-set.v1",
+      "version": "v1",
+      "path": "adversarial-team-brainstorm/schemas/attack-set.v1.json",
+      "owner": "adversarial-team-brainstorm",
+      "producer": "tournament crossfire stages",
+      "consumer": "tournament script, caller",
+      "ships_in_wp": "WP-15"
+    },
+    {
+      "name": "tournament-result.v1",
+      "version": "v1",
+      "path": "adversarial-team-brainstorm/schemas/tournament-result.v1.json",
+      "owner": "adversarial-team-brainstorm",
+      "producer": "tournament arbiter stage",
+      "consumer": "tournament script, caller",
+      "ships_in_wp": "WP-15"
+    },
+    {
+      "name": "alf-finding-batch.v1",
+      "version": "v1",
+      "path": "_meta/schemas/alf-finding-batch.v1.json",
+      "owner": "alf",
+      "producer": "alf Format-5 stages",
+      "consumer": "alf-sweep synthesize",
+      "ships_in_wp": "WP-16"
+    },
+    {
+      "name": "alf-verify.v1",
+      "version": "v1",
+      "path": "_meta/schemas/alf-verify.v1.json",
+      "owner": "alf",
+      "producer": "alf-sweep verify stages",
+      "consumer": "alf-sweep synthesize",
+      "ships_in_wp": "WP-16"
+    },
+    {
+      "name": "alf-sweep-summary.v1",
+      "version": "v1",
+      "path": "_meta/schemas/alf-sweep-summary.v1.json",
+      "owner": "alf",
+      "producer": "alf-sweep script",
+      "consumer": "main-loop renderer",
+      "ships_in_wp": "WP-16"
+    },
+    {
+      "name": "evo-phase-result.v1",
+      "version": "v1",
+      "path": "_meta/schemas/evo-phase-result.v1.json",
+      "owner": "evo",
+      "producer": "evo-analyze stages",
+      "consumer": "evo-analyze script",
+      "ships_in_wp": "WP-17"
+    },
+    {
+      "name": "intent-stage.v1",
+      "version": "v1",
+      "path": "_meta/schemas/intent-stage.v1.json",
+      "owner": "evo",
+      "producer": "evo-analyze intent stages",
+      "consumer": "evo-analyze script",
+      "ships_in_wp": "WP-17"
+    },
+    {
+      "name": "cold-audit.v1",
+      "version": "v1",
+      "path": "_meta/schemas/cold-audit.v1.json",
+      "owner": "evo",
+      "producer": "evo-analyze cold-audit stages",
+      "consumer": "evo-analyze script",
+      "ships_in_wp": "WP-17"
+    },
+    {
+      "name": "drift-stage.v1",
+      "version": "v1",
+      "path": "_meta/schemas/drift-stage.v1.json",
+      "owner": "evo",
+      "producer": "evo-analyze drift stage",
+      "consumer": "evo-analyze script",
+      "ships_in_wp": "WP-17"
+    }
+  ]
+}
