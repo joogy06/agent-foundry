@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/structure-index.v1.json",
+  "title": "structure-index.v1",
+  "description": "structure-recovery ACCUMULATED catalog — the queryable cross-file structure index produced by accumulate_structure.py (per-file summary) and the cross-file pass (store.py build_catalog). Unlike structure-finding.v1 (per-chunk, DECLARED facts, offsets MUST be null), this catalog carries the DETERMINISTICALLY COMPUTED byte layout from scripts/cobol_offset_calc.py: per-field byte_offset / length, and for variable-length records byte_offset_min / byte_offset_max / variable_length / ranged, plus gap-flagged fields (SYNCHRONIZED, ODO-tail, unresolved-COPY). Relationships are resolved across files (SQL declared FK = grounded; convention *_id = inferred; COBOL cross-record = speculative, opt-in --infer-relationships). Every entity/field/relationship carries confidence x evidence_kind x enforcement. Inferred DDL and speculative FKs derived from this index are advisory-only, human-review-headered, and NEVER executed (design §5 / §6).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "extractor_id",
+    "extractor_version",
+    "generated_with",
+    "entities",
+    "relationships",
+    "gaps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "extractor_id": { "const": "structure-recovery" },
+    "extractor_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "SemVer of the extractor that produced this catalog."
+    },
+    "generated_with": {
+      "type": "object",
+      "description": "Provenance of the catalog build: the job fingerprint and option flags that produced it (run_state.py). Lets a renderer/consumer detect a stale or differently-configured catalog.",
+      "additionalProperties": false,
+      "required": ["job_fingerprint", "infer_relationships"],
+      "properties": {
+        "job_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "The outer sha256 job fingerprint from run_state.py (folds project_root + file-set snapshot + options + prompt/extractor/schema/normalizer versions + model_id). NOT the legacy-code-intel pipeline_fingerprint (which it wraps, never widens)."
+        },
+        "infer_relationships": {
+          "type": "boolean",
+          "description": "Whether the --infer-relationships flag was set (decision O2). When false, NO COBOL cross-record FKs appear in relationships[]."
+        },
+        "partial": {
+          "type": "boolean",
+          "description": "OPTIONAL. True when the run finalized status:partial (wall-clock cap). Consumers banner this. Default false."
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "description": "The accumulated objects (tables, views, COBOL records, flat-file layouts), identity-canonicalized across files (CREATE + later ALTER unioned, latest ALTER wins).",
+      "items": {
+        "type": "object",
+        "required": [
+          "object_kind",
+          "qualified_name",
+          "fields",
+          "confidence",
+          "evidence",
+          "gaps"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "object_kind": {
+            "enum": ["table", "view", "cobol_record", "flatfile_layout"],
+            "description": "Same closed enum as structure-finding.v1.object_kind."
+          },
+          "qualified_name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Canonical qualified name of the entity."
+          },
+          "record_length": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Computed record length (01-level length for COBOL; sum of fixed field lengths for flat-file) when fixed. null when variable (see variable_length) or not computable. Computed by cobol_offset_calc.py, NEVER declared."
+          },
+          "record_length_min": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Lower bound of record length for a variable-length (ODO) record. null when fixed/unknown."
+          },
+          "record_length_max": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Upper bound of record length for a variable-length (ODO) record. null when fixed/unknown."
+          },
+          "variable_length": {
+            "type": "boolean",
+            "description": "True when this entity has at least one OCCURS DEPENDING ON tail making the record length variable. The renderer/DDL must not assert a single record length."
+          },
+          "fields": {
+            "type": "array",
+            "description": "The merged, offset-computed field tree for this entity.",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "ordinal",
+                "confidence",
+                "evidence_kind",
+                "enforcement"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1, "description": "Field/column name." },
+                "ordinal": { "type": "integer", "minimum": 0, "description": "0-indexed declaration order within parent group/table." },
+                "level": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "maximum": 88,
+                  "description": "COBOL level number; null for SQL/flat-file."
+                },
+                "parent": {
+                  "type": ["string", "null"],
+                  "description": "Name (or ordinal-path) of the COBOL group parent, for hierarchy reconstruction. null for top-level/non-COBOL."
+                },
+                "byte_offset": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "COMPUTED 0-indexed byte offset within the record (cobol_offset_calc.py). null when ranged/unknown — then byte_offset_min/byte_offset_max apply, or the field is gap-flagged (SYNC/ODO-tail/unresolved-COPY)."
+                },
+                "length": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "COMPUTED byte length (cobol_offset_calc.py). Group length = sum(children). 88/66 and implied-decimal V/P = 0. null when not computable."
+                },
+                "byte_offset_min": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "Lower-bound offset for a field positioned after an ODO tail or under SYNC. null when a single byte_offset is authoritative."
+                },
+                "byte_offset_max": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "Upper-bound offset for a field positioned after an ODO tail or under SYNC. null when a single byte_offset is authoritative."
+                },
+                "ranged": {
+                  "type": "boolean",
+                  "description": "True when the offset/length is a RANGE rather than a single authoritative value (post-ODO position, or SYNCHRONIZED alignment slack). The renderer must show min..max, NEVER a single confident value (Codex Finding 1)."
+                },
+                "variable_length": {
+                  "type": "boolean",
+                  "description": "True when this specific field's length is variable (it IS the ODO array, or follows one). Default false."
+                },
+                "pic_clause": { "type": ["string", "null"], "description": "COBOL PICTURE verbatim; null for SQL/flat-file." },
+                "usage": { "type": ["string", "null"], "description": "COBOL USAGE (DISPLAY/COMP/COMP-3/...); null for SQL/flat-file." },
+                "declared_type": { "type": ["string", "null"], "description": "Declared SQL/DSX type verbatim; null otherwise." },
+                "normalized_type": { "type": ["string", "null"], "description": "Cross-dialect normalized type label (advisory)." },
+                "nullable": { "type": ["boolean", "null"], "description": "Declared nullability; null when unknown." },
+                "occurs": { "type": ["integer", "null"], "minimum": 0, "description": "Fixed OCCURS count; null when not an array." },
+                "occurs_max": { "type": ["integer", "null"], "minimum": 0, "description": "ODO upper bound; null when not ODO." },
+                "occurs_depending_on": { "type": ["string", "null"], "description": "ODO controlling field; null when not ODO." },
+                "redefines": { "type": ["string", "null"], "description": "Name of the REDEFINES target (shares offset); null otherwise." },
+                "renames": { "type": ["string", "null"], "description": "RENAMES (level-66) range/field; null otherwise." },
+                "is_group": { "type": ["boolean", "null"], "description": "True for COBOL group items; null for non-COBOL." },
+                "is_filler": { "type": ["boolean", "null"], "description": "True for FILLER items." },
+                "offset_confidence": {
+                  "enum": ["grounded", "inferred", "speculative"],
+                  "description": "Confidence of the COMPUTED offset specifically (design §3.3). grounded = clean DISPLAY/COMP/COMP-3 chain. inferred = group-propagated USAGE. speculative = SYNC / ODO-tail / unresolved-COPY (also ranged or gap-flagged). Distinct from the field's declaration confidence below."
+                },
+                "confidence": {
+                  "enum": ["grounded", "inferred", "speculative"],
+                  "description": "Confidence in the field DECLARATION (design §5), lower-confidence-wins across merged duplicates."
+                },
+                "evidence_kind": {
+                  "enum": ["declared_constraint", "declared_column", "inferred_naming", "observed_usage"],
+                  "description": "How the field was learned (same closed enum as the finding)."
+                },
+                "enforcement": {
+                  "enum": ["declared", "unknown"],
+                  "description": "Whether enforcement is declared (NOT NULL etc.) or unknown."
+                },
+                "evidence": {
+                  "type": ["object", "null"],
+                  "description": "OPTIONAL file:line provenance for the field declaration (for wiki/DDL citation).",
+                  "additionalProperties": false,
+                  "required": ["file_path", "line"],
+                  "properties": {
+                    "file_path": { "type": "string", "minLength": 1 },
+                    "line": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            }
+          },
+          "confidence": {
+            "enum": ["grounded", "inferred", "speculative"],
+            "description": "Entity-level declaration confidence (most conservative across fields)."
+          },
+          "evidence": {
+            "type": "object",
+            "description": "file:line provenance of the entity's primary declaration site.",
+            "additionalProperties": false,
+            "required": ["file_path", "line"],
+            "properties": {
+              "file_path": { "type": "string", "minLength": 1 },
+              "line": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "description": "Per-entity gaps carried up from the contributing chunks plus any introduced during offset computation (e.g. sync_alignment, odo_variable_length).",
+            "items": { "$ref": "#/$defs/gap" }
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Cross-file resolved relationships. SQL declared FK = grounded; convention *_id->id = inferred join hint; SQL JOIN ON = kind=join (inferred); COBOL cross-record FK = speculative and present ONLY when generated_with.infer_relationships is true (capped at speculative, name+type+length match required, advisory/commented-DDL only).",
+      "items": {
+        "type": "object",
+        "required": ["kind", "from_object", "from_field", "evidence_kind", "enforcement", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["pk", "fk", "join", "unique"],
+            "description": "pk / fk / join (inferred, advisory) / unique. Same closed enum as the finding."
+          },
+          "from_object": { "type": "string", "minLength": 1, "description": "Qualified name of the owning entity." },
+          "from_field": { "type": "string", "minLength": 1, "description": "Participating field/column (or composite list)." },
+          "to_object": { "type": ["string", "null"], "description": "Referenced entity (fk/join); null for pk/unique or unresolved." },
+          "to_field": { "type": ["string", "null"], "description": "Referenced field (fk/join); null when unresolved." },
+          "evidence_kind": {
+            "enum": ["declared_constraint", "declared_column", "inferred_naming", "observed_usage"],
+            "description": "How the relationship was learned (same closed enum)."
+          },
+          "enforcement": {
+            "enum": ["declared", "unknown"],
+            "description": "declared for SQL FK/PK/UNIQUE and DSX key flags; unknown for inferred/observed."
+          },
+          "confidence": {
+            "enum": ["grounded", "inferred", "speculative"],
+            "description": "grounded (declared FK/PK/UNIQUE, DSX keys), inferred (*_id, JOIN ON), speculative (COBOL cross-record, dynamic). FK/relationship edges are advisory until a gold/ schema oracle clears an accuracy gate — they NEVER feed a gate (design §5)."
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Catalog-level gaps (files skipped, oversized, redacted, language-unsupported) not attributable to a single entity.",
+      "items": { "$ref": "#/$defs/gap" }
+    }
+  },
+  "$defs": {
+    "gap": {
+      "type": "object",
+      "required": ["kind", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "unresolved_copybook",
+            "odo_variable_length",
+            "sync_alignment",
+            "select_star_no_schema",
+            "rcp_columns",
+            "dynamic_layout",
+            "record_exceeds_chunk",
+            "redaction_applied",
+            "binary_file",
+            "oversized_file",
+            "language_unsupported",
+            "position_mismatch",
+            "boundary_issue"
+          ],
+          "description": "Closed enum. Superset of the finding's gap kinds plus accumulate/cross-file gaps: position_mismatch = a flat-file declared offset disagreed with the computed sequence (field downgraded); boundary_issue = an orphan/tie merge across a chunk overlap."
+        },
+        "file_path": {
+          "type": ["string", "null"],
+          "description": "Repo-relative path of the gap site (forward-slash). null for catalog-wide gaps."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-indexed line of the gap site (file-relative). null when not line-specific."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "One-line explanation of the gap."
+        }
+      }
+    }
+  }
+}

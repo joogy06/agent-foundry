@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from validate_ol import (  # noqa: E402
     PINNED_OL_SCHEMA_URL,
     DEFAULT_SCHEMA_PATH,
+    validate_event,
     validate_event_or_abort,
     compile_validator,
     SchemaPinMismatch,
@@ -55,6 +56,14 @@ PINNED_OL_VERSION = "2.0.2"
 STATIC_PRODUCER_URI = "urn:lineage:static-scan"
 STATIC_ANALYSIS_FACET_URI = (
     "https://skill-factory.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json"
+)
+# SchemaDatasetFacet (structure-recovery WP-9, M1). The facet name `schema`
+# matches the upstream OpenLineage SchemaDatasetFacet convention; the vendored
+# OL 2.0.2 schema accepts it because DatasetRef.facets is an open object keyed by
+# facet name (each value self-describing via _producer / _schemaURL). We pin our
+# own _schemaURL to the upstream facet spec URI used by structure-recovery.
+SCHEMA_DATASET_FACET_URI = (
+    "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json"
 )
 EXTRACTOR_ID = "lineage-extract-static"
 EXTRACTOR_VERSION = "1.0.0"
@@ -95,8 +104,25 @@ def deterministic_run_id(workspace_tree_hash: str, scan_started_at: str) -> str:
 def make_dataset_event(
     dataset: dict,
     scan_started_at: str,
+    schema_facet: Optional[dict] = None,
 ) -> dict:
-    """Emit a DatasetEvent for a unique (namespace, name) tuple."""
+    """Emit a DatasetEvent for a unique (namespace, name) tuple.
+
+    When ``schema_facet`` is provided (structure-recovery WP-9, M1) it is
+    attached under ``dataset.facets.schema`` to enrich the dataset with its
+    structural field/type schema. ``schema_facet=None`` (the default) yields a
+    byte-identical event to the pre-WP-9 lineage emission — the existing lineage
+    path is unchanged.
+    """
+    facets: dict = {
+        "datasetKind": {
+            "_producer": STATIC_PRODUCER_URI,
+            "_schemaURL": "https://skill-factory.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
+            "kind": dataset.get("kind", "file"),
+        },
+    }
+    if schema_facet is not None:
+        facets["schema"] = schema_facet
     return {
         "$schema": PINNED_OL_SCHEMA_URL,
         "eventType": "DATASET_EVENT",
@@ -106,15 +132,68 @@ def make_dataset_event(
         "dataset": {
             "namespace": dataset["namespace"],
             "name": dataset["name"],
-            "facets": {
-                "datasetKind": {
-                    "_producer": STATIC_PRODUCER_URI,
-                    "_schemaURL": "https://skill-factory.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
-                    "kind": dataset.get("kind", "file"),
-                },
-            },
+            "facets": facets,
         },
     }
+
+
+def make_schema_dataset_facet(fields: list[dict]) -> dict:
+    """Build an OpenLineage SchemaDatasetFacet (structure-recovery WP-9, M1).
+
+    ``fields`` is a list of ``{"name": str, "type": str, "description"?: str}``
+    projected from a structure-index entity's columns/fields. The facet carries
+    the ``_producer`` / ``_schemaURL`` self-description keys that every other
+    facet in this emitter uses (parity with ``datasetKind`` / ``staticAnalysis``).
+
+    The field list is normalized to the minimal OL field shape: each field is a
+    dict with a string ``name`` and a string ``type`` (defaulting to ``""`` /
+    ``"unknown"`` when the source declared none), plus an optional ``description``
+    when present. Order is preserved as given by the caller (the caller sorts).
+    """
+    norm_fields: list[dict] = []
+    for f in fields:
+        fld = {
+            "name": str(f.get("name", "")),
+            "type": str(f.get("type") if f.get("type") is not None else "unknown"),
+        }
+        desc = f.get("description")
+        if desc:
+            fld["description"] = str(desc)
+        norm_fields.append(fld)
+    return {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": SCHEMA_DATASET_FACET_URI,
+        "fields": norm_fields,
+    }
+
+
+def attach_schema_facet_fail_closed(
+    event: dict,
+    schema_facet: dict,
+    schema_path: Optional[Path] = None,
+) -> tuple[dict, Optional[str]]:
+    """Attach ``schema_facet`` to a DatasetEvent, FAIL-CLOSED (WP-9 / §9 note 3).
+
+    Mutates a copy of ``event`` to carry ``dataset.facets.schema``, then validates
+    the ENRICHED event against the vendored OL schema. If the enriched event
+    validates, returns ``(enriched_event, None)``. If the facet would make the
+    event invalid, the facet is NOT applied: returns ``(event, gap_reason)`` with
+    the original event untouched and a human-readable gap reason — so a malformed
+    facet can NEVER abort the whole-event emit (no fail-closed crash, no malformed
+    output). The caller records the gap and emits the structure-only / facet-less
+    event.
+    """
+    import copy as _copy
+
+    if event.get("eventType") != "DATASET_EVENT":
+        return (event, "schema facet only applies to DATASET_EVENT")
+    enriched = _copy.deepcopy(event)
+    enriched.setdefault("dataset", {}).setdefault("facets", {})["schema"] = schema_facet
+    is_valid, errors = validate_event(enriched, schema_path)
+    if is_valid:
+        return (enriched, None)
+    reason = "schema facet rejected by vendored OL schema: " + "; ".join(errors)
+    return (event, reason)
 
 
 def make_job_event(
