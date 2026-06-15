@@ -46,16 +46,43 @@ except ImportError:
 # State definitions
 # ---------------------------------------------------------------------------
 
-STATES = ("NORMAL", "PAUSE_REQUESTED", "PAUSED", "MAP_UPDATING", "RESUMING", "ROLLBACK")
+STATES = (
+    "NORMAL", "PAUSE_REQUESTED", "PAUSED", "AWAITING_AMENDMENT",
+    "MAP_UPDATING", "RESUMING", "ROLLBACK",
+)
 
-# Per-state timeouts in seconds — section 12.2
-STATE_TIMEOUT_SECONDS: Dict[str, int] = {
+# Per-state timeouts in seconds — section 12.2.
+# AWAITING_AMENDMENT (S055 §6.4): a DURABLE park state for the user-interactive
+# forge-amendment arc. NON-EXPIRING (None) — a user dialogue almost always
+# exceeds PAUSED's 600s rollback window, and a parked amendment must survive
+# arbitrary wall-clock age. PAUSED's 600s behaviour is UNCHANGED.
+STATE_TIMEOUT_SECONDS: Dict[str, Optional[int]] = {
     "PAUSE_REQUESTED": 30,         # all teams must ack within 30s
     "PAUSED": 600,                 # 10 min for forge to gather gaps and start updating
+    "AWAITING_AMENDMENT": None,    # NON-EXPIRING — durable park; recovery never auto-rolls-back
     "MAP_UPDATING": 900,           # 15 min for forge to produce a valid update
     "RESUMING": 1800,              # 30 min for bob to issue fresh claims
     "ROLLBACK": 300,               # 5 min for rollback to complete
 }
+
+# Legal transition map (S055 §6.4). transition_to() enforces this. A target of
+# None timeout (AWAITING_AMENDMENT) is reachable ONLY from PAUSED (the park) and
+# leaves ONLY to MAP_UPDATING (resume-amendment applies) or ROLLBACK (explicit
+# user abandon). Recovery NEVER auto-rolls-back AWAITING_AMENDMENT.
+# Entries are forward edges; transitions not listed are illegal and rejected.
+LEGAL_TRANSITIONS: Dict[str, tuple] = {
+    "NORMAL":             ("PAUSE_REQUESTED",),
+    "PAUSE_REQUESTED":    ("PAUSED", "ROLLBACK"),
+    "PAUSED":             ("AWAITING_AMENDMENT", "MAP_UPDATING", "ROLLBACK"),
+    "AWAITING_AMENDMENT": ("MAP_UPDATING", "ROLLBACK"),
+    "MAP_UPDATING":       ("RESUMING", "ROLLBACK"),
+    "RESUMING":           ("NORMAL", "ROLLBACK"),
+    "ROLLBACK":           ("NORMAL",),
+}
+
+
+class IllegalTransition(ValueError):
+    """Raised when transition_to() is asked for an edge not in LEGAL_TRANSITIONS."""
 
 
 def now_iso() -> str:
@@ -66,7 +93,9 @@ def parse_iso(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
-def state_timeout(state: str) -> int:
+def state_timeout(state: str) -> Optional[int]:
+    """Return the wall-clock timeout (seconds) for a state, or None if the state
+    is non-expiring (AWAITING_AMENDMENT). Unknown states default to 600s."""
     return STATE_TIMEOUT_SECONDS.get(state, 600)
 
 
@@ -161,10 +190,24 @@ def acknowledge_pause(project_root: Path, wp_id: str) -> None:
 
 
 def transition_to(project_root: Path, new_state: str, **kwargs: Any) -> None:
-    """Bob explicitly transitions the state machine. kwargs are merged into state."""
+    """Bob explicitly transitions the state machine. kwargs are merged into state.
+
+    Enforces LEGAL_TRANSITIONS (S055 §6.4): an edge not present in the table
+    raises IllegalTransition and touches nothing. A from-state of NORMAL/None
+    (no live pause) may only enter PAUSE_REQUESTED.
+    """
     if new_state not in STATES:
         raise ValueError(f"unknown state: {new_state}")
     cur = current_state(project_root) or {}
+    from_state = cur.get("state") or "NORMAL"
+    # Same-state writes (idempotent kwargs merge) are always allowed.
+    if from_state != new_state:
+        allowed = LEGAL_TRANSITIONS.get(from_state, ())
+        if new_state not in allowed:
+            raise IllegalTransition(
+                f"illegal transition {from_state} -> {new_state} "
+                f"(legal targets: {allowed or '()'})"
+            )
     cur["state"] = new_state
     cur["entered_state_at"] = now_iso()
     cur.update(kwargs)
@@ -182,6 +225,11 @@ def is_timed_out(state: Dict[str, Any]) -> bool:
     s = state.get("state")
     if s not in STATE_TIMEOUT_SECONDS:
         return False
+    timeout = state_timeout(s)
+    if timeout is None:
+        # Non-expiring state (AWAITING_AMENDMENT): NEVER times out, at any
+        # wall-clock age. The durable park survives arbitrary recovery delay.
+        return False
     entered_at = state.get("entered_state_at")
     if not entered_at:
         return False
@@ -189,7 +237,7 @@ def is_timed_out(state: Dict[str, Any]) -> bool:
         elapsed = (datetime.now(timezone.utc) - parse_iso(entered_at)).total_seconds()
     except ValueError:
         return False
-    return elapsed > state_timeout(s)
+    return elapsed > timeout
 
 
 def recover_pause_state(project_root: Path) -> str:
@@ -212,6 +260,12 @@ def recover_pause_state(project_root: Path) -> str:
         cur["rollback_reason"] = "corrupt state file on recovery"
         _write_state(project_root, cur)
         return "rolled_back"
+    if s == "AWAITING_AMENDMENT":
+        # S055 §6.4: the durable park is NEVER auto-rolled-back by recovery,
+        # regardless of wall-clock age. Only an explicit user abandon
+        # (AWAITING_AMENDMENT -> ROLLBACK via transition_to) or the
+        # resume-amendment apply (-> MAP_UPDATING) leaves this state.
+        return "resumed"
     if is_timed_out(cur):
         cur["state"] = "ROLLBACK"
         cur["entered_state_at"] = now_iso()

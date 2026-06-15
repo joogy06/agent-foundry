@@ -133,7 +133,7 @@ The password is the input most likely to leak — see `ms-office-security-python
 **Read a `.xlsx` file, transform a column, write to a new file** — the most common task in the family.
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/openpyxl-patterns.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below; full references/ guide planned (v1.1).
 import openpyxl
 
 def safe_cell(value):

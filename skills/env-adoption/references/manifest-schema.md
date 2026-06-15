@@ -8,8 +8,14 @@ Persistent across sessions. Re-probed when older than 24 hours or on `--force`.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "last_probed": "2026-04-12T21:00:00Z",
+  "harness": {
+    "claude_version": "2.1.172",
+    "workflow_tool": true,
+    "native_teams": false,
+    "agent_spawn": true
+  },
   "tools": {
     "claude":      { "installed": true,  "version": "2.1.96" },
     "codex":       { "installed": true,  "version": "0.120.0" },
@@ -44,8 +50,12 @@ The `bandit` / `semgrep` / `gitleaks` / `trufflehog` / `trivy` / `pip-audit` / `
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | integer | Schema version (currently 1) |
+| `version` | integer | Schema version (currently **2** — S055 added the `harness` block; a fresh-but-v1 inventory auto-migrates on next probe) |
 | `last_probed` | string (ISO 8601) | UTC timestamp of last probe |
+| `harness.claude_version` | string or null | Copy of `tools.claude.version`, same probe run |
+| `harness.workflow_tool` | boolean | `version_ge(claude_version, "2.1.154")` — Q1 host capability for the Workflow tool. Fail-closed: missing/unparseable version ⇒ `false` |
+| `harness.native_teams` | boolean | `version_ge(claude_version, "2.1.32")` AND the experimental gate (`CLAUDE_NATIVE_TEAMS=1`/`CLAUDE_CODE_NATIVE_TEAMS=1` env OR `settings.json experimental.nativeTeams`) |
+| `harness.agent_spawn` | boolean | claude installed AND version parseable |
 | `tools.<name>.installed` | boolean | Whether the tool binary is found via `command -v` |
 | `tools.<name>.version` | string or null | Extracted semver, null if not parseable or not installed |
 | `tools.bridge.installed` | boolean | Whether `bridge-mode-detect.sh` is executable at expected path |
@@ -68,6 +78,7 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
 
 ```json
 {
+  "schema_version": 2,
   "session_id": "abc-123",
   "created": "2026-04-12T21:00:00Z",
   "bridge_mode": "local",
@@ -75,12 +86,16 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
   "gh_authenticated": true,
   "gh_user": "joogy06",
   "codex_plugin_ready": true,
+  "claude_version_live": "2.1.172",
   "capabilities": {
     "triple_model": true,
     "codex_challenger": true,
     "agy_analyst": true,
     "bridge_fallback": false,
-    "container_workflows": true
+    "container_workflows": true,
+    "workflow_tool": true,
+    "native_teams": false,
+    "agent_spawn": true
   }
 }
 ```
@@ -89,25 +104,45 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `session_id` | string | From `CLAUDE_SESSION_ID`, `FORGE_SESSION_ID`, or derived from PID |
+| `schema_version` | integer | Session schema version (currently **2** — S055) |
+| `session_id` | string | From `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID`, `FORGE_SESSION_ID`, or derived from PID |
 | `created` | string (ISO 8601) | When this session state was created |
 | `bridge_mode` | string | Output of `bridge-mode-detect.sh`: "local", "bridge", or "unknown" |
 | `agy_responding` | boolean | Whether the Antigravity CLI (`agy`) responds to `--version` |
 | `gh_authenticated` | boolean | Whether `gh auth status` reports logged in |
 | `gh_user` | string or null | GitHub username from `gh auth status` |
 | `codex_plugin_ready` | boolean | Whether the Codex plugin cache dir exists |
+| `claude_version_live` | string or null | LIVE `timeout 2 claude --version` re-parse (the 24h inventory cache lags same-day auto-updates) |
 | `capabilities.triple_model` | boolean | Codex installed AND agy responding |
 | `capabilities.codex_challenger` | boolean | Codex installed |
 | `capabilities.agy_analyst` | boolean | agy responding |
 | `capabilities.bridge_fallback` | boolean | Bridge mode is active |
 | `capabilities.container_workflows` | boolean | Docker installed |
+| `capabilities.workflow_tool` | boolean | `version_ge(claude_version_live, "2.1.154")` AND `current_cli == "claude-code"` (Q2 — host session only) |
+| `capabilities.native_teams` | boolean | workflow-gate AND `version_ge(.., "2.1.32")` AND live env gate AND `current_cli == "claude-code"` |
+| `capabilities.agent_spawn` | boolean | claude version parseable live AND `current_cli == "claude-code"` |
+
+> **`probe.sh get capabilities.<name>` is the ONLY consumer API for capability reads.** No skill, agent, launcher, or workflow may read `inventory.json` capability fields with raw `jq`, and none may inline-probe `claude --version`. (S055 R1 / HO-2.)
+
+> **`capabilities.*` answers Q2 (does this SESSION's harness expose the surface) for the HOST session ONLY — it NEVER authorizes orchestration on its own.** Session files are keyed by the ROOT session ID and are **shared with subagents** (children inherit `CLAUDE_CODE_SESSION_ID`), so a subagent reading `capabilities.workflow_tool` sees the parent's value. The decision rule, restated in every consumer, is:
+>
+> ```
+> can_orchestrate = capabilities.<surface> AND context == main-loop
+> ```
+>
+> See `references/context-detection.md` for the live Q3 recipe.
 
 ### Session ID Resolution
 
-Priority order:
-1. `$CLAUDE_SESSION_ID` environment variable
-2. `$FORGE_SESSION_ID` environment variable
-3. `ppid-<PID>` (fallback, derived from script PID)
+Priority order (S055 fix — `CLAUDE_CODE_SESSION_ID` is the real harness key that
+children inherit; before it, the `ppid-<PID>` fallback always fired and left
+stale tmpfs session files):
+1. `$CLAUDE_CODE_SESSION_ID` environment variable (harness-canonical)
+2. `$CLAUDE_SESSION_ID` environment variable (legacy)
+3. `$FORGE_SESSION_ID` environment variable
+4. `ppid-<PID>` (fallback, derived from script PID)
+
+Session files older than 7 days are pruned on every `probe.sh check`.
 
 ---
 

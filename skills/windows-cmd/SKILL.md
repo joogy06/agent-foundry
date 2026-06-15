@@ -697,37 +697,71 @@ rem Revert:
 bcdedit /deletevalue {current} safeboot
 ```
 
-### WMIC (Windows Management Instrumentation)
+### WMIC (Windows Management Instrumentation) — DEPRECATED
+
+> **DEPRECATION (verified 2026-06-10):** WMIC is deprecated since Windows 10 21H1. On
+> Windows 11 24H2 it is a Feature on Demand that is **NOT installed by default**, and it is
+> **removed entirely in Windows 11 25H2**. Do NOT write new scripts that call `wmic` — they
+> will fail with `'wmic' is not recognized` on current Windows. The replacement from batch
+> is PowerShell's `Get-CimInstance`, invoked via `powershell -NoProfile -Command "..."`.
+> The legacy commands further below are reference for READING/maintaining old scripts only.
 
 ```bat
-rem OS info
+rem ── Batch-callable replacements (use these in NEW scripts) ──────────────
+rem OS info (replaces: wmic os get Caption,Version,BuildNumber,OSArchitecture)
+powershell -NoProfile -Command "Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber,OSArchitecture | Format-List"
+
+rem Capture a single CIM value into a batch variable
+rem (replaces the old `for /f ... ('wmic ... /format:list')` parsing pattern)
+for /f "delims=" %%I in ('powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Version"') do set OSVER=%%I
+echo %OSVER%
+```
+
+> **HAZARD — `wmic product get` / `Win32_Product`:** enumerating the `Win32_Product` class
+> (via `wmic product get ...` OR `Get-CimInstance Win32_Product`) triggers msiexec
+> consistency checks that RECONFIGURE/repair every MSI package on the machine — it is slow,
+> floods the event log, and can break installations. **NEVER query `Win32_Product` in
+> production.** List installed software from the registry Uninstall keys instead:
+>
+> ```bat
+> rem Installed software — safe replacements for "wmic product get"
+> powershell -NoProfile -Command "Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName | Select-Object DisplayName,DisplayVersion,Publisher | Sort-Object DisplayName"
+> rem Pure-CMD variant:
+> reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" /s /v DisplayName
+> ```
+
+Legacy WMIC commands — for reading/maintaining OLD scripts only. Each line shows the
+`Get-CimInstance` class to migrate to:
+
+```bat
+rem OS info                       -> Get-CimInstance Win32_OperatingSystem
 wmic os get Caption,Version,BuildNumber,OSArchitecture /format:list
 
-rem BIOS info
+rem BIOS info                     -> Get-CimInstance Win32_BIOS
 wmic bios get Manufacturer,SMBIOSBIOSVersion,ReleaseDate
 
-rem CPU info
+rem CPU info                      -> Get-CimInstance Win32_Processor
 wmic cpu get Name,NumberOfCores,NumberOfLogicalProcessors
 
-rem Disk info
+rem Disk info                     -> Get-CimInstance Win32_DiskDrive / Win32_LogicalDisk
 wmic diskdrive get Model,Size,MediaType,Status
 wmic logicaldisk get DeviceID,FreeSpace,Size,FileSystem,VolumeName
 
-rem Memory
+rem Memory                        -> Get-CimInstance Win32_PhysicalMemory
 wmic memorychip get Capacity,Speed,Manufacturer,PartNumber
 
-rem Process management
+rem Process management            -> Get-CimInstance Win32_Process / Stop-Process
 wmic process list brief
 wmic process where "name='notepad.exe'" get ProcessId,CommandLine
 wmic process where "ProcessId=1234" call terminate
 
-rem Installed software
-wmic product get Name,Version,Vendor /format:csv > software.csv
+rem Installed software — DO NOT RUN (Win32_Product hazard above; use registry keys)
+rem wmic product get Name,Version,Vendor /format:csv > software.csv
 
-rem Services
+rem Services                      -> Get-CimInstance Win32_Service / Get-Service
 wmic service where "state='running'" get Name,DisplayName,State
 
-rem Startup programs
+rem Startup programs              -> Get-CimInstance Win32_StartupCommand
 wmic startup get Caption,Command,Location
 ```
 
@@ -1093,7 +1127,8 @@ pause
     goto :Menu
 
 :DiskSpace
-    wmic logicaldisk get DeviceID,FreeSpace,Size
+    rem wmic is deprecated/removed (gone by Windows 11 25H2) — call CIM from batch instead
+    powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size | Format-Table -AutoSize"
     pause
     goto :Menu
 
@@ -1127,15 +1162,15 @@ set HOUR=%HOUR: =0%
 set TIMESTAMP=%YEAR%%MONTH%%DAY%_%HOUR%%MINUTE%%SECOND%
 echo %TIMESTAMP%
 
-rem Locale-safe alternative using WMIC
-for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /format:list') do set DT=%%I
-set SAFE_YEAR=%DT:~0,4%
-set SAFE_MONTH=%DT:~4,2%
-set SAFE_DAY=%DT:~6,2%
-set SAFE_HOUR=%DT:~8,2%
-set SAFE_MIN=%DT:~10,2%
-set SAFE_SEC=%DT:~12,2%
-echo %SAFE_YEAR%-%SAFE_MONTH%-%SAFE_DAY% %SAFE_HOUR%:%SAFE_MIN%:%SAFE_SEC%
+rem Locale-safe alternative — PowerShell from batch
+rem (the old `wmic os get localdatetime` recipe is dead: wmic is deprecated since
+rem  Win10 21H1 and removed in Windows 11 25H2 — see the WMIC section)
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set TODAY=%%I
+echo %TODAY%
+
+rem Full timestamp variant
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set TS=%%I
+echo %TS%
 ```
 
 ### Wait for a Process to Finish
@@ -1212,3 +1247,13 @@ del "%TMPFILE%" 2>nul
 | `windows-powershell` | PowerShell scripting, modules, remoting, DSC |
 | `windows-ps-security` | Windows security hardening, auditing, GPO |
 | `windows-ps-server-admin` | Windows Server roles (AD, DNS, DHCP, IIS, Hyper-V) |
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: wmic-lifecycle
+    verified_on: "2026-06-10"
+    review_by: "2027-06"
+volatility: low
+-->
+

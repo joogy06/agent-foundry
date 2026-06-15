@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/drift-stage.v1.json",
+  "title": "drift-stage.v1",
+  "description": "S055 §5.7 — output of the evo-analyze `drift` stage (drift-report + intent-map-render ≤3 diagrams per HR5). Owner: evo. Consumed by the evo-analyze script.",
+  "type": "object",
+  "required": ["drift_report_path", "diagrams"],
+  "additionalProperties": false,
+  "properties": {
+    "drift_report_path": { "type": "string", "minLength": 1 },
+    "diagrams": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "type": "string" },
+      "description": "<=3 diagrams per HR5 (intent-map-render rejects function-level / >3)."
+    },
+    "skipped": { "type": "array", "items": { "type": "string" } }
+  }
+}

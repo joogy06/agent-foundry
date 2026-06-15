@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/ballot.v1.json",
+  "title": "ballot.v1",
+  "description": "S055 §5.6 — a Gate-1 null-hypothesis ballot from one consulted CLI, WRAPPED in the W-EXT external-model anti-laundering envelope. Owner: cross-cli-deliberation. Home: skills/cross-cli-deliberation/schemas/. The gate1 wrapper stage is a TRANSCRIPTION WRAPPER (not a reviewer): it runs the args-supplied command, tees the transcript, extracts the literal ballot fields, emits UNPARSEABLE if not locatable verbatim, and NEVER reinterprets. Consumed by the deliberation script + ratify-design (consumed, NEVER forked).",
+  "type": "object",
+  "required": ["consultant", "ballot_body", "invocation", "raw_transcript", "transcript_sha256", "served_by", "absence"],
+  "additionalProperties": false,
+  "properties": {
+    "consultant": { "type": "string", "minLength": 1, "description": "codex | agy | copilot | …" },
+    "ballot_body": {
+      "type": ["object", "null"],
+      "description": "Extracted ballot fields, or null when UNPARSEABLE / unreachable.",
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "enum": ["ACCEPT_AS_IS", "REJECT_PREMISE", "CHANGE_NEEDED", "UNPARSEABLE"] },
+        "confidence": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "burden_met": { "type": ["string", "null"], "description": "what evidence would justify the change; has it been provided in the artifact itself" },
+        "expected_loss": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "adopt_and_shouldnt": { "type": "string" },
+            "dont_adopt_and_should": { "type": "string" }
+          }
+        },
+        "minimum_acceptable_action": { "enum": ["no-op", "clarifying-question", "test-only", "patch", "redesign", null] },
+        "self_check": { "type": ["object", "string", "null"], "description": "declared failure-mode self-check (ego/capture/capture-by-capability/sycophancy-of-dissent)." }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "required": ["command", "exit_code", "timeout_s", "stdin_closed"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "description": "args-supplied; MUST carry the guard set (agy --sandbox / codex -s read-only, < /dev/null, timeout)." },
+        "exit_code": { "type": ["integer", "null"] },
+        "timeout_s": { "type": "integer" },
+        "stdin_closed": { "type": "boolean" }
+      }
+    },
+    "raw_transcript": { "type": "string" },
+    "transcript_path": { "type": ["string", "null"] },
+    "transcript_sha256": { "type": "string" },
+    "served_by": { "type": ["string", "null"] },
+    "absence": {
+      "type": "object",
+      "required": ["unreachable"],
+      "additionalProperties": false,
+      "properties": {
+        "unreachable": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

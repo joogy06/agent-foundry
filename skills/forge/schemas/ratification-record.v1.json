@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/ratification-record.v1.json",
+  "title": "ratification-record.v1",
+  "description": "S055 §5.2 — deterministic JS assembly output of the ratify-design `assemble` phase. Carries per-run measured fp_rate feeding the 60-65% baseline. Budget exhaustion mid-verify => ALL remaining findings NEEDS_FOLLOWUP (never auto-VERIFIED) + degraded:true. Owner: forge. Consumed by forge inline (merges VERIFIED findings into the doc — the workflow NEVER edits the doc).",
+  "type": "object",
+  "required": ["design_doc", "design_doc_sha256", "verified", "false_positives", "needs_followup", "fp_rate", "degraded"],
+  "additionalProperties": false,
+  "properties": {
+    "design_doc": { "type": "string", "minLength": 1 },
+    "design_doc_sha256": { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$" },
+    "verified": { "type": "array", "items": { "type": "string" }, "description": "finding_ids VERIFIED." },
+    "false_positives": { "type": "array", "items": { "type": "string" } },
+    "needs_followup": { "type": "array", "items": { "type": "string" } },
+    "fp_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Measured this run: false_positives / total_cited."
+    },
+    "degraded": {
+      "type": "boolean",
+      "description": "True when budget exhausted mid-verify (remaining => NEEDS_FOLLOWUP, never auto-VERIFIED)."
+    },
+    "total_cited": { "type": "integer", "minimum": 0 }
+  }
+}

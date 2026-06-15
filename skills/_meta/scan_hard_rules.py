@@ -60,6 +60,24 @@ PROJECT_HARD_RULES_MARKER = (
     "edit freely; new directives can be added below -->"
 )
 
+# Generic bold-led bullet patterns are WEAK signals: any doc bullet that
+# happens to lead with bold (e.g. a wrapped agy reference line like
+# "- **Other modes:** `-i` ...") would otherwise be captured as a directive.
+# These two patterns get a second-stage mandate-language filter in
+# extract_rules(); the explicit HARD-RULE / header patterns do NOT.
+_BOLD_BULLET_PATTERNS = (
+    re.compile(r"^- \*\*[^*]+\*\*"),
+    re.compile(r"^\s*\d+\.\s+\*\*[^*]+\*\*"),
+)
+
+# Second-stage filter: a bold-led bullet is only a hard-rule candidate if
+# the line also contains mandate language.
+MANDATE_LANGUAGE_RE = re.compile(
+    r"\b(MUST(?: NOT)?|NEVER|ALWAYS|HARD-RULE|required|do not|don't|shall|"
+    r"forbidden|mandatory)\b",
+    re.IGNORECASE,
+)
+
 # Patterns that identify a "hard rule" line in a CLAUDE.md file.
 HARD_RULE_PATTERNS = [
     re.compile(r"<HARD-RULE>|<HARD-GATE>|HARD RULE|Hard Rules|Hard-Rules"),
@@ -67,8 +85,7 @@ HARD_RULE_PATTERNS = [
         r"^##+ .*([Ss]ession [Ss]tart|[Hh]ard [Rr]ule|[Mm]andatory|"
         r"[Cc]heckpoint|[Rr]outing|[Aa]utonomy|[Ww]iki [Bb]inding)"
     ),
-    re.compile(r"^- \*\*[^*]+\*\*"),
-    re.compile(r"^\s*\d+\.\s+\*\*[^*]+\*\*"),
+    *_BOLD_BULLET_PATTERNS,
 ]
 
 STOPWORDS = {
@@ -102,6 +119,12 @@ def extract_rules(path: Path | None, label: str) -> list[str]:
     for line in text.splitlines():
         for pat in HARD_RULE_PATTERNS:
             if pat.search(line):
+                # Second-stage mandate-language filter — applies ONLY to the
+                # generic bold-bullet patterns, never to explicit HARD-RULE
+                # tags or section headers. Drops wrapped doc bullets that
+                # merely lead with bold text (false-positive fix 2026-06-10).
+                if pat in _BOLD_BULLET_PATTERNS and not MANDATE_LANGUAGE_RE.search(line):
+                    continue
                 rules.append(f"[{label}] {line.rstrip()}")
                 break
     return rules

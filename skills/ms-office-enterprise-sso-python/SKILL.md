@@ -162,7 +162,7 @@ python -c "import pymsalruntime; print(pymsalruntime.__file__)"
 ### 6.1 Broker interactive + silent + fallback (Windows)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/broker-windows.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in §7 Token cache hardening and the Security Hardening section below; full references/ guide planned (v1.1).
 import msal
 app = msal.PublicClientApplication(
     client_id=CLIENT_ID,
@@ -184,7 +184,7 @@ Three things this pattern enforces: broker explicitly enabled (`enable_broker_on
 ### 6.2 Broker interactive (Linux, Intune-managed)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/broker-linux.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in §7 Token cache hardening and the Security Hardening section below; full references/ guide planned (v1.1).
 from azure.identity.broker import InteractiveBrowserBrokerCredential
 cred = InteractiveBrowserBrokerCredential(
     tenant_id=TENANT_ID, client_id=CLIENT_ID,
@@ -199,7 +199,7 @@ Verify broker availability first: `microsoft-identity-broker` package installed 
 ### 6.3 Device code (CI / unmanaged)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/device-code.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in §7 Token cache hardening and the Security Hardening section below; full references/ guide planned (v1.1).
 import msal
 app = msal.PublicClientApplication(client_id=CLIENT_ID,
                                    authority=f"https://login.microsoftonline.com/{TENANT_ID}")
@@ -213,7 +213,7 @@ DO NOT use this on a managed Windows endpoint. See HARD-RULE 1.
 ### 6.4 Client credentials with certificate (daemon)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/client-credentials-cert.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below (cert/key handling: vault-only); full references/ guide planned (v1.1).
 import msal
 with open(CERT_PATH, "rb") as fh:
     cert_pem = fh.read()
@@ -232,7 +232,7 @@ Cert and key MUST come from a vault — not from disk paths checked into git. Th
 ### 6.5 Managed identity (Azure compute)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/managed-identity.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below; full references/ guide planned (v1.1).
 from azure.identity import ManagedIdentityCredential
 cred = ManagedIdentityCredential()                       # system-assigned MI
 # cred = ManagedIdentityCredential(client_id=USER_ASSIGNED_MI_CLIENT_ID)  # user-assigned MI
@@ -244,7 +244,7 @@ No secret. No cert. The Azure platform issues the credential. Works on App Servi
 ### 6.6 Workload identity federation (K8s / GitHub Actions)
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/workload-identity-federation.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production hardening notes in the Security Hardening section below; full references/ guide planned (v1.1).
 from azure.identity import WorkloadIdentityCredential
 cred = WorkloadIdentityCredential(
     tenant_id=TENANT_ID, client_id=CLIENT_ID,
@@ -258,7 +258,7 @@ For GitHub Actions, the OIDC token comes from `ACTIONS_ID_TOKEN_REQUEST_TOKEN` /
 ### 6.7 Kerberos against on-prem
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/kerberos-spnego.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — production notes in §13 Troubleshooting and the Security Hardening section below; full references/ guide planned (v1.1).
 import requests
 from requests_gssapi import HTTPSPNEGOAuth   # or requests_negotiate_sspi.HttpNegotiateAuth on Windows
 session = requests.Session()
@@ -319,7 +319,7 @@ For deep generic JWT validation patterns, see `python-auth-security` JWT Best Pr
 - **`tid` validation example**:
 
 ```python
-# CONFIDENCE: minimal viable pattern — read references/jwt-validation-entra.md for production-ready code.
+# CONFIDENCE: minimal viable pattern — claim checklist above + Security Hardening section below; deep JWT patterns in the python-auth-security skill; full references/ guide planned (v1.1).
 import jwt
 from jwt import PyJWKClient
 jwks_client = PyJWKClient(f"https://login.microsoftonline.com/{TENANT_ID}/discovery/keys")

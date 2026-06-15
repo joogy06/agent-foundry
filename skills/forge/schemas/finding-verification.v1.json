@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/finding-verification.v1.json",
+  "title": "finding-verification.v1",
+  "description": "S055 §5.2 — output of ONE cold-context verifier agent PER cited finding in ratify-design. Deterministic-first: `grep -n -F \"<quote>\"` at the cited path — quote absent verbatim => FALSE-POSITIVE `citation-not-found` (MANDATORY, no interpretation rescues it). A VERIFIED verdict WITHOUT a non-empty `cited_text_verbatim` + grep line is SCHEMA-INVALID (enforced by the conditional below). Owner: forge.",
+  "type": "object",
+  "required": ["finding_id", "verdict"],
+  "additionalProperties": false,
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["VERIFIED", "FALSE_POSITIVE", "NEEDS_FOLLOWUP"] },
+    "false_positive_reason": {
+      "type": ["string", "null"],
+      "description": "e.g. citation-not-found"
+    },
+    "cited_text_verbatim": {
+      "type": ["string", "null"],
+      "description": "The exact bytes found at the cited path (REQUIRED non-empty when verdict==VERIFIED)."
+    },
+    "grep_line": {
+      "type": ["integer", "null"],
+      "description": "The 1-based line number grep -n -F matched (REQUIRED non-null when verdict==VERIFIED)."
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "VERIFIED requires non-empty cited_text_verbatim AND a grep_line (schema-invalid otherwise).",
+      "if": { "properties": { "verdict": { "const": "VERIFIED" } } },
+      "then": {
+        "required": ["cited_text_verbatim", "grep_line"],
+        "properties": {
+          "cited_text_verbatim": { "type": "string", "minLength": 1 },
+          "grep_line": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  ]
+}

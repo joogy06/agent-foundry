@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/plan-load.v1.json",
+  "title": "plan-load.v1",
+  "description": "S055 §5.3 — output of the bob-serial-exec `plan-load` stage. A read-only agent validates work-packages.v1, verifies sha256(plan)==plan_hash, and returns a topological wp_order. Consumed by the bob-serial-exec script to drive STRICTLY SERIAL execution. Host-neutral data.",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "plan_hash", "hash_ok", "wp_order"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "plan-load.v1" },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$"
+    },
+    "hash_ok": {
+      "type": "boolean",
+      "description": "True iff sha256(plan-on-disk) == plan_hash. False => the script aborts PARTIAL needs: plan-recompile."
+    },
+    "wp_order": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Topologically-sorted WP ids (dependency order). Each id corresponds to one bob stage."
+    },
+    "cycles_detected": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "string" } },
+      "description": "Any dependency cycles found (should be empty for a valid DAG)."
+    },
+    "validation_errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

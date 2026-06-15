@@ -1,28 +1,32 @@
 # Custom Ecosystem (this machine)
 
-This file documents the custom forge/bob/alf/pa/wiki/agent-teams stack layered on top of vanilla Claude Code 2.1.96. None of this is part of upstream superpowers — it is unique to this user's environment.
+This file documents the custom forge/bob/alf/evo/pa/wiki/agent-teams stack layered on top of vanilla Claude Code 2.1.x. None of this is part of upstream superpowers — it is unique to this user's environment.
+
+The custom **agents** are `{alf, bob, evo, pa, wiki}` (`~/.claude/agents/`). **forge is a SKILL** that runs inline in the main session, not an agent — it heads the implementation cascade but never spawns as a subagent.
 
 ## Stack overview
 
 ```
                     pa  (orchestrator + workspace context)
-                  / | \  \
-              forge bob alf  119 skills
-                |         \
-               bob      (audit reports)
-                |
-           agent-teams (multi-team orchestration)
-                |
-           team-manager (single-team coordination)
-                |
-           specialists (invoke domain skills, implement)
+                 /  |  |  \
+           forge* bob alf evo      180 skills
+              |        |    \
+             bob   (audit   (evergreening:
+              |   reports)   intent map -> drift -> refresh)
+         agent-teams (multi-team orchestration)
+              |
+         team-manager (single-team coordination)
+              |
+         specialists (invoke domain skills, implement)
+
+  * forge = skill (inline), not an agent
 ```
 
-`pa` sits on top, `forge → bob → agent-teams → team-manager → specialists` is the implementation cascade.
+`pa` sits on top, `forge → bob → agent-teams → team-manager → specialists` is the implementation cascade. `alf` (review) and `evo` (evergreening) feed findings/upgrade plans back into bob.
 
-## Custom agents (`~/.claude/agents/`)
+## Custom agents (`~/.claude/agents/`) + the forge skill
 
-### `forge`
+### `forge` (skill, not agent — listed here because it heads the cascade)
 - **Purpose**: Design exploration with dual challengers (Claude + Codex). Creative work, system design, feature ideation.
 - **Inputs**: User intent, domain context.
 - **Outputs**: Approved design doc → handed to bob.
@@ -40,6 +44,12 @@ This file documents the custom forge/bob/alf/pa/wiki/agent-teams stack layered o
 - **Inputs**: Sweep scope (skill family, code dir, product).
 - **Outputs**: Audit report with findings + remediation hand-off to bob.
 - **History**: First full sweep (2026-04-05) produced 44 findings, all fixed (75 anti-pattern table additions, 22 splits, 18 description rewrites).
+
+### `evo`
+- **Purpose**: Evergreening agent for legacy code (shipped S032, 2026-05-14). Builds a functional intent map of a codebase, surfaces CVE/version drift, generates characterization tests, and in apply modes coordinates safe version-upgrades / CVE-fixes with bug-for-bug compatibility and mandatory user consultation on every change.
+- **Modes**: `intent-map-only` (analysis only), `version-upgrade` (apply with branch), `cve-fix` (minimal bump targeting CVE clearance; HALTs on degraded dependency data).
+- **Hard rules**: Sole-orchestrator, never sole-writer — spawns bob for the APPLY phase; bob remains the only writer of `progress/integration-ledger.md` and `.ledger/scope-deltas/`. Bug-for-bug compatibility: legacy behaviour is the oracle; pre-existing bugs are preserved, optimization suggestions are advisory-only.
+- **Companion skills**: `intent-extract`, `intent-map-render`, `ever-test-gen`; gate `G_INTENT_MAP_FRESH`. The S041 evergreening loop (detection bus → alf sweep tiers → typed refresh recipes) feeds it.
 
 ### `pa`
 - **Purpose**: Personal assistant — task lifecycle, intent router, workspace context, enterprise sync (Jira/Confluence). MCP server with `pa_*` tools.
@@ -103,14 +113,14 @@ After project context, check for wiki binding:
 
 ## Skill library
 
-- **Claude skills**: `~/.claude/skills/<name>/SKILL.md` — 119 skills as of 2026-03-31 (post-enterprise expansion).
-- **Codex skills**: `~/.codex/skills/<name>/` — 119 entries, mostly symlinks to the Claude originals plus 7 native Codex-only skills.
+- **Claude skills**: `~/.claude/skills/<name>/SKILL.md` — 180 skills as of 2026-06-10 (S053; count with `ls ~/.claude/skills | wc -l`). Lab originals live in `/path/to/project/skills/` and are mirrored to `~/.claude/skills/`.
+- **Codex skills**: `~/.codex/skills/<name>/` — 188 entries as of 2026-06-10: 181 symlinks to the Claude originals plus 7 native Codex-only entries (brainstorming-ideas, challenger-review, codex-claude-bridge, forge-workflow, audit skills).
 - **Authoring**: Use `research-for-skills` skill. Sub-skill `cross-tool-portability/` enforces cross-CLI compatibility.
 - **Inventory**: `~/.claude/skills/_meta/inventory.json` with creation/update events in `creation-log.jsonl`.
 - **Adversarial sweeps**: alf periodically scans for stale skills, missing anti-patterns tables, descriptions that don't lead with triggers.
 
-### Skill skip list (do NOT symlink to Codex)
-Claude-specific orchestration skills that depend on Claude Code internals: `agent-teams`, `codex-orchestration`, `forge`, `nano-banana`, `vertex-banana`, `research-for-skills`, `challenger`.
+### Codex symlink exclusion — `.no-codex-symlink` sentinel
+Skills are symlinked to Codex **by default**. To exclude one, drop a `.no-codex-symlink` sentinel file in the skill's directory — the publish/symlink tooling skips any skill carrying it. As of 2026-06-10 only `affordance-advisor` has the sentinel (host-native command suggestions, single-CLI scope). The old hardcoded skip list (`agent-teams`, `forge`, etc.) is retired — those skills are now written cross-model-portable and symlinked normally.
 
 ### Skill standards (S009 / 44-finding sweep)
 Every SKILL.md must have:
@@ -121,14 +131,12 @@ Every SKILL.md must have:
 - Cross-model-compatible language ("Read the file" not "Use the Read tool")
 - Specific data with sources, no vendor marketing as fact
 
-## Session-start prompts (CLAUDE.md routing)
+## Always-On modes (CLAUDE.md routing)
 
-Two sequential prompts asked one at a time at session start:
+There are **no session-start prompts** — both modes are always-on per CLAUDE.md:
 
-1. **Autonomy mode**: "Allow file edits, shell commands, tool calls without permission, except design questions / production deploys / commits to main? (y/n)"
-2. **Forge mode**: "Use forge for this session as the default workflow? (y/n)"
-
-If both yes, the assistant runs autonomously and routes everything that touches code/skills/agents through forge.
+1. **Autonomy mode (Always On)**: proceed autonomously on file reads/writes/edits, bash commands, agent spawns, and implementation work. Still pause for design questions and anything the user hasn't implicitly authorized. Git-push protection is enforced by the harness (`settings.json` ask rule), not behaviorally.
+2. **Forge mode (Always On)**: ALL task requests route through the `forge` skill automatically, subject to the complexity skip rules below (TRIVIAL/SIMPLE bypass forge).
 
 ## Routing by complexity (CLAUDE.md)
 
@@ -150,7 +158,7 @@ If both yes, the assistant runs autonomously and routes everything that touches 
 - **`~/.claude/settings.json`** — active. Notification + stop hooks installed. Do NOT break.
 - **`~/.claude/CLAUDE.md`** — global instructions (autonomy/forge defaults, routing, hard rules pointer).
 - **`~/.claude/AGENTS.md` -> `~/.claude/CLAUDE.md`** — symlink. Created in S008 for Codex CLI compatibility. Native AGENTS.md support in Claude Code 2.1.96 is **UNVERIFIED** — flagged for first-boot test.
-- **`~/.claude/agents/{forge,bob,alf,pa,wiki}.md`** — agent definitions. Only the agents in `~/.claude/agents/` are user-defined; other "agents" (challenger, qa-reviewer, ux-reviewer, team-manager) are skills assigned at runtime.
+- **`~/.claude/agents/{alf,bob,evo,pa,wiki}.md`** — agent definitions. Only the agents in `~/.claude/agents/` are user-defined; forge is a skill (inline), and other "agents" (challenger, qa-reviewer, ux-reviewer, team-manager) are skills assigned at runtime.
 - **`~/.codex/skills/`** — Codex symlink mirror.
 - **`~/.gemini/extensions/nanobanana`** — installed Gemini extension. Do NOT touch.
 

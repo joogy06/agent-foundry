@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/team-output.v1.json",
+  "title": "team-output.v1",
+  "description": "S055 §5.5 — output of one isolated team in the adversarial-tournament `diverge` round. Owner: adversarial-team-brainstorm. `initial_kill_criteria` has minItems:2 — role collapse is mechanically prevented (a team that cannot state how its idea could fail is schema-invalid). Consumed by the tournament script + caller.",
+  "type": "object",
+  "required": ["team_id", "angle", "proposal", "initial_kill_criteria"],
+  "additionalProperties": false,
+  "properties": {
+    "team_id": { "type": "string", "minLength": 1 },
+    "angle": { "type": "string", "minLength": 1 },
+    "proposal": { "type": "string", "minLength": 1 },
+    "initial_kill_criteria": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "At least 2 concrete conditions that would kill this idea (role-collapse guard)."
+    },
+    "grounding_sources": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Evidence the proposal is grounded in (reddit/gdelt/docs); empty => arbiter forces confidence speculative."
+    }
+  }
+}

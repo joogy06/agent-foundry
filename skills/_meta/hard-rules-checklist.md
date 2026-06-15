@@ -46,6 +46,10 @@ This file exists because AI models lose track of rules in long sessions. It is a
 ### EXECUTION PHASE (bob)
 
 - [ ] **Contract map routing (caller-independent)** — after reading the design in Step 1, bob MUST determine if it introduces components. If yes and no contract map exists, HALT. This applies regardless of whether forge, alf, pa, or a user spawned bob. See Step 1 → Step 1.5 Gate routing table.
+- [ ] **Orchestration inversion (S055)** — the agent-spawn facility (`Agent`) and the workflow facility (`Workflow`) are MAIN-LOOP-ONLY. Bob as a subagent/workflow stage has NEITHER. Delegation flows UP: for 3+ WPs or M/L, bob delegates POLICY to agent-teams in-context, materializes `progress/work-packages.yaml` (host-neutral DATA, never executable JS — S052), and HALTs `PARTIAL needs: plan-execution`. The MAIN LOOP runs the plan (preferred: `bob-serial-exec` workflow when `capabilities.workflow_tool` true via `probe.sh`; fallback: serial-with-checkpointing). NEVER attempt a spawn "just in case" — a failed spawn is proof you are a subagent, not a retry candidate.
+- [ ] **Orchestration decision rule** — `can_orchestrate = capabilities.<surface> AND context == main-loop`. `capabilities.*` alone NEVER authorizes orchestration (session files are shared with subagents). Read capabilities via `probe.sh get capabilities.<name>` ONLY — no raw jq, no inline `claude --version`.
+- [ ] **BOB_MODE stage personas (S055)** — `BOB_MODE: execute-work-package | finalize | resume-amendment` in the spawn prompt OVERRIDES Steps 1-3 + HR1 items 1-4. execute-work-package is bound to plan_hash + wp_id, skips decomposition, forbids further orchestration, and emits a schema-mapped `execution-report.v1`. Validate the run lease (`claims.validate_run_lease`) on EVERY bob-owned mutation.
+- [ ] **AWAITING_AMENDMENT park (S055)** — a scope-pause that needs user amendment parks via `PAUSED → AWAITING_AMENDMENT` (non-expiring) and exits `PARTIAL needs: forge-amendment-mode`. Do NOT stay PAUSED (rolls back at 600s). Resume ONLY via `BOB_MODE: resume-amendment` after a fresh plan revision — resume across an amendment is structurally impossible (cache-key change).
 - [ ] **Bob does NOT orchestrate teams** — for 3+ WPs, delegate ALL orchestration to agent-teams.
 - [ ] **Bob direct-execute for small jobs** — 1-2 S-complexity WPs with no cross-component deps can skip agent-teams.
 - [ ] **Test discovery before "run tests"** — read PROJECT.md testing section, scan for framework, don't assume.
@@ -66,6 +70,19 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Anti-drift is event-triggered** — re-read this checklist at structural events (before any gate check, before any ledger transition, before metacognitive audit), not on a turn count.
 - [ ] **Drift canary** — emit ledger header `drift_canary: "ALDEBARAN-7"` verbatim every 20 events. Paraphrase or omission = drift detected, halt.
 - [ ] **Skill file checksums** — bob logs sha256 of every invoked skill file at startup and before each gate check. Any mid-session skill-file mutation is caught.
+- [ ] **Worktree isolation strands pipeline-machinery artifacts** — skills that emit .ledger/requests/*.request.yaml, claim heartbeats, or .wiring/runs/ MUST run in the canonical tree, NOT inside an isolated git worktree (workflow agent isolation worktree or EnterWorktree) — otherwise transition requests and heartbeats land in the worktree, invisible to bob's request queue and heartbeat-revocation sweep. If an orchestrator isolates a WP, it must copy these artifacts back before bob's next sweep.
+
+### EVERGREENING PHASE (evo)
+
+- [ ] **Sole-orchestrator, never sole-writer** — evo orchestrates skills and spawns bob but NEVER writes `.ledger/scope-deltas/*` or `progress/integration-ledger.md` directly (bob stays sole CB4 writer); promotion to `.ledger/evo/latest.json` is bob's job under flock.
+- [ ] **Bug-for-bug compatibility (B1 lock)** — NEVER fix pre-existing legacy bugs during an upgrade; legacy behaviour is the oracle for differential snapshot tests. Optimizations are advisory-only findings, never auto-applied.
+- [ ] **G1 hard HALT on degraded CVE data** — mode-c (cve-fix) HALTs immediately with `EVO_HALT_DEGRADED_DATA` if dep-currency-check returns `gap_kind: unknown` on any direct dep. No warn-and-proceed; modes a/b continue.
+- [ ] **Consultation default-on-timeout** — every consultation prompt declares an explicit default answer (reject unless auto-applicable patch-version CVE fix with passing tests) that fires after `EVO_CONSULT_TIMEOUT_HOURS`; decisions append-only to consult-log.jsonl.
+- [ ] **Max 3 diagrams per consultation turn** — C4 container/component level only, never function-level; intent-map-render rejects function-level attempts with `EVO_HARD_RULE_5_VIOLATION`.
+- [ ] **Sandbox path 0700** — clone path MUST be `$HOME/.cache/evo/sessions/<run_id>/clone/` with mode 0700, NEVER `/tmp/`; TTL cleanup mandatory; persistent artifacts live under `.ledger/evo/runs/<id>/`, not the sandbox.
+- [ ] **Two-arm verification on prose intent** — `confidence_level: grounded` requires evidence_edges resolving in static.jsonl AND a cold-context second pass at ≥0.95 semantic similarity; single-arm output is `interpretive` and NEVER feeds gates or test generation.
+- [ ] **Budget honesty → PARTIAL** — any env-budget exhaustion (tokens/files/lookups/runtime) marks the verdict PARTIAL with skipped work listed in `follow_ups[]`; never silently degrade output.
+- [ ] **Out-of-scope remediations emit a handoff doc** — material fixes outside the current mode's scope MUST invoke the `handoff` skill (`/tmp/handoff-evo-<topic>-<date>-<uuid>.md`) with the suggested re-invocation; `follow_ups[]` entries cross-reference the handoff doc path. (Renumbered from HR8, 2026-06-10.)
 
 ### KNOWLEDGE GROUNDING
 

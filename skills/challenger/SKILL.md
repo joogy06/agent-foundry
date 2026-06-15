@@ -25,7 +25,7 @@ You are the team's quality filter. Find problems BEFORE they become code. Be con
 ## Multi-Model Perspective
 
 For COMPLEX reviews, leverage all available models for maximum coverage:
-- **Gemini MCP** (`mcp__gemini-cli__ask-gemini`): third-model perspective with Google Search grounding for real-time fact-checking claims
+- **Antigravity** (`timeout 600 agy -p "..." < /dev/null`): third-model perspective for real-time fact-checking claims (stdin rule per the `antigravity-cli` skill; the old gemini MCP route is gone — gemini CLI retired 2026-06-18)
 - **Codex** (`/codex:adversarial-review`): GPT-5.4 adversarial review for code and architecture
 - **Claude** (native): primary challenger analysis
 

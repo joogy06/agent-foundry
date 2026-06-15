@@ -12,6 +12,16 @@ search, sync, preferences, health, and sync configuration.
 Usage:
     python3 pa_server.py                     # workspace from CWD or $PA_WORKSPACE
     PA_WORKSPACE=/path python3 pa_server.py  # explicit workspace
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: mcp-protocol-version
+    verified_against: "2025-11-25 (negotiated MCP spec; Claude Code negotiates at runtime)"
+    verified_on: "2026-06-12"
+    volatility: medium
+    review_by: "2027-01"
+-->
 """
 
 import json
@@ -22,6 +32,20 @@ import hashlib
 import traceback
 from datetime import datetime
 from pathlib import Path
+
+# pa_core — transport-neutral data-access core (single SQLite writer, _with_tx
+# rollback, busy_timeout, typed errors). pa_server is a THIN adapter over it
+# (M0a / WP-2). Loaded relative to this file so it resolves regardless of CWD
+# (bob's trusted_runner launches pytest from the project root, not pa-server/).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pa_core  # noqa: E402
+from pa_core import PaError, NotFoundError, ValidationError, SyncError  # noqa: E402,F401
+
+# MCP protocol version this server advertises in `initialize`. Bumped off the
+# stale "2024-11-05" to the current negotiated MCP spec (M0a / WP-6). The S041
+# evergreen freshness loop tracks drift via the FRESHNESS:v1 anchor in this
+# module's docstring (subject: mcp-protocol-version).
+MCP_PROTOCOL_VERSION = "2025-11-25"
 
 # ---------------------------------------------------------------------------
 # Workspace resolution
@@ -185,16 +209,23 @@ END;
 
 
 def init_db(db_path: Path) -> sqlite3.Connection:
-    """Create/open SQLite DB, run migrations, enable WAL."""
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    """Create/open SQLite DB, run schema DDL, enable WAL + busy_timeout.
+
+    The connection PRAGMA (WAL / foreign_keys / busy_timeout=5000) is owned by
+    ``pa_core.connect`` so the single-writer discipline + block-and-retry are set
+    identically wherever pa_core is imported (adapter today, M4 dashboard later).
+    """
+    conn = pa_core.connect(db_path)
     conn.executescript(SCHEMA_SQL)
     conn.executescript(FTS_SQL)
     conn.executescript(INDEXES_SQL)
     conn.executescript(TRIGGERS_SQL)
     conn.commit()
+    # WP-3: apply the AMY schema migrations (14 new tables + tasks
+    # due_at/start_at/planning_period + FTS companions) idempotently. Empty DBs
+    # => zero migration cost; re-running on a migrated DB is a no-op (T-MIG-1).
+    # The runner owns its own per-version transactions.
+    pa_core.run_migrations(conn)
     return conn
 
 
@@ -203,615 +234,125 @@ def init_db(db_path: Path) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 class PATools:
-    """All 20 MCP tool implementations."""
+    """Thin façade over ``pa_core`` (M0a / WP-2).
+
+    Historically this class held all tool logic. After the WP-2 extraction the
+    logic lives in ``pa_core`` as transport-neutral ``fn(conn, ws_id, params)``
+    functions; ``PATools`` is a back-compat binding (the existing pa agent code
+    and the characterization suite call ``tools.pa_*(params)``). Each method
+    forwards to its pa_core function with the connection + workspace id this
+    instance is bound to. Errors RAISE (pa_core typed errors) — the dispatcher
+    maps them to ``isError=true`` honestly.
+    """
 
     def __init__(self, conn: sqlite3.Connection, ws_path: Path, ws_id: str):
         self.conn = conn
         self.ws_path = ws_path
         self.ws_id = ws_id
-        self._ensure_workspace()
-
-    def _ensure_workspace(self):
-        """Ensure workspace record exists."""
-        row = self.conn.execute("SELECT id FROM workspaces WHERE id = ?", (self.ws_id,)).fetchone()
-        if not row:
-            self.conn.execute(
-                "INSERT INTO workspaces (id, name, project_path, last_accessed) VALUES (?, ?, ?, ?)",
-                (self.ws_id, self.ws_path.name, str(self.ws_path), _now())
-            )
-            self.conn.commit()
-        else:
-            self.conn.execute("UPDATE workspaces SET last_accessed = ? WHERE id = ?", (_now(), self.ws_id))
-            self.conn.commit()
+        # Workspace bootstrap is a pa_core write (inside _with_tx).
+        pa_core.ensure_workspace(conn, ws_id, ws_path.name, str(ws_path))
 
     # -- Task Management --
 
     def pa_create_task(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        title = params["title"]
-        description = params.get("description")
-        priority = params.get("priority", "medium")
-        source = params.get("source", "local")
-        remote_id = params.get("remote_id")
-        remote_url = params.get("remote_url")
-        tags = params.get("tags")
-        if isinstance(tags, list):
-            tags = json.dumps(tags)
-
-        cur = self.conn.execute(
-            """INSERT INTO tasks (workspace_id, title, description, priority, source, remote_id, remote_url, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (workspace, title, description, priority, source, remote_id, remote_url, tags)
-        )
-        self.conn.commit()
-        task_id = cur.lastrowid
-        return {"id": task_id, "title": title, "status": "new", "created_at": _now()}
+        return pa_core.create_task(self.conn, self.ws_id, params)
 
     def pa_update_task(self, params: dict) -> dict:
-        task_id = params["id"]
-        updates = []
-        values = []
-        for field in ("status", "priority", "description", "assigned_agent", "tags"):
-            if field in params:
-                val = params[field]
-                if field == "tags" and isinstance(val, list):
-                    val = json.dumps(val)
-                updates.append(f"{field} = ?")
-                values.append(val)
-
-        if "status" in params:
-            status = params["status"]
-            if status == "designed":
-                updates.append("designed_at = ?")
-                values.append(_now())
-            elif status in ("done", "failed", "cancelled"):
-                updates.append("completed_at = ?")
-                values.append(_now())
-
-        updates.append("updated_at = ?")
-        values.append(_now())
-        values.append(task_id)
-
-        self.conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
-        self.conn.commit()
-
-        row = self.conn.execute("SELECT id, title, status, updated_at FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if row:
-            return dict(row)
-        return {"error": f"Task {task_id} not found"}
+        return pa_core.update_task(self.conn, self.ws_id, params)
 
     def pa_query_tasks(self, params: dict) -> list:
-        workspace = params.get("workspace", self.ws_id)
-        conditions = ["workspace_id = ?"]
-        values = [workspace]
-
-        for field in ("status", "priority", "source"):
-            if field in params and params[field]:
-                conditions.append(f"{field} = ?")
-                values.append(params[field])
-
-        if "since" in params and params["since"]:
-            conditions.append("updated_at >= ?")
-            values.append(params["since"])
-
-        limit = params.get("limit", 50)
-        sql = f"SELECT id, title, status, priority, source, remote_id, tags, updated_at FROM tasks WHERE {' AND '.join(conditions)} ORDER BY updated_at DESC LIMIT ?"
-        values.append(limit)
-
-        rows = self.conn.execute(sql, values).fetchall()
-        return [dict(r) for r in rows]
+        return pa_core.query_tasks(self.conn, self.ws_id, params)
 
     def pa_get_task(self, params: dict) -> dict:
-        task_id = params["id"]
-        task = self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not task:
-            return {"error": f"Task {task_id} not found"}
-
-        actions = self.conn.execute(
-            "SELECT id, action, agent, skill, result, artifacts, created_at FROM actions WHERE task_id = ? ORDER BY created_at DESC LIMIT 20",
-            (task_id,)
-        ).fetchall()
-
-        result = dict(task)
-        result["recent_actions"] = [dict(a) for a in actions]
-        return result
+        return pa_core.get_task(self.conn, self.ws_id, params)
 
     # -- Action Logging --
 
     def pa_log_action(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        task_id = params.get("task_id")
-        action = params["action"]
-        agent = params.get("agent")
-        skill = params.get("skill")
-        result = params.get("result")
-        artifacts = params.get("artifacts")
-        if isinstance(artifacts, list):
-            artifacts = json.dumps(artifacts)
-
-        cur = self.conn.execute(
-            """INSERT INTO actions (task_id, workspace_id, action, agent, skill, result, artifacts)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, workspace, action, agent, skill, result, artifacts)
-        )
-        self.conn.commit()
-        return {"id": cur.lastrowid, "created_at": _now()}
+        return pa_core.log_action(self.conn, self.ws_id, params)
 
     # -- Session Management --
 
     def pa_start_session(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        tool = params.get("tool", "claude-cli")
+        return pa_core.start_session(self.conn, self.ws_id, params)
 
-        # Create session
-        cur = self.conn.execute(
-            "INSERT INTO sessions (workspace_id, tool) VALUES (?, ?)",
-            (workspace, tool)
-        )
-        self.conn.commit()
-        session_id = cur.lastrowid
-
-        # Get active tasks
-        active_tasks = self.conn.execute(
-            "SELECT id, title, status, priority, assigned_agent, updated_at FROM tasks WHERE workspace_id = ? AND status NOT IN ('done','failed','cancelled') ORDER BY priority, updated_at DESC",
-            (workspace,)
-        ).fetchall()
-
-        # Get recent actions (last 24h)
-        recent_actions = self.conn.execute(
-            "SELECT a.id, a.task_id, a.action, a.agent, a.result, a.created_at FROM actions a WHERE a.workspace_id = ? AND a.created_at >= datetime('now', '-1 day') ORDER BY a.created_at DESC LIMIT 10",
-            (workspace,)
-        ).fetchall()
-
-        # Get unresolved conflicts
-        conflicts = self.conn.execute(
-            "SELECT ss.id, ss.source, ss.remote_id, ss.status, ss.conflict_detail FROM sync_state ss WHERE ss.workspace_id = ? AND ss.status = 'conflict'",
-            (workspace,)
-        ).fetchall()
-
-        # Get last session summary
-        last_session = self.conn.execute(
-            "SELECT summary, ended_at FROM sessions WHERE workspace_id = ? AND id != ? ORDER BY id DESC LIMIT 1",
-            (workspace, session_id)
-        ).fetchone()
-
-        return {
-            "session_id": session_id,
-            "workspace": workspace,
-            "active_tasks": [dict(t) for t in active_tasks],
-            "recent_actions": [dict(a) for a in recent_actions],
-            "unresolved_conflicts": [dict(c) for c in conflicts],
-            "last_session_summary": dict(last_session) if last_session else None,
-        }
+    def pa_get_briefing_snapshot(self, params: dict) -> dict:
+        # WP-5: pure idempotent read (no session row written). The
+        # mcp__pa-server__* wildcard auto-permits this new tool.
+        return pa_core.get_briefing_snapshot(self.conn, self.ws_id, params)
 
     def pa_end_session(self, params: dict) -> dict:
-        session_id = params["session_id"]
-        summary = params.get("summary", "")
-
-        self.conn.execute(
-            "UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ?",
-            (_now(), summary, session_id)
-        )
-        self.conn.commit()
-        return {"session_id": session_id, "ended_at": _now()}
+        return pa_core.end_session(self.conn, self.ws_id, params)
 
     # -- Search --
 
     def pa_search(self, params: dict) -> list:
-        workspace = params.get("workspace", self.ws_id)
-        query = params["query"]
-        mode = params.get("mode", "keyword")
-        limit = params.get("limit", 20)
+        return pa_core.search(self.conn, self.ws_id, params)
 
-        if mode == "semantic":
-            # v2 feature — fall back to keyword
-            pass
-
-        results = []
-
-        # Search tasks via FTS5
-        task_rows = self.conn.execute(
-            """SELECT t.id, t.title, snippet(tasks_fts, 1, '<b>', '</b>', '...', 32) as snippet,
-                      rank
-               FROM tasks_fts
-               JOIN tasks t ON t.id = tasks_fts.rowid
-               WHERE tasks_fts MATCH ? AND t.workspace_id = ?
-               ORDER BY rank
-               LIMIT ?""",
-            (query, workspace, limit)
-        ).fetchall()
-
-        for row in task_rows:
-            results.append({
-                "type": "task",
-                "id": row["id"],
-                "title": row["title"],
-                "snippet": row["snippet"],
-                "relevance_score": abs(row["rank"]) if row["rank"] else 0,
-            })
-
-        # Search actions via FTS5
-        remaining = limit - len(results)
-        if remaining > 0:
-            action_rows = self.conn.execute(
-                """SELECT a.id, a.task_id, snippet(actions_fts, 0, '<b>', '</b>', '...', 32) as snippet,
-                          rank
-                   FROM actions_fts
-                   JOIN actions a ON a.id = actions_fts.rowid
-                   WHERE actions_fts MATCH ? AND a.workspace_id = ?
-                   ORDER BY rank
-                   LIMIT ?""",
-                (query, workspace, remaining)
-            ).fetchall()
-
-            for row in action_rows:
-                results.append({
-                    "type": "action",
-                    "id": row["id"],
-                    "task_id": row["task_id"],
-                    "snippet": row["snippet"],
-                    "relevance_score": abs(row["rank"]) if row["rank"] else 0,
-                })
-
-        return results
-
-    # -- Sync --
+    # -- Sync (fetchers injected so monkeypatching pa_server._jira_fetch /
+    #    _confluence_fetch keeps working for the characterization + WP-4 suites).
+    #    WP-4: the injected fetcher closes over the connector's deployment +
+    #    user_env so pa_core's deployment-aware Cloud/DC auth is driven from
+    #    source_config, while the 4-arg (base_url, token, strategy, query)
+    #    fetcher signature the tests monkeypatch is preserved. --
 
     def pa_sync_confluence(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        source_config = params.get("source_config", {})
+        cfg = params.get("source_config", {})
+        deployment = cfg.get("deployment", "datacenter")
+        user_env = cfg.get("user_env", "")
 
-        base_url_env = source_config.get("base_url_env", "CONFLUENCE_BASE")
-        token_env = source_config.get("token_env", "CONFLUENCE_TOKEN")
-        strategy = source_config.get("strategy", "label")
-        query = source_config.get("query", "")
+        def fetch(base_url, token, strategy, query):
+            return _confluence_fetch(base_url, token, strategy, query,
+                                     deployment=deployment, user_env=user_env)
 
-        base_url = os.environ.get(base_url_env)
-        token = os.environ.get(token_env)
-
-        if not base_url or not token:
-            return {
-                "error": f"Missing env vars: {base_url_env}={'set' if base_url else 'missing'}, {token_env}={'set' if token else 'missing'}",
-                "pulled": 0, "new_items": 0, "updated_items": 0, "conflicts": 0
-            }
-
-        # Attempt HTTP sync
-        try:
-            import urllib.request
-            import urllib.error
-
-            items = _confluence_fetch(base_url, token, strategy, query)
-            new_count, updated_count, conflict_count = 0, 0, 0
-
-            for item in items:
-                remote_id = str(item.get("id", ""))
-                title = item.get("title", "Untitled")
-                version = item.get("version", {}).get("number", 1) if isinstance(item.get("version"), dict) else item.get("version", 1)
-                url = f"{base_url}/pages/viewpage.action?pageId={remote_id}"
-                content_hash = hashlib.sha256(json.dumps(item, sort_keys=True, default=str).encode()).hexdigest()[:16]
-
-                # Check sync state
-                existing = self.conn.execute(
-                    "SELECT id, remote_version, local_hash FROM sync_state WHERE workspace_id = ? AND source = 'confluence' AND remote_id = ?",
-                    (workspace, remote_id)
-                ).fetchone()
-
-                if not existing:
-                    # New item — create task
-                    cur = self.conn.execute(
-                        "INSERT INTO tasks (workspace_id, title, source, remote_id, remote_url) VALUES (?, ?, 'confluence', ?, ?)",
-                        (workspace, title, remote_id, url)
-                    )
-                    self.conn.execute(
-                        "INSERT INTO sync_state (workspace_id, source, remote_id, remote_url, remote_version, local_hash, last_synced) VALUES (?, 'confluence', ?, ?, ?, ?, ?)",
-                        (workspace, remote_id, url, version, content_hash, _now())
-                    )
-                    new_count += 1
-                elif existing["local_hash"] != content_hash:
-                    # Changed remotely — check for local modifications
-                    task = self.conn.execute(
-                        "SELECT id, updated_at FROM tasks WHERE workspace_id = ? AND source = 'confluence' AND remote_id = ?",
-                        (workspace, remote_id)
-                    ).fetchone()
-
-                    if task:
-                        # Update task title, mark sync state
-                        self.conn.execute(
-                            "UPDATE tasks SET title = ?, updated_at = ? WHERE id = ?",
-                            (title, _now(), task["id"])
-                        )
-                    self.conn.execute(
-                        "UPDATE sync_state SET remote_version = ?, local_hash = ?, last_synced = ?, status = 'synced' WHERE id = ?",
-                        (version, content_hash, _now(), existing["id"])
-                    )
-                    updated_count += 1
-                else:
-                    # No change — update last_synced
-                    self.conn.execute(
-                        "UPDATE sync_state SET last_synced = ? WHERE id = ?",
-                        (_now(), existing["id"])
-                    )
-
-            self.conn.commit()
-            return {
-                "pulled": len(items),
-                "new_items": new_count,
-                "updated_items": updated_count,
-                "conflicts": conflict_count,
-            }
-
-        except Exception as e:
-            return {"error": str(e), "pulled": 0, "new_items": 0, "updated_items": 0, "conflicts": 0}
+        return pa_core.sync_confluence(self.conn, self.ws_id, params, fetch)
 
     def pa_sync_jira(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        source_config = params.get("source_config", {})
+        cfg = params.get("source_config", {})
+        deployment = cfg.get("deployment", "datacenter")
+        user_env = cfg.get("user_env", "")
 
-        base_url_env = source_config.get("base_url_env", "JIRA_BASE")
-        token_env = source_config.get("token_env", "JIRA_TOKEN")
-        strategy = source_config.get("strategy", "assigned")
-        query = source_config.get("query", "")
+        def fetch(base_url, token, strategy, query):
+            return _jira_fetch(base_url, token, strategy, query,
+                               deployment=deployment, user_env=user_env)
 
-        base_url = os.environ.get(base_url_env)
-        token = os.environ.get(token_env)
-
-        if not base_url or not token:
-            return {
-                "error": f"Missing env vars: {base_url_env}={'set' if base_url else 'missing'}, {token_env}={'set' if token else 'missing'}",
-                "pulled": 0, "new_items": 0, "updated_items": 0, "conflicts": 0
-            }
-
-        try:
-            import urllib.request
-            import urllib.error
-
-            items = _jira_fetch(base_url, token, strategy, query)
-            new_count, updated_count, conflict_count = 0, 0, 0
-
-            for item in items:
-                remote_id = item.get("key", "")
-                title = item.get("fields", {}).get("summary", "Untitled")
-                status_name = item.get("fields", {}).get("status", {}).get("statusCategory", {}).get("key", "new")
-                pa_status = _jira_status_map(status_name)
-                updated = item.get("fields", {}).get("updated", "")
-                url = f"{base_url}/browse/{remote_id}"
-                content_hash = hashlib.sha256(json.dumps(item, sort_keys=True, default=str).encode()).hexdigest()[:16]
-
-                existing = self.conn.execute(
-                    "SELECT id, local_hash FROM sync_state WHERE workspace_id = ? AND source = 'jira' AND remote_id = ?",
-                    (workspace, remote_id)
-                ).fetchone()
-
-                if not existing:
-                    priority_map = {"Highest": "critical", "High": "high", "Medium": "medium", "Low": "low", "Lowest": "low"}
-                    jira_priority = item.get("fields", {}).get("priority", {}).get("name", "Medium")
-                    pa_priority = priority_map.get(jira_priority, "medium")
-
-                    cur = self.conn.execute(
-                        "INSERT INTO tasks (workspace_id, title, status, priority, source, remote_id, remote_url) VALUES (?, ?, ?, ?, 'jira', ?, ?)",
-                        (workspace, title, pa_status, pa_priority, remote_id, url)
-                    )
-                    self.conn.execute(
-                        "INSERT INTO sync_state (workspace_id, source, remote_id, remote_url, local_hash, last_synced) VALUES (?, 'jira', ?, ?, ?, ?)",
-                        (workspace, remote_id, url, content_hash, _now())
-                    )
-                    new_count += 1
-                elif existing["local_hash"] != content_hash:
-                    task = self.conn.execute(
-                        "SELECT id FROM tasks WHERE workspace_id = ? AND source = 'jira' AND remote_id = ?",
-                        (workspace, remote_id)
-                    ).fetchone()
-                    if task:
-                        self.conn.execute(
-                            "UPDATE tasks SET title = ?, status = ?, updated_at = ? WHERE id = ?",
-                            (title, pa_status, _now(), task["id"])
-                        )
-                    self.conn.execute(
-                        "UPDATE sync_state SET local_hash = ?, last_synced = ?, status = 'synced' WHERE id = ?",
-                        (content_hash, _now(), existing["id"])
-                    )
-                    updated_count += 1
-                else:
-                    self.conn.execute(
-                        "UPDATE sync_state SET last_synced = ? WHERE id = ?",
-                        (_now(), existing["id"])
-                    )
-
-            self.conn.commit()
-            return {
-                "pulled": len(items),
-                "new_items": new_count,
-                "updated_items": updated_count,
-                "conflicts": conflict_count,
-            }
-
-        except Exception as e:
-            return {"error": str(e), "pulled": 0, "new_items": 0, "updated_items": 0, "conflicts": 0}
+        return pa_core.sync_jira(self.conn, self.ws_id, params, fetch, _jira_status_map)
 
     def pa_get_conflicts(self, params: dict) -> list:
-        workspace = params.get("workspace", self.ws_id)
-        rows = self.conn.execute(
-            """SELECT ss.id as sync_state_id, t.id as task_id, ss.source as remote_source,
-                      ss.status, ss.conflict_detail, ss.last_synced as detected_at
-               FROM sync_state ss
-               LEFT JOIN tasks t ON t.workspace_id = ss.workspace_id AND t.source = ss.source AND t.remote_id = ss.remote_id
-               WHERE ss.workspace_id = ? AND ss.status = 'conflict'""",
-            (workspace,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return pa_core.get_conflicts(self.conn, self.ws_id, params)
 
     def pa_resolve_conflict(self, params: dict) -> dict:
-        sync_state_id = params["sync_state_id"]
-        resolution = params["resolution"]  # 'keep_local' or 'accept_remote'
-
-        ss = self.conn.execute(
-            "SELECT * FROM sync_state WHERE id = ?", (sync_state_id,)
-        ).fetchone()
-        if not ss:
-            return {"error": f"Sync state {sync_state_id} not found"}
-
-        if resolution == "accept_remote" and ss["conflict_detail"]:
-            try:
-                detail = json.loads(ss["conflict_detail"])
-                task = self.conn.execute(
-                    "SELECT id FROM tasks WHERE workspace_id = ? AND source = ? AND remote_id = ?",
-                    (ss["workspace_id"], ss["source"], ss["remote_id"])
-                ).fetchone()
-                if task and "remote" in detail:
-                    remote_data = detail["remote"]
-                    if "title" in remote_data:
-                        self.conn.execute(
-                            "UPDATE tasks SET title = ?, updated_at = ? WHERE id = ?",
-                            (remote_data["title"], _now(), task["id"])
-                        )
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-        self.conn.execute(
-            "UPDATE sync_state SET status = 'synced', conflict_detail = NULL, last_synced = ? WHERE id = ?",
-            (_now(), sync_state_id)
-        )
-        self.conn.commit()
-
-        task = self.conn.execute(
-            "SELECT id FROM tasks WHERE workspace_id = ? AND source = ? AND remote_id = ?",
-            (ss["workspace_id"], ss["source"], ss["remote_id"])
-        ).fetchone()
-        return {"resolved": True, "task_id": task["id"] if task else None, "updated_at": _now()}
+        return pa_core.resolve_conflict(self.conn, self.ws_id, params)
 
     # -- Preferences --
 
     def pa_get_preferences(self, params: dict) -> list:
-        workspace = params.get("workspace")
-        category = params.get("category")
-
-        conditions = []
-        values = []
-        if workspace:
-            conditions.append("(workspace_id = ? OR workspace_id IS NULL)")
-            values.append(workspace)
-        else:
-            conditions.append("workspace_id IS NULL")
-
-        if category:
-            conditions.append("category = ?")
-            values.append(category)
-
-        where = " AND ".join(conditions) if conditions else "1=1"
-        rows = self.conn.execute(
-            f"SELECT key, value, confidence, signal_count, category FROM preferences WHERE {where} ORDER BY signal_count DESC",
-            values
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return pa_core.get_preferences(self.conn, self.ws_id, params)
 
     def pa_update_preference(self, params: dict) -> dict:
-        key = params["key"]
-        value = params["value"]
-        category = params["category"]
-        workspace = params.get("workspace")
-
-        existing = self.conn.execute(
-            "SELECT id, signal_count, confidence FROM preferences WHERE key = ? AND (workspace_id = ? OR (workspace_id IS NULL AND ? IS NULL))",
-            (key, workspace, workspace)
-        ).fetchone()
-
-        if existing:
-            new_count = existing["signal_count"] + 1
-            # Confidence increases: 1 signal=0.3, 2=0.5, 3+=0.8, 5+=0.95
-            if new_count >= 5:
-                confidence = 0.95
-            elif new_count >= 3:
-                confidence = 0.8
-            elif new_count >= 2:
-                confidence = 0.5
-            else:
-                confidence = 0.3
-
-            self.conn.execute(
-                "UPDATE preferences SET value = ?, signal_count = ?, confidence = ?, updated_at = ? WHERE id = ?",
-                (value, new_count, confidence, _now(), existing["id"])
-            )
-            self.conn.commit()
-            return {"key": key, "value": value, "confidence": confidence, "signal_count": new_count}
-        else:
-            self.conn.execute(
-                "INSERT INTO preferences (workspace_id, key, value, category, confidence, signal_count) VALUES (?, ?, ?, ?, 0.3, 1)",
-                (workspace, key, value, category)
-            )
-            self.conn.commit()
-            return {"key": key, "value": value, "confidence": 0.3, "signal_count": 1}
+        return pa_core.update_preference(self.conn, self.ws_id, params)
 
     def pa_clear_preference(self, params: dict) -> dict:
-        key = params["key"]
-        workspace = params.get("workspace")
-
-        self.conn.execute(
-            "DELETE FROM preferences WHERE key = ? AND (workspace_id = ? OR (workspace_id IS NULL AND ? IS NULL))",
-            (key, workspace, workspace)
-        )
-        self.conn.commit()
-        return {"deleted": True}
+        return pa_core.clear_preference(self.conn, self.ws_id, params)
 
     # -- Health --
 
     def pa_health(self, params: dict) -> dict:
-        db_path = self.ws_path / "pa.db"
-        db_size = db_path.stat().st_size if db_path.exists() else 0
-
-        task_count = self.conn.execute("SELECT COUNT(*) as c FROM tasks WHERE workspace_id = ?", (self.ws_id,)).fetchone()["c"]
-
-        confluence_sync = self.conn.execute(
-            "SELECT MAX(last_synced) as ls FROM sync_state WHERE workspace_id = ? AND source = 'confluence'",
-            (self.ws_id,)
-        ).fetchone()
-        jira_sync = self.conn.execute(
-            "SELECT MAX(last_synced) as ls FROM sync_state WHERE workspace_id = ? AND source = 'jira'",
-            (self.ws_id,)
-        ).fetchone()
-
-        return {
-            "db_size": db_size,
-            "task_count": task_count,
-            "last_sync": {
-                "confluence": confluence_sync["ls"] if confluence_sync else None,
-                "jira": jira_sync["ls"] if jira_sync else None,
-            },
-            "fts_enabled": True,
-            "semantic_enabled": False,
-            "transport": "json-rpc",
-        }
+        return pa_core.health(self.conn, self.ws_id, params, db_path=self.ws_path / "pa.db")
 
     # -- Sync Configuration --
 
     def pa_set_sync_config(self, params: dict) -> dict:
-        workspace = params.get("workspace", self.ws_id)
-        source = params["source"]
-        config = params.get("config", {})
-
-        self.conn.execute(
-            """INSERT INTO sync_configs (workspace_id, source, base_url_env, token_env, strategy, query)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(workspace_id, source) DO UPDATE SET
-               base_url_env = excluded.base_url_env,
-               token_env = excluded.token_env,
-               strategy = excluded.strategy,
-               query = excluded.query""",
-            (workspace, source, config.get("base_url_env", ""), config.get("token_env", ""),
-             config.get("strategy", ""), config.get("query", ""))
-        )
-        self.conn.commit()
-        return {"workspace": workspace, "source": source, "configured": True}
+        return pa_core.set_sync_config(self.conn, self.ws_id, params)
 
     def pa_get_sync_configs(self, params: dict) -> list:
-        workspace = params.get("workspace", self.ws_id)
-        rows = self.conn.execute(
-            """SELECT sc.source, sc.strategy, sc.query,
-                      (SELECT MAX(last_synced) FROM sync_state ss WHERE ss.workspace_id = sc.workspace_id AND ss.source = sc.source) as last_synced
-               FROM sync_configs sc
-               WHERE sc.workspace_id = ? AND sc.enabled = 1""",
-            (workspace,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return pa_core.get_sync_configs(self.conn, self.ws_id, params)
+
+
+# NOTE (WP-2): the former in-class tool implementations were mechanically
+# lifted into pa_core.py (transport-neutral fn(conn, ws_id, params)). PATools
+# above is now a thin façade forwarding to them — pa_core is the single source
+# of the data-access logic and the single SQLite writer.
 
 
 # ---------------------------------------------------------------------------
@@ -839,37 +380,30 @@ def _http_get_json(url: str, token: str, params: dict = None) -> dict:
         raise Exception(f"HTTP {e.code}: {e.reason}. URL: {url}")
 
 
-def _confluence_fetch(base_url: str, token: str, strategy: str, query: str) -> list:
-    """Fetch Confluence items based on strategy."""
-    if strategy == "label":
-        cql = f'label = "{query}" AND type = "page"'
-    elif strategy == "parent":
-        cql = f'ancestor = {query} AND type = "page"'
-    elif strategy == "cql":
-        cql = query
-    else:
-        cql = f'type = "page" ORDER BY lastModified DESC'
+def _confluence_fetch(base_url: str, token: str, strategy: str, query: str,
+                      deployment: str = "datacenter", user_env: str = "") -> list:
+    """Fetch Confluence items — delegates to pa_core's deployment-aware fetcher.
 
-    import urllib.parse
-    url = f"{base_url}/rest/api/search"
-    data = _http_get_json(url, token, {"cql": cql, "limit": "50", "expand": "version"})
-    return data.get("results", [])
+    WP-4: the real Cloud/DC auth + paging lives in ``pa_core.confluence_fetch``
+    (Basic for Cloud, Bearer PAT for Data Center). This thin module-level wrapper
+    is kept so the characterization + integration suites can monkeypatch
+    ``pa_server._confluence_fetch`` without network.
+    """
+    return pa_core.confluence_fetch(base_url, token, strategy, query,
+                                    deployment=deployment, user_env=user_env)
 
 
-def _jira_fetch(base_url: str, token: str, strategy: str, query: str) -> list:
-    """Fetch Jira issues based on strategy."""
-    if strategy == "assigned":
-        jql = query if query else "assignee = currentUser() ORDER BY updated DESC"
-    elif strategy == "jql":
-        jql = query
-    elif strategy == "filter":
-        jql = f"filter = {query}"
-    else:
-        jql = "assignee = currentUser() ORDER BY updated DESC"
+def _jira_fetch(base_url: str, token: str, strategy: str, query: str,
+                deployment: str = "datacenter", user_env: str = "") -> list:
+    """Fetch Jira issues — delegates to pa_core's deployment-aware fetcher.
 
-    url = f"{base_url}/rest/api/2/search"
-    data = _http_get_json(url, token, {"jql": jql, "maxResults": "50", "fields": "summary,status,priority,updated"})
-    return data.get("issues", [])
+    WP-4: Cloud uses Basic + /rest/api/3/search/jql + nextPageToken; Data Center
+    uses PAT Bearer + /rest/api/2/search + startAt/maxResults. The endpoint/auth
+    choice is driven by ``deployment`` (from connectors / source_config). This
+    thin wrapper is kept for monkeypatch-ability in the test suites.
+    """
+    return pa_core.jira_fetch(base_url, token, strategy, query,
+                              deployment=deployment, user_env=user_env)
 
 
 def _jira_status_map(status_category_key: str) -> str:
@@ -884,9 +418,10 @@ def _jira_status_map(status_category_key: str) -> str:
 
 
 def _now() -> str:
-    """Current UTC timestamp in ISO format."""
-    from datetime import timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Current UTC timestamp in ISO format. Delegates to pa_core.now_iso so the
+    adapter and core share a single time source (kept for back-compat: existing
+    callers / tests reference pa_server._now)."""
+    return pa_core.now_iso()
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +514,16 @@ TOOL_SCHEMAS = {
             "properties": {
                 "workspace": {"type": "string"},
                 "tool": {"type": "string", "description": "Client tool: claude-cli, gemini-cli, vscode"},
+            },
+        },
+    },
+    "pa_get_briefing_snapshot": {
+        "name": "pa_get_briefing_snapshot",
+        "description": "Pure idempotent read of the catch-up briefing (active tasks, last-24h actions, due nudges, unresolved conflicts, last-session summary). Writes NOTHING — no session row is created.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
             },
         },
     },
@@ -1203,8 +748,12 @@ class JsonRpcServer:
                 _write_error(msg_id, -32601, f"Method not found: {method}")
 
     def _handle_initialize(self, params: dict) -> dict:
+        # MCP protocol version advertised in `initialize`. Claude Code negotiates
+        # the version at runtime, so this is the server's preferred-spec floor.
+        # Currency anchor lives in the module docstring (FRESHNESS:v1, subject
+        # `mcp-protocol-version`); the S041 evergreen loop nags on drift.
         return {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {
                 "tools": {"listChanged": False},
             },
@@ -1230,25 +779,47 @@ class JsonRpcServer:
         name = params.get("name", "")
         arguments = params.get("arguments", {})
 
+        # (1) The tool must be a REGISTERED tool (in TOOL_SCHEMAS) — not just any
+        # attribute reachable via getattr. Unknown / unregistered -> isError=true.
+        schema_entry = TOOL_SCHEMAS.get(name)
         tool_fn = getattr(self.tools, name, None)
-        if not tool_fn:
-            return {
-                "content": [{"type": "text", "text": json.dumps({"error": f"Unknown tool: {name}"})}],
-                "isError": True,
-            }
+        if schema_entry is None or not callable(tool_fn):
+            return self._error_result(f"Unknown tool: {name}")
 
+        # (2) Pre-dispatch JSON-Schema validation (the ~20-line stdlib guard in
+        # pa_core.validate_arguments). A schema violation is rejected BEFORE the
+        # handler runs, so pa-core is never invoked on malformed arguments
+        # (T-ADP-1). validate_arguments RAISES ValidationError on the first
+        # problem -> we map it to isError=true below.
+        try:
+            pa_core.validate_arguments(schema_entry.get("inputSchema"), arguments)
+        except ValidationError as e:
+            return self._error_result(str(e), code=e.code)
+
+        # (3) Dispatch. Handlers RAISE pa_core typed errors; the dispatcher's
+        # `except` maps them to isError=true (no more isError:False-wrapped error
+        # dicts — BUG-1 fix).
         try:
             result = tool_fn(arguments)
             return {
                 "content": [{"type": "text", "text": json.dumps(result, default=str)}],
                 "isError": False,
             }
+        except PaError as e:
+            _log(f"Tool error in {name}: {e} (code={e.code})")
+            return self._error_result(str(e), code=e.code)
         except Exception as e:
             _log(f"Tool error in {name}: {e}\n{traceback.format_exc()}")
-            return {
-                "content": [{"type": "text", "text": json.dumps({"error": str(e)})}],
-                "isError": True,
-            }
+            return self._error_result(str(e))
+
+    @staticmethod
+    def _error_result(message: str, code: str = "error") -> dict:
+        """Build an MCP tools/call error result with isError=true and a typed
+        error payload."""
+        return {
+            "content": [{"type": "text", "text": json.dumps({"error": message, "code": code})}],
+            "isError": True,
+        }
 
 
 def _write_result(msg_id, result):

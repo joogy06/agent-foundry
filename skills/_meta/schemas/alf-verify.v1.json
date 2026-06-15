@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/alf-verify.v1.json",
+  "title": "alf-verify.v1",
+  "description": "S055 §5.4 / §8 — output of the alf-sweep cold-context cite-check verify stage (for critical / external-evidence findings — mechanizing the Stage-1.5 firewall). Owner: alf. Consumed by the alf-sweep synthesize phase.",
+  "type": "object",
+  "required": ["finding_ref", "verdict"],
+  "additionalProperties": false,
+  "properties": {
+    "finding_ref": { "type": "string", "minLength": 1, "description": "(target.path, lens, title) reference of the finding being verified." },
+    "verdict": { "enum": ["VERIFIED", "FALSE_POSITIVE", "NEEDS_FOLLOWUP"] },
+    "false_positive_reason": { "type": ["string", "null"] },
+    "cited_evidence_verbatim": { "type": ["string", "null"] }
+  }
+}

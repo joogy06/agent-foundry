@@ -33,7 +33,7 @@ BRIEF
 
 timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/challenger.md" \
-  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." \
+  "Read $CODEX_WORK/brief-challenger.md and execute the challenger review." < /dev/null \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/challenger.md"
 ```
 
@@ -52,7 +52,7 @@ timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
 Context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Produce your top 2-3 recommended approaches with:
 1. How it works  2. Pros/cons  3. Effort estimate  4. Risks
-Be opinionated — recommend the best approach and explain why." \
+Be opinionated — recommend the best approach and explain why." < /dev/null \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/approach.md"
 ```
 
@@ -63,7 +63,7 @@ Be opinionated — recommend the best approach and explain why." \
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 
-timeout 600 codex exec --ephemeral --skip-git-repo-check --search \
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/research.md" \
   "Research current best practices for [TECHNOLOGY/PATTERN] as of 2026.
 Focus on:
@@ -73,7 +73,7 @@ Focus on:
 4. Comparison with alternatives
 5. Production readiness assessment
 
-Cite sources where possible." \
+Cite sources where possible." < /dev/null \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/research.md"
 ```
 
@@ -101,9 +101,9 @@ A fresh approach to solve this. Don't repeat what was already tried.
 Think differently — challenge the assumptions that led to the dead end.
 BRIEF
 
-timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
+timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/escalation-result.md" \
-  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." \
+  "Read $CODEX_WORK/escalation-brief.md and provide a fresh solution." < /dev/null \
   || echo "CODEX_TIMEOUT" > "$CODEX_WORK/escalation-result.md"
 ```
 
@@ -115,14 +115,14 @@ timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only --search \
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
 mkdir -p "$CODEX_WORK/prototype"
 
-codex exec --ephemeral \
+timeout 1200 codex exec --ephemeral \
   -C "$CODEX_WORK/prototype" \
   -s workspace-write \
   --full-auto \
   -o "$CODEX_WORK/prototype-summary.md" \
   "Create a minimal working prototype of [DESCRIPTION].
 Write all files to the current directory.
-After creating the prototype, summarize what you built and how to run it."
+After creating the prototype, summarize what you built and how to run it." < /dev/null
 
 # Claude can then review the prototype
 # Read: $CODEX_WORK/prototype-summary.md
@@ -179,8 +179,8 @@ cat > "$CODEX_WORK/schema.json" << 'EOF'
 }
 EOF
 
-codex exec --ephemeral --skip-git-repo-check \
+timeout 600 codex exec --ephemeral --skip-git-repo-check \
   --output-schema "$CODEX_WORK/schema.json" \
   -o "$CODEX_WORK/structured.json" \
-  "[YOUR PROMPT HERE]"
+  "[YOUR PROMPT HERE]" < /dev/null
 ```

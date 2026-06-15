@@ -5,7 +5,7 @@ description: Use when working with Pega Intelligent Automation — Pega Robot St
 
 # Pega Intelligent Automation — Robotics
 
-Covers the full Pega RPA stack: Robot Studio (development), Robot Runtime (execution), and Robot Manager (fleet management). For Pega Platform case management and decisioning, see companion `pega-platform` skill.
+Covers the full Pega RPA stack: Robot Studio (development), Robot Runtime (execution), and Robot Manager (fleet management). For Pega Platform case management and decisioning there is no dedicated skill yet — answer from general knowledge, or use `web-research` for current Pega Platform documentation.
 
 <HARD-RULE>
 Never hard-code credentials in automations — always use the credential vault with per-environment overrides. Hard-coded credentials create security vulnerabilities, break across environments, and make rotation impossible.
@@ -1049,7 +1049,7 @@ PUT    /api/v1/schedules/{scheduleId}                — update schedule
 
 | Domain | Skill |
 |---|---|
-| Pega Platform (case management, decisioning) | `pega-platform` |
+| Pega Platform (case management, decisioning) | no dedicated skill yet — general knowledge / `web-research` |
 | Windows automation scripting | `windows-powershell` |
 | Windows CMD batch scripts | `windows-cmd` |
 | Windows SSO and authentication | `windows-sso` |

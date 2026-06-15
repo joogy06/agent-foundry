@@ -94,7 +94,7 @@ For first-boot setup including GCP Workload Identity Federation, Secret Manager 
 | Command | Purpose |
 |---|---|
 | `bridge init` | Clone or reuse the `ai-bridge-<user>` repo, create a new session orphan branch, copy the workflow templates in, write `.bridge/` metadata, push. |
-| `bridge request --tool gemini\|copilot --kind review\|research\|prompt [flags] "prompt"` | Submit a request. Flags: `--context PATH` (repeatable), `--wait`, `--timeout SEC`, `--model NAME`, `--max-runtime SEC`. |
+| `bridge request --tool agy\|copilot --kind review\|research\|prompt [flags] "prompt"` | Submit a request. Flags: `--context PATH` (repeatable), `--wait`, `--timeout SEC`, `--model NAME`, `--max-runtime SEC`. |
 | `bridge wait <req-id>` | Poll status until terminal state. Exit codes: 0 success, 4 error, 5 timeout, 6 canary. |
 | `bridge result <req-id>` | Pretty-print the response body. ANSI-strips, UTF-8 validates, hash-caches. Verbose mode shows frontmatter. |
 | `bridge status [--all]` | Show session and request state (current session or all). |

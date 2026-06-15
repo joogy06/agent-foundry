@@ -33,14 +33,21 @@ If `internet_reachable` is `false`:
 
 If the manifest does not exist, run `bash ~/.claude/skills/knowledge-grounding/scripts/discover.sh discover --silent` first.
 
-## Gemini MCP Integration
+## Antigravity (agy) Cross-Verification
 
-When available, `mcp__gemini-cli__ask-gemini` provides an additional research source with Google Search grounding. Use it to:
-- Cross-verify findings from WebSearch with a different search backend
-- Get Google-grounded answers for freshness-sensitive topics (latest versions, recent changes)
-- Run parallel verification: WebSearch + Gemini MCP + Codex (`/codex:rescue`) for triangulation
+When available, the Antigravity CLI (`agy`) provides an additional research source from a different model family. Invoke it headless with stdin closed (mandatory — see the `antigravity-cli` skill):
 
-Gemini's 1M context window is also useful for synthesizing large research outputs that exceed Claude's working context.
+```bash
+timeout 600 agy -p "Verify: <claim>. Cite sources." < /dev/null
+```
+
+Use it to:
+- Cross-verify findings from WebSearch with a different model/search backend
+- Get second-model answers for freshness-sensitive topics (latest versions, recent changes)
+- Run parallel verification: WebSearch + agy + Codex (`/codex:rescue`) for triangulation
+- Synthesize large research outputs that exceed Claude's working context (agy handles large-context analysis well)
+
+(The old `mcp__gemini-cli__ask-gemini` MCP route is gone; the gemini CLI itself retired 2026-06-18. See `codex-orchestration` / `cross-cli-deliberation` for full delegation patterns.)
 ## The Research Process
 
 ```

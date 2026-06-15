@@ -1,6 +1,6 @@
 ---
 name: jira-rest-api
-description: Use when interacting with Jira programmatically via REST API — API v2 and v3 endpoints, authentication (API tokens, OAuth, PAT), issue CRUD (search via JQL, get/create/update/transition), status category mapping, sprint/board queries (Agile API), comments, attachments, labels, pagination (startAt + maxResults), rate limiting, error handling, and webhooks. Works with both Jira Cloud and Data Center.
+description: Use when interacting with Jira programmatically via REST API — API v2 and v3 endpoints, authentication (API tokens, OAuth, PAT), issue CRUD (search via JQL — /rest/api/3/search/jql on Cloud, /rest/api/2/search on Data Center), status category mapping, sprint/board queries (Agile API), comments, attachments, labels, pagination (nextPageToken cursor on Cloud, startAt + maxResults on Data Center), rate limiting, error handling, and webhooks. Works with both Jira Cloud and Data Center.
 ---
 
 # Jira REST API
@@ -60,8 +60,8 @@ access_token = token_resp.json()["access_token"]
 
 ## 2. API Versions
 
-**v2** (`/rest/api/2/`) -- fully supported on Cloud + Data Center. Primary version.
-**v3** (`/rest/api/3/`) -- Cloud-only, richer Atlassian Document Format (ADF) for descriptions/comments.
+**v2** (`/rest/api/2/`) -- Data Center's primary version. Most v2 endpoints also work on Cloud, with one critical exception: `/rest/api/2/search` (and `/rest/api/3/search`) were REMOVED from Cloud in 2025 — on Cloud use `/rest/api/2/search/jql` or `/rest/api/3/search/jql` instead (see §3).
+**v3** (`/rest/api/3/`) -- Cloud-only, richer Atlassian Document Format (ADF) for descriptions/comments. Preferred for new Cloud integrations.
 
 | Use v2 when | Use v3 when |
 |---|---|
@@ -71,14 +71,27 @@ access_token = token_resp.json()["access_token"]
 
 ## 3. Issues -- Search (JQL)
 
-JQL (Jira Query Language) is the primary search mechanism.
+JQL (Jira Query Language) is the primary search mechanism. **The search endpoint differs by deployment:**
+
+| Deployment | Endpoint | Pagination |
+|---|---|---|
+| **Cloud** | `GET/POST /rest/api/3/search/jql` (also `/rest/api/2/search/jql`) | `nextPageToken` cursor |
+| **Data Center** | `GET/POST /rest/api/2/search` | `startAt` + `maxResults` offset |
+
+> Atlassian deprecated `GET/POST /rest/api/2|3/search` on **Cloud** (announced 2024) and removed it (progressive shutdown Aug 1 – Oct 31, 2025) — calls now return `410 Gone`. **Data Center keeps the classic `/rest/api/2/search` endpoint.**
+
+### Cloud: `/rest/api/3/search/jql`
 
 ```python
-def jql_search(jql, fields="summary,status,priority,assignee,updated", max_results=50, start_at=0):
-    resp = requests.get(f"{BASE}/rest/api/2/search", auth=AUTH, params={
-        "jql": jql, "fields": fields, "maxResults": max_results, "startAt": start_at})
+def jql_search(jql, fields="summary,status,priority,assignee,updated",
+               max_results=50, next_page_token=None):
+    """Jira CLOUD search. The classic /rest/api/2|3/search was removed from Cloud in 2025."""
+    params = {"jql": jql, "fields": fields, "maxResults": max_results}
+    if next_page_token:
+        params["nextPageToken"] = next_page_token
+    resp = requests.get(f"{BASE}/rest/api/3/search/jql", auth=AUTH, params=params)
     resp.raise_for_status()
-    return resp.json()
+    return resp.json()  # {"issues": [...], "nextPageToken": "..."} -- NO "total" field
 
 # Assigned to current user
 jql_search("assignee = currentUser() ORDER BY updated DESC")
@@ -90,17 +103,42 @@ jql_search("updated >= -7d ORDER BY updated DESC")
 jql_search('sprint in openSprints() AND project = "DEV"')
 # By label
 jql_search('labels = "backend" AND status != Done')
-# By epic
-jql_search('"Epic Link" = DEV-100')
+# Children of an epic (Cloud: use `parent` -- the legacy "Epic Link" field is retired on Cloud)
+jql_search('parent = DEV-100')
 # Complex filter
 jql_search('project = "DEV" AND priority in (Critical, High) AND status != Done AND assignee = currentUser()')
 ```
 
 ```bash
-curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/2/search" \
+curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/3/search/jql" \
   --data-urlencode 'jql=assignee = currentUser() ORDER BY updated DESC' \
   --data-urlencode 'maxResults=10' --data-urlencode 'fields=summary,status,priority'
 ```
+
+Cloud response semantics (changed vs the removed endpoint):
+- **`total` is NOT returned.** If you need a count, use `POST /rest/api/3/search/approximate-count` with body `{"jql": "..."}` (see §10).
+- **`maxResults` is a hint, not a guarantee** — the API may return fewer items per page than requested (≤100/page when fields are requested; up to 5000/page when requesting only `id`). Never infer "last page" from result count — rely on `nextPageToken` absence (or `isLast: true`).
+- For long JQL strings, use `POST /rest/api/3/search/jql` with a JSON body to avoid URL length limits.
+
+### Data Center: `/rest/api/2/search` (Data-Center-only)
+
+```python
+def jql_search_dc(jql, fields="summary,status,priority,assignee,updated", max_results=50, start_at=0):
+    """Jira DATA CENTER search -- classic offset pagination. REMOVED on Cloud (410 Gone)."""
+    resp = requests.get(f"{BASE}/rest/api/2/search", auth=AUTH, params={
+        "jql": jql, "fields": fields, "maxResults": max_results, "startAt": start_at})
+    resp.raise_for_status()
+    return resp.json()  # {"issues": [...], "startAt": 0, "maxResults": 50, "total": 1234}
+```
+
+```bash
+# Data Center only
+curl -s -H "Authorization: Bearer ${JIRA_PAT}" --get "${JIRA_BASE}/rest/api/2/search" \
+  --data-urlencode 'jql=assignee = currentUser() ORDER BY updated DESC' \
+  --data-urlencode 'maxResults=10' --data-urlencode 'fields=summary,status,priority'
+```
+
+On Data Center, `'"Epic Link" = DEV-100'` still works for epic children; `parent` is the Cloud replacement.
 
 ### JQL Operators and Fields
 
@@ -114,6 +152,7 @@ curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/2/search" \
 | `priority` | `=`, `!=`, `IN` | `priority IN (Critical, High)` |
 | `labels` | `=`, `!=`, `IN` | `labels = "backend"` |
 | `sprint` | `IN` | `sprint in openSprints()` |
+| `parent` | `=`, `IN` | `parent = DEV-100` (Cloud epic children; DC uses `"Epic Link"`) |
 | `updated`/`created`/`resolved` | `>=`, `<=`, `>`, `<` | `updated >= -30d` |
 | `text` | `~` | `text ~ "deployment"` |
 | `summary` | `~` | `summary ~ "API"` |
@@ -299,10 +338,47 @@ labels = requests.get(f"{BASE}/rest/api/2/label", auth=AUTH).json()
 
 ## 10. Pagination
 
-Jira uses offset pagination: `startAt` + `maxResults`.
+Pagination differs by deployment: **Cloud uses a `nextPageToken` cursor** (on `/search/jql`), **Data Center uses `startAt` offset**. (Non-search Cloud endpoints like `/project/search` still use `startAt`-style paging — this split applies to issue search.)
+
+### Cloud: nextPageToken cursor (`/rest/api/3/search/jql`)
 
 ```python
 def get_all_issues(jql, fields="summary,status,priority,updated"):
+    """Jira CLOUD: loop on nextPageToken until it is absent. Responses carry NO 'total'."""
+    all_issues, token = [], None
+    while True:
+        params = {"jql": jql, "fields": fields, "maxResults": 100}
+        if token:
+            params["nextPageToken"] = token
+        data = requests.get(f"{BASE}/rest/api/3/search/jql", auth=AUTH, params=params).json()
+        all_issues.extend(data.get("issues", []))
+        token = data.get("nextPageToken")
+        if not token:  # token absent (or isLast true) == final page
+            break
+    return all_issues
+```
+
+```bash
+# Cloud: first page
+curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/3/search/jql" \
+  --data-urlencode 'jql=project = DEV' --data-urlencode 'maxResults=100'
+# Cloud: next page -- pass the nextPageToken from the previous response
+curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/3/search/jql" \
+  --data-urlencode 'jql=project = DEV' --data-urlencode 'maxResults=100' \
+  --data-urlencode "nextPageToken=${NEXT_PAGE_TOKEN}"
+```
+
+Counting on Cloud (`total` is gone from search responses):
+```python
+count = requests.post(f"{BASE}/rest/api/3/search/approximate-count", auth=AUTH,
+                      json={"jql": "project = DEV"}).json()["count"]  # approximate, usually very close
+```
+
+### Data Center: startAt offset (`/rest/api/2/search`, Data-Center-only)
+
+```python
+def get_all_issues_dc(jql, fields="summary,status,priority,updated"):
+    """Jira DATA CENTER only: classic offset pagination with 'total'."""
     all_issues, start_at, max_results = [], 0, 100
     while True:
         data = requests.get(f"{BASE}/rest/api/2/search", auth=AUTH, params={
@@ -316,8 +392,8 @@ def get_all_issues(jql, fields="summary,status,priority,updated"):
 ```
 
 ```bash
-# Page 2 of results (items 50-99)
-curl -s -u "${JIRA_USER}:${JIRA_TOKEN}" --get "${JIRA_BASE}/rest/api/2/search" \
+# Data Center: page 2 of results (items 50-99)
+curl -s -H "Authorization: Bearer ${JIRA_PAT}" --get "${JIRA_BASE}/rest/api/2/search" \
   --data-urlencode 'jql=project = DEV' --data-urlencode 'startAt=50' --data-urlencode 'maxResults=50'
 ```
 
@@ -463,4 +539,17 @@ For HTML/XHTML rendering of downstream output (storage format → display), sani
 | Assume v3 endpoints on Data Center | v3 is Cloud-only |
 | Retry 401 errors | Auth failures need user action, not retry |
 | Parse HTML descriptions on Cloud v3 | Cloud v3 uses ADF (Atlassian Document Format), not HTML |
-| Use `startAt` beyond 10000 | Jira caps offset at ~10000. Use `search/id` or JQL date ranges for larger sets. |
+| Call `/rest/api/2|3/search` on Cloud | Removed (shutdown completed Oct 2025) -- returns `410 Gone`. Use `/rest/api/3/search/jql` + `nextPageToken`. |
+| Expect `total` in Cloud search responses | `/search/jql` does not return it. Use `POST /rest/api/3/search/approximate-count`. |
+| Detect the last Cloud page via `len(issues) < maxResults` | `maxResults` is a hint; pages may come back short mid-stream. Stop only when `nextPageToken` is absent. |
+| Use `"Epic Link"` in Cloud JQL | Retired on Cloud -- use `parent = KEY-1`. (`"Epic Link"` still valid on Data Center.) |
+| Use `startAt` beyond 10000 (Data Center) | DC caps offset at ~10000. Use JQL date/key ranges to slice larger sets. (Cloud's `nextPageToken` cursor has no such offset cap.) |
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: status_snapshot
+    subject: jira-cloud-search-api
+    verified_against: "Cloud GET/POST /rest/api/2|3/search deprecated 2024, removed Aug-Oct 2025 (410 Gone); replacement /rest/api/2|3/search/jql with nextPageToken cursor, no total (use POST /rest/api/3/search/approximate-count); maxResults is a hint (<=100/page with fields, 5000 id-only); Data Center keeps /rest/api/2/search + startAt"
+    verified_on: "2026-06-10"
+volatility: medium
+-->

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import json
 import os
 import re
 import sys
@@ -239,6 +240,158 @@ def purge_claims_for_wp(claims_dir: Path, wp_id: str) -> int:
             f.unlink(missing_ok=True)
             n += 1
     return n
+
+
+# ---------------------------------------------------------------------------
+# Persistent run lease (S055 §6.5 / R16)
+#
+# flock CANNOT span workflow stage processes — each Bash call is a fresh
+# process and the lock dies on exit, so the original "flock on
+# .bob-checkpoint.md" mechanism is NONFUNCTIONAL across stages. Replacement: a
+# DURABLE lease file in the claims engine. Exactly one live bob per project_root
+# (CB4) is enforced by validating the lease on EVERY bob-owned mutation. All
+# critical sections are single-python-call flock regions (the proven
+# _bob_claim_lock shape — NOT a cross-process lock lifetime).
+# ---------------------------------------------------------------------------
+
+RUN_LEASE_EXPIRY_SECONDS = 900  # 15 minutes — a heartbeat older than this is stale
+
+
+def _run_lease_path(project_root: Path) -> Path:
+    return project_root / ".ledger" / "run-lease.json"
+
+
+def _read_run_lease(project_root: Path) -> Optional[Dict[str, Any]]:
+    p = _run_lease_path(project_root)
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _run_lease_is_live(lease: Dict[str, Any]) -> bool:
+    """A lease is live iff its heartbeat is within RUN_LEASE_EXPIRY_SECONDS."""
+    hb = lease.get("heartbeat_at")
+    if not hb:
+        return False
+    try:
+        age = (datetime.now(timezone.utc) - parse_iso(hb)).total_seconds()
+    except ValueError:
+        return False
+    return age <= RUN_LEASE_EXPIRY_SECONDS
+
+
+def acquire_run_lease(
+    project_root: Path,
+    plan_hash: str,
+    run_label: str,
+    plan_revision: int = 0,
+) -> Dict[str, Any]:
+    """Acquire the run lease for this (plan_hash, run_label). Called by the FIRST
+    bob stage of a run (or bob standalone at Step 1 for M/L cycles).
+
+    Returns one of:
+      {"status": "acquired", "token": <uuid>, ...}            — lease is ours
+      {"status": "needs_user_decision", "reason": "...", "holder": {...}}
+            — a LIVE lease with a DIFFERENT run_label exists (concurrent run)
+      {"status": "takeover", "token": <uuid>, "previous": {...}}
+            — a STALE lease was taken over (recorded takeover event)
+    Idempotent: re-acquiring with the SAME run_label refreshes our own lease.
+    """
+    with _bob_claim_lock(project_root):
+        existing = _read_run_lease(project_root)
+        if existing and _run_lease_is_live(existing):
+            if existing.get("run_label") == run_label and existing.get("plan_hash") == plan_hash:
+                # Our own live lease — refresh heartbeat, keep token.
+                existing["heartbeat_at"] = now_iso()
+                atomic_write(_run_lease_path(project_root), json.dumps(existing, indent=2, sort_keys=True))
+                return {"status": "acquired", "token": existing["token"], **existing}
+            # A live lease held by a DIFFERENT run — refuse. CB4: one live bob.
+            return {
+                "status": "needs_user_decision",
+                "reason": "a live run lease with a different run_label exists",
+                "holder": {
+                    "run_label": existing.get("run_label"),
+                    "plan_hash": existing.get("plan_hash"),
+                    "heartbeat_at": existing.get("heartbeat_at"),
+                },
+            }
+        # No lease, or a stale one — acquire (record takeover if we displaced one).
+        token = str(uuid.uuid4())
+        now = now_iso()
+        lease = {
+            "plan_hash": plan_hash,
+            "plan_revision": plan_revision,
+            "run_label": run_label,
+            "token": token,
+            "acquired_at": now,
+            "heartbeat_at": now,
+        }
+        result_status = "acquired"
+        if existing:
+            lease["takeover_of"] = {
+                "run_label": existing.get("run_label"),
+                "token": existing.get("token"),
+                "last_heartbeat_at": existing.get("heartbeat_at"),
+                "taken_over_at": now,
+            }
+            result_status = "takeover"
+        atomic_write(_run_lease_path(project_root), json.dumps(lease, indent=2, sort_keys=True))
+        out = {"status": result_status, "token": token, **lease}
+        if result_status == "takeover":
+            out["previous"] = lease["takeover_of"]
+        return out
+
+
+def heartbeat_run_lease(project_root: Path, token: str) -> bool:
+    """Refresh the lease heartbeat. Called by every bob stage on entry.
+
+    Returns True if the heartbeat landed (token matches the live lease), False
+    if the lease is missing or the token does not match (do NOT proceed)."""
+    with _bob_claim_lock(project_root):
+        lease = _read_run_lease(project_root)
+        if not lease or lease.get("token") != token:
+            return False
+        lease["heartbeat_at"] = now_iso()
+        atomic_write(_run_lease_path(project_root), json.dumps(lease, indent=2, sort_keys=True))
+        return True
+
+
+def validate_run_lease(
+    project_root: Path,
+    run_label: str,
+    plan_hash: Optional[str] = None,
+    token: Optional[str] = None,
+) -> bool:
+    """Validate the lease on EVERY bob-owned mutation (ledger transition,
+    checkpoint write, claim issue). The lease MUST exist, match run_label
+    (and plan_hash/token when supplied), and be live. Mismatch => the caller
+    aborts PARTIAL and touches nothing (CB4 single-writer enforcement)."""
+    lease = _read_run_lease(project_root)
+    if not lease:
+        return False
+    if not _run_lease_is_live(lease):
+        return False
+    if lease.get("run_label") != run_label:
+        return False
+    if plan_hash is not None and lease.get("plan_hash") != plan_hash:
+        return False
+    if token is not None and lease.get("token") != token:
+        return False
+    return True
+
+
+def release_run_lease(project_root: Path, token: str) -> bool:
+    """Release the lease (finalize stage). Only the token-holder may release.
+    Returns True if released, False if the token did not match / no lease."""
+    with _bob_claim_lock(project_root):
+        lease = _read_run_lease(project_root)
+        if not lease or lease.get("token") != token:
+            return False
+        _run_lease_path(project_root).unlink(missing_ok=True)
+        return True
 
 
 def classify_claim(claim: Dict[str, Any], ledger_path: Path) -> str:

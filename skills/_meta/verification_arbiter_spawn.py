@@ -40,8 +40,11 @@ Emits exactly ONE JSON object on stdout (no prose). Exit codes:
 
 Env vars:
 
-    AUDIT_CLAUDE_BIN    — claude binary path (default: "claude")
-    AUDIT_CLAUDE_MODEL  — model id (default: "claude-opus-4-6[1m]")
+    AUDIT_CLAUDE_BIN      — claude binary path (default: "claude")
+    ARBITER_CLAUDE_MODEL  — model id; falls back to AUDIT_CLAUDE_MODEL, then the
+                            smart-config policy (headless/medium), then the hardcoded
+                            "claude-opus-4-8[1m]" (S059; was stale "...-4-6[1m]").
+    AUDIT_CLAUDE_MODEL    — compat fallback for ARBITER_CLAUDE_MODEL.
 """
 from __future__ import annotations
 
@@ -90,7 +93,45 @@ except Exception:  # pragma: no cover - fail-open: telemetry never blocks arbite
 DEFAULT_TIMEOUT_S = 180
 
 CLAUDE_BIN = os.environ.get("AUDIT_CLAUDE_BIN", "claude")
-CLAUDE_MODEL = os.environ.get("AUDIT_CLAUDE_MODEL", "claude-opus-4-6[1m]")
+
+# S059 smart-config: env > policy > hardcoded chain (design §7). This arm gains its
+# OWN env var ARBITER_CLAUDE_MODEL, falling back to AUDIT_CLAUDE_MODEL for compat
+# (both currently share one model). The hardcoded fallback is refreshed to the
+# current 1M-context Opus (was the stale claude-opus-4-6[1m]). Headless accepts
+# alias[1m] natively (V-1). Fail-open at every step — policy never breaks the arbiter.
+_ARBITER_HARDCODED_MODEL = "claude-opus-4-8[1m]"
+
+
+def _resolve_arbiter_model() -> str:
+    """env (ARBITER_CLAUDE_MODEL > AUDIT_CLAUDE_MODEL) > policy > hardcoded.
+
+    ~15 LOC, fail-open, 10s timeout. The arbiter is a review/verify role -> the
+    headless 'medium' tier. model:null or any error -> hardcoded. Never raises.
+    """
+    val = os.environ.get("ARBITER_CLAUDE_MODEL") or os.environ.get("AUDIT_CLAUDE_MODEL")
+    if val:
+        return val
+    try:
+        resolver = os.path.expanduser(
+            "~/.claude/skills/smart-config/scripts/model_policy.py"
+        )
+        proc = subprocess.run(
+            ["python3", resolver, "resolve", "--tier", "medium",
+             "--surface", "headless", "--reason", "verification arbiter",
+             "--no-log"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            obj = json.loads(proc.stdout.strip().splitlines()[-1])
+            m = obj.get("model")
+            if m:
+                return m
+    except Exception:  # noqa: BLE001 - fail-open: policy never breaks the arbiter
+        pass
+    return _ARBITER_HARDCODED_MODEL
+
+
+CLAUDE_MODEL = _resolve_arbiter_model()
 
 ALLOWED_VERDICTS = frozenset({"VERIFIED", "VERIFIED_WITH_CONCERNS", "REJECTED"})
 # AUDIT_UNAVAILABLE is a schema-legal value but NEVER produced by the model.

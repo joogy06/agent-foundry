@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/design-synthesis.v1.json",
+  "title": "design-synthesis.v1",
+  "description": "S055 §5.1 — DRAFT synthesis emitted by the design-tournament `converge` synthesis stage. The script computes `disagreement_matrix` as a PURE FUNCTION of the verdict objects (the synthesis agent can never launder a disagreement away); the script may ADD to `unresolved[]`, never remove. Owner: forge. Consumed by forge inline (presents section-by-section; the converge DECISION stays with forge/user).",
+  "type": "object",
+  "required": ["chosen_direction", "disagreement_matrix", "unresolved", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "chosen_direction": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string" },
+    "incorporated_from": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "approach_ids whose elements were merged."
+    },
+    "disagreement_matrix": {
+      "type": "array",
+      "description": "Script-computed; one row per (challenger, approach) disagreement.",
+      "items": {
+        "type": "object",
+        "required": ["source", "claim", "resolved"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string" },
+          "claim": { "type": "string" },
+          "resolved": { "type": "boolean" }
+        }
+      }
+    },
+    "unresolved": { "type": "array", "items": { "type": "string" } },
+    "status": { "enum": ["DRAFT", "INCOMPLETE"], "description": "INCOMPLETE when the budget floor (>=2 approaches + 1 challenger + synthesis) was not met — looks unfinished, not polished." }
+  }
+}

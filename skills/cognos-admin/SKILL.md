@@ -1,6 +1,6 @@
 ---
 name: cognos-admin
-description: Use when administering IBM Cognos Analytics or using its APIs — installation and configuration, security (namespaces/roles/capabilities), content administration, report management, Framework Manager modeling, REST API (session/content/reports/dashboards), data source connections, scheduling and bursting, performance tuning, and Cognos on Cloud Pak for Data. Covers Cognos Analytics 12.x and 11.2.x.
+description: Use when administering IBM Cognos Analytics or using its APIs — installation and configuration, security (namespaces/roles/capabilities), content administration, report management, Framework Manager modeling, REST API (session/content/reports/dashboards), data source connections, scheduling and bursting, performance tuning, and Cognos on Cloud Pak for Data. Covers Cognos Analytics 12.x (11.2.x legacy — out of standard support 2026-04).
 ---
 
 # IBM Cognos Analytics — Administration & API
@@ -24,6 +24,8 @@ Never expose the Cognos dispatcher port (9300/9380) directly to the internet —
 ---
 
 ## 1. Architecture
+
+> **Version lifecycle (verified 2026-06):** Cognos Analytics 11.2.x exited IBM standard support on 2026-04-30 (extended/sustained support tiers continue per IBM lifecycle — verify current terms). New installs and upgrades should target 12.x; treat 11.2.x guidance below as legacy-maintenance only.
 
 ### Core Components
 

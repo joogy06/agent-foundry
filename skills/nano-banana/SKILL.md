@@ -1,10 +1,17 @@
 ---
 name: nano-banana
-description: Use when the user asks to create, generate, make, draw, design, or edit any image or visual content — blog featured images, YouTube thumbnails, icons, diagrams, patterns, illustrations, photos, visual assets, graphics, artwork, pictures. REQUIRED for all image generation requests.
+description: LEGACY image-generation skill — built on the gemini CLI + nanobanana extension; Google retired the gemini CLI on 2026-06-18. The PRIMARY image skill is now vertex-banana (use it for all create/generate/draw/edit image requests). Only invoke nano-banana if the user explicitly asks for it AND the gemini CLI still works on this host.
 allowed-tools: Bash(gemini:*), Bash(*gemini --yolo*), Bash(*gemini extensions*), Bash(*NANOBANANA_MODEL*), Bash([ -n "$GEMINI_API_KEY" ]), Bash(ls *nanobanana*), Bash(*identify*redesign*), Bash(*python3 -c*PIL*), Bash(sleep *)
 ---
 
 # Nano Banana Image Generation
+
+> **⚠️ RETIREMENT (2026-06-18):** This skill depends entirely on the **gemini CLI** + nanobanana
+> extension. Google retired the gemini CLI on **2026-06-18**. Before each use, check the CLI still
+> works (`gemini --version`); when it stops working, route image generation to the **vertex-banana**
+> skill (Vertex AI / Gemini image models — no gemini CLI dependency). There is no agy-side
+> nanobanana equivalent as of 2026-06-10. DECIDED 2026-06-10: vertex-banana IS the primary
+> image skill ("REQUIRED for all image generation"); this skill is legacy.
 
 Generate professional images via the Gemini CLI's nanobanana extension.
 

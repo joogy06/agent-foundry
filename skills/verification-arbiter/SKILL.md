@@ -9,7 +9,7 @@ Independent verifier invoked by bob. NOT a peer to bob — bob initiates, contro
 
 ## When to invoke
 
-From bob's Step 4.5 (Phase 2B wiring — not yet live): after `trusted_runner` produces a sanitized evidence bundle and bob has opened a verification request in `.ledger/requests/verification/<request_id>.request.yaml`. Arbiter runs in parallel with `audit_spawn.py`; both verdicts are required for a VERIFIED transition.
+From bob's Step 4.5 (Phase 2B wiring — live since S048 (#116)): after `trusted_runner` produces a sanitized evidence bundle and bob has opened a verification request in `.ledger/requests/verification/<request_id>.request.yaml`. Arbiter runs in parallel with `audit_spawn.py`; both verdicts are required for a VERIFIED transition.
 
 ## Invocation
 

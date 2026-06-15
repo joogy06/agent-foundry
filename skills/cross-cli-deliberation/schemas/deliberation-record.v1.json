@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/deliberation-record.v1.json",
+  "title": "deliberation-record.v1",
+  "description": "S055 §5.6 — the deterministic bundle emitted by the cross-cli-deliberation `assemble` phase: every ballot, every Gate-2 evidence package, the quorum outcome, and per-evidence verification results. Owner: cross-cli-deliberation. Consumed by the inline skill + ratify-design (consumed, NEVER forked).",
+  "type": "object",
+  "required": ["schema_version", "ballots", "gate2", "outcome"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "deliberation-record.v1" },
+    "ballots": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Array of ballot.v1 objects (W-EXT-wrapped)."
+    },
+    "gate2": {
+      "type": "object",
+      "required": ["entered"],
+      "additionalProperties": false,
+      "properties": {
+        "entered": { "type": "boolean" },
+        "reason": { "type": ["string", "null"], "description": "e.g. budget — when not entered." },
+        "evidence": { "type": "array", "items": { "type": "object" }, "description": "Array of evidence.v1 packages." },
+        "verification_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["consultant", "verdict"],
+            "additionalProperties": true,
+            "properties": {
+              "consultant": { "type": "string" },
+              "verdict": { "enum": ["EVIDENCE_HELD", "NULL_VERDICT", "NEEDS_INLINE_VERIFICATION"] }
+            }
+          }
+        }
+      }
+    },
+    "outcome": {
+      "enum": ["ACCEPT_AS_IS", "CHANGE_ADOPTED", "NULL_VERDICT", "QUORUM_FAILED", "ESCALATE"]
+    },
+    "nullified_consultants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Consultants flagged for hallucinatory helpfulness (evidence did not reproduce)."
+    }
+  }
+}

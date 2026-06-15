@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/agent-spawn-request.v1.json",
+  "title": "agent-spawn-request.v1",
+  "description": "S055 §12 — host-neutral DATA describing a spawn the main loop must perform on behalf of a subagent that cannot spawn. Shared by alf Step 5 (.alf/spawn-requests/) and evo C3 (.ledger/evo/runs/<id>/spawn-request.yaml). The main-loop consumer RENDERS prompt_context into the spawn prompt — NEVER executable (S052). Every *_path is hash-paired (W-A).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "requested_by",
+    "requested_at",
+    "target_agent",
+    "purpose",
+    "prompt_context",
+    "consume_via"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "agent-spawn-request.v1" },
+    "requested_by": {
+      "type": "string",
+      "description": "alf | evo | <agent>",
+      "minLength": 1
+    },
+    "requested_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "target_agent": {
+      "type": "string",
+      "description": "bob | forge | …",
+      "minLength": 1
+    },
+    "purpose": { "type": "string", "minLength": 1, "description": "One line." },
+    "prompt_context": {
+      "type": "object",
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "properties": {
+        "design_doc_path": { "type": ["string", "null"] },
+        "design_doc_sha256": { "type": ["string", "null"] },
+        "report_paths": { "type": "array", "items": { "type": "string" } },
+        "report_paths_sha256": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "W-A hash-pairing: parallel to report_paths."
+        },
+        "instructions": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consume_via": {
+      "enum": ["direct-spawn", "bob-serial-exec", "serial-fallback"]
+    },
+    "report_back_path": { "type": ["string", "null"] },
+    "expiry": {
+      "type": ["string", "null"],
+      "description": "ISO-8601; the request is stale after this."
+    }
+  }
+}

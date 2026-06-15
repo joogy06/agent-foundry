@@ -1,6 +1,6 @@
 ---
 name: docker-cicd
-description: Use when building Docker images in CI/CD pipelines — GitHub Actions Docker workflows, GitLab CI Docker builds, Jenkins Docker agents, multi-platform builds with buildx, registry authentication and push workflows, image tagging strategies (semver, git SHA, branch), layer cache optimization in CI, Docker-in-Docker vs socket mount vs Kaniko, automated image scanning in pipelines, and deployment patterns. Part of the docker-* skill family. OS-agnostic.
+description: Use when building Docker images in CI/CD pipelines — GitHub Actions Docker workflows, GitLab CI Docker builds, Jenkins Docker agents, multi-platform builds with buildx, registry authentication and push workflows, image tagging strategies (semver, git SHA, branch), layer cache optimization in CI, Docker-in-Docker vs socket mount vs daemonless builders (rootless BuildKit, Buildah; Kaniko is archived/legacy), automated image scanning in pipelines, and deployment patterns. Part of the docker-* skill family. OS-agnostic.
 ---
 
 # Docker in CI/CD Pipelines
@@ -16,7 +16,7 @@ Always pin action versions to full SHA in GitHub Actions, not mutable tags. Tags
 </HARD-RULE>
 
 <HARD-RULE>
-Mounting the Docker socket (`/var/run/docker.sock`) in CI gives the job full root-level control over the host Docker daemon. Any compromised build step can escape the container, read other containers' data, or pivot to the host. Prefer Kaniko or rootless DinD in untrusted environments.
+Mounting the Docker socket (`/var/run/docker.sock`) in CI gives the job full root-level control over the host Docker daemon. Any compromised build step can escape the container, read other containers' data, or pivot to the host. Prefer rootless BuildKit (`buildkitd` via `moby/buildkit:rootless`) or Buildah in untrusted environments; rootless DinD is the fallback when the job genuinely needs the `docker` CLI. Do NOT reach for Kaniko in new pipelines — Google archived it in June 2025 (see Section 8 legacy note).
 </HARD-RULE>
 
 ---
@@ -207,28 +207,53 @@ scan:
   allow_failure: true
 ```
 
-### Kaniko Alternative (No Docker Daemon Required)
+### Rootless BuildKit Alternative (No Docker Daemon, No Privileged)
+
+GitLab's recommended daemonless build path (replaces the removed Kaniko docs; syntax verified against GitLab docs 2026-06).
 
 ```yaml
-build-kaniko:
+build-rootless:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    name: moby/buildkit:rootless
     entrypoint: [""]
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  before_script:
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > ~/.docker/config.json
   script:
     - |
-      /kaniko/executor \
-        --context $CI_PROJECT_DIR \
-        --dockerfile $CI_PROJECT_DIR/Dockerfile \
-        --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA \
-        --destination $CI_REGISTRY_IMAGE:latest \
-        --cache=true \
-        --cache-repo $CI_REGISTRY_IMAGE/cache \
-        --snapshot-mode=redo \
-        --compressed-caching=false
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=$CI_PROJECT_DIR \
+        --local dockerfile=$CI_PROJECT_DIR \
+        --output type=image,name=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA,push=true \
+        --export-cache type=registry,ref=$CI_REGISTRY_IMAGE/cache \
+        --import-cache type=registry,ref=$CI_REGISTRY_IMAGE/cache
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
+
+### Buildah Alternative (Daemonless, Podman Family)
+
+```yaml
+build-buildah:
+  stage: build
+  image: quay.io/buildah/stable
+  variables:
+    STORAGE_DRIVER: vfs        # avoids needing fuse/overlay privileges in CI
+    BUILDAH_FORMAT: docker     # emit Docker-format images, not OCI, if consumers require it
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - buildah build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - buildah push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+```
+
+> **Legacy — Kaniko (archived June 2025).** Google archived `GoogleContainerTools/kaniko` on 2025-06-03 (repo read-only, maintainers retired the project), and GitLab removed its Kaniko docs in favor of BuildKit/Buildah. Do not start new pipelines on `gcr.io/kaniko-project/executor` — it no longer receives security patches. If a pipeline is already committed to Kaniko, switch to the Chainguard-maintained fork (`chainguard-dev/kaniko` on GitHub) as a stopgap and plan migration to rootless BuildKit or Buildah.
 
 ### GitLab Auto Deploy with Tagging
 
@@ -343,7 +368,7 @@ pipeline {
             image 'docker:27-cli'
             args '-v /var/run/docker.sock:/var/run/docker.sock'
             // WARNING: This gives the build job full host Docker access.
-            // See the DinD vs Socket vs Kaniko comparison below.
+            // See the DinD vs Socket vs Daemonless comparison below.
         }
     }
     stages {
@@ -681,20 +706,22 @@ docker build \
 
 ---
 
-## 8. DinD vs Socket Mount vs Kaniko
+## 8. DinD vs Socket Mount vs Daemonless (Rootless BuildKit / Buildah)
 
 ### Comparison Table
 
-| Aspect | Docker-in-Docker (DinD) | Socket Mount | Kaniko |
-|---|---|---|---|
-| **How it works** | Runs a full Docker daemon inside a container | Mounts host Docker socket into build container | Builds images in userspace, no daemon |
-| **Requires privileged** | Yes (`--privileged`) | No | No |
-| **Layer cache** | Lost between runs (unless external cache) | Shared with host daemon | Registry or local directory cache |
-| **Security risk** | Container escape via privileged | Full host daemon access | Lowest — no daemon, no privilege |
-| **Build speed** | Moderate | Fast (uses host cache) | Moderate to slow |
-| **Multi-stage support** | Full | Full | Full |
-| **buildx / multi-platform** | Yes | Yes | No |
-| **Best for** | Isolated CI jobs, GitLab CI | Jenkins, trusted environments | Kubernetes CI, untrusted environments |
+| Aspect | Docker-in-Docker (DinD) | Socket Mount | Rootless BuildKit | Buildah |
+|---|---|---|---|---|
+| **How it works** | Runs a full Docker daemon inside a container | Mounts host Docker socket into build container | `buildkitd` + `buildctl` in userspace, no Docker daemon | Daemonless OCI/Docker image builder in userspace |
+| **Requires privileged** | Yes (`--privileged`) | No | No (rootless mode) | No (rootless mode) |
+| **Layer cache** | Lost between runs (unless external cache) | Shared with host daemon | Registry / local / GHA / S3 cache backends | Registry or local storage cache |
+| **Security risk** | Container escape via privileged | Full host daemon access | Low — no daemon socket, runs unprivileged | Low — no daemon socket, runs unprivileged |
+| **Build speed** | Moderate | Fast (uses host cache) | Fast (full BuildKit engine) | Moderate (vfs storage is slow; overlay needs fuse) |
+| **Multi-stage support** | Full | Full | Full | Full |
+| **Multi-platform** | Yes (buildx) | Yes (buildx) | Yes (QEMU or native workers) | Yes (`--platform` + `buildah manifest`) |
+| **Best for** | Isolated CI jobs that need the `docker` CLI | Jenkins, trusted environments | Kubernetes CI, untrusted environments, GitLab CI | Podman/RHEL/OpenShift-aligned shops, untrusted environments |
+
+> **Kaniko (legacy — archived June 2025).** Kaniko used to be the standard daemonless answer in this comparison. Google archived `GoogleContainerTools/kaniko` on 2025-06-03 — the repo is read-only and the maintainers retired it. GitLab removed its Kaniko documentation and recommends BuildKit (rootless) or Buildah instead. A Chainguard-maintained fork (`chainguard-dev/kaniko`) exists for teams already committed to Kaniko, but new pipelines should use rootless BuildKit or Buildah.
 
 ### Docker-in-Docker (DinD)
 
@@ -744,26 +771,51 @@ docker run --rm \
 # on the host, including accessing other containers, volumes, and networks.
 ```
 
-### Kaniko (Daemonless, Rootless)
+### Rootless BuildKit (Daemonless)
 
 ```bash
-# Build with Kaniko in any container environment (e.g., Kubernetes pod)
+# One-shot daemonless build — buildctl-daemonless.sh starts buildkitd for the
+# duration of the build (works in any container environment, e.g. Kubernetes pod).
 docker run --rm \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  -e BUILDKITD_FLAGS=--oci-worker-no-process-sandbox \
   -v $(pwd):/workspace \
-  -v ~/.docker/config.json:/kaniko/.docker/config.json:ro \
-  gcr.io/kaniko-project/executor:v1.23.2 \
-  --context /workspace \
-  --dockerfile /workspace/Dockerfile \
-  --destination registry.example.com/myapp:latest \
-  --cache=true \
-  --cache-repo registry.example.com/myapp/cache
+  -v ~/.docker/config.json:/home/user/.docker/config.json:ro \
+  moby/buildkit:rootless \
+  buildctl-daemonless.sh build \
+    --frontend dockerfile.v0 \
+    --local context=/workspace \
+    --local dockerfile=/workspace \
+    --output type=image,name=registry.example.com/myapp:latest,push=true \
+    --export-cache type=registry,ref=registry.example.com/myapp/cache \
+    --import-cache type=registry,ref=registry.example.com/myapp/cache
 ```
+
+### Buildah (Daemonless)
+
+```bash
+# Build with Buildah in a container — vfs storage avoids fuse/overlay privileges
+docker run --rm \
+  -v $(pwd):/workspace -w /workspace \
+  -e STORAGE_DRIVER=vfs -e BUILDAH_FORMAT=docker \
+  quay.io/buildah/stable \
+  sh -c 'buildah build -t registry.example.com/myapp:latest . &&
+         buildah push registry.example.com/myapp:latest'
+# Authenticate first with: buildah login registry.example.com
+# (or mount an existing containers/auth.json)
+```
+
+### Kaniko (LEGACY — archived June 2025, do not adopt)
+
+`GoogleContainerTools/kaniko` was archived 2025-06-03 (read-only, unmaintained, no security patches). Only relevant if you inherit an existing Kaniko pipeline: point it at the Chainguard fork (`chainguard-dev/kaniko`) as a stopgap, then migrate to rootless BuildKit or Buildah using the GitLab examples in Section 2.
 
 ### When to Use Each
 
-- **DinD**: GitLab CI (standard), isolated builds where each job needs a clean daemon, multi-platform builds in CI.
-- **Socket Mount**: Jenkins (Docker-Outside-of-Docker pattern), trusted CI environments where build speed matters, local dev CI simulation.
-- **Kaniko**: Kubernetes-based CI (Tekton, Argo Workflows), environments where privileged containers are prohibited, security-sensitive pipelines.
+- **Rootless BuildKit**: Kubernetes-based CI (Tekton, Argo Workflows), environments where privileged containers are prohibited, security-sensitive pipelines, GitLab CI daemonless builds. The default replacement for Kaniko.
+- **Buildah**: Podman-aligned environments (RHEL, OpenShift), pipelines that also use `skopeo`/`podman`, multi-arch manifest workflows, untrusted environments.
+- **DinD**: GitLab CI jobs that genuinely need the `docker` CLI (compose-based integration tests, testcontainers), isolated builds where each job needs a clean daemon. Prefer the rootless DinD variant.
+- **Socket Mount**: Jenkins (Docker-Outside-of-Docker pattern), trusted CI environments where build speed matters, local dev CI simulation. Never in untrusted environments (see HARD-RULE).
+- **Kaniko**: legacy pipelines only — archived June 2025; migrate.
 
 ---
 
@@ -1039,3 +1091,12 @@ echo "Deployed ${IMAGE} on ${NEW} (port ${NEW_PORT})"
 | Operational gotchas, cross-platform issues | `docker-admin` |
 | Docker on Ubuntu 24.04 | `ubuntu-docker-host` |
 | Podman/Docker on RHEL 9 | `rhel-docker-host` |
+
+<!-- FRESHNESS:v1
+anchors:
+  - kind: ecosystem
+    subject: container-build-tools
+    verified_against: "Kaniko archived 2025-06-03 (GoogleContainerTools/kaniko read-only; Chainguard fork chainguard-dev/kaniko); GitLab docs recommend rootless BuildKit (moby/buildkit:rootless, buildctl-daemonless.sh) or Buildah (quay.io/buildah/stable)"
+    verified_on: "2026-06-10"
+-->
+

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-factory.local/schemas/challenger-verdict.v1.json",
+  "title": "challenger-verdict.v1",
+  "description": "S055 §5.1 — output of the design-tournament Claude challenger stage. Owner: forge. Consumed by design-tournament converge + forge inline. The external-challenger-verdict.v1 schema wraps THIS shape in the W-EXT envelope.",
+  "type": "object",
+  "required": ["verdict", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "enum": ["ACCEPTABLE", "ACCEPTABLE_WITH_FIXES", "REJECT"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "claim"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "enum": ["CRITICAL", "MAJOR", "MINOR"] },
+          "claim": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string" },
+          "suggested_fix": { "type": "string" },
+          "mandatory": { "type": "boolean" }
+        }
+      }
+    },
+    "targets_approach": { "type": ["string", "null"], "description": "approach_id this verdict critiques, or null for the whole design." }
+  }
+}
