@@ -70,4 +70,4 @@ def test_primer_digest_never_crashes_and_has_both_lines():
 
 def test_primer_slug_matches_claude_convention():
     m = _load(PRIMER, "_primer_t2")
-    assert m._project_slug(Path("/mnt/data/dev04/skill_factory")) == "-mnt-data-dev04-skill-factory"
+    assert m._project_slug(Path("/home/u/code/my_repo")) == "-home-u-code-my-repo"

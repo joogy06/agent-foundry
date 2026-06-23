@@ -26,8 +26,8 @@ def _count_memories(memdir: Path) -> int:
 
 def _project_slug(cwd: Path) -> str:
     # Claude Code derives the project dir by replacing every non-alphanumeric run in
-    # the absolute path with '-' (e.g. /mnt/data/dev04/skill_factory ->
-    # -mnt-data-dev04-skill-factory). Match that exactly so the project memory is found.
+    # the absolute path with '-' (e.g. /home/u/code/my_repo -> -home-u-code-my-repo).
+    # Match that exactly so the project memory is found.
     return re.sub(r"[^a-zA-Z0-9]+", "-", str(cwd))
 
 
