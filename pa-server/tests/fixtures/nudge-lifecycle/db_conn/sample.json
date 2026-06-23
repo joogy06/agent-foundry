@@ -1,0 +1,1 @@
+{"_note": "db_conn is a live sqlite3.Connection (opaque, non-serializable). Tests obtain it via the pa-server conftest `conn` fixture (init_db over a temp pa.db). No JSON fixture data is generated for a runtime handle.", "runtime_source": "pa-server/tests/conftest.py::conn"}

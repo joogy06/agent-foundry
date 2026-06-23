@@ -211,6 +211,17 @@ table in `references/confidence-model.md`.
 - `ms-office-excel-python` — composed for the `.xlsx` output (openpyxl + the
   formula-injection `safe_cell` rule).
 - `wiki` — composed for the per-entity cited pages (`.wiki.lock`, anti-pollution).
+- `mainframe-lineage-parsers` — **reuses this skill's deterministic COBOL machinery**:
+  its `cobol_extract.py` imports `scripts/cobol_offset_calc.py` as a module
+  (`parse_pic` / `normalize_usage` / `elementary_length` / `build_tree` /
+  `compute_offsets` / `compute_finding_offsets`) for record length + the field
+  level-tree — NOT a forked COBOL parser — then adds the lineage layer
+  (`SELECT ... ASSIGN-TO` join, FD records, `READ`/`WRITE` direction, `MOVE`
+  flow) on top. It also imports `validate_finding.py`'s `CONFIDENCE_ENUM`
+  byte-identically (single source of truth for `grounded | inferred |
+  speculative`). Keep these public entry points + the field-dict key names
+  (`pic_clause`, `usage`, `occurs`, `occurs_max`, `occurs_depending_on`,
+  `redefines`) stable — the lineage sibling reads them.
 
 ## Security — XML / structure parsing
 

@@ -1,0 +1,9 @@
+{
+  "_note": "Boundary — category_weights present but with a zero weight on a category. Zero weight must DEMOTE within ordering but NEVER drop the item (membership invariant) and never push a critical item out of reach.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "PM",
+    "methodology": "Scrum",
+    "category_weights": {"engineering": 0.0, "delivery": 2.0, "people": 1.0, "calendar": 1.0, "fyi": 1.0}
+  }
+}

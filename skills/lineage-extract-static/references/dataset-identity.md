@@ -31,7 +31,7 @@ If the reference appears in a SQL context (DDL, DML, JDBC URI):
 | Snowflake | `<account>.<warehouse>` | Account + warehouse encoded in namespace |
 | BigQuery | (project + dataset) | `bigquery://<project>` + `<dataset>.<table>` |
 | DB2 LUW | `<USER>` | Similar to Oracle |
-| DB2 z/OS | (Schema clause required) | No default; emit gap if absent |
+| DB2 z/OS | (Schema clause required) | No default; emit gap if absent. Mainframe identity (DB2 z/OS `db2://<host>:<port>/<db>`, JCL job/step, COBOL program, DSN/DDNAME) is pinned by the shared frozen [`mainframe naming contract`](../../mainframe-lineage-parsers/references/naming-contract.md) — see [Mainframe identity](#mainframe-identity-deterministic-plug-in-track) below. |
 | SQLite | `main` | Single-schema model |
 
 ### Examples
@@ -173,6 +173,38 @@ Sometimes two datasets have different paths but the same basename:
 These are SEPARATE datasets. We DO NOT collapse them by basename.
 
 When `--merge-by-basename` is explicitly enabled, the renderer emits an additional advisory edge with `confidence: speculative` and a `possible_alias` custom facet listing the candidates. The original two datasets remain distinct in the OL output. NEVER silently merged.
+
+## Mainframe identity (deterministic plug-in track)
+
+This reference deliberately punts on several **mainframe** identity cases (DB2
+z/OS has no default schema; JCL job/step identity; COBOL program identity;
+physical DSN canonicalisation; DDNAME as the bind key). Those cases are pinned
+by a shared **frozen naming contract** that lives in a sibling skill:
+
+> **`skills/mainframe-lineage-parsers/references/naming-contract.md`** — the
+> frozen shared mainframe naming contract. **Both** `lineage-extract-static`
+> (this skill, the LLM-as-parser flow) **and** `mainframe-lineage-parsers` (the
+> deterministic flow) cite this one file as the authoritative reference for
+> mainframe identity, so a side-by-side diff of the two flows' OpenLineage
+> outputs shows **real extraction differences, not naming noise**.
+
+`mainframe-lineage-parsers` is the **sanctioned anti-pattern-#7 deterministic
+v1.1 plug-in track** for this skill (see `references/anti-patterns.md` — "the LLM
+is the parser; if accuracy is insufficient for a specific format, add a
+deterministic plug-in in v1.1 against a frozen contract"). It is a **complement,
+not a replacement**: stdlib-only (optional `sqlglot`/`networkx`, regex fallback,
+no LLM in the loop) for fixed-format COBOL + JCL + embedded `EXEC SQL` DB2,
+emitting the same OpenLineage 2.0.2 shape under a distinct producer URI
+(`urn:lineage:mainframe-lineage-parsers`) so the two flows are attributable in a
+diff. Use it when grammar/format availability + precision-criticality favour the
+deterministic engine (column-precision / host-var / DD-join edges); use this
+LLM-as-parser flow for Pick/MultiValue, free-format, or exotic dialects with no
+stable grammar. The `mainframe-lineage-parsers/references/decision-framework.md`
+gives the full keyed deterministic-vs-LLM-vs-hybrid guidance.
+
+Where `dataset-identity.md` already gives a rule (the SQL-FQN waterfall, the
+repo-relative path rule, the alias map, basename-merge OFF), that rule still
+applies; the mainframe contract only **adds** the mainframe-specific extensions.
 
 ## Why this matters
 

@@ -1,0 +1,7 @@
+{
+  "workspace_id": "ws-routine-engine-demo",
+  "_kind": "primitive",
+  "_semantic_type": "technical",
+  "_technical": "internal_ref",
+  "note": "A deterministic per-workspace internal ref string. Tests derive the real ws_id from the temp workspace path via pa_server.workspace_id_from_path (conftest ws_id fixture); this literal documents the primitive shape."
+}

@@ -1,0 +1,4 @@
+{
+  "_note": "Boundary — None / empty role_profile. The lens must treat a None/empty profile as identity-on-category (reorder by urgency+tiebreak only), never crash.",
+  "role_profile": null
+}

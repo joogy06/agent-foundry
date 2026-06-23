@@ -1,0 +1,52 @@
+# gold/ Control-M precision-fixture expected edges (WP-5; design §3 / §4).
+#
+# ADVISORY ONLY (same discipline as gold/expected-edges.yaml). This table is the
+# precision oracle for the deterministic Control-M extractor's scheduler edges.
+# It NEVER feeds a gate. Expected values are derived strictly from the FROZEN
+# naming contract (references/naming-contract.md §2a / §3 / §5 / §6) over the
+# gold/controlm/ fixture — output-vs-FROZEN-CONTRACT, NEVER output-vs-live-LLM.
+#
+# How to measure (advisory): run the deterministic flow over the gold fixture and
+# compare the emitted edges by hand:
+#   SOURCE_DATE_EPOCH=1700000000 python3 scripts/run_lineage.py \
+#       --controlm gold/controlm/GOLDSCHED.json --out /tmp/goldsched.ndjson
+
+schema: gold-expected-controlm-edges.v1
+fixtures:
+  controlm: controlm/GOLDSCHED.json
+  # GOLDPAY.sh stitches onto the gold COBOL PROGRAM-ID GOLDPAY (cobol/GOLDPAY.cbl).
+  stitches_to_cobol: cobol/GOLDPAY.cbl
+
+# --- Scheduler->program stitch (the LOCKED program-id key) ---
+# program-id = basename(argv[0]), ext stripped, UPPER-FOLDED. The scheduler job
+# identity (controlm://<folder>/<jobname>) is CASE-SENSITIVE (NOT upper-folded).
+# The bind is kind=inferred (cross-artifact name bind), NEVER grounded.
+scheduler_program_edges:
+  - command: "GOLDPAY.sh -mode batch"
+    program_node: "mainframe://GOLDPAY"          # collides with COBOL PROGRAM-ID GOLDPAY
+    program_name: "GOLDPAY"                       # upper-folded basename
+    scheduler_job: "controlm://GoldFolder|GoldPayJob"  # case-preserved
+    bind_kind: "inferred"
+    bind_confidence: "inferred"
+
+# --- Job:Script artifact edge (grounded when FileName + FilePath literal) ---
+# /%%HLQ/bin with %%HLQ=PROD (folder Variables) resolves to /PROD/bin.
+script_edges:
+  - scheduler_job: "controlm://GoldFolder|GoldLoadJob"
+    script_artifact: "controlm://file|/PROD/bin/gold_load.sh"
+    kind: "direct"
+    confidence: "grounded"
+
+# --- Job->job event DAG (eventsToAdd -> eventsToWaitFor on the event name) ---
+event_dag_edges:
+  - producer: "controlm://GoldFolder|GoldPayJob"     # eventsToAdd: goldpay-done
+    consumer: "controlm://GoldFolder|GoldLoadJob"     # eventsToWaitFor: goldpay-done
+    event: "goldpay-done"
+    kind: "inferred"
+    confidence: "inferred"
+
+# --- Gaps expected on this fixture ---
+# This clean fixture resolves every variable and event, so it emits ZERO gaps.
+# (The unresolved_variable / unresolved_connection / runtime_path /
+# unresolved_event_dep gaps are exercised by tests/fixtures/controlm_jobs.json.)
+expected_gaps: []

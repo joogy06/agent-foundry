@@ -57,3 +57,6 @@ Detailed code examples, patterns, and configuration are in the reference files b
 |---|---|
 | Python connectors to z/OS (Zowe SDK, ibm_db, EBCDIC) | `python-enterprise-connectors` |
 | DB2 for z/OS administration | `db2-mainframe` |
+| Lineage-grade reading: deterministic COBOL+JCL+`EXEC SQL` → OpenLineage data lineage (DSN/DDNAME bind, PROC/symbol expansion, host-var→column) | `mainframe-lineage-parsers` |
+| Reverse-engineer COBOL/flat-file record layouts + inferred DDL (byte offsets, REDEFINES, OCCURS) | `structure-recovery` |
+| Queryable symbol graph over COBOL/DataStage/JCL (call graph, copybook impact) | `legacy-code-intel` |

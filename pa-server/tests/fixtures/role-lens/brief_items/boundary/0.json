@@ -1,0 +1,10 @@
+{
+  "_note": "Boundary — exactly 5 items (the fold size). The lens must still preserve all 5; downstream fold (WP-1) is a separate concern.",
+  "brief_items": [
+    {"id": "b-1", "urgency": "CONFLICT", "critical": true, "category": "calendar", "title": "Conflict A", "due_at": "2026-06-15T13:00:00Z", "age_seconds": 100, "order_index": 0},
+    {"id": "b-2", "urgency": "BLOCKER", "critical": true, "category": "engineering", "title": "Blocker B", "due_at": "2026-06-15T15:00:00Z", "age_seconds": 200, "order_index": 1},
+    {"id": "b-3", "urgency": "DUE_TODAY", "critical": false, "category": "delivery", "title": "Due C", "due_at": "2026-06-15T21:00:00Z", "age_seconds": 300, "order_index": 2},
+    {"id": "b-4", "urgency": "IN_FLIGHT", "critical": false, "category": "engineering", "title": "Flight D", "due_at": null, "age_seconds": 400, "order_index": 3},
+    {"id": "b-5", "urgency": "FYI", "critical": false, "category": "fyi", "title": "FYI E", "due_at": null, "age_seconds": 500, "order_index": 4}
+  ]
+}

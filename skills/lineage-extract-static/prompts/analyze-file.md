@@ -163,6 +163,30 @@ For SQL `JOIN`s, each joined table gets its own `reads_from` edge.
 - `producer.send(topic, ...)` (Kafka) → `writes_to` with `kind: topic`.
 - `consumer.subscribe(topic, ...)` → `reads_from` with `kind: topic`.
 
+## Tip — for Java chunks
+
+Java lineage lives in JDBC/ORM SQL strings, file/stream I/O, and messaging clients. The SQL-string rules above apply verbatim to any SQL literal you find inside Java.
+
+- JDBC: `connection.prepareStatement("SELECT ... FROM t")` / `statement.executeQuery("...")` → `reads_from` the table(s) in the SQL; `executeUpdate("INSERT INTO t ...")` / `"UPDATE t ..."` / `"DELETE FROM t ..."` → `writes_to`. Apply the SQL `JOIN` = one-edge-per-table rule.
+- Spring Data JPA: `@Query("SELECT ... FROM Entity ...")` → SQL edges; `@Entity` + `@Table(name = "orders")` maps the class to table `orders` (use it to resolve repository-method-derived queries); a `JpaRepository<Order, Long>.save(...)` → `writes_to` the entity's table, a `findBy...` → `reads_from`.
+- MyBatis / iBATIS mapper XML (`<select>` / `<insert>` / `<update>` / `<delete>`) → the same SQL edges (load via `defusedxml`, XXE HARD-RULE).
+- File I/O: `new FileReader(path)` / `Files.newBufferedReader(Paths.get(path))` / `new FileInputStream(path)` → `reads_from` (`kind: file`); `new FileWriter(path)` / `Files.write(...)` / `new FileOutputStream(path)` → `writes_to`.
+- Spark (Java/Scala API): `spark.read().parquet(path)` / `.csv(path)` / `.table("db.t")` → `reads_from`; `df.write().save(path)` / `.saveAsTable("db.t")` → `writes_to` (`kind: spark_app` for the job).
+- Kafka: `producer.send(new ProducerRecord<>(topic, ...))` → `writes_to` (`kind: topic`); `consumer.subscribe(List.of(topic))` → `reads_from` (`kind: topic`).
+- JMS: `session.createQueue("Q")` + `producer.send(...)` → `writes_to` (`kind: queue`); `session.createConsumer(queue)` → `reads_from`.
+- HTTP clients (`RestTemplate` / `HttpClient` / `WebClient` / OkHttp): GET → `reads_from` (`kind: endpoint`); POST / PUT → `writes_to` (`kind: endpoint`).
+- Confidence: string concatenation (`"SELECT ... " + col`), `String.format(...)`, `MessageFormat`, a Spring `@Value("${prop}")` / `${...}` placeholder, or a property/env-var without an in-repo `application.{properties,yml}` resolution → `speculative` (HARD-RULE 2). A literal table name / literal path string → `grounded`. An `application.yml`-resolved property → `inferred`.
+
+## Tip — for Pick / MultiValue BASIC chunks
+
+Pick / MultiValue (UniVerse, UniData, D3, jBASE, OpenQM, Reality) BASIC frequently has NO file extension — detect it by content: `OPEN "<file>" TO fvar`, `READNEXT ... FROM ... ELSE`, dynamic-array `<a,v,s>` indexing, `OCONV(`/`ICONV(`, `CRT`, `BEGIN CASE`/`END CASE`, `READU`/`WRITEU`/`MATREAD`/`MATWRITE`, `EXECUTE`/`PERFORM`. Datasets are MultiValue files; use `kind: file` and a stable `pick://<account>` namespace (or the alias map).
+
+- `OPEN "<file>" TO fvar` declares a file dataset `<file>`; subsequent reads/writes through `fvar` attach to it. Track the variable→file binding within the chunk.
+- `READ` / `READU` / `READL` / `READV` / `READNEXT` / `MATREAD` (`... FROM fvar`) → `reads_from` the file `fvar` was opened to.
+- `WRITE` / `WRITEU` / `WRITEV` / `MATWRITE` / `DELETE` (`... ON fvar`) → `writes_to` that file.
+- `EXECUTE "<tcl>"` / `PERFORM "<tcl>"` / `CHAIN "<tcl>"` / `ENTER <name>` running a TCL/query sentence that names another program or verb → `depends_on` (a no-return transfer) or `schedules` if it is a stored PROC/phantom launch. Read the quoted string as the TCL layer, not BASIC.
+- Confidence: a file opened to a literal name (`OPEN "CUSTOMERS" TO ...`) → `grounded`; a file opened to an interpolated / computed name, a `CALL @var` indirect call, or an `EXECUTE`/`PERFORM`/`CHAIN` sentence built by `:` concatenation / `<...>` substitution → `speculative` + a `dynamic_path` gap. The dictionary-defined virtual-field model means column-level edges are out of v1 scope — emit the file-level edge and a `gap: language_unsupported` for any correlative/I-descriptor JOIN you cannot resolve.
+
 ## Tip — for scheduler / orchestrator chunks
 
 - Airflow `PythonOperator(task_id="...", python_callable=...)` → emit `schedules` edge from the DAG namespace to the script.

@@ -1,0 +1,11 @@
+{
+  "_opaque_reason": "SessionStart hook payload — env vars plus the hook JSON Claude Code passes on stdin to a SessionStart command. Arbitrary host-provided shape; the shim drains stdin and reads PA_WORKSPACE, never trusting the stdin body for business logic.",
+  "env": {
+    "PA_WORKSPACE": "/abs/path/to/workspace"
+  },
+  "stdin_json": {
+    "hook_event_name": "SessionStart",
+    "session_id": "example-session-id",
+    "cwd": "/abs/path/to/workspace"
+  }
+}

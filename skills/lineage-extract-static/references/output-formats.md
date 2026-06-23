@@ -15,9 +15,13 @@ Reference for the output contract of `lineage-extract-static analyze`. Every run
 ├── runs.csv                    ← OL-relational opt-in (ONLY when --with-static-run)
 ├── manifest.json               ← per-run metadata (validated against lineage-manifest.v1)
 ├── errors.jsonl                ← per-file extraction failures
-├── report.md                   ← Mermaid summary
-└── report.html                 ← Cytoscape DAG + sortable tables + downloads
+├── views.json                  ← L1/L2 render payload (project_views.py; default on)
+├── report.md                   ← Mermaid summary (air-gap L1 fallback)
+└── report.html                 ← single self-contained 3-tab (L1/L2/L3-hidden) switcher
 ```
+
+> Scheduler × language × engine coverage (deterministic vs LLM) is documented in
+> `mainframe-lineage-parsers/references/coverage-matrix.md`.
 
 ## `openlineage.ndjson` — canonical OL stream
 
@@ -26,6 +30,58 @@ One event per line. JobEvent + DatasetEvent only by default. RunEvent added when
 Determinism: sort key is `(eventType, dataset.namespace + dataset.name | job.namespace + job.name)`. Two runs with same inputs produce byte-identical ndjson.
 
 Validation: every event validated against `schemas/openlineage-2.0.2-vendored.json` BEFORE write. Failure = abort run (HARD-RULE 1 fail-closed).
+
+### `sourceCodeLocation.contentSha256` JOB facet
+
+Each JobEvent carries a `sourceCodeLocation` JOB facet when a source-file hash is
+available:
+
+```json
+"sourceCodeLocation": {
+  "_producer": "urn:lineage:static-scan",
+  "_schemaURL": "https://openlineage.io/spec/facets/1-0-0/SourceCodeLocationJobFacet.json",
+  "type": "file",
+  "path": "etl/load.py",
+  "contentSha256": "<sha256 of the RAW on-disk source file bytes>"
+}
+```
+
+`contentSha256` is the streaming whole-file sha256 of the source file's raw bytes
+— **NO** encoding normalization, **NO** symbol/copybook expansion, **NO** chunk
+scoping. This definition is IDENTICAL to the `mainframe-lineage-parsers` engine's
+`sourceCodeLocation.contentSha256`, so the two streams join on the same key (the
+deferred-to-v1.1 L3 functional view's lineage-JOB ↔ legacy-code-intel-artifact
+join). The OL core pin stays at 2.0.2 — the facet is additive and self-describing.
+
+## `views.json` — L1/L2 render payload (`project_views.py`)
+
+A DETERMINISTIC, stdlib, NO-LLM post-pass over `openlineage.ndjson` +
+`lineage_edges.csv`. Rebuilds the typed bipartite graph, reattaches per-edge
+confidence/evidence from the CSV (the OL events drop it), and emits two views:
+
+- **L1 — file interaction, JOB-RETAINED.** `kind=file` datasets, job node kept
+  (dataset → job → dataset). NO job collapse; NEVER a fabricated file→file edge.
+- **L2 — table/data + column.** `kind ∈ {table,topic,queue}`, job nodes kept.
+  `columnLineage` (facet 1-2-0) nested under the parent table edge; tolerant of an
+  absent facet (table-level L2 still works).
+
+Shape:
+
+```json
+{
+  "schema_version": "1.0.0",
+  "producer": "lineage-extract-static/project_views",
+  "views": ["l1", "l2"],
+  "view_meta": { "l1": {...}, "l2": {...}, "l3": {"hidden": true} },
+  "graph_views": { "l1": {"nodes": [...], "edges": [...]}, "l2": {...} },
+  "cytoscape": { "l1": [<elements>], "l2": [<elements>] }
+}
+```
+
+Atomic write + `sort_keys` + `SOURCE_DATE_EPOCH` ⇒ byte-identical re-runs. Each
+view edge keys back to OL/CSV `(confidence, evidence_file, evidence_line)`; L2
+column edges carry `output_field` / `input_namespace` / `input_name` /
+`input_field` / `transformations`.
 
 ## `openlineage.json` — derived bundle
 
@@ -138,34 +194,41 @@ Drill-ins via native `<details>` for the next 50 overflow before hard-stop at 10
 
 Mermaid node-id encoding: `_safe_node_id()` strips non-alphanumeric chars; long ids get a short hash suffix for stability.
 
-## `report.html` — Cytoscape DAG + tables
+## `report.html` — single 3-tab Cytoscape switcher + tables
 
-Self-contained, single HTML file. Sections:
+Self-contained, single HTML file. ONE Cytoscape instance. Sections:
 
 1. **Header** — project, scan time, run id, extractor versions. `data-scan-id` attribute for determinism diff.
 2. **Summary tiles** — datasets / jobs / edges / chunked-files counts + confidence histogram.
-3. **Interactive DAG** — Cytoscape (`zoom/pan/click-to-focus`).
+3. **3-tab view switcher** (when `views.json` is present, i.e. `--views` non-empty):
+   - **L1 — file interaction (job-retained)** (default tab).
+   - **L2 — table/data** with a column-lineage expand-on-click `<details>` table.
+   - **L3 — functional** — tab slot RESERVED but HIDDEN in v1 (deferred to v1.1).
+   - The tab handler swaps `cy.json({elements})` between the pre-built L1/L2
+     element sets from `views.json` — ONE Cytoscape instance, no per-tab reload.
+   - When `views.json` is absent the report falls back to the single bundle DAG.
+4. **Interactive DAG** — Cytoscape (`zoom/pan/click-to-focus`).
    - Node shapes: dataset=rectangle, job=round-rectangle.
    - Edge styles: read=solid, write=dotted, schedules=dashed.
    - Confidence colors: grounded=blue, inferred=amber, speculative=red.
    - Layouts: `cose-bilkent` default + `dagre` toggle.
-4. **Sortable tables** — datasets, jobs, edges. Pure-JS sort-on-header-click, no DataTables.js.
-5. **Download links** — relative URLs to all sibling files.
-6. **Per-file gap collapsibles** — native `<details>` per chunked file.
+5. **Sortable tables** — datasets, jobs, edges. Pure-JS sort-on-header-click, no DataTables.js.
+6. **Download links** — relative URLs to all sibling files.
+7. **Per-file gap collapsibles** — native `<details>` per chunked file.
 
 ### Air-gap posture
 
 - Default: looks for `~/.claude/skills/visual-companion/templates/vendor/cytoscape.min.js`.
   - **Vendor present**: inline-loads it via relative `<script src="...">`.
   - **Vendor missing AND CDN reachable**: falls back to unpkg CDN with banner.
-  - **Vendor missing AND CDN unreachable**: `report.html` NOT produced; `report.md` emits an air-gap advisory note.
+  - **Vendor missing AND CDN unreachable**: `report.html` NOT produced; `report.md` carries the L1 Mermaid air-gap fallback (L2 column detail is HTML-only).
 - `--no-vendor` flag forces the third behavior (Mermaid-only) regardless of network reachability.
 
 ### XSS safety (HARD-RULE 7)
 
-Every user-controlled string interpolated via Jinja2 `|e` filter (which calls `html.escape`). The Cytoscape elements JSON is embedded with `<` → `<`, `>` → `>`, `&` → `&` so user content cannot break out of the `<script>` tag context.
+Every user-controlled string interpolated via Jinja2 `|e` filter (which calls `html.escape`). EACH view's Cytoscape elements JSON (L1 and L2) is embedded through the SAME escape chain — `<` → `<`, `>` → `>`, `&` → `&`, plus U+2028/U+2029 — so user content cannot break out of the `<script>` tag context on any tab. The browser consumes the element sets ONLY via `cy.json({elements})` and builds the L2 column `<details>` table via `textContent` / `createTextNode`. The template assigns NO HTML-string sink (`innerHTML` / `outerHTML` / `insertAdjacentHTML` / `document.write`) anywhere — including the air-gap fallback notice, which is built with DOM APIs.
 
-Required test: `tests/lineage-extract-static/unit/test_html_escape_hostile_filenames` verifies that a dataset named `<script>alert('xss')</script>.parquet` renders safely (no JS execution on page load).
+Required test: `tests/test_views_render_sha.py::test_html_escape_hostile_filenames_inert_across_tabs` verifies that a hostile dataset name (`</script><img src=x onerror=alert(1)>"&<>`) is rendered inert across BOTH the L1 and L2 embedded element sets (no literal `<`/`>` in the embedded JSON, no `</script>` breakout, no JS execution on page load).
 
 ## Determinism guarantee
 

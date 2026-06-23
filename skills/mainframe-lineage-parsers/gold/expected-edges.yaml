@@ -1,0 +1,105 @@
+# gold/ precision-fixture expected edges (#158 advisory bar).
+#
+# ADVISORY ONLY. This table is the precision oracle the host-var/column and
+# DD-join edges must clear BEFORE they are promoted above "advisory" in the
+# documentation / facets. It NEVER feeds a gate (design 6): no G_* gate, no
+# bob INTEGRATED->VERIFIED arc, and no CI hard-block consumes this file. It is
+# a hand-checked reference for the maintainer who wants to measure precision
+# of the two precision-win edge classes after a change.
+#
+# Parity discipline (same as references/naming-contract.md sections 0 and 7):
+# expected values are derived strictly from the FROZEN naming contract over the
+# gold/ fixtures, output-vs-FROZEN-CONTRACT, NEVER output-vs-live-LLM.
+#
+# How to measure (advisory): run the deterministic flow over the gold fixtures
+# and compare the emitted edges against this table by hand (or with a one-off
+# script you keep OUT of scripts/). See gold/README.md for the exact command.
+
+schema: gold-expected-edges.v1
+fixtures:
+  cobol: cobol/GOLDPAY.cbl
+  jcl: jcl/GOLDPAY.jcl
+
+# The advisory precision bar (#158 pattern; mirrors legacy-code-intel's 0.85
+# call-edge bar). Until the two precision-win edge classes clear this bar on
+# this fixture, the host-var/column edges stay advisory in the docs/facets.
+advisory_bar:
+  precision_floor: 0.85           # advisory only; not enforced by any gate
+  edge_classes:
+    - dd_join                     # JCL DSN -> DDNAME == COBOL ASSIGN -> FILE
+    - hostvar_column              # EXEC SQL :host-var -> table.column
+
+# --- Precision-win edge class 1: DD-join (stitch on the shared DDNAME) ---
+# JCL DD/DSN literal binding -> grounded; the cross-artifact stitch bridge
+# (JCL DSN dataset -> COBOL file node) is kind=inferred (NEVER grounded).
+dd_join_edges:
+  - ddname: "PAYIN"
+    dsn: "PROD.PAYROLL.MASTER"
+    cobol_file: "PAY-IN"
+    jcl_binding_kind: "direct"        # literal DSN -> grounded
+    jcl_binding_confidence: "grounded"
+    stitch_kind: "inferred"           # cross-artifact heuristic -> inferred ceiling
+    stitch_confidence: "inferred"
+  - ddname: "PAYOUT"
+    dsn: "PROD.PAYROLL.REPORT"
+    cobol_file: "PAY-OUT"
+    jcl_binding_kind: "direct"
+    jcl_binding_confidence: "grounded"
+    stitch_kind: "inferred"
+    stitch_confidence: "inferred"
+
+# --- Precision-win edge class 2: host-var -> table.column ---
+# WITHOUT --schema/--db2-catalog: catalog-less -> kind=unresolved, forced
+# speculative + gap_catalog_less_column (advisory, never grounded).
+# WITH --schema=PAYROLL: column resolves to inferred (advisory-until-gold,
+# still NEVER grounded per design 6 / section 6).
+#
+# NOTE on the deterministic regex engine's column-binding heuristic (as-built):
+# the regex extractor binds the :host-var references that appear in WHERE / SET /
+# ON clauses to the statement's primary table column. The projection-list
+# host-vars of a `SELECT col,... INTO :a, :b` are NOT column-bound (the engine
+# does not pair the INTO list positionally to the projection list). So GOLDPAY's
+# resolved column edges are EMPNO (the WHERE EMPNO = :WS-EMPNO, on both the SELECT
+# and the UPDATE) and NET_PAY (the UPDATE ... SET NET_PAY = :WS-NET); :WS-NAME /
+# :WS-SALARY (SELECT ... INTO) are intentionally NOT column-bound. This is the
+# documented sql_extract behaviour and IS the precision target this fixture
+# pins — output-vs-FROZEN-CONTRACT against the real deterministic flow.
+hostvar_column_edges:
+  - host_var: ":WS-EMPNO"              # WHERE EMPNO = :WS-EMPNO (SELECT + UPDATE)
+    table: "EMPLOYEE"
+    column: "EMPNO"
+    catalog_less:
+      kind: "unresolved"
+      confidence: "speculative"
+      gap: "catalog_less_column"
+    with_schema:                       # --schema=PAYROLL
+      kind: "inferred"
+      confidence: "inferred"           # advisory-until-gold; never grounded
+  - host_var: ":WS-NET"               # UPDATE EMPLOYEE SET NET_PAY = :WS-NET
+    table: "EMPLOYEE"
+    column: "NET_PAY"
+    catalog_less:
+      kind: "unresolved"
+      confidence: "speculative"
+      gap: "catalog_less_column"
+    with_schema:
+      kind: "inferred"
+      confidence: "inferred"
+
+# Projection-list INTO host-vars NOT column-bound by the regex engine (documented
+# non-goal of the deterministic heuristic; surfaced here so the oracle is honest
+# about what the precision bar does and does NOT cover).
+hostvar_column_not_bound:
+  - host_var: ":WS-NAME"              # SELECT NAME ... INTO :WS-NAME (projection)
+  - host_var: ":WS-SALARY"           # SELECT SALARY ... INTO :WS-SALARY
+
+# Table-level edges (always direct/grounded — literal table token).
+table_edges:
+  - table: "EMPLOYEE"
+    direction: "read"                  # SELECT ... FROM EMPLOYEE
+    kind: "direct"
+    confidence: "grounded"
+  - table: "EMPLOYEE"
+    direction: "write"                 # UPDATE EMPLOYEE
+    kind: "direct"
+    confidence: "grounded"

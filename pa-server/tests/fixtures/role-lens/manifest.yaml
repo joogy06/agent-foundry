@@ -1,0 +1,85 @@
+component_id: role-lens
+files:
+- bytes: 1540
+  path: pa-server/tests/fixtures/role-lens/brief_items/adversarial/0.json
+  sha256: 2f54d627c8c2630aea368a7571ca5993cd29a4dd153bfa7cbe367527237b8373
+- bytes: 672
+  path: pa-server/tests/fixtures/role-lens/brief_items/adversarial/1.json
+  sha256: 64c5e7f694be7a09a989a60d30a5585cabfe03ccb9067f9042ed3c331bed1a57
+- bytes: 689
+  path: pa-server/tests/fixtures/role-lens/brief_items/adversarial/2.json
+  sha256: 9830c689f9de97bf6d1587db3f69fbb6f550693bd569ecaf3d2d1d9a152f24ce
+- bytes: 1014
+  path: pa-server/tests/fixtures/role-lens/brief_items/boundary/0.json
+  sha256: 96be22544f9afc8d4bd6739b3a95d6bb361c12862f3ee7cf18ec0833a8f08af2
+- bytes: 207
+  path: pa-server/tests/fixtures/role-lens/brief_items/boundary/1.json
+  sha256: 1227d98817c877ed3f39fd396379f3960be8c7d07070d3cab56a951942b9b93a
+- bytes: 435
+  path: pa-server/tests/fixtures/role-lens/brief_items/boundary/2.json
+  sha256: 478afc8ca392335036350c897240f3a67fec5b5a93a6016c2994cf8b431e4e57
+- bytes: 1581
+  path: pa-server/tests/fixtures/role-lens/brief_items/happy/0.json
+  sha256: d6a7c173d5269786c7887af4a9b5149aefc5e27464eb1a82a7a80add4d432e5a
+- bytes: 874
+  path: pa-server/tests/fixtures/role-lens/brief_items/happy/1.json
+  sha256: b233ef06c75d381d31a8fc07b7992f28f50668bc8678db26109d1b61386cf40e
+- bytes: 1014
+  path: pa-server/tests/fixtures/role-lens/brief_items/happy/2.json
+  sha256: efb66ebb6a0f4113e63fc8d7038e365805f9e6defbfa2a05e097b59ce116a8b4
+- bytes: 844
+  path: pa-server/tests/fixtures/role-lens/reweighted_items/sample.json
+  sha256: adc03e2b4ae3778d676cf5d7ae8dbf157876cf70524f5234145eb6c77804160c
+- bytes: 629
+  path: pa-server/tests/fixtures/role-lens/role_profile/adversarial/0.json
+  sha256: e7d1b544bca852c096f0000edda68205c77572f9eeb53f12a9743673a494ae90
+- bytes: 401
+  path: pa-server/tests/fixtures/role-lens/role_profile/adversarial/1.json
+  sha256: ea48d1ef7b6cc665f581c075ba78ec7fc57722f7001637044c547becedb3a136
+- bytes: 479
+  path: pa-server/tests/fixtures/role-lens/role_profile/adversarial/2.json
+  sha256: f401d98411d03a8e1edd15e04a123415e72aa2ae1e276cb6007d5c5df2d4070a
+- bytes: 195
+  path: pa-server/tests/fixtures/role-lens/role_profile/boundary/0.json
+  sha256: 6fd04b9eb94f93ea67c1e11ff9130f7636c1f1d26303dfb2f0f1dc300b08c5a0
+- bytes: 439
+  path: pa-server/tests/fixtures/role-lens/role_profile/boundary/1.json
+  sha256: 405e38b9fc25216ad3df166ccf7f7c087e68ded62fb24fc82da0d80149267bcb
+- bytes: 433
+  path: pa-server/tests/fixtures/role-lens/role_profile/boundary/2.json
+  sha256: fbb0ea2462b0c8035eb886e2744f7cbd22e82e104504818ef22278a482600b72
+- bytes: 722
+  path: pa-server/tests/fixtures/role-lens/role_profile/happy/0.json
+  sha256: 5c396d7e1ae66ff3a315d101162c6d4fdda2f83f79d9f8457790b134b099978d
+- bytes: 559
+  path: pa-server/tests/fixtures/role-lens/role_profile/happy/1.json
+  sha256: b2edb896af1095d661cce1db62dd8251786d9d9a1ffd2332bbff517696cb96fb
+- bytes: 446
+  path: pa-server/tests/fixtures/role-lens/role_profile/happy/2.json
+  sha256: 3259c983bd4622e5c5935583e845326e358c776aafffb2a6629437700815fa0a
+inputs:
+  brief_items:
+    count_per_variant: 3
+    kind: opaque
+    variants:
+    - happy
+    - boundary
+    - adversarial
+  role_profile:
+    count_per_variant: 3
+    kind: opaque
+    variants:
+    - happy
+    - boundary
+    - adversarial
+outputs:
+  reweighted_items:
+    exemplar: reweighted_items/sample.json
+    kind: opaque
+produced_by: bob:Step-2.5(scaffold; opaque-fixtures; sample-data-scaffolding claim
+  d74d1969)
+schema_note: 'Both inputs are kind:opaque per the signed contract map. brief_items
+  is the pre-weight ranked BriefItem list from routine-engine (WP-1, not yet built);
+  role_profile mirrors the M0a role_profile table row. reweighted_items is the reordered
+  (never filtered) output. Variants: happy/boundary/adversarial (mirrors WP-3 pattern).'
+wp: WP-4

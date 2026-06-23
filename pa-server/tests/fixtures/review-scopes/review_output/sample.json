@@ -1,0 +1,19 @@
+{
+  "_opaque": true,
+  "_kind": "composed_payload",
+  "_reason": "review_output is the scope-windowed, grouped review payload returned to the caller — grouped BriefItem lists (each item is the shared routine-engine ranker's opaque BriefItem) plus the rendered text. Documented here as a SHAPE exemplar; the live value is produced by pa_review.",
+  "shape": {
+    "scope": "week",
+    "grouping_key": "workstream",
+    "workspace": "<workspace>",
+    "window": {"start": "2026-06-15", "end": "2026-06-21", "now": "2026-06-15T12:00:00"},
+    "groups": [
+      {"key": "alpha", "items": ["<BriefItem ...>", "..."]},
+      {"key": "beta", "items": ["<BriefItem ...>"]},
+      {"key": "unassigned", "items": ["<BriefItem ...>"]}
+    ],
+    "item_count": 4,
+    "rendered_text": "AMY review — <workspace> (week)\n## alpha\n1. ...\n## beta\n..."
+  },
+  "note": "Groups are ordered by the shared-ranker position of their first (highest-ranked) member; items WITHIN a group preserve the shared-ranker order (pa_review never re-ranks). Remote-authored detail stays delimiter-wrapped verbatim."
+}

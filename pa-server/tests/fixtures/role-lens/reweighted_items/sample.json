@@ -1,0 +1,7 @@
+{
+  "_note": "Expected-output exemplar (opaque). Pairs brief_items/happy/0.json + role_profile/happy/0.json (Engineering Manager, engineering up-weighted). Demonstrates: same membership as input (6 items), urgency taxonomy is the primary key (CONFLICT > BLOCKER > DUE_TODAY > DELEGATION_FOLLOWUP > IN_FLIGHT > FYI), and within equal urgency the role category_weight breaks ties. This is an illustrative exemplar; the authoritative expectations live in the unit tests.",
+  "reweighted_items_ids_in_order": ["bi-1", "bi-2", "bi-3", "bi-4", "bi-5", "bi-6"],
+  "membership_invariant": "set(output ids) == set(input ids)",
+  "primary_sort": "urgency taxonomy rank (ascending)",
+  "secondary_sort": "role category_weight (descending), then due_at (ascending), then age_seconds (descending), then order_index (ascending) as a stable final tiebreak"
+}

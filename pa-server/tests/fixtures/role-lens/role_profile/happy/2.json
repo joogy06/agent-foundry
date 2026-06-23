@@ -1,0 +1,12 @@
+{
+  "_note": "Neutral profile — no category_weights provided; the lens must fall back to identity-on-category (order driven by urgency + tiebreak only). Proves the lens is a no-op reorder when no role signal is present.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Individual Contributor",
+    "aims": "",
+    "responsibilities": "",
+    "methodology": "",
+    "escalation_threshold": "",
+    "tone": "neutral"
+  }
+}

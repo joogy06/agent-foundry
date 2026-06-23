@@ -1,0 +1,5 @@
+{
+  "_opaque_reason": "Optional output file path for the --emit-pending CLI stager mode. A cross-platform path string (POSIX or Windows), not a domain semantic type. The stager writes the rendered briefing here with no scheduler dependency.",
+  "posix_example": "/tmp/amy-pending-brief.txt",
+  "windows_example": "C:\\\\Users\\\\me\\\\amy-pending-brief.txt"
+}

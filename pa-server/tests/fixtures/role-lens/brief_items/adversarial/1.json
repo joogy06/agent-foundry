@@ -1,0 +1,9 @@
+{
+  "_note": "Adversarial — duplicate order_index and missing optional fields (no due_at, no age_seconds, no category). The lens must be total: a stable, deterministic order with absent fields treated as lowest-priority tiebreak, and no member dropped.",
+  "brief_items": [
+    {"id": "x-1", "urgency": "DUE_TODAY", "critical": false, "order_index": 0},
+    {"id": "x-2", "urgency": "DUE_TODAY", "critical": false, "order_index": 0},
+    {"id": "x-3", "urgency": "BLOCKER", "critical": true, "category": null, "due_at": null, "order_index": 1},
+    {"id": "x-4", "urgency": "UNKNOWN_CLASS", "critical": false, "title": "urgency not in taxonomy", "order_index": 2}
+  ]
+}

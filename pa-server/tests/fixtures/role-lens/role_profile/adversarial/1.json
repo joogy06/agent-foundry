@@ -1,0 +1,9 @@
+{
+  "_note": "Adversarial — malformed category_weights (string values, negative weight). The lens must coerce/ignore invalid weights defensively (treat as 1.0) and never crash; membership invariant holds.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Chaos",
+    "methodology": 12345,
+    "category_weights": {"engineering": "high", "people": -2.0, "delivery": null}
+  }
+}

@@ -1,0 +1,12 @@
+component: routine-engine
+generated_by: sample-data-scaffolding (bob, WP-1)
+fixtures:
+  - path: db_conn/sample.json
+    sha256: 105831acb83170396d184e70bbbabdcb70aa8b107031b7002f60d9d368144437
+    semantic_type: opaque
+  - path: workspace_id/sample.json
+    sha256: 84e0de060000f10730b6fe3a12956cb070be3f220d3a6ce4b0a0a18dd9db6bad
+    semantic_type: technical:internal_ref
+  - path: brief_output/sample.json
+    sha256: ea3481f2ba67a81289e89f3178e5db6fc8b973a7b383be881ae152f5a813791c
+    semantic_type: opaque

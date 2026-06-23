@@ -6,11 +6,12 @@ beyond what `install.py` covers. Re-runnable safely; each step skips work
 that's already done unless `--force` is passed.
 
 Steps (in order):
-  1. Run install.py        — skills / agents / commands placement
+  1. Run install.py        — skills / agents / commands / workflows placement
   2. Place CLAUDE.md       — global instructions
   3. AGENTS.md symlink     — Copilot reads this
   4. Place pa-server/      — MCP server source for the pa agent
-  5. settings.json hooks   — SessionStart scan_hard_rules + forge_reminder
+  5. settings.json hooks   — SessionStart: scan_hard_rules + forge_reminder +
+                             cross-project-mail + freshness_nudge + scope_delta_compact_nudge
   6. policy-limits.json    — enterprise hard-cap defaults (mode 0600)
   7. claude-observe bin    — symlink convenience for process-observation
   8. Codex skill symlinks  — ~/.codex/skills/* parity (if codex installed)
@@ -141,6 +142,30 @@ CANONICAL_SESSION_START_HOOKS = [
         "hooks": [{
             "type": "command",
             "command": "python3 ~/.claude/skills/_meta/forge_reminder_hook.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "bash ~/.claude/skills/cross-project-mail/hooks/session-start.sh",
+            "timeout": 5,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/freshness_nudge.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/scope_delta_compact_nudge.py --hook",
             "timeout": 10,
         }],
     },

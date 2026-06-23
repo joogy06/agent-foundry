@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+component_id: nudge-lifecycle
+contract_map_hash: sha256:4e8dd9ecb9c38bb2d68718804a3bcd49ae10e70b5941c8121f356976a5c0d846
+generated_at: '2026-06-15T19:15:27Z'
+generated_by: sample-data-scaffolding@1.0.0
+seed_salt: nudge-lifecycle+sha256:4e8dd9ecb9c38bb2d68718804a3bcd49ae10e70b5941c8121f356976a5c0d846
+inputs:
+  nudge_spec:
+    semantic_type: opaque
+    strategy: hand_modeled_param_dict
+    opaque_reason: pa_nudge_create param dict (message/due_at/kind/optional task_id/delegation_id)
+    fixtures:
+      happy:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/happy/0.json
+        hash: sha256:a57dd1f29446034ea40cfdc3aeb00d3123b505e028ef5c582918a01d1a28a5d2
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/happy/1.json
+        hash: sha256:5a25c9fe675d83e09018586202d1ad170ae9cf30e77799011abebd6dd1e575bf
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/happy/2.json
+        hash: sha256:0f3f2ac80c2ee269e376fcd45e35d46d1283e13728402223d45fe51a298e9ebd
+      boundary:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/boundary/0.json
+        hash: sha256:7ba1c45780442ecc40408e836e3aecb5ebe22bee91dd0eb8998e233336c7397d
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/boundary/1.json
+        hash: sha256:ecb137257a1529a090c883acbb33654e8246a8f2dc22b27a7fe9d6c091a83d58
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/boundary/2.json
+        hash: sha256:9d92095dfeb1dfb27176a2f2e715729036fd57ec3dbcad93cc4782bae81a0eb7
+      adversarial:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/adversarial/0.json
+        hash: sha256:1f2580fa9c7b49121954f0ff97308e95fc672dadf8c1ed06951ef245872cb8ed
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/adversarial/1.json
+        hash: sha256:dd0dfaf2ca7ecd7f3f218ac9f64c248b60696843d0b1c66c983fea05b8c13290
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_spec/adversarial/2.json
+        hash: sha256:53f3995908f79f168317c4983c3a61ffe097e247a7856f798df325c85d437a51
+  nudge_id:
+    semantic_type: technical
+    technical: internal_ref
+    strategy: integer_rowid
+    fixtures:
+      happy:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/happy/0.json
+        hash: sha256:8e172254e1d0bfcf066d4f04ae48d132ebcf3e8f556eeb559e6117f32bfd1bdb
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/happy/1.json
+        hash: sha256:e0052c80557547d00704a6e61863a2eddb0e8371c9fe5ed2615610894f48c1c2
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/happy/2.json
+        hash: sha256:199cfe5d962cc731536d98de5ff2aad365f35f321eb34c80c33dd310005f6a05
+      boundary:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/boundary/0.json
+        hash: sha256:a6a11a5bdd08e9988839d27ec780a578e64bf40da3837a962bd5812f2dedfd60
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/boundary/1.json
+        hash: sha256:8e172254e1d0bfcf066d4f04ae48d132ebcf3e8f556eeb559e6117f32bfd1bdb
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/boundary/2.json
+        hash: sha256:ca4ba438db826cbe948c3c20c6ec452135d887f2842c78a1d0bc1c4b842e90f5
+      adversarial:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/adversarial/0.json
+        hash: sha256:8b8b1d45135252d80f892d07e74600528b501731c3d06868df6407f79bd581bd
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/adversarial/1.json
+        hash: sha256:f919d3c46b16c35d75b83a3f5c48df9e27b1349e3b164159cae3fe323ce6a70d
+      - path: pa-server/tests/fixtures/nudge-lifecycle/nudge_id/adversarial/2.json
+        hash: sha256:a6a11a5bdd08e9988839d27ec780a578e64bf40da3837a962bd5812f2dedfd60
+  db_conn:
+    semantic_type: opaque
+    strategy: runtime_handle
+    opaque_reason: "live sqlite3.Connection \u2014 provided by conftest conn fixture,\
+      \ not data"
+    fixtures:
+      runtime:
+      - path: pa-server/tests/fixtures/nudge-lifecycle/db_conn/sample.json
+        hash: sha256:8a4687a5120551d9e25fcbba23c34116e6ef7a426644c43083850c335becb641

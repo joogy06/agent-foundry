@@ -1,0 +1,15 @@
+component: review-scopes
+generated_by: sample-data-scaffolding (bob, WP-2)
+fixtures:
+  - path: db_conn/sample.json
+    sha256: f67c9db79f0b0daef117bb8c41d31953df1ec7048f788b5cc17a0f324cbaac03
+    semantic_type: opaque
+  - path: workspace_id/sample.json
+    sha256: 7ad9b421e478d70935901d2b128de0812fd46421389f1e45035f5cb8b52bab61
+    semantic_type: technical:internal_ref
+  - path: scope/sample.json
+    sha256: b1db18b486cf003e05ef88e50d8735cddb8a99a591c1ce6b83b9a05ce672ee96
+    semantic_type: opaque
+  - path: review_output/sample.json
+    sha256: b485e694d0c4b78ab2e795899746d00a7049222c00e7f008e92eff45913e96d3
+    semantic_type: opaque

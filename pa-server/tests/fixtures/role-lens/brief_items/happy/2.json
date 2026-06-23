@@ -1,0 +1,9 @@
+{
+  "_note": "Happy variant 2 — workstream-diverse list to exercise category-based reweighting and week-review (methodology) framing.",
+  "brief_items": [
+    {"id": "w-1", "urgency": "DUE_TODAY", "critical": false, "category": "engineering", "workstream": "platform", "title": "Cut platform release 2.3", "due_at": "2026-06-15T22:00:00Z", "age_seconds": 3000, "order_index": 0},
+    {"id": "w-2", "urgency": "DELEGATION_FOLLOWUP", "critical": false, "category": "people", "workstream": "growth", "title": "Check in on growth A/B test", "due_at": "2026-06-16T11:00:00Z", "age_seconds": 4200, "order_index": 1},
+    {"id": "w-3", "urgency": "IN_FLIGHT", "critical": false, "category": "delivery", "workstream": "platform", "title": "Cycle-time dashboard wiring", "due_at": null, "age_seconds": 8000, "order_index": 2},
+    {"id": "w-4", "urgency": "FYI", "critical": false, "category": "fyi", "workstream": "growth", "title": "Velocity trend up 12%", "due_at": null, "age_seconds": 16000, "order_index": 3}
+  ]
+}

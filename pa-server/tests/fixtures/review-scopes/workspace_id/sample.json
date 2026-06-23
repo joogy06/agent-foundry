@@ -1,0 +1,5 @@
+{
+  "value": "ws-review-scopes-sample",
+  "_semantic_type": "technical:internal_ref",
+  "_reason": "The per-workspace internal reference id the server derives from the workspace path (pa_server.workspace_id_from_path). A deterministic, locally-authored internal ref — never remote, never wrapped."
+}

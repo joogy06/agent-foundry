@@ -1,0 +1,10 @@
+# mainframe-lineage-parsers — OPTIONAL enhancers (the skill core is pure stdlib).
+# This skill NEVER pip-installs at runtime (D1: air-gap target). Install these
+# yourself ONLY if you want the enhanced behavior. Run `python3 scripts/check_deps.py`
+# to see what is present and what degrades when absent.
+#
+# PEP-668-safe install:  python3 -m venv .venv && .venv/bin/pip install -r requirements-optional.txt
+
+jsonschema>=4.21.0   # write-time OpenLineage 2.0.2 schema validation (else: emit unvalidated)
+sqlglot>=23.0.0      # higher-precision EXEC SQL parsing (else: stdlib regex engine, lower precision)
+networkx>=3.0        # graph assembly via networkx (else: stdlib fallback, same output)

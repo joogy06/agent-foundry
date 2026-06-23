@@ -8,8 +8,8 @@ A curated collection of skills and agents for [Claude Code CLI](https://claude.a
 
 ## What's Inside
 
-- **179 skills** — domain knowledge Claude loads on demand to help with specific tasks (including `structure-recovery` for reverse-engineering table/record structure from legacy artifacts, `publish-to-github` for releasing this whole tree to public github safely, `visual-companion` for browser-based mockup/diagram review during design, and `cross-project-mail` for AI-agent messaging across sibling projects on one host)
-- **5 agents** — specialized sub-agents for execution, review, evergreening, task management, and knowledge management
+- **159 skills** — domain knowledge Claude loads on demand to help with specific tasks (including `publish-to-github` for releasing this whole tree to public github safely, `visual-companion` for browser-based mockup/diagram review during design, and `cross-project-mail` for AI-agent messaging across sibling projects on one host)
+- **4 agents** — specialized sub-agents for design, execution, review, and knowledge management
 - **8 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 

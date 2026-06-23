@@ -284,6 +284,43 @@ class PATools:
     def pa_end_session(self, params: dict) -> dict:
         return pa_core.end_session(self.conn, self.ws_id, params)
 
+    # -- Nudge Lifecycle (M0b / nudge-lifecycle, owner WP-3) --
+
+    def pa_nudge_create(self, params: dict) -> dict:
+        return pa_core.nudge_create(self.conn, self.ws_id, params)
+
+    def pa_nudge_mark_shown(self, params: dict) -> dict:
+        return pa_core.nudge_mark_shown(self.conn, self.ws_id, params)
+
+    def pa_nudge_ack(self, params: dict) -> dict:
+        return pa_core.nudge_ack(self.conn, self.ws_id, params)
+
+    def pa_nudge_snooze(self, params: dict) -> dict:
+        return pa_core.nudge_snooze(self.conn, self.ws_id, params)
+
+    def pa_nudge_dismiss(self, params: dict) -> dict:
+        return pa_core.nudge_dismiss(self.conn, self.ws_id, params)
+
+    def pa_nudge_drain(self, params: dict) -> dict:
+        return pa_core.nudge_drain(self.conn, self.ws_id, params)
+
+    # -- Routine Engine (M0b / routine-engine, owner WP-1) --
+
+    def pa_brief(self, params: dict) -> dict:
+        # The HUB: compose the catch-up briefing — consume the M0a snapshot,
+        # read delegations/blockers directly, drain nudges (WP-3), reweight
+        # ordering (WP-4), fold to 5 + a mandatory [+N more], render the text.
+        return pa_core.pa_brief(self.conn, self.ws_id, params)
+
+    # -- Review Scopes (M0b / review-scopes, owner WP-2) --
+
+    def pa_review(self, params: dict) -> dict:
+        # Scope-windowed, grouped review over the SHARED routine-engine ranker:
+        # window per scope (today/tomorrow/week/month), group by the scope's key
+        # (today=urgency, week=workstream, month=milestone), preserve the shared
+        # ranker order within each group. Reuses WP-1's ranker (no fork).
+        return pa_core.pa_review(self.conn, self.ws_id, params)
+
     # -- Search --
 
     def pa_search(self, params: dict) -> list:
@@ -537,6 +574,108 @@ TOOL_SCHEMAS = {
                 "summary": {"type": "string"},
             },
             "required": ["session_id"],
+        },
+    },
+    "pa_nudge_create": {
+        "name": "pa_nudge_create",
+        "description": "Create a 'pending' nudge (a deferred reminder the briefing composer surfaces when it becomes due). message is required; due_at/kind/task_id/delegation_id are optional.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "subject": {"type": "string", "description": "Optional short subject, prepended to the message"},
+                "message": {"type": "string", "description": "The nudge text"},
+                "due_at": {"type": "string", "description": "ISO timestamp when the nudge becomes due"},
+                "kind": {"type": "string", "enum": ["stale_task", "due", "overdue_delegation", "blocker_aging", "followup"]},
+                "task_id": {"type": "integer", "description": "Associated task (optional)"},
+                "delegation_id": {"type": "integer", "description": "Associated delegation (optional)"},
+                "source": {"type": "string", "enum": ["manual", "routine", "ingested"]},
+            },
+            "required": ["message"],
+        },
+    },
+    "pa_nudge_mark_shown": {
+        "name": "pa_nudge_mark_shown",
+        "description": "Transition a nudge to 'shown' (the composer surfaced it).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "id": {"type": "integer", "description": "Nudge ID"},
+            },
+            "required": ["id"],
+        },
+    },
+    "pa_nudge_ack": {
+        "name": "pa_nudge_ack",
+        "description": "Acknowledge a nudge (transition to 'acked').",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "id": {"type": "integer", "description": "Nudge ID"},
+            },
+            "required": ["id"],
+        },
+    },
+    "pa_nudge_snooze": {
+        "name": "pa_nudge_snooze",
+        "description": "Snooze a nudge until snooze_until (transition to 'snoozed', increment snooze_count). The 3rd snooze escalates the nudge's urgency class.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "id": {"type": "integer", "description": "Nudge ID"},
+                "snooze_until": {"type": "string", "description": "ISO timestamp to snooze until"},
+            },
+            "required": ["id", "snooze_until"],
+        },
+    },
+    "pa_nudge_dismiss": {
+        "name": "pa_nudge_dismiss",
+        "description": "Dismiss a nudge (transition to 'dismissed').",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "id": {"type": "integer", "description": "Nudge ID"},
+            },
+            "required": ["id"],
+        },
+    },
+    "pa_nudge_drain": {
+        "name": "pa_nudge_drain",
+        "description": "In-composer drain (no daemon): promote due-or-un-snoozed pending/snoozed nudges to 'shown'. Not-yet-due nudges are untouched. Repeatedly-snoozed (3x) nudges surface with an escalated urgency class.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "now": {"type": "string", "description": "Optional ISO 'now' override (testing); defaults to current UTC time"},
+            },
+        },
+    },
+    "pa_brief": {
+        "name": "pa_brief",
+        "description": "Compose the catch-up briefing (the routine-engine hub): consume the M0a snapshot + delegations/blockers, drain due nudges, rank by the urgency taxonomy (CONFLICT first), reweight ordering by the workspace role profile, fold to 5 above the fold + a mandatory [+N more], and render the terminal text. No item is ever hidden to zero visibility.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "now": {"type": "string", "description": "Optional ISO 'now' override (testing); defaults to current UTC time"},
+            },
+        },
+    },
+    "pa_review": {
+        "name": "pa_review",
+        "description": "Scope-windowed, grouped review over the shared routine-engine ranker. Pick a scope (today/tomorrow/week/month): it selects the matching time window (only items DUE in the window appear), groups them by the scope's key (today/tomorrow=urgency, week=workstream, month=milestone), and preserves the shared ranker order within each group. Reuses the routine-engine ranker — no re-ranking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "scope": {"type": "string", "enum": ["today", "tomorrow", "week", "month"], "description": "The review scope — selects the time window and grouping key"},
+                "now": {"type": "string", "description": "Optional ISO 'now' override (testing); defaults to current UTC time"},
+            },
+            "required": ["scope"],
         },
     },
     "pa_search": {
