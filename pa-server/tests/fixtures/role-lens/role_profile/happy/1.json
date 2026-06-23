@@ -1,0 +1,14 @@
+{
+  "_note": "People-leaning profile (e.g. a Director) — up-weights people/delivery, methodology Kanban (cycle-time framing).",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Director of Delivery",
+    "aims": "improve flow; coach the team",
+    "responsibilities": "people, delivery",
+    "methodology": "Kanban",
+    "reporting_lines": "VP Engineering",
+    "escalation_threshold": "conflict",
+    "tone": "supportive",
+    "category_weights": {"people": 3.0, "delivery": 2.5, "engineering": 1.0, "calendar": 1.0, "fyi": 0.5}
+  }
+}

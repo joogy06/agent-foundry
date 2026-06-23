@@ -1,0 +1,9 @@
+{
+  "_note": "Boundary — category_weights referencing categories that do not appear in any brief_item, and missing weights for categories that DO appear. Unlisted categories default to weight 1.0; the lens must still be total and preserve membership.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Architect",
+    "methodology": "Kanban",
+    "category_weights": {"security": 5.0, "compliance": 4.0}
+  }
+}

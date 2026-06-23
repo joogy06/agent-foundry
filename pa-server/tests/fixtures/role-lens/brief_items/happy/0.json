@@ -1,0 +1,11 @@
+{
+  "_note": "Opaque BriefItem list fixture (role-lens input). A BriefItem is the pre-weight ranked unit produced by routine-engine (WP-1). role-lens reorders this list; it never drops a member. Fields the lens reads: urgency (taxonomy class), critical (bool), category (role-profile reweight key), due_at/age_seconds (tiebreak). order_index is the routine-engine pre-weight rank.",
+  "brief_items": [
+    {"id": "bi-1", "urgency": "CONFLICT", "critical": true,  "category": "calendar",    "title": "Double-booked 14:00 review", "due_at": "2026-06-15T14:00:00Z", "age_seconds": 600,  "order_index": 0},
+    {"id": "bi-2", "urgency": "BLOCKER",  "critical": true,  "category": "engineering", "title": "Prod deploy blocked on approval", "due_at": "2026-06-15T16:00:00Z", "age_seconds": 7200, "order_index": 1},
+    {"id": "bi-3", "urgency": "DUE_TODAY","critical": false, "category": "delivery",    "title": "Sprint report draft due", "due_at": "2026-06-15T23:00:00Z", "age_seconds": 3600, "order_index": 2},
+    {"id": "bi-4", "urgency": "DELEGATION_FOLLOWUP", "critical": false, "category": "people", "title": "Follow up with Dana on spec", "due_at": "2026-06-16T09:00:00Z", "age_seconds": 1800, "order_index": 3},
+    {"id": "bi-5", "urgency": "IN_FLIGHT","critical": false, "category": "engineering", "title": "PR #412 in review", "due_at": null, "age_seconds": 9000, "order_index": 4},
+    {"id": "bi-6", "urgency": "FYI",      "critical": false, "category": "fyi",         "title": "Q3 planning kickoff next week", "due_at": null, "age_seconds": 12000, "order_index": 5}
+  ]
+}

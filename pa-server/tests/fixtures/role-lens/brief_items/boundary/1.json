@@ -1,0 +1,4 @@
+{
+  "_note": "Boundary — empty list and single-item list edge cases packed as two scenarios is not allowed (one list per file); this is the EMPTY list. reweight([]) must return [].",
+  "brief_items": []
+}

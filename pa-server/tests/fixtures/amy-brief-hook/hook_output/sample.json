@@ -1,0 +1,9 @@
+{
+  "_opaque_reason": "Either the rendered briefing text on stdout, or a suppressOutput control object when the briefing is empty. For --emit-pending the briefing is written to emit_target and exit code is 0.",
+  "session_empty_suppress": {
+    "continue": true,
+    "suppressOutput": true
+  },
+  "session_nonempty_stdout_example": "AMY briefing — example-ws\n1. [BLOCKER critical] Prod deploy blocked\n2. [DUE TODAY] Ship the report\n[+3 more]",
+  "emit_pending_exit_code": 0
+}

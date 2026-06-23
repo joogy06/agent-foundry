@@ -1,0 +1,14 @@
+{
+  "_opaque": true,
+  "_kind": "closed_enum_tag",
+  "_reason": "scope is a closed-set review tag selecting the time window + grouping key — a closed enum, not a domain semantic type. The pa-server inputSchema validates it as enum [today, tomorrow, week, month] BEFORE dispatch (M0a JSON-Schema pre-dispatch pattern, T-ADP-1).",
+  "allowed": ["today", "tomorrow", "week", "month"],
+  "sample": "week",
+  "window_semantics": {
+    "today": "the current calendar date [00:00, 24:00)",
+    "tomorrow": "the next calendar date [00:00, 24:00)",
+    "week": "the ISO week (Mon..Sun) containing today",
+    "month": "the current calendar month [day 1, last day]"
+  },
+  "grouping_key": {"today": "urgency", "tomorrow": "urgency", "week": "workstream", "month": "milestone"}
+}

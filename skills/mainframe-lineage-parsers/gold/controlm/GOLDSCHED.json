@@ -1,0 +1,18 @@
+{
+  "GoldFolder": {
+    "Variables": [
+      {"%%HLQ": "PROD"}
+    ],
+    "GoldPayJob": {
+      "Type": "Job:Command",
+      "Command": "GOLDPAY.sh -mode batch",
+      "eventsToAdd": [{"Event": "goldpay-done"}]
+    },
+    "GoldLoadJob": {
+      "Type": "Job:Script",
+      "FileName": "gold_load.sh",
+      "FilePath": "/%%HLQ/bin",
+      "eventsToWaitFor": [{"Event": "goldpay-done"}]
+    }
+  }
+}

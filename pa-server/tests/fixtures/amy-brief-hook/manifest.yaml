@@ -1,0 +1,12 @@
+component: amy-brief-hook
+generated_by: sample-data-scaffolding (bob, WP-5)
+fixtures:
+  - path: session_env/sample.json
+    sha256: 49c7654f648f05d921c3d3c4ae15cb40904a19cc31754888ba75335cafbdc3d7
+    semantic_type: opaque
+  - path: emit_target/sample.json
+    sha256: efaf4dedc7b2c82572c90b17f48139c5a366304495debd5bf89751f50d7c5848
+    semantic_type: opaque
+  - path: hook_output/sample.json
+    sha256: a678b617c0da210cfe69fe3a89c2ccc5e29e2bdc63947375365e1698c0cbd8fc
+    semantic_type: opaque

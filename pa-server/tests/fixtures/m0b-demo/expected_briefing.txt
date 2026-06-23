@@ -1,0 +1,7 @@
+AMY briefing — <workspace-id (derived from the workspace path)>
+1. [CONFLICT] Sync conflict: jira ACME-204
+2. [OVERDUE!] Overdue nudge (escalated)
+3. [BLOCKER critical] Security review blocking the prod release
+4. [BLOCKER high] Staging env down — waiting on infra
+5. [DUE TODAY] Submit the Q2 board deck
+[+5 more]

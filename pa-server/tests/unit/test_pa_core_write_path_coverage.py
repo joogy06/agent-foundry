@@ -68,7 +68,23 @@ def pa_core_module(pa_server_module):
 _DML_KEYWORDS = ("insert ", "update ", "delete ", "executescript", "executemany")
 # Public writers that delegate their writes to a private helper which owns the
 # _with_tx (so the _with_tx token is not in the public fn body itself).
-_DELEGATING_WRITERS = {"sync_jira", "sync_confluence"}
+#   * sync_jira/sync_confluence    -> _sync_source
+#   * nudge_mark_shown/ack/        -> _nudge_set_state  (M0b / nudge-lifecycle)
+#     snooze/dismiss
+_DELEGATING_WRITERS = {
+    "sync_jira", "sync_confluence",
+    "nudge_mark_shown", "nudge_ack", "nudge_snooze", "nudge_dismiss",
+}
+# The private helper each delegating writer hands its write off to (the segment
+# token that proves the delegation). Used by the delegation assertion below.
+_DELEGATION_TARGET = {
+    "sync_jira": "_sync_source",
+    "sync_confluence": "_sync_source",
+    "nudge_mark_shown": "_nudge_set_state",
+    "nudge_ack": "_nudge_set_state",
+    "nudge_snooze": "_nudge_set_state",
+    "nudge_dismiss": "_nudge_set_state",
+}
 
 
 def _public_functions(src: str):
@@ -119,6 +135,14 @@ EXPECTED_WRITERS = {
     "set_sync_config",
     "sync_jira",
     "sync_confluence",
+    # M0b / nudge-lifecycle (WP-3). nudge_create + nudge_drain own their own
+    # _with_tx; the four lifecycle transitions delegate to _nudge_set_state.
+    "nudge_create",
+    "nudge_drain",
+    "nudge_mark_shown",
+    "nudge_ack",
+    "nudge_snooze",
+    "nudge_dismiss",
 }
 
 
@@ -145,10 +169,11 @@ class TestGap1WritePathEnumerationStatic:
             fn = by_name[name]
             seg = ast.get_source_segment(src, fn) or ""
             if name in _DELEGATING_WRITERS:
-                # Delegating writers hand off to _sync_source (which owns _with_tx);
-                # assert the delegation rather than an inline _with_tx.
-                assert "_sync_source" in seg, (
-                    f"{name} should delegate its write to _sync_source"
+                # Delegating writers hand off to a private helper that owns
+                # _with_tx; assert the delegation rather than an inline _with_tx.
+                target = _DELEGATION_TARGET[name]
+                assert target in seg, (
+                    f"{name} should delegate its write to {target}"
                 )
             else:
                 assert "_with_tx" in seg, (
@@ -188,6 +213,20 @@ class TestGap1WritePathEnumerationStatic:
         assert sync_source is not None
         seg = ast.get_source_segment(src, sync_source) or ""
         assert "_with_tx" in seg, "_sync_source must wrap its batch write in _with_tx"
+
+    def test_private_nudge_set_state_owns_its_tx(self):
+        """The nudge lifecycle transitions delegate to _nudge_set_state, which
+        must itself wrap its UPDATE in _with_tx (so the delegation chain
+        terminates in a tx — M0b)."""
+        src = PA_CORE_PATH.read_text()
+        tree = ast.parse(src)
+        helper = next(
+            (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_nudge_set_state"),
+            None,
+        )
+        assert helper is not None
+        seg = ast.get_source_segment(src, helper) or ""
+        assert "_with_tx" in seg, "_nudge_set_state must wrap its UPDATE in _with_tx"
 
 
 class TestGap1WritePathRuntimeSpy:
@@ -246,6 +285,35 @@ class TestGap1WritePathRuntimeSpy:
         before = len(entered)
         pa_core_module.end_session(conn, ws_id, {"session_id": started["session_id"], "summary": "s"})
         assert len(entered) > before, "end_session did not enter _with_tx"
+
+    def test_nudge_writers_enter_with_tx(self, pa_core_module, tools, conn, ws_id, monkeypatch):
+        """Every M0b nudge writer (create, the four delegating transitions, and
+        drain) must ENTER _with_tx at runtime (proves the static routing is
+        exercised, not just lexically present)."""
+        entered = self._install_spy(pa_core_module, monkeypatch)
+
+        # create
+        before = len(entered)
+        nudge = pa_core_module.nudge_create(conn, ws_id, {"message": "spy target", "due_at": "2026-06-15T11:00:00Z"})
+        nid = nudge["id"]
+        assert len(entered) > before, "nudge_create did not enter _with_tx"
+
+        # the four delegating transitions (each via _nudge_set_state)
+        for call in (
+            lambda: pa_core_module.nudge_mark_shown(conn, ws_id, {"id": nid}),
+            lambda: pa_core_module.nudge_snooze(conn, ws_id, {"id": nid, "snooze_until": "2026-06-20T09:00:00Z"}),
+            lambda: pa_core_module.nudge_ack(conn, ws_id, {"id": nid}),
+            lambda: pa_core_module.nudge_dismiss(conn, ws_id, {"id": nid}),
+        ):
+            before = len(entered)
+            call()
+            assert len(entered) > before, "nudge transition did not enter _with_tx"
+
+        # drain (promote a fresh due nudge)
+        pa_core_module.nudge_create(conn, ws_id, {"message": "drainable", "due_at": "2026-06-15T11:00:00Z"})
+        before = len(entered)
+        pa_core_module.nudge_drain(conn, ws_id, {"now": "2026-06-15T12:00:00Z"})
+        assert len(entered) > before, "nudge_drain did not enter _with_tx"
 
     def test_resolve_conflict_enters_with_tx_on_missing_state(self, pa_core_module, tools, conn, ws_id, monkeypatch):
         # resolve_conflict opens a tx then raises NotFoundError for a missing

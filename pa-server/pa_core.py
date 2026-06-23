@@ -35,7 +35,7 @@ import contextlib
 import urllib.request
 import urllib.parse
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
 
@@ -855,6 +855,1053 @@ def end_session(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
             (now_iso(), summary, session_id),
         )
     return {"session_id": session_id, "ended_at": now_iso()}
+
+
+# ---------------------------------------------------------------------------
+# Nudge lifecycle (M0b / component nudge-lifecycle, owner WP-3)
+# ---------------------------------------------------------------------------
+#
+# The nudge engine the routine-engine (WP-1) composer calls. It owns:
+#   * nudge_create        — write a 'pending' nudges row (inside _with_tx).
+#   * nudge_mark_shown /  — lifecycle transitions
+#     nudge_ack /
+#     nudge_snooze /
+#     nudge_dismiss
+#   * nudge_drain         — the in-composer DRAIN (NO daemon): promote nudges
+#                           that are due (due_at<=now) or whose snooze has elapsed
+#                           (snooze_until<=now) AND are still actionable
+#                           (state IN (pending,snoozed)) to 'shown'. Not-yet-due
+#                           nudges are left untouched (T-NU-1).
+#
+# 3x-snooze escalation (design §4.1): a nudge that has been snoozed >=3 times
+# carries an escalated urgency class so a repeatedly-deferred item surfaces
+# LOUDER. We never mutate the nudges-table shape to add an "urgency" column
+# (M0a table is frozen); escalation is a DERIVED classification computed at
+# drain time from snooze_count and surfaced in the drained result.
+#
+# Reads/writes ONLY the M0a `nudges` table (shape unchanged). stdlib only.
+
+# The legal nudge states (mirror the nudges.state CHECK constraint).
+NUDGE_STATES = ("pending", "shown", "snoozed", "acked", "dismissed")
+# The legal nudge kinds (mirror the nudges.kind CHECK constraint).
+NUDGE_KINDS = ("stale_task", "due", "overdue_delegation", "blocker_aging", "followup")
+# The legal nudge sources (mirror the nudges.source CHECK constraint).
+NUDGE_SOURCES = ("manual", "routine", "ingested")
+
+# Snooze count at/above which a nudge escalates its urgency class (design §4.1:
+# "a nudge reaching its 3rd snooze escalates").
+SNOOZE_ESCALATION_THRESHOLD = 3
+
+
+def nudge_urgency_class(snooze_count: int) -> str:
+    """DERIVE the urgency class of a nudge from its snooze_count (PURE).
+
+    A nudge that has been deferred SNOOZE_ESCALATION_THRESHOLD (3) or more times
+    is ``escalated`` — it has been repeatedly pushed away and must surface
+    louder. Below the threshold it is ``normal``. This is a derived
+    classification, NOT a stored column (the M0a nudges-table shape is frozen).
+    """
+    try:
+        n = int(snooze_count or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return "escalated" if n >= SNOOZE_ESCALATION_THRESHOLD else "normal"
+
+
+def nudge_create(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Create a 'pending' nudges row inside _with_tx (M0b / nudge-lifecycle).
+
+    Params (the nudge_spec the stdio adapter validates upstream):
+      * message       (required) — the nudge text. A `subject` param, if present,
+                       is PREPENDED to the message ("subject — message"); the M0a
+                       nudges table has NO subject column and its shape is frozen.
+      * due_at        (optional) — ISO timestamp when the nudge becomes due.
+      * kind          (optional) — one of NUDGE_KINDS; re-checked here (the table
+                       CHECK constraint would otherwise raise a raw sqlite error).
+      * task_id       (optional) — associated task row.
+      * delegation_id (optional) — associated delegation row.
+      * source        (optional, default 'manual') — one of NUDGE_SOURCES.
+
+    The state always defaults to 'pending' and snooze_count to 0 — a fresh nudge
+    is never pre-shown or pre-snoozed.
+    """
+    workspace = params.get("workspace", ws_id)
+    message = params.get("message")
+    if message is None or not isinstance(message, str):
+        raise ValidationError("nudge_create: 'message' is required and must be a string")
+    subject = params.get("subject")
+    if subject:
+        # No subject column on the frozen M0a table — fold it into the message.
+        message = f"{subject} — {message}"
+
+    kind = params.get("kind")
+    if kind is not None and kind not in NUDGE_KINDS:
+        raise ValidationError(
+            f"nudge_create: kind {kind!r} not in allowed {NUDGE_KINDS} (fail-closed)"
+        )
+
+    source = params.get("source", "manual")
+    if source not in NUDGE_SOURCES:
+        raise ValidationError(
+            f"nudge_create: source {source!r} not in allowed {NUDGE_SOURCES} (fail-closed)"
+        )
+
+    due_at = params.get("due_at")
+    task_id = params.get("task_id")
+    delegation_id = params.get("delegation_id")
+
+    with _with_tx(conn) as c:
+        cur = c.execute(
+            """INSERT INTO nudges
+                 (workspace_id, task_id, delegation_id, kind, message, source,
+                  due_at, snooze_until, snooze_count, state)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, 'pending')""",
+            (workspace, task_id, delegation_id, kind, message, source, due_at),
+        )
+        nudge_id = cur.lastrowid
+
+    return {
+        "id": nudge_id,
+        "state": "pending",
+        "kind": kind,
+        "due_at": due_at,
+        "snooze_count": 0,
+        "urgency_class": nudge_urgency_class(0),
+        "created_at": now_iso(),
+    }
+
+
+def _nudge_row(conn: sqlite3.Connection, workspace: str, nudge_id) -> sqlite3.Row:
+    """Fetch a nudge row scoped to the workspace, or raise NotFoundError."""
+    row = conn.execute(
+        "SELECT * FROM nudges WHERE id = ? AND workspace_id = ?",
+        (nudge_id, workspace),
+    ).fetchone()
+    if row is None:
+        raise NotFoundError(f"nudge {nudge_id!r} not found in workspace")
+    return row
+
+
+def _nudge_set_state(conn: sqlite3.Connection, ws_id: str, params: dict,
+                     new_state: str, *, bump_snooze: bool = False) -> dict:
+    """Shared lifecycle transition: move a nudge to ``new_state`` atomically.
+
+    When ``bump_snooze`` is True (the snooze transition) it ALSO sets
+    snooze_until and increments snooze_count in the SAME _with_tx, so a
+    repeatedly-snoozed nudge accumulates its count and a future drain can
+    escalate it (T-NU-1).
+    """
+    workspace = params.get("workspace", ws_id)
+    nudge_id = params.get("id")
+    if nudge_id is None:
+        raise ValidationError(f"nudge transition to {new_state!r}: 'id' is required")
+
+    with _with_tx(conn) as c:
+        # Verify existence inside the tx so a missing id rolls back as a no-op.
+        row = c.execute(
+            "SELECT id, snooze_count FROM nudges WHERE id = ? AND workspace_id = ?",
+            (nudge_id, workspace),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"nudge {nudge_id!r} not found in workspace")
+
+        if bump_snooze:
+            snooze_until = params.get("snooze_until")
+            if snooze_until is None:
+                raise ValidationError("nudge_snooze: 'snooze_until' is required")
+            c.execute(
+                "UPDATE nudges SET state = ?, snooze_until = ?, "
+                "snooze_count = snooze_count + 1 WHERE id = ? AND workspace_id = ?",
+                (new_state, snooze_until, nudge_id, workspace),
+            )
+        else:
+            c.execute(
+                "UPDATE nudges SET state = ? WHERE id = ? AND workspace_id = ?",
+                (new_state, nudge_id, workspace),
+            )
+
+    updated = _nudge_row(conn, workspace, nudge_id)
+    return {
+        "id": updated["id"],
+        "state": updated["state"],
+        "snooze_until": updated["snooze_until"],
+        "snooze_count": updated["snooze_count"],
+        "urgency_class": nudge_urgency_class(updated["snooze_count"]),
+    }
+
+
+def nudge_mark_shown(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Transition a nudge to 'shown' (the composer surfaced it)."""
+    return _nudge_set_state(conn, ws_id, params, "shown")
+
+
+def nudge_ack(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Transition a nudge to 'acked' (the user acknowledged it)."""
+    return _nudge_set_state(conn, ws_id, params, "acked")
+
+
+def nudge_dismiss(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Transition a nudge to 'dismissed' (the user dismissed it)."""
+    return _nudge_set_state(conn, ws_id, params, "dismissed")
+
+
+def nudge_snooze(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Transition a nudge to 'snoozed', set snooze_until, increment snooze_count.
+
+    The 3rd snooze (snooze_count reaching SNOOZE_ESCALATION_THRESHOLD) flips the
+    DERIVED urgency_class to 'escalated' (surfaced in the return + at drain time).
+    """
+    return _nudge_set_state(conn, ws_id, params, "snoozed", bump_snooze=True)
+
+
+def nudge_drain(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """The in-composer DRAIN — no daemon (M0b / nudge-lifecycle, T-NU-1).
+
+    Promote to 'shown' every nudge that is BOTH:
+      * actionable          — state IN ('pending', 'snoozed'); and
+      * due or un-snoozed   — due_at <= now OR snooze_until <= now.
+
+    Not-yet-due nudges (due_at in the future AND snooze_until in the future or
+    NULL) are left UNTOUCHED. The single time reference is captured once
+    (`now`) so the read-which-to-promote and the write are consistent within
+    one drain. A nudge whose snooze_count >= SNOOZE_ESCALATION_THRESHOLD is
+    reported with an 'escalated' urgency_class so a repeatedly-deferred item
+    surfaces louder.
+
+    Returns a summary: the list of promoted nudges (each with its derived
+    urgency_class) and a count of how many escalated.
+    """
+    workspace = params.get("workspace", ws_id)
+    # Allow an explicit `now` override for deterministic testing; default to UTC now.
+    now = params.get("now") or now_iso()
+
+    # Select the nudges to promote OUTSIDE the write so we can report exactly
+    # which ones moved (and their derived urgency) — the SQL predicate mirrors
+    # the success criterion verbatim.
+    select_sql = (
+        "SELECT id, kind, message, source, due_at, snooze_until, snooze_count "
+        "FROM nudges "
+        "WHERE workspace_id = ? "
+        "  AND state IN ('pending', 'snoozed') "
+        "  AND ( (due_at IS NOT NULL AND due_at <= ?) "
+        "        OR (snooze_until IS NOT NULL AND snooze_until <= ?) ) "
+        "ORDER BY id ASC"
+    )
+    to_promote = conn.execute(select_sql, (workspace, now, now)).fetchall()
+
+    promoted = []
+    escalated_count = 0
+    with _with_tx(conn) as c:
+        for r in to_promote:
+            c.execute(
+                "UPDATE nudges SET state = 'shown' WHERE id = ? AND workspace_id = ?",
+                (r["id"], workspace),
+            )
+            urgency = nudge_urgency_class(r["snooze_count"])
+            if urgency == "escalated":
+                escalated_count += 1
+            # Externally-authored nudge messages (source 'ingested') are
+            # delimiter-wrapped before they reach the agent's eyes (security
+            # floor L1), exactly as get_briefing_snapshot does.
+            provenance = "remote" if r["source"] == "ingested" else "local"
+            promoted.append({
+                "id": r["id"],
+                "kind": r["kind"],
+                "message": wrap_remote_field(r["message"], provenance),
+                "due_at": r["due_at"],
+                "snooze_count": r["snooze_count"],
+                "urgency_class": urgency,
+            })
+
+    return {
+        "promoted": promoted,
+        "promoted_count": len(promoted),
+        "escalated_count": escalated_count,
+        "drained_at": now,
+    }
+
+
+# ---------------------------------------------------------------------------
+# role-lens (M0b / WP-4) — role_profile reweighting as an ordering-only LENS
+# ---------------------------------------------------------------------------
+#
+# routine-engine (WP-1) produces a pre-weight ranked BriefItem list. role-lens
+# REORDERS it per the workspace role_profile; it NEVER filters. Two invariants
+# (signed contract map success_criteria):
+#
+#   * Membership is invariant: set(reweighted) == set(input) (T-RL-1). The lens
+#     changes ORDER only — it is never a filtered subset.
+#   * A critical blocker is never demoted to invisibility: it stays above the
+#     fold or reachable via the mandatory [+N more]. Because the lens never
+#     drops anything, "reachable" is guaranteed structurally; the urgency
+#     taxonomy keeps a critical item near the top regardless of the role
+#     category weight (urgency DOMINATES category weight — see the sort key).
+#
+# The function is PURE: ``reweight_brief_items(brief_items, role_profile)`` takes
+# no conn, performs no DB writes, and does not mutate its inputs. It returns the
+# SAME item objects, reordered (so delimiter-wrapped remote fields surfaced by
+# the M0a snapshot path pass through verbatim — the lens never unwraps).
+#
+# stdlib only.
+
+# The urgency taxonomy (design §4.1): CONFLICT is loudest, FYI is quietest.
+# Lower rank == higher priority == sorts earlier.
+URGENCY_RANK = {
+    "CONFLICT": 0,
+    "OVERDUE_NUDGE": 1,
+    "BLOCKER": 2,
+    "DUE_TODAY": 3,
+    "DELEGATION_FOLLOWUP": 4,
+    "IN_FLIGHT": 5,
+    "FYI": 6,
+}
+# An urgency class not in the taxonomy sorts AFTER every known class (defensive:
+# an opaque/garbage urgency never crashes the sort and never jumps the queue).
+URGENCY_RANK_DEFAULT = 99
+
+# methodology -> week-review framing bucket. An ORDERING signal only: the lens
+# uses the framing to pick how a week review is framed (Scrum=velocity vs
+# Kanban=cycle-time); it is NEVER executed or interpreted as a command.
+_FRAMING_BY_METHODOLOGY = {
+    "scrum": "velocity",
+    "kanban": "cycle-time",
+}
+
+
+def week_review_framing(methodology) -> str:
+    """Map a role_profile.methodology to a week-review framing bucket (PURE).
+
+    Returns 'velocity' for Scrum, 'cycle-time' for Kanban, else 'unknown'.
+    Matching is case-insensitive and TOKEN-based on the leading word, so a
+    remote-authored / injection-looking methodology string ("Scrum; DROP TABLE
+    ...; --") still maps to its leading framing token and is NEVER executed.
+    Non-string input -> 'unknown'.
+    """
+    if not isinstance(methodology, str):
+        return "unknown"
+    # Take the leading alphabetic token only (defensive against trailing junk).
+    token = ""
+    for ch in methodology.strip():
+        if ch.isalpha():
+            token += ch
+        else:
+            break
+    return _FRAMING_BY_METHODOLOGY.get(token.lower(), "unknown")
+
+
+def _category_weight(role_profile, category) -> float:
+    """The reweight multiplier for a BriefItem category under the role_profile.
+
+    Defensive: a missing/None profile, missing category_weights, an unlisted
+    category, or a non-numeric / negative weight all fall back to the neutral
+    weight 1.0 (identity on the category axis). Never raises — the lens is total.
+    """
+    if not isinstance(role_profile, dict):
+        return 1.0
+    weights = role_profile.get("category_weights")
+    if not isinstance(weights, dict):
+        return 1.0
+    raw = weights.get(category)
+    if isinstance(raw, bool):  # bool is an int subclass — reject it explicitly
+        return 1.0
+    if not isinstance(raw, (int, float)):
+        return 1.0
+    if raw != raw:  # NaN
+        return 1.0
+    return float(raw) if raw >= 0.0 else 1.0
+
+
+def _due_sort_key(due_at):
+    """ISO due_at -> (has_due_flag, due_at) so a dated item sorts BEFORE an
+    undated one at equal urgency/weight. Missing/None due_at -> sorts last."""
+    if isinstance(due_at, str) and due_at:
+        return (0, due_at)
+    return (1, "")
+
+
+def reweight_brief_items(brief_items, role_profile):
+    """Reorder a pre-weight ranked BriefItem list per the role_profile (PURE).
+
+    An ordering-only LENS — the returned list contains the SAME item objects,
+    reordered; nothing is filtered, dropped, or duplicated (T-RL-1: membership
+    is invariant). The sort key, in priority order:
+
+      1. urgency taxonomy rank (URGENCY_RANK) — DOMINANT; a role category weight
+         can NEVER pull a low-urgency item above a high-urgency one. This is what
+         guarantees a critical blocker is never demoted to invisibility.
+      2. role category weight, DESCENDING (higher-weighted category earlier) —
+         the actual reweighting signal, applied only WITHIN an equal urgency.
+      3. due_at ASCENDING (dated before undated; sooner before later).
+      4. age_seconds DESCENDING (older surfaces first).
+      5. order_index ASCENDING — the routine-engine pre-weight rank, the final
+         STABLE tiebreak so the output is deterministic.
+
+    methodology is consumed via ``week_review_framing`` as an ordering signal
+    only (callers may read it; it never gates membership and is never executed).
+
+    Args:
+      brief_items: the pre-weight ranked list of opaque BriefItem dicts.
+      role_profile: the role_profile row (dict) or None.
+
+    Returns:
+      a NEW list of the same item objects, reordered. Inputs are not mutated.
+    """
+    if not brief_items:
+        return []
+
+    def key(item):
+        urgency = item.get("urgency")
+        urank = URGENCY_RANK.get(urgency, URGENCY_RANK_DEFAULT)
+        weight = _category_weight(role_profile, item.get("category"))
+        has_due, due = _due_sort_key(item.get("due_at"))
+        try:
+            age = int(item.get("age_seconds") or 0)
+        except (TypeError, ValueError):
+            age = 0
+        try:
+            oidx = int(item.get("order_index") or 0)
+        except (TypeError, ValueError):
+            oidx = 0
+        # Negate weight (higher weight earlier) and age (older earlier). Python
+        # sort is stable, so equal keys keep input order, but we add order_index
+        # last for an explicit, position-independent deterministic tiebreak.
+        return (urank, -weight, has_due, due, -age, oidx)
+
+    # New list, same objects — never mutate the input, never copy the items
+    # (so wrapped remote fields pass through verbatim).
+    return sorted(brief_items, key=key)
+
+
+# ---------------------------------------------------------------------------
+# routine-engine (M0b / WP-1) — pa_brief composer + ranker + fold
+# ---------------------------------------------------------------------------
+#
+# The HUB component (design §4.1). pa_brief composes the catch-up briefing:
+#
+#   1. CONSUME the M0a pure read surface get_briefing_snapshot (active_tasks,
+#      recent_actions, due_nudges, unresolved_conflicts, last_session_summary)
+#      — the `pa_core_briefing_snapshot_read` in_process integration point.
+#      Remote-authored fields in that payload are ALREADY delimiter-wrapped by
+#      the snapshot path (security floor L1); pa_brief NEVER unwraps them.
+#   2. READ the delegations + blockers tables DIRECTLY via the same conn — the
+#      `pa_core_delegation_blocker_read` integration point. NOTE (carried from
+#      the signed map + verified at pa_core.py get_briefing_snapshot): the M0a
+#      snapshot does NOT read delegations/blockers, so routine-engine reads them
+#      itself. blockers.description is locally-authored (user's own notes) so it
+#      is NOT remote-wrapped; only externally-authored fields are wrapped.
+#   3. DRAIN nudges via nudge_drain (WP-3, nudge-lifecycle) — the in-composer
+#      drain (no daemon). Drained nudges are already wrap-preserved by WP-3.
+#   4. BUILD a typed BriefItem list, one per surfaced concern, each tagged with
+#      an urgency class from the taxonomy (URGENCY_RANK, WP-4).
+#   5. RANK strictly by the urgency taxonomy (CONFLICT first … FYI last) with a
+#      due/age tiebreak, then REWEIGHT ordering via reweight_brief_items (WP-4,
+#      role-lens) — an ordering-only LENS that never filters.
+#   6. FOLD to exactly 5 BriefItems above the fold + a MANDATORY [+N more]
+#      affordance for the remainder. NO item is EVER dropped to zero visibility
+#      (T-RE-1): the overflow is always reachable.
+#   7. RENDER the ~12-line terminal briefing text.
+#
+# pa_brief reads via get_briefing_snapshot and writes ONLY through nudge_drain
+# (the drain promotes due nudges to 'shown' — that is the WP-3 write path,
+# already inside its own _with_tx). pa_brief itself opens no transaction.
+#
+# stdlib only.
+
+# How many BriefItems show above the fold before the [+N more] affordance kicks
+# in (design §4.1: "5 lines above the fold").
+BRIEF_FOLD_SIZE = 5
+
+# The urgency class each BriefItem source maps to (mirrors URGENCY_RANK keys).
+# A snapshot conflict -> CONFLICT; a drained escalated nudge -> OVERDUE_NUDGE;
+# a critical/high blocker -> BLOCKER; a today-due task -> DUE_TODAY; an open
+# owed/chased delegation -> DELEGATION_FOLLOWUP; an in-progress task ->
+# IN_FLIGHT; everything else -> FYI.
+
+
+def _today_iso_date(now=None):
+    """The current UTC calendar date as 'YYYY-MM-DD' (for DUE_TODAY matching).
+
+    A `now` ISO override (testing) is honored; only the leading date component
+    is used so a 'YYYY-MM-DDTHH:MM:SS' override and a bare date both work.
+    """
+    ref = now or now_iso()
+    return ref[:10] if isinstance(ref, str) and len(ref) >= 10 else now_iso()[:10]
+
+
+def _is_due_today(due_at, today_date):
+    """True iff an ISO due_at falls on today's calendar date (date-prefix match)."""
+    return isinstance(due_at, str) and len(due_at) >= 10 and due_at[:10] == today_date
+
+
+def _brief_item(item_id, urgency, title, *, detail=None, due_at=None,
+                age_seconds=0, order_index=0, severity=None, urgency_class=None,
+                source_kind=None):
+    """Build a typed BriefItem dict (uniform shape for the ranker + renderer).
+
+    `category` is set equal to `urgency` so role-lens category_weights can target
+    an urgency band directly; callers may override category later if needed. The
+    `detail` value is passed through VERBATIM — when it is a delimiter-wrapped
+    remote field the wrap is preserved end-to-end (pa_brief never unwraps).
+    """
+    return {
+        "id": item_id,
+        "urgency": urgency,
+        "category": urgency,
+        "title": title,
+        "detail": detail,
+        "due_at": due_at,
+        "age_seconds": age_seconds,
+        "order_index": order_index,
+        "severity": severity,
+        "urgency_class": urgency_class,
+        "source_kind": source_kind,
+    }
+
+
+def build_brief_items(conn: sqlite3.Connection, ws_id: str, params: dict) -> list:
+    """Build the pre-weight ranked BriefItem list for a workspace (the ranker).
+
+    Reads the M0a snapshot (in_process), the delegations/blockers tables
+    (filesystem_io, directly via the same conn), and the drained nudges, then
+    emits one BriefItem per surfaced concern, ranked strictly by the urgency
+    taxonomy (URGENCY_RANK: CONFLICT < OVERDUE_NUDGE < BLOCKER < DUE_TODAY <
+    DELEGATION_FOLLOWUP < IN_FLIGHT < FYI) with a due/age tiebreak.
+
+    Remote-authored fields surfaced from the snapshot/drain (conflict_detail,
+    ingested nudge messages) arrive ALREADY delimiter-wrapped and pass through
+    verbatim — this builder never unwraps them.
+    """
+    workspace = params.get("workspace", ws_id)
+    now = params.get("now")  # optional ISO override for deterministic tests
+    today_date = _today_iso_date(now)
+
+    items = []
+
+    # (1) Snapshot — the M0a in_process read surface. Remote fields pre-wrapped.
+    snap_params = {"workspace": workspace}
+    snapshot = get_briefing_snapshot(conn, ws_id, snap_params)
+
+    # (1a) Unresolved sync conflicts -> CONFLICT (loudest). conflict_detail is
+    # already remote-wrapped by the snapshot path; pass through verbatim.
+    for cf in snapshot.get("unresolved_conflicts", []) or []:
+        items.append(_brief_item(
+            f"conflict:{cf.get('id')}",
+            "CONFLICT",
+            f"Sync conflict: {cf.get('source')} {cf.get('remote_id')}",
+            detail=cf.get("conflict_detail"),
+            source_kind="conflict",
+        ))
+
+    # (3) Drain nudges via nudge-lifecycle (WP-3). The drain promotes due/un-
+    # snoozed nudges to 'shown' and returns each with its derived urgency_class
+    # (escalated when snooze_count >= 3) and a wrap-preserved message.
+    drain = nudge_drain(conn, ws_id, {"workspace": workspace, "now": now} if now else {"workspace": workspace})
+    for nd in drain.get("promoted", []) or []:
+        # A repeatedly-deferred (escalated) nudge surfaces LOUDER as an
+        # OVERDUE_NUDGE; an ordinary drained nudge is a DUE_TODAY-class reminder.
+        escalated = nd.get("urgency_class") == "escalated"
+        urgency = "OVERDUE_NUDGE" if escalated else "DUE_TODAY"
+        items.append(_brief_item(
+            f"nudge:{nd.get('id')}",
+            urgency,
+            "Overdue nudge (escalated)" if escalated else "Due nudge",
+            detail=nd.get("message"),  # already wrap-preserved by the drain
+            due_at=nd.get("due_at"),
+            urgency_class=nd.get("urgency_class"),
+            source_kind="nudge",
+        ))
+
+    # (2) blockers — read DIRECTLY via the same conn (pa_core_delegation_blocker_read).
+    # blockers.description is the user's own note (local) -> NOT remote-wrapped.
+    blocker_rows = conn.execute(
+        "SELECT id, description, severity, status, raised_at FROM blockers "
+        "WHERE workspace_id = ? AND status = 'active' "
+        "ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 "
+        "  WHEN 'medium' THEN 2 ELSE 3 END, id ASC",
+        (workspace,),
+    ).fetchall()
+    for b in blocker_rows:
+        items.append(_brief_item(
+            f"blocker:{b['id']}",
+            "BLOCKER",
+            b["description"],
+            severity=b["severity"],
+            source_kind="blocker",
+        ))
+
+    # (4) tasks. The M0a snapshot supplies the active-task LIST (the
+    # pa_core_briefing_snapshot_read in_process integration point), but its
+    # active_tasks projection omits the due_at column. due-today classification
+    # needs due_at, so we resolve due_at per active task directly via the same
+    # conn (a thin filesystem_io read keyed by the snapshot's task ids — the
+    # snapshot remains the authority for WHICH tasks are active).
+    #
+    #   due-today          -> DUE_TODAY
+    #   in-progress        -> IN_FLIGHT  ('executing' is the M0a-kernel
+    #                                      "in progress" status)
+    #   everything else    -> FYI
+    #
+    # Task titles are locally authored (never remote-wrapped).
+    active_tasks = snapshot.get("active_tasks", []) or []
+    task_ids = [t.get("id") for t in active_tasks if t.get("id") is not None]
+    due_by_id = {}
+    if task_ids:
+        placeholders = ",".join("?" for _ in task_ids)
+        for row in conn.execute(
+            "SELECT id, due_at FROM tasks WHERE workspace_id = ? "
+            f"AND id IN ({placeholders})",
+            (workspace, *task_ids),
+        ).fetchall():
+            due_by_id[row["id"]] = row["due_at"]
+    for t in active_tasks:
+        due = due_by_id.get(t.get("id"))
+        if _is_due_today(due, today_date):
+            urgency = "DUE_TODAY"
+        elif t.get("status") in ("executing", "in_progress"):
+            urgency = "IN_FLIGHT"
+        else:
+            urgency = "FYI"
+        items.append(_brief_item(
+            f"task:{t.get('id')}",
+            urgency,
+            t.get("title"),
+            due_at=due,
+            source_kind="task",
+        ))
+
+    # (2b) delegations — read DIRECTLY via the same conn. An open/chased
+    # delegation is a DELEGATION_FOLLOWUP. expected_by drives the due tiebreak.
+    delegation_rows = conn.execute(
+        "SELECT id, direction, status, expected_by FROM delegations "
+        "WHERE workspace_id = ? AND status IN ('open', 'chased') "
+        "ORDER BY (expected_by IS NULL), expected_by ASC, id ASC",
+        (workspace,),
+    ).fetchall()
+    for d in delegation_rows:
+        label = "owed to me" if d["direction"] == "owed_to_me" else "delegated out"
+        items.append(_brief_item(
+            f"delegation:{d['id']}",
+            "DELEGATION_FOLLOWUP",
+            f"Follow up ({label})",
+            due_at=d["expected_by"],
+            source_kind="delegation",
+        ))
+
+    # Assign a stable pre-weight order_index per the urgency taxonomy + due/age
+    # tiebreak, so the role-lens reweight has a deterministic base order and the
+    # final STABLE tiebreak (order_index) is meaningful.
+    def _base_key(it):
+        urank = URGENCY_RANK.get(it.get("urgency"), URGENCY_RANK_DEFAULT)
+        has_due, due = _due_sort_key(it.get("due_at"))
+        try:
+            age = int(it.get("age_seconds") or 0)
+        except (TypeError, ValueError):
+            age = 0
+        return (urank, has_due, due, -age, str(it.get("id")))
+
+    ranked = sorted(items, key=_base_key)
+    for idx, it in enumerate(ranked):
+        it["order_index"] = idx
+    return ranked
+
+
+def fold_brief_items(brief_items, fold_size: int = BRIEF_FOLD_SIZE) -> dict:
+    """Split a ranked BriefItem list into above-the-fold + a MANDATORY overflow.
+
+    Returns a dict with:
+      * above_fold        — at most ``fold_size`` items (the top of the list);
+      * overflow          — the remainder (possibly empty);
+      * overflow_count    — len(overflow);
+      * overflow_affordance — "[+N more]" when overflow_count > 0 else "" .
+
+    INVARIANT (T-RE-1): NO item is ever dropped — above_fold + overflow is a
+    partition of the input (same membership, same order). The [+N more]
+    affordance guarantees the overflow stays reachable; it is never hidden to
+    zero visibility.
+    """
+    items = list(brief_items or [])
+    n = max(0, int(fold_size))
+    above = items[:n]
+    overflow = items[n:]
+    count = len(overflow)
+    return {
+        "above_fold": above,
+        "overflow": overflow,
+        "overflow_count": count,
+        "overflow_affordance": f"[+{count} more]" if count > 0 else "",
+    }
+
+
+def _render_brief_text(workspace, fold: dict) -> str:
+    """Render the ~12-line terminal briefing text from a folded BriefItem set.
+
+    A header line, up to 5 numbered above-the-fold lines, and a trailing
+    [+N more] affordance line when there is overflow. Each line is a short,
+    urgency-tagged summary. Remote-authored detail (already delimiter-wrapped)
+    is surfaced verbatim — NEVER unwrapped.
+    """
+    lines = [f"AMY briefing — {workspace}"]
+    above = fold.get("above_fold", [])
+    if not above:
+        lines.append("(nothing pressing right now)")
+    for i, it in enumerate(above, start=1):
+        urgency = it.get("urgency", "FYI")
+        if urgency == "BLOCKER" and it.get("severity"):
+            tag = f"BLOCKER {it['severity']}"
+        elif urgency == "OVERDUE_NUDGE":
+            tag = "OVERDUE!"
+        elif urgency == "DUE_TODAY":
+            tag = "DUE TODAY"
+        else:
+            tag = urgency
+        title = it.get("title") or ""
+        lines.append(f"{i}. [{tag}] {title}")
+    if fold.get("overflow_count", 0) > 0:
+        lines.append(fold["overflow_affordance"])
+    return "\n".join(lines)
+
+
+def pa_brief(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Compose the catch-up briefing — the routine-engine HUB (M0b / WP-1).
+
+    Pipeline: build_brief_items (consume the M0a snapshot + read
+    delegations/blockers directly + drain nudges, rank by the urgency taxonomy)
+    -> reweight_brief_items (role-lens ordering-only reweight via the workspace
+    role_profile) -> fold to 5-above-the-fold + a MANDATORY [+N more] ->
+    render the ~12-line terminal text.
+
+    The composed output is OPAQUE (brief_output): the ranked item list, the fold
+    split, and the rendered text. Remote-authored fields stay delimiter-wrapped
+    end-to-end (security floor L1) — pa_brief never unwraps.
+
+    Returns:
+      dict with keys ``workspace``, ``items`` (the full reweighted ranked list),
+      ``above_fold``, ``overflow``, ``overflow_count``, ``overflow_affordance``,
+      ``rendered_text``, and ``week_review_framing`` (an ordering signal from the
+      role_profile methodology; never executed).
+    """
+    workspace = params.get("workspace", ws_id)
+
+    # Pre-weight ranked list (ranker, consuming the snapshot + delegations/
+    # blockers + drained nudges).
+    ranked = build_brief_items(conn, ws_id, params)
+
+    # role-lens reweight (ordering-only; never filters — membership invariant).
+    role_profile = _read_role_profile(conn, workspace)
+    reweighted = reweight_brief_items(ranked, role_profile)
+
+    # Fold to 5 above the fold + a MANDATORY [+N more] (T-RE-1: nothing dropped).
+    fold = fold_brief_items(reweighted, BRIEF_FOLD_SIZE)
+
+    rendered = _render_brief_text(workspace, fold)
+    framing = week_review_framing(role_profile.get("methodology")) if isinstance(role_profile, dict) else "unknown"
+
+    return {
+        "workspace": workspace,
+        "items": reweighted,
+        "above_fold": fold["above_fold"],
+        "overflow": fold["overflow"],
+        "overflow_count": fold["overflow_count"],
+        "overflow_affordance": fold["overflow_affordance"],
+        "rendered_text": rendered,
+        "week_review_framing": framing,
+    }
+
+
+# ---------------------------------------------------------------------------
+# review-scopes (M0b / review-scopes, owner WP-2) — pa_review(scope)
+# ---------------------------------------------------------------------------
+#
+# pa_review windows + groups the SHARED routine-engine ranker output per a closed
+# review scope. It is a CALLER of routine-engine (callees: [routine-engine]): it
+# REUSES build_brief_items (WP-1's ranker) verbatim and NEVER forks the urgency
+# taxonomy. The only review-specific logic is:
+#
+#   1. a per-scope TIME WINDOW (today / tomorrow / this-week / this-month) that
+#      EXCLUDES every item whose due_at falls outside it (and every undated item —
+#      a windowed review is about what is DUE in the window);
+#   2. a per-scope GROUPING KEY (today=urgency, tomorrow=urgency, week=workstream,
+#      month=milestone) that partitions the already-ranked, already-windowed list
+#      into groups WITHOUT re-ranking — the shared ranker order is preserved as a
+#      STABLE partition within each group, and groups themselves lead with the
+#      loudest (highest-ranked) member.
+#
+# workstream is derived from a task's first tag; milestone from its
+# planning_period. Both are resolved over the SAME conn (the
+# pa_core_task_window_read in_process integration point) keyed by the task ids the
+# ranker already surfaced — the ranker remains the authority for WHICH items are
+# active; this read only attaches the grouping dimensions + due_at.
+#
+# Remote-authored fields (ingested nudge messages, conflict_detail) arrive ALREADY
+# delimiter-wrapped from the ranker and pass through verbatim — pa_review never
+# unwraps. stdlib only (json / sqlite3 / datetime).
+
+# The closed review-scope enum + each scope's grouping key.
+REVIEW_SCOPES = ("today", "tomorrow", "week", "month")
+_GROUPING_KEY_BY_SCOPE = {
+    "today": "urgency",
+    "tomorrow": "urgency",
+    "week": "workstream",
+    "month": "milestone",
+}
+# How a missing workstream / milestone is bucketed.
+REVIEW_UNASSIGNED = "unassigned"
+
+
+def _scope_window(scope: str, now=None):
+    """The [start_date, end_date] inclusive calendar window for a review scope.
+
+    Returns (start_date, end_date) as date objects. The window is matched against
+    a due_at by DATE prefix (the ranker's due_at values are ISO strings), so the
+    bounds are whole calendar days:
+
+      today    -> [today, today]
+      tomorrow -> [tomorrow, tomorrow]
+      week     -> the ISO week (Monday..Sunday) containing today
+      month    -> [first day of month, last day of month]
+
+    `now` is an optional ISO override for deterministic tests (only the leading
+    date component is used). An unknown scope raises ValidationError (defense in
+    depth — the pa-server inputSchema also rejects it pre-dispatch)."""
+    if scope not in REVIEW_SCOPES:
+        raise ValidationError(
+            f"pa_review: 'scope' must be one of {list(REVIEW_SCOPES)}, got {scope!r}"
+        )
+    today_iso = _today_iso_date(now)
+    today = date(int(today_iso[0:4]), int(today_iso[5:7]), int(today_iso[8:10]))
+    if scope == "today":
+        return today, today
+    if scope == "tomorrow":
+        nxt = today + timedelta(days=1)
+        return nxt, nxt
+    if scope == "week":
+        # Monday-anchored ISO week. weekday(): Monday=0 .. Sunday=6.
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=6)
+    # month
+    start = today.replace(day=1)
+    if start.month == 12:
+        nxt_month_first = start.replace(year=start.year + 1, month=1)
+    else:
+        nxt_month_first = start.replace(month=start.month + 1)
+    end = nxt_month_first - timedelta(days=1)
+    return start, end
+
+
+def _due_in_window(due_at, start_date, end_date) -> bool:
+    """True iff an ISO due_at falls on a calendar date within [start, end].
+
+    Undated (None / non-string / too-short) -> False: a windowed review only
+    surfaces DATED items inside the window."""
+    if not isinstance(due_at, str) or len(due_at) < 10:
+        return False
+    try:
+        d = date(int(due_at[0:4]), int(due_at[5:7]), int(due_at[8:10]))
+    except (ValueError, TypeError):
+        return False
+    return start_date <= d <= end_date
+
+
+def _task_grouping_dims(conn: sqlite3.Connection, workspace: str, task_ids):
+    """Read workstream + milestone (+ due_at) for a set of task ids over the same
+    conn (the pa_core_task_window_read in_process integration point).
+
+    workstream  := the task's first tag (tags is a JSON list column), else None.
+    milestone   := the task's planning_period column, else None.
+
+    Returns {task_id: {"workstream": str|None, "milestone": str|None,
+    "due_at": str|None}}. Defensive: a malformed tags JSON / missing column never
+    raises — the dimension simply falls back to None (-> the 'unassigned' bucket).
+    The ranker stays the authority for WHICH tasks are active; this only attaches
+    the grouping dimensions."""
+    dims = {}
+    ids = [t for t in (task_ids or []) if t is not None]
+    if not ids:
+        return dims
+    placeholders = ",".join("?" for _ in ids)
+    try:
+        rows = conn.execute(
+            f"SELECT id, tags, planning_period, due_at FROM tasks "
+            f"WHERE workspace_id = ? AND id IN ({placeholders})",
+            (workspace, *ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return dims
+    for r in rows:
+        workstream = None
+        raw_tags = r["tags"] if "tags" in r.keys() else None
+        if isinstance(raw_tags, str) and raw_tags:
+            try:
+                parsed = json.loads(raw_tags)
+                if isinstance(parsed, list) and parsed and isinstance(parsed[0], str):
+                    workstream = parsed[0]
+            except (ValueError, TypeError):
+                workstream = None
+        dims[r["id"]] = {
+            "workstream": workstream,
+            "milestone": r["planning_period"] if "planning_period" in r.keys() else None,
+            "due_at": r["due_at"] if "due_at" in r.keys() else None,
+        }
+    return dims
+
+
+def _item_task_id(item):
+    """Recover the underlying task id from a BriefItem whose id is 'task:<id>'.
+
+    Returns the integer/string task id, or None for non-task items (nudges,
+    blockers, delegations, conflicts have no tasks-table row)."""
+    iid = item.get("id")
+    if isinstance(iid, str) and iid.startswith("task:"):
+        raw = iid[len("task:"):]
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return raw
+    return None
+
+
+def _group_key_for_item(item, grouping_key, dims_by_task):
+    """The group bucket key for a windowed BriefItem under the active grouping.
+
+      urgency    -> the item's urgency band (every item has one).
+      workstream -> the task's first tag, else 'unassigned' (non-task items, e.g.
+                    a due nudge, have no workstream -> 'unassigned').
+      milestone  -> the task's planning_period, else 'unassigned'.
+    """
+    if grouping_key == "urgency":
+        return item.get("urgency") or "FYI"
+    tid = _item_task_id(item)
+    dim = dims_by_task.get(tid) if tid is not None else None
+    if grouping_key == "workstream":
+        ws = dim.get("workstream") if isinstance(dim, dict) else None
+        return ws if isinstance(ws, str) and ws else REVIEW_UNASSIGNED
+    # milestone
+    ms = dim.get("milestone") if isinstance(dim, dict) else None
+    return ms if isinstance(ms, str) and ms else REVIEW_UNASSIGNED
+
+
+def _render_review_text(workspace, scope, groups) -> str:
+    """Render a compact grouped review text (header + per-group numbered items).
+
+    Remote-authored detail (already delimiter-wrapped) is surfaced via the item
+    title verbatim — NEVER unwrapped. Mirrors _render_brief_text's urgency tags."""
+    lines = [f"AMY review — {workspace} ({scope})"]
+    if not groups:
+        lines.append("(nothing in this window)")
+        return "\n".join(lines)
+    for g in groups:
+        lines.append(f"## {g['key']}")
+        for i, it in enumerate(g["items"], start=1):
+            urgency = it.get("urgency", "FYI")
+            if urgency == "BLOCKER" and it.get("severity"):
+                tag = f"BLOCKER {it['severity']}"
+            elif urgency == "OVERDUE_NUDGE":
+                tag = "OVERDUE!"
+            elif urgency == "DUE_TODAY":
+                tag = "DUE TODAY"
+            else:
+                tag = urgency
+            lines.append(f"{i}. [{tag}] {it.get('title') or ''}")
+    return "\n".join(lines)
+
+
+def pa_review(conn: sqlite3.Connection, ws_id: str, params: dict) -> dict:
+    """Scope-windowed, grouped review over the SHARED routine-engine ranker (WP-2).
+
+    pa_review(scope) for scope in {today, tomorrow, week, month}:
+
+      * builds the ranked BriefItem list via build_brief_items (WP-1's ranker —
+        REUSED, never forked; the urgency taxonomy is not duplicated);
+      * EXCLUDES every item whose due_at falls outside the scope's time window
+        (and every undated item — success criterion (a));
+      * GROUPS the surviving items by the scope's grouping key (today=urgency,
+        tomorrow=urgency, week=workstream, month=milestone) as a STABLE partition
+        that preserves the shared ranker order WITHIN each group (success
+        criterion (b)); groups lead with their loudest (highest-ranked) member.
+
+    workstream/milestone are resolved over the same conn (pa_core_task_window_read,
+    in_process). Remote-authored fields stay delimiter-wrapped end-to-end — the
+    review never unwraps. Returns the OPAQUE review_output payload.
+
+    Raises ValidationError when 'scope' is missing or not in the closed enum
+    (defense in depth — the pa-server inputSchema also rejects it pre-dispatch).
+    """
+    workspace = params.get("workspace", ws_id)
+    now = params.get("now")  # optional ISO override for deterministic tests
+    scope = params.get("scope")
+    if scope is None:
+        raise ValidationError("pa_review: 'scope' is required")
+    if scope not in REVIEW_SCOPES:
+        raise ValidationError(
+            f"pa_review: 'scope' must be one of {list(REVIEW_SCOPES)}, got {scope!r}"
+        )
+
+    grouping_key = _GROUPING_KEY_BY_SCOPE[scope]
+    start_date, end_date = _scope_window(scope, now)
+
+    # (1) Shared ranker — REUSE WP-1's build_brief_items verbatim (no fork).
+    ranked = build_brief_items(conn, ws_id, {"workspace": workspace, "now": now} if now else {"workspace": workspace})
+
+    # (2) Window filter — keep only items DUE inside the scope window. The ranker
+    # global order is preserved (filter is order-stable).
+    windowed = [it for it in ranked if _due_in_window(it.get("due_at"), start_date, end_date)]
+
+    # (3) Resolve grouping dims for the surviving task items (pa_core_task_window_read).
+    task_ids = [tid for tid in (_item_task_id(it) for it in windowed) if tid is not None]
+    dims_by_task = _task_grouping_dims(conn, workspace, task_ids) if grouping_key != "urgency" else {}
+
+    # (4) Stable partition into groups, preserving shared-ranker order within each
+    # group, and ordering the groups by the rank position of their first member.
+    group_items = {}
+    group_order = []
+    for it in windowed:  # windowed is already in shared-ranker order
+        key = _group_key_for_item(it, grouping_key, dims_by_task)
+        if key not in group_items:
+            group_items[key] = []
+            group_order.append(key)  # first appearance = loudest member's rank
+        group_items[key].append(it)
+
+    groups = [{"key": k, "items": group_items[k]} for k in group_order]
+
+    rendered = _render_review_text(workspace, scope, groups)
+
+    return {
+        "scope": scope,
+        "grouping_key": grouping_key,
+        "workspace": workspace,
+        "window": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "now": now,
+        },
+        "groups": groups,
+        "item_count": len(windowed),
+        "rendered_text": rendered,
+    }
+
+
+def _read_role_profile(conn: sqlite3.Connection, workspace: str):
+    """Read the workspace role_profile row as a dict (or {} when absent).
+
+    The M0a role_profile table has no category_weights column; the reweight
+    signal lives in the (optional) role_profile config. We surface every row
+    column plus, when present, a parsed category_weights from a JSON `config`
+    convention is NOT assumed here — _category_weight defends against a missing
+    category_weights key by falling back to the neutral 1.0 weight, so an absent
+    profile yields the pure urgency-taxonomy order (identity on the lens).
+    """
+    try:
+        row = conn.execute(
+            "SELECT role_title, aims, responsibilities, methodology, "
+            "reporting_lines, escalation_threshold, tone FROM role_profile "
+            "WHERE workspace_id = ?",
+            (workspace,),
+        ).fetchone()
+    except sqlite3.Error:
+        return {}
+    if row is None:
+        return {}
+    return dict(row)
 
 
 # ---------------------------------------------------------------------------

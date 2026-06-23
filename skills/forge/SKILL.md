@@ -82,7 +82,7 @@ If `came_from_founder` is absent or false, proceed with normal forge flow. Forge
 4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
    - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
-   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p --sandbox "..."` Bash call (read-only analyst, #157).
+   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p --sandbox "..." < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy blocks on stdin in non-TTY shells and hangs to timeout, #135).
    - **capabilities.bridge_fallback = true**: bridge mode active — route `agy`/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
    - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
@@ -233,7 +233,7 @@ The lead handles all user interaction:
 | **UX/Usability Agent** | 1 (always for UI-facing work) | Evaluates every approach from end-user perspective |
 | **Claude Challenger** | 1 (always) | Questions every proposal, finds flaws, plays devil's advocate |
 | **Codex Challenger** | 1 (always, if available) | Independent GPT-5.4 challenger — different model catches different flaws |
-| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p --sandbox "..."` Bash call — third model for additional coverage (read-only, #157) |
+| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p --sandbox "..." < /dev/null` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |
 | **Codex Second Opinion** | 1 (always for creative/design, if available) | Parallel exploration via Codex for independent perspective |
 
 #### Three Phases

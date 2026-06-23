@@ -360,6 +360,44 @@ def build_mermaid_nodes_and_edges(
     return nodes_out, edges_out, truncated
 
 
+def _escape_embedded_json(obj) -> str:
+    """Serialize ``obj`` to a <script>-safe JSON literal (HARD-RULE 7 / INV-8).
+
+    Reuses the EXACT existing escape chain: json.dumps(sort_keys) then escape
+    <, >, & and the U+2028 / U+2029 line/paragraph separators so user-controlled
+    content can NEVER break out of the <script> context. The browser side ALWAYS
+    consumes this via cy.json({elements}) / textContent, never innerHTML.
+    """
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    return (
+        raw
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
+def load_views_payload(views_path: Path) -> Optional[dict]:
+    """Load the WP-7 views.json render payload, or None when absent/unreadable.
+
+    The payload carries {"cytoscape": {"l1": [...], "l2": [...]}, "view_meta":{}}.
+    When None, the renderer falls back to the single-view bundle DAG so the report
+    still renders (no hard dependency on project_views.py having run).
+    """
+    if views_path is None or not views_path.exists():
+        return None
+    try:
+        with views_path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict) or "cytoscape" not in payload:
+        return None
+    return payload
+
+
 def render_html(
     bundle: dict,
     output_dir: Path,
@@ -369,6 +407,7 @@ def render_html(
     run_id: str = "",
     scan_started_at: str = "",
     source_date_epoch: Optional[int] = None,
+    views_payload: Optional[dict] = None,
 ) -> Optional[Path]:
     """Render report.html. Returns the output path, or None if rendering
     was skipped (air-gap fallback)."""
@@ -441,26 +480,17 @@ def render_html(
     # XSS-safe JSON embedding: escape <, >, & so that user-controlled content
     # cannot break out of the <script> tag context. HARD-RULE 7.
     cytoscape_json = json.dumps(cytoscape_elements, ensure_ascii=False, sort_keys=True)
-    cytoscape_json_safe = (
-        cytoscape_json
-        .replace("\\", "\\\\")  # only the case where someone slips a literal backslash; json.dumps already handles this in strings
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
-        .replace(" ", "\\u2028")  # paragraph separator
-        .replace(" ", "\\u2029")  # line separator
-    )
-    # The replace("\\", "\\\\") above is overly aggressive; json.dumps already
-    # produces escaped backslashes inside strings. Revert to the original.
-    cytoscape_json_safe = (
-        cytoscape_json
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
-        .replace(" ", "\\u2028")
-        .replace(" ", "\\u2029")
-    )
+    cytoscape_json_safe = _escape_embedded_json(cytoscape_elements)
 
+    # Multi-view element sets (WP-8). When project_views.py emitted a views.json
+    # payload, the 3-tab switcher swaps cy.json({elements}) between the pre-built
+    # l1/l2 sets. Absent payload -> fall back to the single bundle DAG (the
+    # default element set drives all tabs).
+    multiview = bool(views_payload)
+    cy = (views_payload or {}).get("cytoscape", {})
+    view_meta = (views_payload or {}).get("view_meta", {})
+    l1_elements_json = _escape_embedded_json(cy.get("l1", cytoscape_elements))
+    l2_elements_json = _escape_embedded_json(cy.get("l2", cytoscape_elements))
     rendered = template.render(
         project_name=project_name,
         workspace_tree_hash=workspace_tree_hash,
@@ -479,6 +509,10 @@ def render_html(
         cytoscape_elements_json=cytoscape_json_safe,
         banner_cdn_fallback=banner_cdn_fallback,
         gaps_by_file=gaps_by_file,
+        multiview=multiview,
+        view_meta=view_meta,
+        l1_elements_json=l1_elements_json,
+        l2_elements_json=l2_elements_json,
     )
 
     out_path = output_dir / "report.html"
@@ -563,6 +597,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         type=int,
         default=DEFAULT_MERMAID_NODE_CAP,
     )
+    parser.add_argument(
+        "--views-json",
+        type=Path,
+        default=None,
+        help="Path to project_views.py views.json payload (enables the 3-tab "
+             "L1/L2 switcher). Defaults to <output-dir>/views.json if present.",
+    )
     args = parser.parse_args(argv)
 
     if not args.bundle_path.exists():
@@ -583,6 +624,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         except ValueError:
             pass
 
+    # Resolve the views.json payload: explicit flag wins, else convention
+    # <output-dir>/views.json. Absent -> single-view fallback (no hard dep).
+    views_path = args.views_json
+    if views_path is None:
+        candidate = args.output_dir / "views.json"
+        views_path = candidate if candidate.exists() else None
+    views_payload = load_views_payload(views_path) if views_path else None
+
     try:
         html_path = render_html(
             bundle,
@@ -593,6 +642,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             run_id=args.run_id,
             scan_started_at=args.scan_started_at,
             source_date_epoch=source_date_epoch,
+            views_payload=views_payload,
         )
         airgap_fallback_only = html_path is None
 

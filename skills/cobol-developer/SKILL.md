@@ -969,3 +969,6 @@ see §3).
 | `python-enterprise-connectors` | Python → z/OS via Zowe SDK, DB2 Connect |
 | `datastage-developer` | DataStage ETL reading from mainframe sources |
 | `cognos-admin` | Cognos reporting against DB2 z/OS data |
+| `mainframe-lineage-parsers` | Lineage-grade reading: deterministic COBOL+JCL+embedded-`EXEC SQL` → OpenLineage data lineage (DD-join + host-var→column edges). When you need *where the data flows*, not just what the code does. |
+| `structure-recovery` | Lineage-grade reading: reverse-engineer COBOL record layouts (PIC/USAGE/COMP-3 byte offsets, REDEFINES, OCCURS) and inferred DDL from copybooks/programs. |
+| `legacy-code-intel` | Queryable SCIP-style symbol graph over COBOL (paragraph/section call graph, copybook impact). |

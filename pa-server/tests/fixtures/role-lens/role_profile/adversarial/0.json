@@ -1,0 +1,13 @@
+{
+  "_note": "Adversarial — aggressively down-weights 'engineering' which (in brief_items/adversarial/0.json) holds a CRITICAL blocker. The lens must NOT let category down-weight drop the critical blocker out of reach. This is the T-RL-1 driver.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "People Director",
+    "aims": "people-first; engineering is not my lane",
+    "responsibilities": "people",
+    "methodology": "Scrum",
+    "escalation_threshold": "conflict",
+    "tone": "warm",
+    "category_weights": {"engineering": 0.01, "people": 5.0, "delivery": 1.0, "calendar": 1.0, "fyi": 0.5}
+  }
+}

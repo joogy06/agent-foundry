@@ -25,6 +25,9 @@
     .controls button { padding: 6px 14px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; font-size: 0.9em; }
     .controls button:hover { background: #f0f0f0; }
     .controls button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+    .view-tabs { margin-bottom: 4px; }
+    .view-tabs .view-tab { font-weight: 600; }
+    .view-tabs .view-tab.active { background: #0b57d0; color: white; border-color: #0b57d0; }
     .banner { background: #fff3cd; border: 1px solid #ffeeba; padding: 10px 14px; margin: 12px 0; border-radius: 4px; color: #856404; font-size: 0.9em; }
     table { width: 100%; border-collapse: collapse; margin: 12px 0; background: white; }
     th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
@@ -72,6 +75,13 @@
 
     <section>
       <h2>Lineage DAG</h2>
+      {% if multiview %}
+      <div class="controls view-tabs">
+        <button id="tab-l1" class="view-tab active" data-view="l1">{{ (view_meta.l1.label if view_meta.l1 else "L1 — file interaction") | e }}</button>
+        <button id="tab-l2" class="view-tab" data-view="l2">{{ (view_meta.l2.label if view_meta.l2 else "L2 — table / data") | e }}</button>
+        <button id="tab-l3" class="view-tab" data-view="l3" style="display:none">{{ (view_meta.l3.label if view_meta.l3 else "L3 — functional") | e }}</button>
+      </div>
+      {% endif %}
       <div class="controls">
         <button id="layout-cose" class="active">Layout: cose-bilkent</button>
         <button id="layout-dagre">Layout: dagre</button>
@@ -80,6 +90,14 @@
         <button id="filter-no-spec">Hide speculative</button>
       </div>
       <div id="dag-container"></div>
+      {% if multiview %}
+      <details id="l2-column-detail" style="display:none">
+        <summary>Column lineage (L2) — expand for column-level edges</summary>
+        <div id="l2-column-tables">
+          <p style="color:#666;font-size:0.9em">No column-level lineage in the current view. Switch to the L2 tab; column edges populate as the <code>columnLineage</code> facet lands.</p>
+        </div>
+      </details>
+      {% endif %}
     </section>
 
     <section>
@@ -168,8 +186,20 @@
   {% if cytoscape_layout_src %}<script src="{{ cytoscape_layout_src | e }}"></script>{% endif %}
   <script>
     (function() {
-      // Embedded Cytoscape elements (escaped JSON):
+      // Embedded Cytoscape elements (escaped JSON). The escape chain in
+      // render_report._escape_embedded_json neutralises < > & U+2028 U+2029 so
+      // user-controlled content can NEVER break out of this <script> context.
+      // The browser only ever consumes these via cy.json({elements}) and
+      // textContent — NEVER the inner-HTML sink (HARD-RULE 7 / INV-8).
+      {% if multiview %}
+      var VIEW_SETS = {
+        l1: {{ l1_elements_json | safe }},
+        l2: {{ l2_elements_json | safe }}
+      };
+      var elements = VIEW_SETS.l1;
+      {% else %}
       var elements = {{ cytoscape_elements_json | safe }};
+      {% endif %}
 
       var cy = cytoscape({
         container: document.getElementById('dag-container'),
@@ -206,6 +236,88 @@
         cy.edges('[confidence != "speculative"]').style('display', 'element');
       });
 
+      {% if multiview %}
+      // ---- 3-tab view switcher (L1 file / L2 table+column / L3 hidden) ----
+      // Swaps the whole element set via cy.json({elements}); no HTML-string sink.
+      function runLayout() {
+        try { cy.layout({ name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true }).run(); }
+        catch (e) { cy.layout({ name: 'grid' }).run(); }
+      }
+      function clearChildren(node) {
+        while (node.firstChild) { node.removeChild(node.firstChild); }
+      }
+      // Build the L2 column-lineage <details> tables using textContent ONLY
+      // (every value is set via createTextNode / textContent, no HTML-string sink),
+      // so a hostile dataset/field name is rendered inert (INV-8).
+      function renderColumnDetail(view) {
+        var det = document.getElementById('l2-column-detail');
+        var host = document.getElementById('l2-column-tables');
+        if (!det || !host) return;
+        clearChildren(host);
+        if (view !== 'l2') { det.style.display = 'none'; return; }
+        det.style.display = '';
+        var elements = VIEW_SETS.l2 || [];
+        var rows = [];
+        elements.forEach(function(el) {
+          var d = el.data || {};
+          if (!d.columns) return;
+          var target = d.target || '';
+          d.columns.forEach(function(c) {
+            rows.push({
+              target: target,
+              out: c.output_field || '',
+              inNs: c.input_namespace || '',
+              inName: c.input_name || '',
+              inField: c.input_field || ''
+            });
+          });
+        });
+        if (rows.length === 0) {
+          var p = document.createElement('p');
+          p.style.color = '#666'; p.style.fontSize = '0.9em';
+          p.textContent = 'No column-level lineage in this view (columnLineage facet absent). Table-level L2 is shown in the graph above.';
+          host.appendChild(p);
+          return;
+        }
+        var table = document.createElement('table');
+        var thead = document.createElement('thead');
+        var htr = document.createElement('tr');
+        ['Output dataset edge', 'Output field', 'Input namespace', 'Input dataset', 'Input field'].forEach(function(h) {
+          var th = document.createElement('th'); th.textContent = h; htr.appendChild(th);
+        });
+        thead.appendChild(htr); table.appendChild(thead);
+        var tbody = document.createElement('tbody');
+        rows.forEach(function(r) {
+          var tr = document.createElement('tr');
+          [r.target, r.out, r.inNs, r.inName, r.inField].forEach(function(v) {
+            var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        host.appendChild(table);
+      }
+      function switchView(view) {
+        var set = VIEW_SETS[view];
+        if (!set) return;
+        cy.json({ elements: set });
+        runLayout();
+        renderColumnDetail(view);
+        var tabs = document.querySelectorAll('.view-tab');
+        tabs.forEach(function(t) {
+          if (t.getAttribute('data-view') === view) { t.classList.add('active'); }
+          else { t.classList.remove('active'); }
+        });
+      }
+      document.querySelectorAll('.view-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+          switchView(tab.getAttribute('data-view'));
+        });
+      });
+      // Initial column-detail state matches the default (L1) tab: hidden.
+      renderColumnDetail('l1');
+      {% endif %}
+
       // Table sorting
       ['datasets-table', 'jobs-table', 'edges-table'].forEach(function(tableId) {
         var t = document.getElementById(tableId);
@@ -233,7 +345,21 @@
   </script>
   {% else %}
   <script>
-    document.getElementById('dag-container').innerHTML = '<div style="padding:24px;text-align:center;color:#666">DAG rendering unavailable: cytoscape.min.js not loaded (air-gap mode). See <a href="report.md">report.md</a> for the Mermaid summary graph.</div>';
+    // Air-gap fallback: build the notice with DOM APIs (textContent / appendChild)
+    // — using DOM APIs only (INV-8). No user-controlled content here, but the
+    // rule is absolute: this template assigns no HTML-string sink anywhere.
+    (function() {
+      var c = document.getElementById('dag-container');
+      var box = document.createElement('div');
+      box.style.padding = '24px'; box.style.textAlign = 'center'; box.style.color = '#666';
+      box.appendChild(document.createTextNode('DAG rendering unavailable: cytoscape.min.js not loaded (air-gap mode). See '));
+      var a = document.createElement('a');
+      a.setAttribute('href', 'report.md');
+      a.textContent = 'report.md';
+      box.appendChild(a);
+      box.appendChild(document.createTextNode(' for the Mermaid summary graph.'));
+      c.appendChild(box);
+    })();
   </script>
   {% endif %}
 </body>

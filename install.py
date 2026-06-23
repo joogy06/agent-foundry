@@ -419,10 +419,11 @@ def confirm(prompt: str, default: bool = False) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def detect(repo_root: Path) -> tuple[int, int, int]:
+def detect(repo_root: Path) -> tuple[int, int, int, int]:
     skills = repo_root / "skills"
     agents = repo_root / "agents"
     commands = repo_root / "commands"
+    workflows = repo_root / "workflows"
     skill_count = (
         sum(1 for d in skills.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
         if skills.exists()
@@ -430,7 +431,8 @@ def detect(repo_root: Path) -> tuple[int, int, int]:
     )
     agent_count = sum(1 for f in agents.glob("*.md")) if agents.exists() else 0
     command_count = sum(1 for f in commands.glob("*.md")) if commands.exists() else 0
-    return skill_count, agent_count, command_count
+    workflow_count = sum(1 for f in workflows.glob("*.js")) if workflows.exists() else 0
+    return skill_count, agent_count, command_count, workflow_count
 
 
 # ---------------------------------------------------------------------------
@@ -763,18 +765,22 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
 
 def install_claude(
     repo_root: Path, claude_home: Path, mode: str, skip_existing: bool
-) -> tuple[int, int, int, int, int]:
-    """Install skills + agents + commands into Claude's config tree.
+) -> tuple[int, int, int, int, int, int]:
+    """Install skills + agents + commands + workflows into Claude's config tree.
 
     Default behavior REPLACES existing entries at the destination (any kind:
     file, dir, or symlink — see _replace_existing). Pass skip_existing=True
     to opt into the old behavior of leaving existing entries untouched.
 
-    Returns (skill_n, agent_n, command_n, replaced_or_skipped, chmodded).
+    `workflows/` are flat `*.js` saved-workflow files placed into
+    ~/.claude/workflows/ (Claude-only — agy/Copilot/Gemini do not consume them).
+
+    Returns (skill_n, agent_n, command_n, workflow_n, replaced_or_skipped, chmodded).
     """
     skills_target = claude_home / "skills"
     agents_target = claude_home / "agents"
     commands_target = claude_home / "commands"
+    workflows_target = claude_home / "workflows"
     skills_target.mkdir(parents=True, exist_ok=True)
     agents_target.mkdir(parents=True, exist_ok=True)
     commands_target.mkdir(parents=True, exist_ok=True)
@@ -782,6 +788,7 @@ def install_claude(
     skill_n = 0
     agent_n = 0
     command_n = 0
+    workflow_n = 0
     touched_existing = 0  # replaced (default) or skipped (skip_existing)
 
     def place(src: Path, dest: Path) -> bool:
@@ -813,11 +820,19 @@ def install_claude(
             if place(command, commands_target / command.name):
                 command_n += 1
 
+    # Saved workflows — flat *.js files placed into ~/.claude/workflows/ (S055).
+    # Claude-only: agy/Copilot/Gemini do not consume saved workflows.
+    workflows_dir = repo_root / "workflows"
+    if workflows_dir.exists():
+        for workflow in sorted(workflows_dir.glob("*.js")):
+            if place(workflow, workflows_target / workflow.name):
+                workflow_n += 1
+
     chmodded = 0
     if sys.platform != "win32":
         chmodded = chmod_scripts(skills_target)
 
-    return skill_n, agent_n, command_n, touched_existing, chmodded
+    return skill_n, agent_n, command_n, workflow_n, touched_existing, chmodded
 
 
 def chmod_scripts(skills_root: Path) -> int:
@@ -1326,12 +1341,13 @@ def _run(args) -> int:
     banner()
     print()
 
-    skill_n, agent_n, command_n = detect(REPO_ROOT)
+    skill_n, agent_n, command_n, workflow_n = detect(REPO_ROOT)
     print(f"Repo root:      {REPO_ROOT}")
     print(f"Python:         {sys.version.split()[0]}")
-    print(f"Skills found:   {skill_n}")
-    print(f"Agents found:   {agent_n}")
-    print(f"Commands found: {command_n}")
+    print(f"Skills found:    {skill_n}")
+    print(f"Agents found:    {agent_n}")
+    print(f"Commands found:  {command_n}")
+    print(f"Workflows found: {workflow_n}")
     print()
 
     # ---- Scan → findings report (always; this is the 'scan' surface) ----
@@ -1351,9 +1367,9 @@ def _run(args) -> int:
     if args.scan_only:
         return 0
 
-    if skill_n == 0 and agent_n == 0 and command_n == 0:
-        print("⚠ no skills, agents, or commands found in this directory.")
-        print(f"  expected: {REPO_ROOT / 'skills'}, {REPO_ROOT / 'agents'}, or {REPO_ROOT / 'commands'}")
+    if skill_n == 0 and agent_n == 0 and command_n == 0 and workflow_n == 0:
+        print("⚠ no skills, agents, commands, or workflows found in this directory.")
+        print(f"  expected: {REPO_ROOT / 'skills'}, {REPO_ROOT / 'agents'}, {REPO_ROOT / 'commands'}, or {REPO_ROOT / 'workflows'}")
         return 1
 
     # ---- Targets (adapt = pre-select interactive defaults; explicit flags win) ----
@@ -1427,9 +1443,10 @@ def _run(args) -> int:
     print("=" * 60)
     print("Plan:")
     if "claude" in targets:
-        print(f"  Claude  ({mode}): {REPO_ROOT/'skills'}   → {claude_home/'skills'}")
-        print(f"                    {REPO_ROOT/'agents'}   → {claude_home/'agents'}")
-        print(f"                    {REPO_ROOT/'commands'} → {claude_home/'commands'}")
+        print(f"  Claude  ({mode}): {REPO_ROOT/'skills'}    → {claude_home/'skills'}")
+        print(f"                    {REPO_ROOT/'agents'}    → {claude_home/'agents'}")
+        print(f"                    {REPO_ROOT/'commands'}  → {claude_home/'commands'}")
+        print(f"                    {REPO_ROOT/'workflows'} → {claude_home/'workflows'}")
     if "copilot" in targets:
         extra = " + ~/.copilot/skills mirror" if args.mirror_copilot_skills else ""
         print(f"  Copilot: write {DEFAULT_COPILOT_HOME/'copilot-instructions.md'}{extra}")
@@ -1463,9 +1480,9 @@ def _run(args) -> int:
     print()
     if "claude" in targets:
         print("[Claude]")
-        sc, ac, cc, te, chm = install_claude(REPO_ROOT, claude_home, mode, skip_existing)
+        sc, ac, cc, wf, te, chm = install_claude(REPO_ROOT, claude_home, mode, skip_existing)
         verb = "kept" if skip_existing else "replaced"
-        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands installed ({te} {verb} existing)")
+        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands, {wf} workflows installed ({te} {verb} existing)")
         if chm:
             print(f"    + chmod +x on {chm} skill scripts")
     if "copilot" in targets:

@@ -1,0 +1,6 @@
+{
+  "_note": "Boundary — single critical-blocker item. With a category-down-weighting profile it must STILL be present (membership invariant) and remain reachable (the only item, so trivially above the fold).",
+  "brief_items": [
+    {"id": "solo-1", "urgency": "BLOCKER", "critical": true, "category": "engineering", "title": "Single critical blocker", "due_at": "2026-06-15T17:00:00Z", "age_seconds": 3600, "order_index": 0}
+  ]
+}

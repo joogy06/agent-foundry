@@ -1,0 +1,14 @@
+{
+  "_note": "Opaque role_profile row fixture (role-lens input). Mirrors the M0a role_profile table columns. The lens reads aims/responsibilities (category priority signal), methodology (week-review framing), escalation_threshold, tone. Engineering-leaning EM profile.",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Engineering Manager",
+    "aims": "ship platform reliability; unblock the team",
+    "responsibilities": "engineering, delivery",
+    "methodology": "Scrum",
+    "reporting_lines": "Director of Engineering",
+    "escalation_threshold": "blocker",
+    "tone": "direct",
+    "category_weights": {"engineering": 3.0, "delivery": 2.0, "people": 1.5, "calendar": 1.0, "fyi": 0.5}
+  }
+}

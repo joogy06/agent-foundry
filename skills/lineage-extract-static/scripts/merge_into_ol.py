@@ -65,6 +65,16 @@ STATIC_ANALYSIS_FACET_URI = (
 SCHEMA_DATASET_FACET_URI = (
     "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json"
 )
+# sourceCodeLocation JOB facet (lineage multi-view + Control-M cycle, WP-9).
+# Carries contentSha256 = sha256 of the RAW on-disk source file bytes (the
+# already-computed file_sha256 from chunk_file.sha256_of_file — a streaming
+# whole-file hash with NO encoding normalization). This is the v1.1 cross-engine
+# join key; its byte definition MUST be IDENTICAL to the mainframe engine's
+# sourceCodeLocation.contentSha256 (design §5d / INV-6) or cross-engine joins
+# silently break.
+SOURCE_CODE_LOCATION_FACET_URI = (
+    "https://openlineage.io/spec/facets/1-0-0/SourceCodeLocationJobFacet.json"
+)
 EXTRACTOR_ID = "lineage-extract-static"
 EXTRACTOR_VERSION = "1.0.0"
 
@@ -196,16 +206,64 @@ def attach_schema_facet_fail_closed(
     return (event, reason)
 
 
+def make_source_code_location_facet(
+    source_file: str,
+    content_sha256: str,
+) -> dict:
+    """Build the sourceCodeLocation JOB facet carrying contentSha256 (WP-9).
+
+    ``content_sha256`` MUST be the sha256 of the RAW on-disk source file bytes —
+    the already-computed ``file_sha256`` from ``chunk_file.sha256_of_file`` (a
+    streaming whole-file hash, NO encoding normalization, NO chunk scoping). This
+    byte definition is shared verbatim with the mainframe engine's
+    sourceCodeLocation.contentSha256 so the two streams join on the same key
+    (design §5d / INV-6). The facet self-describes via ``_producer`` /
+    ``_schemaURL`` like every other facet in this emitter.
+    """
+    return {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": SOURCE_CODE_LOCATION_FACET_URI,
+        "type": "file",
+        "path": source_file,
+        "contentSha256": content_sha256,
+    }
+
+
 def make_job_event(
     job_id: tuple[str, str, str],
     inputs: list[dict],
     outputs: list[dict],
     scan_started_at: str,
     workspace_tree_hash: str,
+    source_code_location: Optional[dict] = None,
 ) -> dict:
     """Emit a JobEvent for (namespace, name, kind) tuple. The custom
-    staticAnalysis facet is attached per HARD-RULE 1."""
+    staticAnalysis facet is attached per HARD-RULE 1.
+
+    When ``source_code_location`` is provided (WP-9) it is attached under
+    ``job.facets.sourceCodeLocation`` carrying the contentSha256 join key.
+    ``source_code_location=None`` (the default) yields a byte-identical event to
+    the pre-WP-9 emission — the existing path is unchanged.
+    """
     job_ns, job_name, job_kind = job_id
+    facets: dict = {
+        "jobKind": {
+            "_producer": STATIC_PRODUCER_URI,
+            "_schemaURL": "https://skill-factory.local/openlineage/facets/JobKindFacet/1-0-0.json",
+            "kind": job_kind,
+        },
+        "staticAnalysis": {
+            "_producer": STATIC_PRODUCER_URI,
+            "_schemaURL": STATIC_ANALYSIS_FACET_URI,
+            "extractor_id": EXTRACTOR_ID,
+            "extractor_version": EXTRACTOR_VERSION,
+            "workspace_tree_hash": workspace_tree_hash,
+            "mode": "static-extract",
+            "runtime_observed": False,
+        },
+    }
+    if source_code_location is not None:
+        facets["sourceCodeLocation"] = source_code_location
     return {
         "$schema": PINNED_OL_SCHEMA_URL,
         "eventType": "JOB_EVENT",
@@ -215,22 +273,7 @@ def make_job_event(
         "job": {
             "namespace": job_ns,
             "name": job_name,
-            "facets": {
-                "jobKind": {
-                    "_producer": STATIC_PRODUCER_URI,
-                    "_schemaURL": "https://skill-factory.local/openlineage/facets/JobKindFacet/1-0-0.json",
-                    "kind": job_kind,
-                },
-                "staticAnalysis": {
-                    "_producer": STATIC_PRODUCER_URI,
-                    "_schemaURL": STATIC_ANALYSIS_FACET_URI,
-                    "extractor_id": EXTRACTOR_ID,
-                    "extractor_version": EXTRACTOR_VERSION,
-                    "workspace_tree_hash": workspace_tree_hash,
-                    "mode": "static-extract",
-                    "runtime_observed": False,
-                },
-            },
+            "facets": facets,
         },
         "inputs": inputs,
         "outputs": outputs,
@@ -299,6 +342,36 @@ def group_edges_by_job(edges: list[dict]) -> dict[tuple[str, str, str], dict[str
             if ds not in grouped[job_id]["outputs"]:
                 grouped[job_id]["outputs"].append(ds)
     return grouped
+
+
+def collect_job_sources(edges: list[dict]) -> dict[tuple[str, str, str], dict]:
+    """Map each job to its defining source file + raw-file sha256 (WP-9).
+
+    The project-aggregate edge carries ``source_file`` + ``source_file_sha256``
+    (added by prompts/merge-across-files.md). A job is defined in a source file;
+    we attribute the sha of that file as the job's contentSha256 join key. When a
+    job's edges disagree on source file (multi-source job), we pick the
+    lexicographically-smallest (source_file, sha) pair for determinism, so the
+    facet is byte-identical across re-runs. Jobs whose edges carry no
+    ``source_file_sha256`` get no facet (None) — the pre-WP-9 byte-identical path.
+    """
+    by_job: dict[tuple[str, str, str], set] = {}
+    for edge in edges:
+        tgt = edge.get("target_job", {})
+        job_id = (
+            tgt.get("namespace", "unknown"),
+            tgt.get("name", "unknown"),
+            tgt.get("kind", "script"),
+        )
+        sha = edge.get("source_file_sha256", "") or ""
+        src = edge.get("source_file", "") or ""
+        if sha:
+            by_job.setdefault(job_id, set()).add((src, sha))
+    out: dict[tuple[str, str, str], dict] = {}
+    for job_id, pairs in by_job.items():
+        src, sha = sorted(pairs)[0]
+        out[job_id] = {"source_file": src, "content_sha256": sha}
+    return out
 
 
 def collect_unique_datasets(edges: list[dict]) -> list[dict]:
@@ -508,6 +581,10 @@ def merge_into_ol(
     # Group edges by job
     jobs_grouped = group_edges_by_job(edges)
 
+    # Per-job source-file -> contentSha256 join key (WP-9). Empty when the rollup
+    # carries no source_file_sha256 (pre-WP-9 byte-identical path).
+    job_sources = collect_job_sources(edges)
+
     # Build events
     events: list[dict] = []
 
@@ -519,12 +596,20 @@ def merge_into_ol(
 
     # JobEvents (one per unique job)
     for job_id, io in sorted(jobs_grouped.items()):
+        scl = None
+        src_info = job_sources.get(job_id)
+        if src_info and src_info.get("content_sha256"):
+            scl = make_source_code_location_facet(
+                src_info.get("source_file", ""),
+                src_info["content_sha256"],
+            )
         evt = make_job_event(
             job_id,
             inputs=io["inputs"],
             outputs=io["outputs"],
             scan_started_at=scan_started_at,
             workspace_tree_hash=workspace_tree_hash,
+            source_code_location=scl,
         )
         validate_event_or_abort(evt, schema_path)
         events.append(evt)

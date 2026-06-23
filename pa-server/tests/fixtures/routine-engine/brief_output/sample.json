@@ -1,0 +1,48 @@
+{
+  "_opaque": true,
+  "_kind": "shape_exemplar",
+  "_reason": "brief_output is the opaque composed briefing the pa_brief composer returns. This exemplar documents the EXPECTED SHAPE the routine-engine tests assert against; concrete values are produced live from the seeded db_conn state.",
+  "shape": {
+    "workspace": "ws-routine-engine-demo",
+    "items": [
+      {
+        "id": "conflict:1",
+        "urgency": "CONFLICT",
+        "category": "CONFLICT",
+        "title": "Sync conflict: jira PROJ-412",
+        "detail": "<untrusted_remote_content>Local edit and remote edit diverged on the due date</untrusted_remote_content>",
+        "due_at": null,
+        "order_index": 0
+      },
+      {
+        "id": "nudge:2",
+        "urgency": "OVERDUE_NUDGE",
+        "category": "OVERDUE_NUDGE",
+        "title": "Overdue nudge (escalated)",
+        "detail": "<untrusted_remote_content>Chase the procurement ticket</untrusted_remote_content>",
+        "due_at": "-3h",
+        "snooze_count": 3,
+        "urgency_class": "escalated",
+        "order_index": 1
+      },
+      {
+        "id": "blocker:1",
+        "urgency": "BLOCKER",
+        "category": "BLOCKER",
+        "title": "Waiting on legal sign-off for the data-sharing clause",
+        "severity": "critical",
+        "order_index": 2
+      }
+    ],
+    "above_fold": ["conflict:1", "nudge:2", "blocker:1", "task:1", "task:2"],
+    "overflow_count": 4,
+    "overflow_affordance": "[+4 more]",
+    "rendered_text": "AMY briefing — ws-routine-engine-demo\\n1. [CONFLICT] Sync conflict: jira PROJ-412\\n2. [OVERDUE!] Chase the procurement ticket\\n3. [BLOCKER critical] Waiting on legal sign-off ...\\n4. [DUE TODAY] Q3 board deck\\n5. [DUE TODAY] Reconcile vendor invoices\\n[+4 more]"
+  },
+  "invariants": [
+    "at most 5 ids in above_fold",
+    "overflow always reachable via [+N more] when overflow_count > 0 — never dropped to zero visibility (T-RE-1)",
+    "items sorted by URGENCY_RANK (CONFLICT first) with due/age tiebreak",
+    "remote-authored fields (conflict detail, ingested nudge message) stay delimiter-wrapped end-to-end (security-floor L1)"
+  ]
+}

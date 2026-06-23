@@ -1,0 +1,9 @@
+# lineage-extract-static — OPTIONAL enhancers (the skill core is pure stdlib).
+# This skill never pip-installs at runtime. Install these yourself only if you want
+# the enhanced behavior. Run `python3 scripts/check_deps.py` to see what is present
+# and what degrades when absent.
+#
+# PEP-668-safe install:  python3 -m venv .venv && .venv/bin/pip install -r requirements-optional.txt
+
+jinja2>=3.0.0        # the self-contained HTML report + 3-tab view-switcher (else: report.md Mermaid fallback)
+jsonschema>=4.21.0   # write-time OpenLineage 2.0.2 schema validation (else: emit unvalidated)

@@ -1,0 +1,9 @@
+{
+  "_note": "Happy variant 1 — a tidy ranked list with one critical OVERDUE_NUDGE near the top.",
+  "brief_items": [
+    {"id": "n-1", "urgency": "OVERDUE_NUDGE", "critical": true, "category": "people", "title": "Overdue: reply to VP escalation", "due_at": "2026-06-14T10:00:00Z", "age_seconds": 90000, "order_index": 0},
+    {"id": "t-1", "urgency": "DUE_TODAY", "critical": false, "category": "delivery", "title": "Demo deck final pass", "due_at": "2026-06-15T20:00:00Z", "age_seconds": 5400, "order_index": 1},
+    {"id": "t-2", "urgency": "IN_FLIGHT", "critical": false, "category": "engineering", "title": "Refactor auth middleware", "due_at": null, "age_seconds": 14400, "order_index": 2},
+    {"id": "f-1", "urgency": "FYI", "critical": false, "category": "fyi", "title": "New OKR template published", "due_at": null, "age_seconds": 20000, "order_index": 3}
+  ]
+}

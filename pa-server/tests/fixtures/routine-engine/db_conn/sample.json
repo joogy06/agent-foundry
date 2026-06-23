@@ -1,0 +1,33 @@
+{
+  "_opaque": true,
+  "_kind": "runtime_handle",
+  "_reason": "db_conn is an opaque sqlite3.Connection handle to the per-workspace pa.db — a live runtime object, not a serializable value. This descriptor documents the SEEDED DB STATE the routine-engine tests build via pa_server.init_db + direct INSERTs (the shape the composer reads), not a literal connection.",
+  "seed_state": {
+    "tasks": [
+      {"title": "Q3 board deck", "status": "in_progress", "priority": 1, "due_at": "TODAY", "planning_period": "week"},
+      {"title": "Reconcile vendor invoices", "status": "todo", "priority": 2, "due_at": "TODAY", "planning_period": "week"},
+      {"title": "Refactor auth module", "status": "in_progress", "priority": 3, "due_at": "+5d", "planning_period": "month"}
+    ],
+    "blockers": [
+      {"description": "Waiting on legal sign-off for the data-sharing clause", "severity": "critical", "status": "active"},
+      {"description": "Staging env down, blocks release verification", "severity": "high", "status": "active"}
+    ],
+    "delegations": [
+      {"direction": "owed_to_me", "status": "open", "expected_by": "-2d"},
+      {"direction": "delegated_out", "status": "chased", "expected_by": "TODAY"}
+    ],
+    "nudges": [
+      {"kind": "due", "message": "Submit timesheet", "source": "manual", "due_at": "-1h", "state": "pending"},
+      {"kind": "followup", "message": "Chase the procurement ticket", "source": "ingested", "due_at": "-3h", "snooze_count": 3, "state": "snoozed", "snooze_until": "-1h"}
+    ],
+    "sync_state_conflicts": [
+      {"source": "jira", "remote_id": "PROJ-412", "status": "conflict", "conflict_detail": "Local edit and remote edit diverged on the due date"}
+    ],
+    "role_profile": {
+      "role_title": "Engineering Manager",
+      "methodology": "scrum",
+      "category_weights": {"DELEGATION_FOLLOWUP": 1.5, "IN_FLIGHT": 0.7}
+    }
+  },
+  "note": "Built to exercise: CONFLICT-first ordering (sync conflict), an escalated OVERDUE_NUDGE (3x-snoozed ingested -> delimiter-wrapped + escalated), a critical BLOCKER, DUE_TODAY tasks, a DELEGATION_FOLLOWUP, IN_FLIGHT items, the 5-above-the-fold fold + mandatory [+N more], and end-to-end remote-field wrap preservation."
+}

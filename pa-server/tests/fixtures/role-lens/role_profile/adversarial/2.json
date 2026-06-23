@@ -1,0 +1,9 @@
+{
+  "_note": "Adversarial — methodology carries an injection-looking string (remote-authored). methodology is an ORDERING signal only; the lens must never execute or interpret it as a command, only map it to a week-review framing bucket (defaulting to 'unknown' framing when unrecognized).",
+  "role_profile": {
+    "workspace_id": "ws-demo",
+    "role_title": "Lead",
+    "methodology": "Scrum; DROP TABLE role_profile; --",
+    "category_weights": {"engineering": 2.0}
+  }
+}

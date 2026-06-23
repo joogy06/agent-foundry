@@ -1,0 +1,65 @@
+{
+  "PayrollFolder": {
+    "Variables": [
+      {"%%HLQ": "PROD"},
+      {"%%BINDIR": "/prod/bin"}
+    ],
+    "PayCalcJob": {
+      "Type": "Job:Command",
+      "Command": "GOLDPAY.sh -mode batch",
+      "eventsToAdd": [{"Event": "paycalc-done"}]
+    },
+    "LoadScriptJob": {
+      "Type": "Job:Script",
+      "FileName": "load_payroll.sh",
+      "FilePath": "%%BINDIR",
+      "eventsToWaitFor": [{"Event": "paycalc-done"}],
+      "eventsToAdd": [{"Event": "load-done"}]
+    },
+    "EmbeddedJob": {
+      "Type": "Job:EmbeddedScript",
+      "Script": "#!/bin/sh\necho opaque body not parsed",
+      "eventsToWaitFor": [{"Event": "load-done"}]
+    },
+    "TransferJob": {
+      "Type": "Job:FileTransfer",
+      "FileTransfers": [
+        {"Src": "/incoming/feed.csv", "Dest": "/staging/%%RUNDATE/feed.csv"}
+      ]
+    },
+    "WatchedTransferJob": {
+      "Type": "Job:FileTransfer",
+      "FileWatcherOptions": {"AssignFileNameToVariable": "%%WATCHED"},
+      "FileTransfers": [
+        {"Src": "/incoming/inbound.dat", "Dest": "/staging/inbound.dat"}
+      ]
+    },
+    "DbResolvedJob": {
+      "Type": "Job:Database:EmbeddedQuery",
+      "ConnectionProfile": "DWHPRD",
+      "Statement": "SELECT EMPNO FROM PAYROLL.EMPLOYEE"
+    },
+    "DbUnresolvedConnJob": {
+      "Type": "Job:Database:EmbeddedQuery",
+      "ConnectionProfile": "MISSING_PROFILE",
+      "Statement": "SELECT * FROM PAYROLL.AUDIT"
+    },
+    "DbInterpolatedJob": {
+      "Type": "Job:Database:EmbeddedQuery",
+      "ConnectionProfile": "DWHPRD",
+      "Statement": "SELECT * FROM %%SCHEMA.LEDGER"
+    },
+    "UnresolvedVarCommandJob": {
+      "Type": "Job:Command",
+      "Command": "%%UNKNOWNBIN/run.sh"
+    },
+    "DummyGate": {
+      "Type": "Job:Dummy",
+      "eventsToWaitFor": [{"Event": "never-produced-event"}]
+    },
+    "UnknownTypeJob": {
+      "Type": "Job:SomeFutureType",
+      "SomeKey": "ignored"
+    }
+  }
+}

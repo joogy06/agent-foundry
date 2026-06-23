@@ -1,6 +1,6 @@
 ---
 name: lineage-extract-static
-description: "Use when extracting data/process lineage from a codebase or file tree — Python/SQL/DSX/Control-M/dbt/COBOL/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Antigravity CLI (agy), Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\"."
+description: "Use when extracting data/process lineage from a codebase or file tree — Python/Java/SQL/DSX/Control-M/dbt/COBOL/Pick-MultiValue-BASIC/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Antigravity CLI (agy), Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\", \"Java lineage\", \"JDBC/JPA lineage\", \"Pick/MultiValue lineage\"."
 ---
 
 # lineage-extract-static — Cross-System Data/Process Lineage Skill
@@ -37,10 +37,10 @@ Skip when:
 
 ## Architecture (the LLM-driven framework)
 
-The skill is the **framework**, the in-session AI CLI is the **parser**. There are NO per-format AST parsers (`sqlglot` / `tree-sitter` / `xml.sax`) in `scripts/`. The agent's LLM handles arbitrary input formats — Python, SQL, DSX, Control-M, dbt, COBOL, log files — anything in its training coverage. The skill provides:
+The skill is the **framework**, the in-session AI CLI is the **parser**. There are NO per-format AST parsers (`sqlglot` / `tree-sitter` / `xml.sax`) in `scripts/`. The agent's LLM handles arbitrary input formats — Python, Java, SQL, DSX, Control-M, dbt, COBOL, Pick/MultiValue BASIC, log files — anything in its training coverage. The skill provides:
 
 - **5 model-neutral prompts** in `prompts/*.md` — instructions the agent uses for per-chunk analysis, chunk merging, identity resolution, and redaction.
-- **7 deterministic Python scripts** in `scripts/*.py` — chunk_file, accumulate, merge_into_ol, validate_ol, redact, render_report, install_vendor.
+- **8 deterministic Python scripts** in `scripts/*.py` — chunk_file, accumulate, merge_into_ol, validate_ol, redact, project_views, render_report, install_vendor.
 - **6 reference docs** in `references/*.md` — OL spec, confidence classifier, dataset identity, output formats, chunking strategy, anti-patterns.
 - **3 JSON schemas** in `schemas/` — lineage-finding.v1, lineage-manifest.v1, openlineage-2.0.2-vendored.
 
@@ -71,9 +71,17 @@ When a user issues `lineage-extract-static <project_root>` (or equivalent NL: *"
    canonicalize dataset URIs (3-step waterfall: SQL FQN → repo-rel path → alias map).
 5. Agent runs `scripts/redact.py` on the combined rollup (fail-closed).
 6. Agent runs `scripts/merge_into_ol.py` → emits openlineage.ndjson + openlineage.json
-   + lineage_edges.csv to /tmp/lineage-extract-static-<session>/.
-7. Agent runs `scripts/render_report.py` → produces report.html + report.md
-   + datasets.csv + jobs.csv + edges.csv (the OL-relational opt-in) to same dir.
+   + lineage_edges.csv to /tmp/lineage-extract-static-<session>/. JobEvents now
+   carry a `sourceCodeLocation.contentSha256` JOB facet (sha256 of the RAW
+   on-disk source bytes — the cross-engine v1.1 join key; see below).
+6b. Agent runs `scripts/project_views.py` → consumes the just-emitted
+   openlineage.ndjson + lineage_edges.csv and emits `views.json` (the L1/L2
+   render payload). DETERMINISTIC, stdlib, NO LLM — pure graph algebra. Skipped
+   only if `--views=` is passed empty.
+7. Agent runs `scripts/render_report.py` (ONCE, passing `views.json`) → produces
+   the single self-contained `report.html` (a 3-tab L1/L2/L3-hidden Cytoscape
+   switcher) + report.md + datasets.csv + jobs.csv + edges.csv (the OL-relational
+   opt-in) to same dir.
 8. Agent prints the location of the report directory to the user.
 ```
 
@@ -84,6 +92,11 @@ lineage-extract-static analyze <project_root>
   --output-dir <path>            (default: /tmp/lineage-extract-static-<session>/)
   --include-low-precision        (opt-in for plug-ins with precision_floor < 0.85)
   --output-format=ol-relational  (opt-in for 4-CSV split; default = single denormalized)
+  --views=l1,l2                  (multi-view projection; DEFAULT ON. L1 = file
+                                  interaction (job-retained); L2 = table/data +
+                                  column. Pass --views= empty to disable. Folded
+                                  into step 6b so render is called ONCE with the
+                                  views.json payload.)
   --with-static-run              (opt-in for RunEvent-wrapped compatibility export)
   --merge-by-basename            (advisory speculative-confidence basename matching)
   --no-vendor                    (Mermaid-only output if Cytoscape vendor absent)
@@ -109,7 +122,7 @@ lineage-extract-static diff <baseline.json> <head.json>
 
 6. **DoS hard caps.** `LINEAGE_HARD_FILE_LIMIT_MB=50` skip-with-warn, `LINEAGE_MAX_DURATION_S=3600` global wall-clock cap, `LINEAGE_CACHE_MAX_GB=10` cache cap. Exit `PARTIAL` (not failure) when caps hit; surface in `manifest.json`.
 
-7. **XSS-safe rendering.** Every user-controlled string (file paths, dataset names, evidence snippets) interpolated into HTML via `html.escape()` server-side + `textContent =` (never `innerHTML =`) client-side. Required test `test_html_escape_hostile_filenames` enforces this. Hostile filenames must NOT execute.
+7. **XSS-safe rendering.** Every user-controlled string (file paths, dataset names, evidence snippets) interpolated into HTML via `html.escape()` server-side + `textContent =` / `cy.json({elements})` (never any HTML-string sink — `innerHTML` / `outerHTML` / `insertAdjacentHTML` / `document.write`) client-side, on EVERY view tab. Required test `test_html_escape_hostile_filenames_inert_across_tabs` enforces this across the L1 and L2 element sets. Hostile filenames must NOT execute.
 
 8. **Cross-tool portability.** Prompts in `prompts/*.md` are model-neutral — no Anthropic-specific anchors, no Claude-only facets, no `<>` tags. Tested against Claude Code + Codex CLI + Gemini CLI (pre-retirement) + Copilot CLI; the gemini CLI retired 2026-06-18 — use Antigravity CLI (agy) instead.
 
@@ -146,9 +159,52 @@ Basename-only merge is OFF by default. Behind `--merge-by-basename` flag (adviso
 ├── runs.csv                    ← OL-relational opt-in (only when --with-static-run)
 ├── manifest.json               ← per-run metadata (validated against lineage-manifest.v1)
 ├── errors.jsonl                ← per-file extraction failures
-├── report.md                   ← Mermaid summary
-└── report.html                 ← Cytoscape DAG + sortable tables + download links
+├── views.json                  ← L1/L2 render payload (project_views.py; default on)
+├── report.md                   ← Mermaid summary (air-gap L1 fallback)
+└── report.html                 ← single self-contained 3-tab (L1/L2/L3-hidden)
+                                   Cytoscape switcher + sortable tables + downloads
 ```
+
+## Multi-view projection (L1 / L2) + the contentSha256 join key
+
+`scripts/project_views.py` is a DETERMINISTIC, stdlib, NO-LLM post-pass that
+consumes the already-emitted `openlineage.ndjson` + `lineage_edges.csv` (the CSV
+carries the per-edge confidence/evidence the OL events drop, plus the
+`schedules`/`depends_on` edges that never reach OL). It rebuilds the typed
+bipartite graph, reattaches per-edge confidence/evidence, and emits two honest
+abstraction views plus a single `views.json` render payload:
+
+- **L1 — file interaction (JOB-RETAINED).** Filter to `kind=file` datasets but
+  KEEP the job node (dataset → job → dataset). It does NOT collapse jobs and
+  NEVER fabricates a file→file cross-product edge (locked user decision). Every
+  edge keeps its CSV confidence + evidence.
+- **L2 — table/data + column.** Filter to `kind ∈ {table,topic,queue}`, keep job
+  nodes. Column lineage is read from the `columnLineage` 1-2-0 facet (when
+  present) and nested under its parent table edge, surfaced as an
+  expand-on-click `<details>` table — never graph clutter. Tolerant of an absent
+  facet (table-level L2 still works).
+- **L3 — functional.** Deferred to v1.1 (a separate forge cycle); the report
+  reserves a hidden L3 tab.
+
+`render_report.py` builds ONE self-contained `report.html` with ONE Cytoscape
+instance and a 3-tab `.view-tabs` switcher that swaps `cy.json({elements})`
+between the pre-built L1/L2 sets from `views.json`. XSS-safe throughout: every
+embedded element set goes through the same `html.escape` + `<`/`>`/`&`/U+2028/
+U+2029 escape chain and is consumed only via `cy.json` / `textContent` — the
+template assigns NO HTML-string sink (`innerHTML` / `outerHTML` /
+`insertAdjacentHTML` / `document.write`) anywhere. Air-gap safe: with no vendor
+and no network, `report.html` is skipped and `report.md` carries the L1 Mermaid.
+
+**`sourceCodeLocation.contentSha256` JOB facet (v1.1 join key, shipped now).**
+`merge_into_ol.py` threads the already-computed `file_sha256`
+(`chunk_file.sha256_of_file`) into each JobEvent's `sourceCodeLocation` facet.
+The byte definition is **`contentSha256 = sha256 of the RAW on-disk source file
+bytes`** — a streaming whole-file hash with NO encoding normalization, NO
+copybook/symbol expansion, NO chunk scoping. This definition is IDENTICAL to the
+`mainframe-lineage-parsers` engine's `sourceCodeLocation.contentSha256` so the
+two streams join on the same key (the lineage JOB ↔ legacy-code-intel artifact
+join the deferred L3 view will use). The OL core spec stays pinned at 2.0.2 — the
+facet is purely additive and self-describing.
 
 ## Anti-patterns — STOP if you catch yourself
 
@@ -170,6 +226,47 @@ Prompts in `prompts/*.md` are tested against all four AI CLIs:
 - Copilot CLI (GPT-5.4 backend)
 
 Run `~/.claude/skills/research-for-skills/cross-tool-portability/scripts/verify-skill-portability.sh` to confirm. HARD-RULE 8.
+
+## Dependencies & environments (CLI / VS Code end users)
+
+The **core is pure stdlib and always runs** — chunking, accumulation, the
+OpenLineage ndjson/CSV merge, redaction, and the L1/L2 view projection need **zero**
+third-party packages. The libraries in `requirements-optional.txt` are **OPTIONAL
+enhancers**; this skill never pip-installs at runtime.
+
+**See your situation first — the doctor never installs anything:**
+
+```bash
+python3 scripts/check_deps.py
+```
+
+It prints the **active interpreter**, which enhancers are present/missing, what
+degrades when one is absent, a **PEP-668-safe** install recipe, and a sibling
+full-deps interpreter if one exists on the host.
+
+| Enhancer | Unlocks | If absent |
+|---|---|---|
+| `jinja2` | the self-contained `report.html` + the 3-tab L1/L2 view-switcher | `report.html` is skipped; `report.md` (Mermaid) is the air-gap fallback (L2 column detail is HTML-only) |
+| `jsonschema` | write-time OL 2.0.2 schema validation | OL is written unvalidated |
+
+**Install (only if you want the HTML report / validation).** Modern distros mark
+the system `python3` **PEP-668 externally-managed**, so a bare `pip install` is
+BLOCKED — use one of:
+
+```bash
+# Recommended — PEP-668-safe project venv (CLI or VS Code):
+python3 -m venv .venv && .venv/bin/pip install -r requirements-optional.txt
+# then run the skill's scripts with  .venv/bin/python
+
+# Per-user (where allowed):   python3 -m pip install --user -r requirements-optional.txt
+# Last resort (system py):    python3 -m pip install --break-system-packages -r requirements-optional.txt
+# Air-gapped (offline wheels): python3 -m pip install --no-index --find-links=<wheel-dir> -r requirements-optional.txt
+```
+
+**VS Code:** select the venv interpreter as the workspace interpreter — the skill's
+scripts run under whatever `python3` the CLI/extension invokes, so an env without
+`jinja2` silently produces the Mermaid `report.md` instead of `report.html`. Run
+`check_deps.py` in the integrated terminal to confirm which interpreter is active.
 
 ## Composition with other skills
 

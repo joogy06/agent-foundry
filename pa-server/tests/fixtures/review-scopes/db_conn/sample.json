@@ -1,0 +1,26 @@
+{
+  "_opaque": true,
+  "_kind": "runtime_handle",
+  "_reason": "db_conn is an opaque sqlite3.Connection handle to the per-workspace pa.db — a live runtime object, not a serializable value. This descriptor documents the SEEDED DB STATE the review-scopes tests build via pa_server.init_db + direct INSERTs (the shape pa_review reads through the shared routine-engine ranker + the pa_core_task_window_read read), not a literal connection.",
+  "seed_state": {
+    "tasks": [
+      {"title": "alpha due today", "status": "new", "priority": "high", "due_at": "TODAY", "tags": ["alpha"], "planning_period": "2026-Q2-M1"},
+      {"title": "beta in week", "status": "new", "priority": "high", "due_at": "+2d", "tags": ["beta"], "planning_period": "2026-Q2-M1"},
+      {"title": "alpha later week (fyi)", "status": "new", "priority": "low", "due_at": "+4d", "tags": ["alpha"], "planning_period": "2026-Q2-M2"},
+      {"title": "out of week", "status": "new", "priority": "high", "due_at": "+9d", "tags": ["beta"], "planning_period": "2026-Q2-M2"},
+      {"title": "untagged in week", "status": "new", "priority": "low", "due_at": "+1d"}
+    ],
+    "nudges": [
+      {"kind": "followup", "message": "chase the vendor", "source": "ingested", "due_at": "TODAY", "state": "pending"}
+    ],
+    "blockers": [
+      {"description": "legal sign-off pending (undated — excluded from a windowed review)", "severity": "critical", "status": "active"}
+    ],
+    "role_profile": {
+      "role_title": "Engineering Manager",
+      "methodology": "scrum",
+      "category_weights": {"DUE_TODAY": 1.2}
+    }
+  },
+  "note": "VALID M0a enums only — status in the legacy CHECK set ('new'/'executing' etc), priority 'high'/'low' (NOT 'in_progress' / numerics). due_at tokens (TODAY/+Nd) are resolved by the test body relative to a fixed NOW (2026-06-15, a Monday). Built to exercise: per-scope time windows (today/tomorrow/week/month), out-of-window exclusion, workstream grouping (week, from tags[0]), milestone grouping (month, from planning_period), the 'unassigned' bucket for untagged/no-period tasks, undated-item exclusion (the blocker), shared-ranker order preservation within groups, and remote-field wrap preservation (the ingested nudge)."
+}
