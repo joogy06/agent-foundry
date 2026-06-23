@@ -92,11 +92,21 @@ Steps Claude follows:
      `mongodb://user:pass@` example strings). See the example template at
      `templates/publish-config.example.json` for the schema.
 
-5. **Update README version** (see "README versioning" below)
-   - Read the bundled README in staging.
-   - Increment the version (default: patch bump).
-   - Update the "Last published" date.
-   - Update skill/agent counts.
+5. **Sync metadata — README counts/version + GitHub About** (mechanized; see `sync-metadata`)
+   - Run `scripts/sync_metadata.py` to drive ALL THREE drift-prone surfaces from ONE
+     live source (the `source.root`+`subdirs`+`exclusions` tree). This replaces the old
+     hand-editing of counts, which silently drifted (the catalog README regressed to
+     `159 skills / 4 agents` and the public About to `141+ … Gemini` before it was caught
+     — see the `repo-metadata-maintenance` memory).
+   ```bash
+   # README: rewrite **N skills**/**M agents**/**K workflows** bullets + the
+   # `**Version:** · **Last published:** · **N skills · …**` header (+ optional --bump).
+   python3 scripts/sync_metadata.py readme --readme <staging>/README.md [--bump patch|minor|major]
+   # GitHub About: substitutes {skills}/{agents}/… into the publish-config `about` block.
+   # Dry-run prints the gh command; add --apply to set it (mirrors "print, don't auto-mutate").
+   python3 scripts/sync_metadata.py about --repo <owner/repo> [--apply]
+   ```
+   - Also hand-add a `## Changelog` entry for the release (the one surface that needs prose).
    - Show the user the diff before committing.
 
 6. **Publish gate — 3-tree `_meta` identity (S043 / #119 C2)**
@@ -140,6 +150,28 @@ Trigger phrases: "bump skill version", "increment version", "release new version
 
 Read the current README, increment the version, update counts and date, write back.
 Does not run scrubs, does not create a staging dir.
+
+### `sync-metadata` — reconcile README counts/version + GitHub About from the live tree
+
+Trigger phrases: "sync repo metadata", "update the about section", "fix the skill
+counts", "the README counts are stale", "update repo description/topics".
+
+The single-source reconciler for the three surfaces that drift because no one tool
+owned them (the `repo-metadata-maintenance` memory). `scripts/sync_metadata.py`:
+- **`counts`** — print live `{skills,agents,workflows,commands}` from `source.root`
+  applying `exclusions` (the same set the publisher uses, so it matches the published count).
+- **`readme --readme P`** — rewrite the `**N skills**`/`**M agents**`/`**K workflows**`
+  bullets, the `**N skills · M agents · …**` header tuple, and `**Last published:**`;
+  `--bump {patch|minor|major}` also bumps `**Version:**`. Idempotent; reports changes.
+- **`about --repo R`** — read the publish-config **`about`** block (a
+  `{owner/repo: {description, topics, homepage}}` map whose description may use
+  `{skills}`/`{agents}`/`{workflows}`/`{commands}` placeholders), substitute live counts,
+  and **print** the `gh repo edit` command — or run it with **`--apply`** (the only
+  mutating path; topics are additive via `--add-topic`).
+- **`sync --readme P --repo R [--apply]`** — both at once.
+
+Config: add an `about` block to `~/.claude/publish-config.json`. Read-only on the
+source tree; `--apply` is the sole outward mutation and is opt-in.
 
 ### `validate-config` — sanity check the config
 

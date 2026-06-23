@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.1.0 · **Last published:** 2026-06-23 · **182 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.1.1 · **Last published:** 2026-06-23 · **182 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
@@ -400,6 +400,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.1.1 — 2026-06-23
+- **`publish-to-github` gains `sync-metadata`:** a one-source reconciler that derives this catalog's `**N skills**`/`**M agents**`/`**K workflows**` counts, the Version/Last-published header, and the GitHub repo **About** (description + topics) from the live skill tree — so the published counts and the repo description can no longer silently drift.
 
 ### 1.1.0 — 2026-06-23
 - **legacy-comprehension family — lineage v1:** `mainframe-lineage-parsers` gains a deterministic **Control-M** Automation-API jobs-as-code extractor (scheduler→program→data, job→job event DAG) alongside the existing COBOL/JCL/DB2 path; new OpenLineage facets (standard `columnLineage 1-2-0`, a `controlmDependencies` job facet, and a `sourceCodeLocation.contentSha256` cross-engine join key). `lineage-extract-static` gains **multi-abstraction views** — L1 file-interaction (job-retained) + L2 table/column — as a single `report.html` 3-tab switcher. **Pick/MultiValue + Java** coverage added across the family (LLM-path); `legacy-code-intel` gains a Java symbol addendum.
