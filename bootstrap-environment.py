@@ -169,6 +169,14 @@ CANONICAL_SESSION_START_HOOKS = [
             "timeout": 10,
         }],
     },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/memory_primer.py --hook",
+            "timeout": 10,
+        }],
+    },
 ]
 
 POLICY_LIMITS_DEFAULT = {
@@ -407,6 +415,41 @@ class Bootstrap:
         except OSError:
             pass  # Windows doesn't honor POSIX mode bits
         self.out.ok(f"wrote {path} (mode 0600)")
+
+    # ----- step 6b ----------------------------------------------------------
+
+    def step_6b_seed_memory(self):
+        self.out.step("6b", "seed ~/.claude/memory/ (global tier + preference profiles)")
+        mem = self.claude_home / "memory"
+        prefs = mem / "preferences"
+        src = self.claude_home / "skills" / "user-preferences" / "profiles"
+        if not src.is_dir():
+            src = REPO_ROOT / "skills" / "user-preferences" / "profiles"  # dev mode
+        if self.dry_run:
+            self.out.skip(f"would ensure {mem}/MEMORY.md + seed absent profiles into {prefs} from {src}")
+            return
+        mem.mkdir(parents=True, exist_ok=True)
+        prefs.mkdir(parents=True, exist_ok=True)
+        gindex = mem / "MEMORY.md"
+        if not gindex.exists():
+            gindex.write_text(
+                "# Memory Index (Global)\n\n"
+                "Cross-project memory — loaded every session. Layered with per-project memory\n"
+                "at ~/.claude/projects/<slug>/memory/ when working inside a project.\n\n"
+                "## User\n\n## Feedback\n\n## Preferences\n"
+                "- Per-domain profiles under `preferences/` — managed via the `user-preferences` skill.\n",
+                encoding="utf-8")
+        seeded = 0
+        if src.is_dir():
+            for tmpl in sorted(src.glob("*.md")):
+                dest = prefs / tmpl.name
+                if not dest.exists():  # NEVER clobber a populated profile
+                    dest.write_text(tmpl.read_text(), encoding="utf-8")
+                    seeded += 1
+            self.out.ok(f"memory tier ready; seeded {seeded} new preference profile(s) "
+                        f"(existing left intact)")
+        else:
+            self.out.warn("user-preferences profiles/ not found — install step 1 first; memory dir created")
 
     # ----- step 7 -----------------------------------------------------------
 
@@ -697,6 +740,7 @@ def _run_bootstrap(args) -> int:
     boot.step_4_place_pa_server()
     boot.step_5_settings_hooks()
     boot.step_6_policy_limits()
+    boot.step_6b_seed_memory()
     boot.step_7_claude_observe_bin()
     if not args.skip_codex:
         boot.step_8_codex_symlinks()

@@ -93,6 +93,15 @@ If the sources manifest (`~/.claude/state/sources.json`) is less than 24 hours o
 
 Skills should read `~/.claude/state/sources.json` for source availability instead of ad-hoc checks. When answering factual questions, check grounding tier (verified/grounded/inferred/training-only) and cite sources. See the `knowledge-grounding` skill for routing logic and grounding tiers.
 
+## Session Start — Memory & User Preferences
+
+Two-tier file memory: **global** `~/.claude/memory/` (who the user is + durable cross-project preferences) is loaded **every** session, layered with **per-project** `~/.claude/projects/<slug>/memory/` (project facts) when inside a project — project wins on a direct conflict, surfaced, never silently merged. The `_meta/memory_primer.py` SessionStart hook prints which tiers loaded plus the live `skills · agents · gates` count.
+
+Durable user preferences live as per-domain profiles under `~/.claude/memory/preferences/` (`coding` / `presentations` / `email` / `tone`, extensible), managed via the `user-preferences` skill (`scripts/prefs.py`).
+
+- **Capture is EXPLICIT only.** Record a preference (`prefs.py set <domain> <key> <val>` or `prefs.py note <domain> <text>`) ONLY when the user states one — "remember I prefer X", "always do Y", "I don't like Z", "from now on …". NEVER auto-infer a durable preference from a single choice; you MAY *ask* "want me to remember that?" and record on yes.
+- **Apply before domain work.** Before writing/refactoring code, building a deck, drafting an email, or choosing tone/voice, run `prefs.py load <domain>` and honor the recorded preferences. The live request always overrides a stored preference.
+
 ## Hard Rules Checkpoint
 
 Before key actions (spawning agents, design teams, claiming completion), read `~/.claude/skills/_meta/hard-rules-checklist.md`. This is a compact nudge file that prevents rule drift in long sessions.
