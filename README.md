@@ -2,15 +2,16 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **About this file**: This is a template for the public repository root README. When you create the GitHub repo, rename this file to `README.md` at the repo root alongside `skills/` and `agents/`.
+> **Version:** 1.1.0 · **Last published:** 2026-06-23 · **182 skills · 5 agents · 9 workflows · 2 commands**
+> See the [Changelog](#changelog) for what changed in each release.
 
 ---
 
 ## What's Inside
 
-- **159 skills** — domain knowledge Claude loads on demand to help with specific tasks (including `publish-to-github` for releasing this whole tree to public github safely, `visual-companion` for browser-based mockup/diagram review during design, and `cross-project-mail` for AI-agent messaging across sibling projects on one host)
-- **4 agents** — specialized sub-agents for design, execution, review, and knowledge management
-- **8 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
+- **182 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
+- **5 agents** — specialized sub-agents for execution, review/evolution, evergreening, task routing, and knowledge management
+- **9 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
 Skills are auto-discovered by Claude Code from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
@@ -143,7 +144,7 @@ Architecture: `pa` routes → `forge` designs → `bob` implements → `alf` rev
 <details>
 <summary><b>Orchestration & Meta</b> (click to expand)</summary>
 
-`forge` · `agent-teams` · `team-manager` · `challenger` · `qa-reviewer` · `ux-reviewer` · `research-for-skills` · `codex-orchestration` · `web-research` · `development-lifecycle` · `project-documentation` · `simplify` · `publish-to-github` · `visual-companion`
+`forge` · `agent-teams` · `team-manager` · `challenger` · `qa-reviewer` · `ux-reviewer` · `research-for-skills` · `codex-orchestration` · `web-research` · `development-lifecycle` · `project-documentation` · `simplify` · `publish-to-github` · `visual-companion` · `env-adoption` · `env-readiness` · `smart-config` · `knowledge-grounding`
 
 Build and manage agent teams, run multi-model reviews, decompose work.
 </details>
@@ -231,9 +232,9 @@ MongoDB (replica sets, sharding), DB2 LUW on RHEL, DB2 for z/OS mainframe.
 <details>
 <summary><b>IBM Mainframe & Middleware</b></summary>
 
-`ibm-mainframe` · `cobol-developer` · `db2-mainframe` · `ibm-mq` · `ibm-websphere` · `cognos-admin` · `cognos-user` · `datastage-developer` · `pega-robotics` · `control-m`
+`ibm-mainframe` · `cobol-developer` · `db2-mainframe` · `ibm-mq` · `ibm-websphere` · `cognos-admin` · `cognos-user` · `datastage-developer` · `pega-robotics` · `control-m` · `pick-developer` · `lineage-extract-static` · `mainframe-lineage-parsers` · `legacy-code-intel` · `structure-recovery` · `intent-extract` · `intent-map-render`
 
-z/OS, JCL, COBOL, DB2 z/OS, IBM MQ, WebSphere, Cognos Analytics, DataStage, Pega RPA, Control-M workload automation.
+z/OS, JCL, COBOL, DB2 z/OS, IBM MQ, WebSphere, Cognos Analytics, DataStage, Pega RPA, Control-M workload automation, Pick/MultiValue BASIC. The **legacy-comprehension family** extracts data/process lineage (LLM-as-parser + a deterministic COBOL/JCL/DB2 + Control-M → OpenLineage 2.0.2 engine with multi-abstraction views), SCIP-style symbol graphs, record-structure/DDL recovery, and per-component functional intent from legacy estates.
 </details>
 
 <details>
@@ -395,6 +396,20 @@ The `publish-to-github` skill in `skills/publish-to-github/` is itself the workf
 4. Inspect the staging dir, then `git init / add / commit / push` from there
 
 See `skills/publish-to-github/SKILL.md` for the full workflow.
+
+---
+
+## Changelog
+
+### 1.1.0 — 2026-06-23
+- **legacy-comprehension family — lineage v1:** `mainframe-lineage-parsers` gains a deterministic **Control-M** Automation-API jobs-as-code extractor (scheduler→program→data, job→job event DAG) alongside the existing COBOL/JCL/DB2 path; new OpenLineage facets (standard `columnLineage 1-2-0`, a `controlmDependencies` job facet, and a `sourceCodeLocation.contentSha256` cross-engine join key). `lineage-extract-static` gains **multi-abstraction views** — L1 file-interaction (job-retained) + L2 table/column — as a single `report.html` 3-tab switcher. **Pick/MultiValue + Java** coverage added across the family (LLM-path); `legacy-code-intel` gains a Java symbol addendum.
+- **New skill `env-readiness`:** a read-only environment readiness doctor — reviews `~/.claude` + per-project settings (skills/agents/workflows, SessionStart hooks, config, gates, identity, tooling) and prints a READY / READY-WITH-WARNINGS / NOT-READY verdict with repair pointers. Never mutates.
+- **Dependency ergonomics:** the lineage skills ship `requirements-optional.txt` + a `check_deps.py` doctor (`--check-deps`) + a "Dependencies & environments" guide (venv / PEP-668 / air-gapped / VS Code) — core stays pure-stdlib, enhancers are opt-in and never auto-installed.
+- **AMY (pa-server) M0b:** routine engine, role-lens, review-scopes, nudge-lifecycle, and the AMY brief hook with integration tests.
+- Counts: 159 → **182 skills**, 4 → **5 agents**, 8 → **9 workflows**.
+
+### 1.0.x — prior
+- Established the curated skill/agent/workflow tree, the bootstrap installer, the security keystone (`llm-security`, `secret-scanning`, `sast-tooling`, `threat-modeling`), the career family, and the legacy-comprehension siblings (`lineage-extract-static`, `legacy-code-intel`, `structure-recovery`).
 
 ---
 
