@@ -2,14 +2,14 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.1.1 · **Last published:** 2026-06-23 · **182 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.2.0 · **Last published:** 2026-06-23 · **183 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
 
 ## What's Inside
 
-- **182 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
+- **183 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
 - **5 agents** — specialized sub-agents for execution, review/evolution, evergreening, task routing, and knowledge management
 - **9 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
@@ -400,6 +400,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.2.0 — 2026-06-23
+- **Memory + preferences subsystem:** formalizes the two-tier file memory (**global** `~/.claude/memory/`, loaded every session, layered with **per-project** memory) and adds a new **`user-preferences`** skill — durable, cross-project preference profiles (`coding` / `presentations` / `email` / `tone`) the agent loads before domain work and moulds to over time. **Capture is explicit-only** (recorded when you state a preference, never inferred). A `_meta/memory_primer.py` SessionStart hook reports which memory tiers loaded + the live `skills · agents · gates` count, and `bootstrap-environment.py` seeds the memory tier + profiles on a fresh machine (never clobbering a populated profile).
 
 ### 1.1.1 — 2026-06-23
 - **`publish-to-github` gains `sync-metadata`:** a one-source reconciler that derives this catalog's `**N skills**`/`**M agents**`/`**K workflows**` counts, the Version/Last-published header, and the GitHub repo **About** (description + topics) from the live skill tree — so the published counts and the repo description can no longer silently drift.
