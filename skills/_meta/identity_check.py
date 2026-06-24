@@ -500,7 +500,7 @@ def main(argv=None) -> int:
                         "  The prod-foundry identity check needs the published "
                         "repo present.\n"
                         "  Fix one of:\n"
-                        "    - clone it:  gh repo clone joogy06/agent-foundry "
+                        "    - clone it:  gh repo clone your-gh-user/agent-foundry "
                         "<dest>\n"
                         "    - point at an existing clone:  "
                         "--foundry-root /path/to/agent-foundry\n"
