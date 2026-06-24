@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.2.0 · **Last published:** 2026-06-23 · **183 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.2.1 · **Last published:** 2026-06-24 · **183 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
@@ -400,6 +400,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.2.1 — 2026-06-24
+- **`publish-to-github` ships a generic gated scrubber framework:** a self-contained `stage_to_public.sh` driver that **hard-gates on the forbidden-pattern scrub verify** (a leak can never reach the public repo) before mirroring + pushing. The framework (engine + gate + example config) is now reusable by anyone for their own public publishing — you bring your own private scrub list (`publish-config.json`: `forbidden_patterns` / `scrubs` / `exclusions`), which is never published.
 
 ### 1.2.0 — 2026-06-23
 - **Memory + preferences subsystem:** formalizes the two-tier file memory (**global** `~/.claude/memory/`, loaded every session, layered with **per-project** memory) and adds a new **`user-preferences`** skill — durable, cross-project preference profiles (`coding` / `presentations` / `email` / `tone`) the agent loads before domain work and moulds to over time. **Capture is explicit-only** (recorded when you state a preference, never inferred). A `_meta/memory_primer.py` SessionStart hook reports which memory tiers loaded + the live `skills · agents · gates` count, and `bootstrap-environment.py` seeds the memory tier + profiles on a fresh machine (never clobbering a populated profile).
