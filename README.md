@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.3.0 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.3.1 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
@@ -402,6 +402,10 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.3.1 — 2026-06-24
+- **Fix:** trimmed the `legacy-code-intel` (1038→1000) and `mainframe-lineage-parsers` (1227→990) descriptions back under the 1024-char SKILL.md limit — they had grown past it with the Pick/Java/Control-M trigger additions and were being skipped at load. All capabilities/triggers preserved.
+- **Discoverability:** cross-linked `vscode-agents` from `claude-code-cli` (its VS Code GUI counterpart) and `mcp-server-creator` (the consumer side — using a built MCP server inside a VS Code agent).
 
 ### 1.3.0 — 2026-06-24
 - **New skill `vscode-agents`:** build & use AI agents and agentic flows in **VS Code** — agent mode, custom agents (`.agent.md` personas with their own tools/model/handoffs), MCP servers (`.vscode/mcp.json`), prompt files, instructions, hooks, and the Copilot cloud/coding agent. Includes **multi-model orchestration** (a main driver + second-opinion/verifier subagents each on a different model — the VS Code analogue of the Claude-CLI Claude+Codex+agy pattern, incl. the subagent cost-tier rule and BYOK for exact versions) and a security-first treatment (MCP trust prompts, the `mcp.json` trust-bypass, sandboxing, least-privilege tools, hooks as guardrails). Researched against official VS Code + GitHub docs (source-verified, content treated as untrusted).
