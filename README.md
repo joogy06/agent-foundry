@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.2.1 · **Last published:** 2026-06-24 · **183 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.2.2 · **Last published:** 2026-06-24 · **183 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
@@ -30,7 +30,7 @@ python3 bootstrap-environment.py
 # or, on Windows:  pwsh -NoProfile -NonInteractive -File bootstrap-environment.ps1
 ```
 
-The bootstrap orchestrator runs `install.py` plus 9 idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
+The bootstrap orchestrator runs `install.py` plus a series of idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
 
 | Step | What happens |
 |---|---|
@@ -40,9 +40,11 @@ The bootstrap orchestrator runs `install.py` plus 9 idempotent post-install step
 | 4 | Mirrors `pa-server/` into `~/.claude/pa-server/` (MCP server for the `pa` agent) |
 | 5 | Merges canonical `SessionStart` hooks into `~/.claude/settings.json` (preserves any you already have; backs the old file up to `.bak`) |
 | 6 | Writes `~/.claude/policy-limits.json` with conservative defaults, mode `0600` |
+| 6b | Seeds `~/.claude/memory/` — the global memory tier + preference profiles (`user-preferences`); never clobbers a populated profile |
+| 6c | Restores `~/.claude/publish-config.json` from `installer/` if present (your private publish scrub list) — else points you at `init-config` |
 | 7 | Symlinks `~/.claude/bin/claude-observe` for the process-observation skill |
 | 8 | Mirrors skills into `~/.codex/skills/*` (only if `codex` CLI is on PATH) |
-| 9 | Pins Gemini model to `gemini-3.1-pro-preview` in `~/.gemini/settings.json` (only if file exists) |
+| 9 | Pins Gemini model in `~/.gemini/settings.json` (legacy — only if file exists) |
 | 10 | Prints next-step guidance |
 
 After bootstrap, two more steps inside Claude Code finish the setup:
@@ -400,6 +402,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.2.2 — 2026-06-24
+- **Publish-config reproducibility + docs:** `bootstrap-environment.py` gains **step 6c** that restores your private `publish-config.json` (the scrub list) on a fresh machine if you version it under `installer/` — so a redeploy rebuilds the publish *setup*, not just the scripts (public users without one are pointed at `init-config`). The Quick-Start step table now reflects steps 6b (memory seed) and 6c.
 
 ### 1.2.1 — 2026-06-24
 - **`publish-to-github` ships a generic gated scrubber framework:** a self-contained `stage_to_public.sh` driver that **hard-gates on the forbidden-pattern scrub verify** (a leak can never reach the public repo) before mirroring + pushing. The framework (engine + gate + example config) is now reusable by anyone for their own public publishing — you bring your own private scrub list (`publish-config.json`: `forbidden_patterns` / `scrubs` / `exclusions`), which is never published.
