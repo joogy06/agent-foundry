@@ -10,7 +10,7 @@ Most of this collection was developed on a single Linux host. When you install o
 
 Three options, in increasing order of effort. Pick the one that matches the size of the problem:
 
-1. **GitHub Issue** — `https://github.com/joogy06/agent-foundry/issues/new` — best for bugs that need a fix. Use the template below for the body so it's actionable.
+1. **GitHub Issue** — `https://github.com/your-gh-user/agent-foundry/issues/new` — best for bugs that need a fix. Use the template below for the body so it's actionable.
 2. **PR appending to this file** — best for "I hit this on macOS Sonoma, here's the fix, here's the proof it works." Add an entry under the right OS section + open a small PR.
 3. **Annotate inline in your own clone** — if you're patching locally to keep moving and don't want to upstream yet, leave a comment in this file in your clone so you remember what you did. Optional.
 
