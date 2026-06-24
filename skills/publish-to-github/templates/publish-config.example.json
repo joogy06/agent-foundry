@@ -30,7 +30,7 @@
       ]
     }
   ],
-  "_forbidden_patterns_doc": "Strings the verifier greps for AFTER scrubbing. Any match in the staging dir = a leak the scrubs missed. Treat as a final safety net.",
+  "_forbidden_patterns_doc": "Strings that must NEVER appear in the published tree. The scrub gate (stage_to_public.sh) re-verifies the staging and HARD-ABORTS the publish on any match — so list YOURS up front: your home path (e.g. /home/<you>), machine/dev paths, and any employer/customer/business name. A pattern here is checked AFTER scrubs run, so anything not removed by a scrub rule blocks the push (it never leaks).",
   "forbidden_patterns": [
     "MyCompanyName",
     "/home/myuser",

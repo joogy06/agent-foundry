@@ -173,6 +173,47 @@ owned them (the `repo-metadata-maintenance` memory). `scripts/sync_metadata.py`:
 Config: add an `about` block to `~/.claude/publish-config.json`. Read-only on the
 source tree; `--apply` is the sole outward mutation and is opt-in.
 
+### `stage-public` — gated scrub-then-publish to your public repo
+
+Trigger phrases: "publish to my public repo", "scrub and push to github", "stage to
+public".
+
+The generic, gated publish **driver** (`scripts/stage_to_public.sh`) — the publishable
+companion to `publish_prep.py`. It takes a scrubbed staging dir, **HARD-GATES on the
+forbidden-pattern verify** (a leak can NEVER reach the public repo — the gate re-runs the
+verify and aborts with exit 2 if anything remains), mirrors it into your public repo, shows
+the diff, and pushes only after you confirm.
+
+```bash
+# 1. build your scrub list once (see below) at ~/.claude/publish-config.json
+# 2. produce a scrubbed staging dir
+python3 scripts/publish_prep.py --extended-scan
+# 3. gated publish to YOUR public repo
+PUBLIC_REPO_ROOT=/path/to/your/public-clone scripts/stage_to_public.sh   # or --repo-root PATH ; --yes for CI
+```
+
+Contains zero project-specific logic and zero private strings (HARD-RULE) — safe to ship
+publicly so anyone can reuse the framework. It does NOT do any ecosystem-specific
+reconciliation (e.g. a safety-critical `_meta` identity gate) — that belongs in your own
+private wrapper that calls this driver and adds steps on top.
+
+#### Bring your own scrub list
+
+The **framework is shared; the scrub list is yours.** `publish_prep.py` +
+`stage_to_public.sh` carry no private data — every rule about what to redact lives in
+**your own** `~/.claude/publish-config.json` (user-owned, gitignored, NEVER published).
+Start from `templates/publish-config.example.json` and add:
+- `forbidden_patterns` — strings that must NEVER appear publicly (your **home path** e.g.
+  `/home/<you>`, machine/dev paths, employer/customer/business names). The scrub gate
+  blocks the publish on any match — so list yours up front.
+- `scrubs` — per-file `find`→`replace` to rewrite specific private strings to placeholders.
+- `exclusions` — paths to drop entirely (runtime caches, private skills, local state).
+- `about` — your repo's GitHub description/topics (for `sync-metadata`).
+
+This is why the framework is publishable and the config is not: another person installs the
+same engine + gate, writes their OWN forbidden-pattern/scrub list, and gets the same
+leak-proof publish for their own tree.
+
 ### `validate-config` — sanity check the config
 
 Trigger phrases: "validate publish config", "check publish config".
