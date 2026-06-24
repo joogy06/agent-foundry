@@ -451,6 +451,31 @@ class Bootstrap:
         else:
             self.out.warn("user-preferences profiles/ not found — install step 1 first; memory dir created")
 
+    # ----- step 6c ----------------------------------------------------------
+
+    def step_6c_place_publish_config(self):
+        self.out.step("6c", "restore ~/.claude/publish-config.json (private publish scrub list, if present)")
+        dest = self.claude_home / "publish-config.json"
+        src = REPO_ROOT / "installer" / "publish-config.json"
+        if dest.exists() and not self.force:
+            self.out.skip("publish-config.json already present — leaving in place")
+            return
+        if not src.is_file():
+            # Public users won't have a private config bundled — they create their own.
+            self.out.skip("no private publish-config in installer/ — run the `publish-to-github` "
+                          "init-config (or copy templates/publish-config.example.json) to make your own")
+            return
+        if self.dry_run:
+            self.out.skip(f"would restore {dest} from {src} (mode 0600)")
+            return
+        self.claude_home.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        try:
+            os.chmod(dest, 0o600)
+        except OSError:
+            pass
+        self.out.ok(f"restored {dest} from {src} (mode 0600) — your scrub list is reproducible")
+
     # ----- step 7 -----------------------------------------------------------
 
     def step_7_claude_observe_bin(self):
@@ -741,6 +766,7 @@ def _run_bootstrap(args) -> int:
     boot.step_5_settings_hooks()
     boot.step_6_policy_limits()
     boot.step_6b_seed_memory()
+    boot.step_6c_place_publish_config()
     boot.step_7_claude_observe_bin()
     if not args.skip_codex:
         boot.step_8_codex_symlinks()
