@@ -2,14 +2,14 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.2.2 · **Last published:** 2026-06-24 · **183 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.3.0 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
 
 ## What's Inside
 
-- **183 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
+- **184 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
 - **5 agents** — specialized sub-agents for execution, review/evolution, evergreening, task routing, and knowledge management
 - **9 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
@@ -402,6 +402,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.3.0 — 2026-06-24
+- **New skill `vscode-agents`:** build & use AI agents and agentic flows in **VS Code** — agent mode, custom agents (`.agent.md` personas with their own tools/model/handoffs), MCP servers (`.vscode/mcp.json`), prompt files, instructions, hooks, and the Copilot cloud/coding agent. Includes **multi-model orchestration** (a main driver + second-opinion/verifier subagents each on a different model — the VS Code analogue of the Claude-CLI Claude+Codex+agy pattern, incl. the subagent cost-tier rule and BYOK for exact versions) and a security-first treatment (MCP trust prompts, the `mcp.json` trust-bypass, sandboxing, least-privilege tools, hooks as guardrails). Researched against official VS Code + GitHub docs (source-verified, content treated as untrusted).
 
 ### 1.2.2 — 2026-06-24
 - **Publish-config reproducibility + docs:** `bootstrap-environment.py` gains **step 6c** that restores your private `publish-config.json` (the scrub list) on a fresh machine if you version it under `installer/` — so a redeploy rebuilds the publish *setup*, not just the scripts (public users without one are pointed at `init-config`). The Quick-Start step table now reflects steps 6b (memory seed) and 6c.

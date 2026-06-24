@@ -1,0 +1,22 @@
+{
+  // .vscode/mcp.json — workspace MCP servers (shared via source control).
+  // Add servers through the UI (@mcp / "MCP: Add Server") so the trust prompt fires.
+  // Secrets: use ${input:...} or env files — NEVER hardcode tokens here.
+  "servers": {
+    "example-stdio": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@your-scope/your-mcp-server"],
+      "env": { "API_TOKEN": "${input:api-token}" }
+    },
+    "example-remote": {
+      "type": "http",
+      "url": "https://mcp.example.com"
+    }
+  },
+  // Optional sandbox (macOS/Linux) — confine writes + network; prefer this over unconfined trust.
+  "sandbox": {
+    "filesystem": { "allowWrite": ["${workspaceFolder}/.cache"] },
+    "network": { "allowedDomains": ["api.example.com"] }
+  }
+}
