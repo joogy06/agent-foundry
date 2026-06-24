@@ -16,7 +16,7 @@ unknown-component case (must return UNKNOWN, not PLANNED), and malformed
 table (must not crash).
 
 Run:
-    python -m pytest /home/adm01/.claude/skills/_meta/tests/test_audit_spawn_ledger_parser.py -v
+    python -m pytest /home/USER/.claude/skills/_meta/tests/test_audit_spawn_ledger_parser.py -v
 """
 from __future__ import annotations
 

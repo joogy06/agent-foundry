@@ -133,7 +133,7 @@ paths; `2` only for usage errors.
 - Location: `~/.claude/projects/<project-slug>/model-decisions.jsonl`. **Slug rule:**
   replace every char of the absolute project-root path not in `[A-Za-z0-9]` with `-`
   (`/path/to/project` -> `-path-to-project`;
-  `/home/adm01/.claude` -> `-home-adm01--claude`). No project root -> 
+  `/home/USER/.claude` -> `-home-USER--claude`). No project root -> 
   `~/.claude/state/model-decisions.jsonl`.
 - Per-line schema: `{at, task, tier_requested, tier, escalated, surface, agent, model,
   source, reason, policy_sha256}` where `policy_sha256` = sha256 of the sorted-keys

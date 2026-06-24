@@ -16,7 +16,7 @@ Also covers the shared `_parse_agent_text_as_json` helper and the Codex
 extractor which now delegates to the same helper.
 
 Run:
-    python -m pytest /home/adm01/.claude/skills/_meta/tests/test_audit_spawn_claude_parser.py -v
+    python -m pytest /home/USER/.claude/skills/_meta/tests/test_audit_spawn_claude_parser.py -v
 Or plain unittest:
     python -m unittest _meta.tests.test_audit_spawn_claude_parser -v
 """

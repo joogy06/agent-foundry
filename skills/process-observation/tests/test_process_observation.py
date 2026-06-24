@@ -351,7 +351,7 @@ def test_ts_obs_05_anonymization_redacts_pii(project_root):
         session_id="s-1234",
         observed_by="test",
         what_happened=(
-            "bob at /home/adm01/.claude/skills/foo violated "
+            "bob at /home/USER/.claude/skills/foo violated "
             "uuid abc123def4567890abcdef0123456789 "
             'with message "secret data" on task://43'
         ),
@@ -367,7 +367,7 @@ def test_ts_obs_05_anonymization_redacts_pii(project_root):
     assert anon["severity"] == "blocking"
     # what_shape: paths, quoted strings, hashes redacted; task id normalized
     shape = anon["what_shape"]
-    assert "/home/adm01" not in shape
+    assert "/home/USER" not in shape
     assert "abc123def4567890" not in shape
     assert '"secret data"' not in shape
     assert "<path>" in shape or "<hash>" in shape  # at least one redaction
