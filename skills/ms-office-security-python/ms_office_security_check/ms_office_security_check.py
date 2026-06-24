@@ -961,7 +961,7 @@ def render_sarif(report: Report) -> str:
                 "driver": {
                     "name": "ms-office-security-check",
                     "version": report.validator_version,
-                    "informationUri": "https://github.com/joogy06/agent-foundry",
+                    "informationUri": "https://github.com/your-gh-user/agent-foundry",
                     "rules": [
                         {
                             "id": rid,

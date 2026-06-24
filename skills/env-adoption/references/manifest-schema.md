@@ -84,7 +84,7 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
   "bridge_mode": "local",
   "agy_responding": true,
   "gh_authenticated": true,
-  "gh_user": "joogy06",
+  "gh_user": "your-gh-user",
   "codex_plugin_ready": true,
   "claude_version_live": "2.1.172",
   "capabilities": {

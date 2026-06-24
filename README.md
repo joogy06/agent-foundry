@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.3.1 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.3.2 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
@@ -402,6 +402,9 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.3.2 — 2026-06-24
+- **Privacy scrub:** the maintainer's GitHub handle is genericized to `your-gh-user` in published examples (a schema sample, a SARIF `informationUri`, clone/issue URLs) and added as a scrubber `forbidden_pattern`, so the publish gate blocks it going forward. (Emails + web addresses audited — all were already placeholders/examples.)
 
 ### 1.3.1 — 2026-06-24
 - **Fix:** trimmed the `legacy-code-intel` (1038→1000) and `mainframe-lineage-parsers` (1227→990) descriptions back under the 1024-char SKILL.md limit — they had grown past it with the Pick/Java/Control-M trigger additions and were being skipped at load. All capabilities/triggers preserved.
