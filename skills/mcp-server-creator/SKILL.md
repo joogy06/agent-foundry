@@ -26,3 +26,9 @@ Detailed code examples, patterns, and configuration are in the reference files b
 | Using SSE transport when stdio would work | SSE adds HTTP complexity, CORS issues, and authentication overhead for local-only tools | Use stdio for CLI-launched servers (simplest, most reliable); SSE/streamable HTTP only for remote/web deployments |
 | Not implementing resource templates for dynamic content | Every piece of dynamic content requires a dedicated tool call; inefficient for LLMs that need to browse/discover | Use resource templates with URI patterns for collections; tools for actions, resources for data access |
 | Returning massive payloads from tools | LLMs have context limits; a 100KB tool response wastes tokens and may be truncated | Paginate large results; return summaries with drill-down options; stream large outputs when possible |
+
+## See also
+
+- `vscode-agents` — the **consumer** side: how an MCP server you build here is added and used by a VS Code agent (`.vscode/mcp.json`, the trust/security model, sandboxing).
+- `python-enterprise-connectors` / `python-auth-security` — backing services + auth for tools your server exposes.
+- `llm-security` / `threat-modeling` — hardening a server whose tools touch untrusted input or secrets.

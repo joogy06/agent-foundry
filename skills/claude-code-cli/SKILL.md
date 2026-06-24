@@ -264,6 +264,7 @@ Run `scripts/verify-claude-install.sh` after any `claude update`. The script:
 - `references/upgrades-since-jan-2026.md` — delta vs the superpowers snapshot
 - `antigravity-cli` — Antigravity CLI (agy) counterpart
 - `gh-copilot-cli` — GitHub Copilot CLI counterpart
+- `vscode-agents` — the VS Code (GUI) counterpart: agent mode, custom `.agent.md` agents, multi-model driver+consultant flows, MCP, Copilot coding agent
 - `gcp-workstations` — running this whole stack on a GCP Workstation
 - `research-for-skills/cross-tool-portability/` — rules for skills that span multiple CLIs
 - `codex-orchestration` — calling Codex CLI from Claude Code
