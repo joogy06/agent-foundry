@@ -629,10 +629,10 @@ With severely limited context windows:
 
 ## Long-Context Second-Model Delegation
 
-For files that are very large but still need holistic analysis (not just grep-targeted), delegate to a second model with a large context window via the Antigravity CLI (stdin closed — mandatory, see `antigravity-cli` skill):
+For files that are very large but still need holistic analysis (not just grep-targeted), delegate to a second model with a large context window via the Antigravity CLI (stdin closed AND `--sandbox` — both mandatory for these read-only analysis calls, see `antigravity-cli` skill):
 
 ```bash
-timeout 600 agy -p "Analyze this file for <patterns>: $(cat /path/to/chunk)" < /dev/null
+timeout 600 agy --sandbox -p "Analyze this file for <patterns>: $(cat /path/to/chunk)" < /dev/null
 ```
 
 Use it to:

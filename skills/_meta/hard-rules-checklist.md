@@ -35,10 +35,12 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Autonomy + Forge are always-on (no prompt)** — autonomy is globally configured in `~/.claude/settings.json` (acceptEdits + Bash(*) + git push ask). Forge routing is always-on per CLAUDE.md. Do NOT ask the user about autonomy or forge mode. Just route tasks through forge automatically per the Routing by Complexity rules in CLAUDE.md. The only session-start questions should be about the user's TASK, not about mode configuration.
 - [ ] **CLAUDE.md hard-rule scan — automated** — `~/.claude/skills/_meta/scan_hard_rules.py` scans global + project-local CLAUDE.md for HARD-RULE directives and diffs against this checklist. Runs automatically via **SessionStart hook** (injects `additionalContext` at session start) and also as **forge Step 1** (catches subagent / post-`cd` invocations). If the scan surfaces potentially missing rules, surface the diff to the user with a 1-line summary and ask: "add to checklist / wire into a skill / apply ad-hoc / ignore?" — do NOT silently skip. Manual fallback: `python3 ~/.claude/skills/_meta/scan_hard_rules.py` (plain mode).
 - [ ] **Superpowers version tracker** — on session start, compare latest plugin version to `~/.claude/skills/forge/superpowers-tracked.md`. If drift, alert the user and offer a review.
+- [ ] **User-preference capture is EXPLICIT only** — record a durable preference (`prefs.py set/note`) ONLY when the user states one ("remember I prefer X", "always do Y", "from now on…"). NEVER auto-infer a preference from a single choice; you MAY ask "want me to remember that?" and record on yes. (Source: global CLAUDE.md, user-preferences skill.)
+- [ ] **Apply preferences before domain work** — before writing/refactoring code, building a deck, drafting an email, or choosing tone, run `prefs.py load <domain>` and honor recorded preferences; the live request always overrides a stored preference. (Source: global CLAUDE.md, user-preferences skill.)
 
 ### DESIGN PHASE (forge)
 
-- [ ] **Codex + Antigravity (agy) in parallel for MEDIUM/COMPLEX** — ALWAYS run Codex AND agy alongside Claude agents. Three models, not one. If either is unavailable, note the gap explicitly. Check agy availability via `command -v agy` (then a `agy -p "ping"` smoke call); agy returns plain text on stdout, not structured fields.
+- [ ] **Codex + Antigravity (agy) in parallel for MEDIUM/COMPLEX** — ALWAYS run Codex AND agy alongside Claude agents. Three models, not one. If either is unavailable, note the gap explicitly. Check agy availability via `command -v agy` (then a `agy --sandbox -p "ping"` smoke call); agy returns plain text on stdout, not structured fields. `--sandbox` is MANDATORY on every consultancy/read-only agy call (#157 — un-sandboxed agy does the work instead of advising).
 - [ ] **Never code before design approval** — no implementation until design is presented and user approves.
 - [ ] **Performance expectations** — if task touches endpoints/queries/UI, ask about concurrency, latency, hot-path.
 - [ ] **Gap detection** — check if needed skills exist before design exploration. Follow gap-detection.md protocol.
@@ -123,7 +125,7 @@ This file exists because AI models lose track of rules in long sessions. It is a
 - [ ] **Session-scoped Codex availability** — read `tools.codex.installed` from inventory. Don't re-probe every invocation.
 - [ ] **agy for COMPLEX tasks** — MEDIUM = Codex only. COMPLEX = Codex + agy. Don't use agy for simple tasks (quota waste).
 - [ ] **agy availability check** — read `tools.agy.installed` (or the equivalent capability flag) from session state. Fallback to Codex-only if false.
-- [ ] **agy large-context analysis** — use agy for large file analysis, codebase-wide reviews, and research where context size matters. Codex for focused code review and challenger work. agy is invoked headless via `agy -p "..."` (plain-text stdout; no `-m`/model flag, no env-key prefix — see the `antigravity-cli` skill).
+- [ ] **agy large-context analysis** — use agy for large file analysis, codebase-wide reviews, and research where context size matters. Codex for focused code review and challenger work. agy is invoked headless via `agy --sandbox -p "..."` (plain-text stdout; no `-m`/model flag, no env-key prefix; `--sandbox` mandatory for advise-only calls per #157 — see the `antigravity-cli` skill).
 
 ---
 

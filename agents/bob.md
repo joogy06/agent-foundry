@@ -655,7 +655,7 @@ Or for deeper analysis of specific concerns:
 For large codebase analysis, delegate to the Antigravity CLI (stdin closed — mandatory, #135; `--sandbox` for read-only analysis, #157):
 
 ```bash
-timeout 600 agy -p --sandbox "Review the implementation at [paths] for architectural issues, N+1 queries, and missing error handling" < /dev/null
+timeout 600 agy --sandbox -p "Review the implementation at [paths] for architectural issues, N+1 queries, and missing error handling" < /dev/null
 ```
 
 Check Codex results with `/codex:status` and `/codex:result`. Include Codex/agy findings in the verification artifacts section of the report. This is optional — skip for simple/trivial changes.

@@ -40,10 +40,13 @@ these rules. Where this file rules, it wins (Slice B is the family arbiter).
 > strictly** — a `workflow()` call from inside a child workflow is REFUSED; so
 > `ratify-design` (which wraps `cross-cli-deliberation`) MUST always be invoked
 > TOP-LEVEL via `Workflow({name})`, never via `workflow()` from another script.
-> **External CLIs from a stage:** `agy -p --sandbox` HANGS inside workflow
-> stages (treat agy as UNREACHABLE from stages — use pre-launched inline
-> transcripts via args, §4.4); `codex exec` UNTESTED — attempt with the full
-> guard set + the same inline fallback. The two TEMPORARY probe files
+> **External CLIs from a stage:** the historical stage hang was observed with
+> `agy -p --sandbox` — since found (2026-07-02) to be a flag-order bug (`-p`
+> swallows `--sandbox` as the prompt; sandbox off, real prompt discarded, agy
+> free-runs/recurses). The corrected form `agy --sandbox -p` is UNVERIFIED from
+> workflow stages — keep treating agy as UNREACHABLE from stages until re-probed
+> (use pre-launched inline transcripts via args, §4.4); `codex exec` UNTESTED —
+> attempt with the full guard set + the same inline fallback. The two TEMPORARY probe files
 > (`wp2-probe.js`, `wp2-child.js`) were forge's experiment artifacts — they are
 > NOT registered here and may be deleted now that the WP-2 results file exists.
 

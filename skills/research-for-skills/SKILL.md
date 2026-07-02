@@ -72,7 +72,7 @@ Optional: dispatch Codex `docs_verifier` sidecar for API/version claims:
 
 **Antigravity (agy) for freshness checks:** Use a direct `agy -p "..."` Bash call to verify latest versions, deprecation status, and current best practices. Particularly useful for fast-moving domains where cached knowledge may be stale. `agy` returns plain text on stdout (parse text, not JSON fields). Complements Codex verification — run both in parallel when accuracy is critical. See the `antigravity-cli` skill for the invocation pattern.
 ```bash
-agy -p "Verify current as of 2026: latest stable version, deprecation status, and current best practices for [DOMAIN/LIBRARY]. List sources." < /dev/null
+agy --sandbox -p "Verify current as of 2026: latest stable version, deprecation status, and current best practices for [DOMAIN/LIBRARY]. List sources." < /dev/null
 ```
 ```bash
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)

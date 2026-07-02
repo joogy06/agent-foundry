@@ -106,10 +106,13 @@ experimental env gate observed live is
 harness.native_teams` tests, + the version floor). Nesting is ONE level,
 strictly (a `workflow()` call from inside a child workflow is REFUSED — so
 `ratify-design` must always be invoked TOP-LEVEL). **Stage-Bash → external
-CLIs:** `agy -p --sandbox` HANGS inside workflow stages even with `< /dev/null`
-(treat agy as UNREACHABLE from stages — use pre-launched inline transcripts
-passed via args, design §4.4); `codex exec` from a stage is UNTESTED — attempt
-with the full guard set but implement the same inline fallback.
+CLIs:** the historical stage hang was observed with `agy -p --sandbox` even with
+`< /dev/null` — since found (2026-07-02) to be a flag-order bug (`-p` swallows
+`--sandbox` as the prompt; sandbox off, real prompt discarded, agy free-runs/
+recurses). The corrected `agy --sandbox -p` is UNVERIFIED from workflow stages —
+keep treating agy as UNREACHABLE from stages until re-probed (use pre-launched
+inline transcripts passed via args, design §4.4); `codex exec` from a stage is
+UNTESTED — attempt with the full guard set but implement the same inline fallback.
 
 <!-- FRESHNESS:v1
 anchors:
