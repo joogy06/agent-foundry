@@ -152,7 +152,8 @@ CRITICAL:
 ```
 
 Spawn all teams simultaneously in one message (Claude via `Agent`, Codex via `codex exec`, Antigravity
-via `timeout 600 agy -p "..." < /dev/null` as a background Bash task).
+via `timeout 600 agy --sandbox -p "..." < /dev/null` as a background Bash task — `--sandbox` is
+mandatory for these advise-only calls, per the `antigravity-cli` SANDBOX RULE).
 
 ### Round 2: Cross-fire
 
@@ -260,10 +261,11 @@ timeout 600 codex exec --ephemeral --skip-git-repo-check -s read-only \
 
 **Antigravity (agy) teams** — use the agy CLI for large-context angles (`blue-ocean`, `trend-first`
 with deep event history). Output is plain text on stdout — the orchestrator parses it (STDIN RULE:
-stdin MUST be closed or agy hangs in background shells, #135):
+stdin MUST be closed or agy hangs in background shells, #135; SANDBOX RULE: `--sandbox` on every
+advise-only call or agy may write files/commit instead of answering, #157):
 
 ```bash
-timeout 600 agy -p "You are the blue-ocean team. Question: ... Data: see $CONTEXT_FILE. Produce $N outputs per the format in $OUTPUT_SPEC." < /dev/null > "$WORK/team-blue-ocean-round1.md"
+timeout 600 agy --sandbox -p "You are the blue-ocean team. Question: ... Data: see $CONTEXT_FILE. Produce $N outputs per the format in $OUTPUT_SPEC. Advisory only — do not modify any files; answer on stdout." < /dev/null > "$WORK/team-blue-ocean-round1.md"
 ```
 
 (The old gemini MCP route is gone; the gemini CLI retired 2026-06-18.)

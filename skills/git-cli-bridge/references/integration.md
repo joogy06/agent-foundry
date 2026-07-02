@@ -3,7 +3,8 @@
 > **STALE NOTE (2026-06-10):** This reference predates the gemini→agy migration. Examples below
 > that call `mcp__gemini-cli__ask-gemini`, probe `mcp__gemini-cli__ping()`, or pass
 > `--tool gemini` are the historical patch record — the live equivalents are
-> `timeout 600 agy -p "..." < /dev/null`, `tools.agy.installed` from inventory.json, and
+> `timeout 600 agy --sandbox -p "..." < /dev/null` (`--sandbox` mandatory for advise-only calls,
+> #157), `tools.agy.installed` from inventory.json, and
 > `--tool agy` (the gemini CLI retired 2026-06-18; `bridge-request` accepts only `agy|copilot`).
 
 How the bridge plugs into `codex-orchestration` and `forge`. Ports Section 5 of the design doc. Bob / alf / pa are NOT patched (integration scope C per user ruling Q4).

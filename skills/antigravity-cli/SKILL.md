@@ -34,9 +34,32 @@ orchestration.
 ## The headless orchestration pattern (primary use)
 
 ```bash
-timeout 600 agy -p "<full self-contained prompt>" < /dev/null
+timeout 600 agy --sandbox -p "<full self-contained prompt>" < /dev/null
 ```
 
+- **FLAG ORDER RULE — every flag BEFORE `-p`** (root-caused 2026-07-02). `-p` is a Go *string*
+  flag: it consumes the NEXT token as the prompt, even if that token starts with `-`. So
+  `agy -p --sandbox "X"` silently runs with prompt = literal `--sandbox`, sandbox OFF, and
+  "X" discarded — agy then improvises from its implicit memory (observed: authored AND executed
+  a repo-editing script across two such malformed calls; also the cause of the 2026-07-01
+  smart-analyst incident where an "analyst" edited two tracked test files after its brief
+  never reached it). It can also fork-bomb: the inner agent re-tests the same broken command
+  recursively until timeout. Always `agy --sandbox --add-dir D --print-timeout 15m -p "…"` —
+  `-p "<prompt>"` LAST.
+- **SANDBOX RULE — `--sandbox` is MANDATORY for consultancy/read-only delegation, but know its
+  scope** (#157, S052 rogue auto-commit incident; re-verified 2026-07-02 on 1.0.15). agy has
+  write/shell/git tools ON by default, and headless `-p` auto-approves them without
+  `--dangerously-skip-permissions` — a plain `agy -p "create a file …"` probe wrote the file.
+  `--sandbox` enables bubblewrap *terminal* restrictions: it constrains shell/git commands
+  (the S052 rogue-commit class) but does NOT gate agy's native file-write tool — a correctly
+  sandboxed call still edited a file in its `--add-dir` workspace on request (verified
+  2026-07-02). Therefore: (1) `--sandbox` on every advise-only call; (2) do NOT `--add-dir` a
+  writable live repo for consultancy — pipe content (`cat file | agy --sandbox -p "…"`) or
+  point at a read-only copy; (3) open consultancy prompts with "Advisory only — do not modify
+  any files; answer on stdout" (`~/.gemini/agy.md` also enforces an advise-only default at the
+  directive layer); (4) tripwire: after any call that exposed a repo, run `git status --short`
+  and revert anything agy touched. Omit `--sandbox` ONLY when the task explicitly requires
+  writes, and say so in the prompt.
 - **STDIN RULE — `< /dev/null` is MANDATORY for headless calls** (root-caused 2026-06-05, task #135).
   agy reads non-TTY stdin until EOF **before** running the prompt; in background/harness/cron
   shells stdin is an open stream that never EOFs, so agy blocks forever with 0 bytes of output —
@@ -73,7 +96,7 @@ timeout 600 agy -p "<full self-contained prompt>" < /dev/null
 | `--conversation <id>` | Resume a specific conversation by ID |
 | `--add-dir <path>` | Add a directory to the workspace (repeatable) |
 | `--model <name>` | Model for the current CLI session (added in 1.0.5; no short `-m` alias). **Convention: omit it** — let agy use the account default. List choices with `agy models`. |
-| `--sandbox` | Run with terminal restrictions enabled |
+| `--sandbox` | Run with terminal restrictions enabled (bubblewrap on Linux). MANDATORY for consultancy/read-only calls, and MUST come BEFORE `-p` (see FLAG ORDER + SANDBOX RULEs). Scope: constrains shell/git commands only — does NOT gate native file writes (verified 2026-07-02, 1.0.15) |
 | `--dangerously-skip-permissions` | Auto-approve all tool permission requests (fully-headless only) |
 | `--log-file <path>` | Override the CLI log file path |
 
@@ -126,9 +149,13 @@ sentinels and reading them back via `agy -p` from a clean working directory:
 | `~/agy.md` (home root) | — | ❌ NO — not a context path |
 | `~/.gemini/antigravity-cli/brain/`, `implicit/*.pb` | agy internal memory | binary protobuf — NOT user-editable |
 
-- **The host directive is `~/.gemini/agy.md`** (created 2026-06-03): establishes agy's
-  second-opinion/challenger role, plain-text output, anti-sycophancy, stay-on-prompt, and the
-  `served_by` probe convention. Every `agy -p` call inherits it.
+- **The host directive is `~/.gemini/agy.md`** (created 2026-06-03; hardened 2026-07-02): establishes
+  agy's second-opinion/challenger role, an ADVISE-ONLY default (no file writes / state-changing
+  commands / git commits unless the prompt explicitly grants them), plain-text output,
+  anti-sycophancy, stay-on-prompt, and the `served_by` probe convention. Every `agy -p` call
+  inherits it. It is a behavioural layer only — keep the `--sandbox` flag AND the advise-only
+  prompt line on every read-only call: the directive can be ignored, and `--sandbox` covers
+  shell/git but not native file writes, so the layers only work together.
 - **Identity caveat:** agy keeps its baked-in "pair-programmer" self-concept — asked "what is
   your role," it recites that, NOT the agy.md text. But it *follows specific instructions* placed
   in agy.md (proven: an exact-string instruction round-tripped verbatim). So put behavioural
@@ -180,6 +207,6 @@ infer it from `agy`. (Deep IDE semantic analysis is a deferred v1.1 item.)
 anchors:
   - kind: tool_version
     subject: agy
-    verified_against: "1.0.7"
-    verified_on: "2026-06-11"
+    verified_against: "1.0.15"
+    verified_on: "2026-07-02"
 -->

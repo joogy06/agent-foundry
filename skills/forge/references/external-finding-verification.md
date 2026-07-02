@@ -30,7 +30,7 @@ report. Applies to ALL findings produced by external models, regardless of
 which model produced them:
 
 - Codex (`/codex:review`, `/codex:adversarial-review`, `codex exec` direct)
-- agy (`agy -p "..."` direct Bash call, bridge-mode agy analyst)
+- agy (`agy --sandbox -p "..."` direct Bash call, bridge-mode agy analyst)
 - Any future model added to the forge multi-model pipeline
 
 It does NOT apply to Claude-internal findings — those run in the same

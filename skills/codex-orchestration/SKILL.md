@@ -60,7 +60,7 @@ The **Antigravity CLI** (`agy`) is this host's second-opinion / challenger / res
 **Headless single-prompt mode** is the direct analogue of the old `gemini -p`:
 
 ```bash
-timeout 600 agy -p --sandbox "<prompt>" < /dev/null
+timeout 600 agy --sandbox -p "<prompt>" < /dev/null
 ```
 
 - **STDIN RULE (mandatory, #135):** `< /dev/null` on every headless agy call — agy reads
@@ -68,13 +68,22 @@ timeout 600 agy -p --sandbox "<prompt>" < /dev/null
   hang at 0 bytes (`--print-timeout` does not protect; it guards only the print phase). Piped
   input (`cat file | agy -p`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same
   behavior class as `codex exec`'s stdin-block.
+- **FLAG ORDER RULE (mandatory, root-caused 2026-07-02):** every flag BEFORE `-p`, prompt LAST.
+  `-p` is a string flag and consumes the next token — `agy -p --sandbox "X"` runs UN-sandboxed
+  with the literal prompt `--sandbox` and discards "X", after which agy improvises from its
+  implicit memory (the "does work instead of consulting" failure mode) and can fork-bomb
+  re-testing the broken command. Correct: `agy --sandbox [--add-dir D] [--print-timeout 15m] -p "…"`.
 - **SANDBOX RULE (mandatory for analyst/read-only delegation, #157):** `--sandbox` on every agy
   call that should only READ — agy has write/shell/git tools by default, and an un-sandboxed
-  "analyst" can author and git-commit code (S052 rogue auto-commit incident). Omit `--sandbox`
+  "analyst" can author and git-commit code (S052 rogue auto-commit incident). Scope caveat
+  (verified 2026-07-02, 1.0.15): `--sandbox` constrains shell/git commands only, NOT agy's
+  native file writes — do not `--add-dir` a writable live repo for consultancy (pipe content
+  instead), open the prompt with "Advisory only — do not modify any files; answer on stdout",
+  and run `git status --short` afterwards if a repo was exposed. Omit `--sandbox`
   only when the task explicitly requires writes, and say so in the prompt.
 - Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself remains an available fallback until Google retires it on 2026-06-18, but route new delegation through agy.)
-- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current 1.0.7) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
-- For long-running prompts raise the wait timeout: `agy -p --print-timeout 15m "<prompt>" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).
+- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current 1.0.15) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
+- For long-running prompts raise the wait timeout: `agy --print-timeout 15m -p "<prompt>" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).
 - Append a `served_by` probe line to the prompt if you need provenance — self-reported model identity is unreliable, so capture it at the call layer.
 
 **Use cases** (all via a single `agy -p` call): research, analysis, code review, large-file analysis, and brainstorming (frame the methodology — SCAMPER, Design Thinking, Divergent, Convergent, Lateral — directly inside the prompt text, since there is no dedicated brainstorm tool).
@@ -83,16 +92,18 @@ timeout 600 agy -p --sandbox "<prompt>" < /dev/null
 
 ```bash
 # Basic headless mode (plain-text stdout — no JSON output mode)
-agy -p --sandbox "Review this code for security issues" < /dev/null
+agy --sandbox -p "Review this code for security issues" < /dev/null
 
 # With piped context
-cat src/main.py | agy -p --sandbox "Find N+1 query problems"
+cat src/main.py | agy --sandbox -p "Find N+1 query problems"
 
 # Reference a workspace directory instead of piping (repeatable)
-agy -p --sandbox --add-dir "$PROJECT_DIR" "Review for security issues in this project" < /dev/null
+# CAUTION: --sandbox does NOT gate native file writes into --add-dir trees — prefer piping;
+# if you must --add-dir a writable repo, run `git status --short` afterwards and revert strays.
+agy --sandbox --add-dir "$PROJECT_DIR" -p "Advisory only — do not modify any files; answer on stdout. Review for security issues in this project" < /dev/null
 
 # Structured brainstorming — frame the methodology inside the prompt
-agy -p --sandbox "Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately." < /dev/null
+agy --sandbox -p "Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately." < /dev/null
 
 # Parallel with Codex (triple-model validation)
 CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
@@ -100,7 +111,7 @@ AGY_WORK=$(mktemp -d /tmp/agy-XXXXXXXXXX)
 
 timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/review.md" "Review for security issues" < /dev/null &
-timeout 600 agy -p --sandbox --add-dir "$PROJECT_DIR" "Review for security issues in this project" \
+timeout 600 agy --sandbox --add-dir "$PROJECT_DIR" -p "Review for security issues in this project" \
   > "$AGY_WORK/review.txt" < /dev/null &
 wait
 ```
@@ -146,7 +157,7 @@ if [ "$MODE" = "bridge" ]; then
     "$PROMPT_BODY"
 else
   # Local path — agy returns plain text on stdout
-  agy -p --sandbox "$PROMPT_BODY" < /dev/null
+  agy --sandbox -p "$PROMPT_BODY" < /dev/null
 fi
 ```
 
@@ -191,7 +202,7 @@ For COMPLEX tasks, run all three models for maximum coverage:
 | Codex Plugin | v1.0.4 (`@openai/codex-plugin-cc`) |
 | Antigravity CLI | v1.0.7 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
 | Default Codex model | GPT-5.5 (migrated from GPT-5.4) |
-| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5+ (current 1.0.7; no short `-m`), but omit `--model` unless explicitly needed |
+| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5+ (current 1.0.15; no short `-m`), but omit `--model` unless explicitly needed |
 | Reasoning effort | xhigh |
 | Multi-agent | enabled |
 | Claude Code model | Claude Opus 4.8 (1M context) |

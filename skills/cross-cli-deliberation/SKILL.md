@@ -141,7 +141,9 @@ Full test cases + scoring: `references/sycophancy-tests.md`.
 ```bash
 # Canonical pattern for Antigravity (agy) consultant
 # agy returns plain text on stdout (no model flag, no env prefix — it authenticates itself).
-agy -p "$(cat ballot-prompt.md)" > /tmp/agy-ballot.md < /dev/null
+# --sandbox is MANDATORY: consultants advise only; un-sandboxed agy has live write/git tools
+# and may act on the ballot instead of voting (antigravity-cli SANDBOX RULE, #157).
+agy --sandbox -p "$(cat ballot-prompt.md)" > /tmp/agy-ballot.md < /dev/null
 
 # Canonical pattern for Codex consultant
 codex exec "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md

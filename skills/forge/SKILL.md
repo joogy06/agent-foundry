@@ -12,7 +12,7 @@ Turn ideas into fully formed designs through collaborative dialogue, then orches
 Every design and implementation decision must account for real human behaviour — how end users actually see, navigate, and interact with the product.
 
 <HARD-RULE>
-**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.5) AND Antigravity CLI (`agy`, via `agy -p --sandbox`) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/agy unavailable, fall back gracefully but note each gap explicitly.
+**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (GPT-5.5) AND Antigravity CLI (`agy`, via `agy --sandbox -p`) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If Codex/agy unavailable, fall back gracefully but note each gap explicitly.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -82,7 +82,7 @@ If `came_from_founder` is absent or false, proceed with normal forge flow. Forge
 4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
    - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
-   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy -p --sandbox "..." < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy blocks on stdin in non-TTY shells and hangs to timeout, #135).
+   - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy --sandbox -p "..." < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy blocks on stdin in non-TTY shells and hangs to timeout, #135).
    - **capabilities.bridge_fallback = true**: bridge mode active — route `agy`/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
    - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
@@ -233,7 +233,7 @@ The lead handles all user interaction:
 | **UX/Usability Agent** | 1 (always for UI-facing work) | Evaluates every approach from end-user perspective |
 | **Claude Challenger** | 1 (always) | Questions every proposal, finds flaws, plays devil's advocate |
 | **Codex Challenger** | 1 (always, if available) | Independent GPT-5.4 challenger — different model catches different flaws |
-| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy -p --sandbox "..." < /dev/null` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |
+| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `agy --sandbox -p "..." < /dev/null` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |
 | **Codex Second Opinion** | 1 (always for creative/design, if available) | Parallel exploration via Codex for independent perspective |
 
 #### Three Phases
@@ -404,17 +404,24 @@ line to the prompt and capture it — self-reported model identity is unreliable
 `< /dev/null` on every call. agy reads non-TTY stdin until EOF *before* the model call; in
 background/harness shells stdin never EOFs, so agy hangs forever producing 0 bytes and
 `--print-timeout` never fires (it only guards the print phase). Also wrap in a shell `timeout`.
+
 Prompt size is NOT a factor (verified: 30-char prompt hung; 11KB prompt with `< /dev/null`
 answered in 9s).
 
 **SANDBOX RULE (S052 rogue-commit incident, #157):** the agy analyst is a READ-ONLY role — ALWAYS
 invoke it with `--sandbox`. agy has write/shell/git tools by default; in S052 an un-sandboxed
 "analyst" auto-authored and git-committed broken code mid-design (HARD-GATE violation). Codex is
-unaffected (it already runs `-s read-only`).
+unaffected (it already runs `-s read-only`). FLAG ORDER (root-caused 2026-07-02): `--sandbox` and
+every other flag BEFORE `-p`, prompt LAST — `agy -p --sandbox "X"` silently runs UN-sandboxed
+with the literal prompt `--sandbox` and discards "X" (agy then improvises from implicit memory —
+the "does work instead of consulting" failure mode). Scope caveat (verified 2026-07-02, 1.0.15):
+`--sandbox` constrains shell/git only, NOT native file writes — prefer piping content over
+`--add-dir` on a writable repo, open the prompt with "Advisory only — do not modify any files;
+answer on stdout", and run `git status --short` afterwards if a repo was exposed.
 
 ```bash
 # Antigravity (agy) Analyst — independent third-model analysis
-timeout 600 agy -p --sandbox "You are an analyst for [TASK].
+timeout 600 agy --sandbox -p "You are an analyst for [TASK].
 Project context: [KEY FILES, ARCHITECTURE, CONSTRAINTS]
 Analyze: 1. Architecture trade-offs  2. Scalability limits  3. Security surface
 4. What approaches work best at scale for this pattern?
@@ -422,11 +429,14 @@ Be specific and cite real-world precedents where possible.
 At the very end print one line: SERVED_BY=<model-id-you-are-running-as>." < /dev/null
 
 # For codebase context, add the relevant paths to the workspace with --add-dir:
-timeout 600 agy --sandbox --add-dir [PATHS] -p "Review the codebase at [PATHS] for [TASK].
+# CAUTION: --sandbox does NOT gate native file writes into --add-dir trees — prefer piping;
+# if you must --add-dir a writable repo, run `git status --short` afterwards and revert strays.
+timeout 600 agy --sandbox --add-dir [PATHS] -p "Advisory only — do not modify any files; answer on stdout.
+Review the codebase at [PATHS] for [TASK].
 Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries." < /dev/null
 
 # For multi-methodology brainstorming (frame the methodology in the prompt itself):
-timeout 600 agy -p --sandbox "Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —
+timeout 600 agy --sandbox -p "Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —
 work through White (facts), Red (intuition), Black (caution), Yellow (benefits),
 Green (alternatives), and Blue (process) in turn, then summarise." < /dev/null
 ```
@@ -956,7 +966,7 @@ For UI-facing work, apply these when evaluating designs:
 - **Codex and agy run in parallel, not after** — launch all external model tasks alongside Claude agents, never sequentially
 - **Escalate to Codex when stuck** — if Claude agents fail 2+ times, delegate to Codex for a fresh perspective before asking the user
 - **Flag model disagreements** — when Claude, Codex, and agy disagree, present all perspectives to the user
-- **agy as an independent third model** — use `agy -p` for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming
+- **agy as an independent third model** — use `agy --sandbox -p` for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)
 - **Forge owns design, bob owns execution** — after design approval, spawn bob and let him handle everything
 - **Teammates don't inherit context** — include ALL relevant info in spawn prompts
 - **Prefer Codex plugin commands** (`/codex:adversarial-review`, `/codex:rescue`, `/codex:review`) over raw `codex exec` — they provide structured output, job tracking, and resume capability

@@ -168,15 +168,45 @@ On session start, check if the superpowers plugin has been updated:
 - When stuck after 2+ attempts: escalate to Codex before asking the user
 - See `codex-orchestration` skill for delegation patterns
 
-### Gemini CLI — host-specific directive
+### Antigravity CLI (`agy`) — host-specific directive
 
-When invoking Gemini CLI on this host, ALWAYS use:
+The Antigravity CLI (`agy`, `~/.local/bin/agy`) is the **PRIMARY** delegate for ALL
+second-opinion / challenger / research work on this host (the gemini CLI retired 2026-06-18;
+`agy` is the sole delegate). When delegating a headless prompt on this host, use:
 
 ```bash
-GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini -m gemini-3.1-pro-preview -p "..."
+timeout 600 agy --sandbox -p "..." < /dev/null
 ```
 
-- Empty env prefix: forces OAuth subscription path (otherwise inherits `GOOGLE_CLOUD_PROJECT=thecpuwebwoov01` and 403s).
-- `-m gemini-3.1-pro-preview`: top-tier model for this OAuth subscription. Lower tiers (2.5-pro, flash-line) are advisory fallbacks; verdict quality varies by tier — do NOT silently accept downgrades.
-- Capture `served_by` at the call layer (e.g., append a probe line to the prompt) — model self-ID is unreliable.
-- Skills using `gemini -p` headlessly should follow this exact pattern. See `gemini-cli` skill for full operational notes.
+- **STDIN RULE (mandatory):** headless `agy` MUST have stdin closed (`< /dev/null`) or piped —
+  agy reads non-TTY stdin until EOF before the model call; in background/harness shells stdin
+  never EOFs → agy hangs forever at 0 bytes, and `--print-timeout` does NOT fire (it only guards
+  the print phase). Always pair with a shell `timeout`. Root-caused 2026-06-05 (#135); prompt
+  size is irrelevant.
+- **FLAG ORDER RULE (mandatory):** every flag BEFORE `-p`, prompt LAST — `-p` is a string flag
+  and consumes the next token, so `agy -p --sandbox "X"` runs UN-sandboxed with the literal
+  prompt `--sandbox` and discards "X"; agy then improvises from its implicit memory (root
+  cause of the 2026-07-01/02 rogue-edit incidents and of "agy does work instead of
+  consulting"). Correct: `agy --sandbox [--add-dir D] [--print-timeout 15m] -p "…"`.
+- **SANDBOX RULE (mandatory for consultancy/read-only delegation):** `--sandbox` on every agy
+  call that should only ADVISE — agy has write/shell/git tools ON by default and headless `-p`
+  auto-approves them (verified 2026-07-02: a plain `agy -p` created a file with no permission
+  flag; an un-sandboxed "analyst" has authored and git-committed code — S052 incident, #157).
+  Scope caveat: `--sandbox` constrains shell/git commands only, NOT agy's native file writes
+  (verified 2026-07-02 on 1.0.15) — so never `--add-dir` a writable live repo on a consultancy
+  call (pipe content instead), and after any call that exposed a repo run `git status --short`
+  as a tripwire. Omit `--sandbox` ONLY when the task explicitly requires writes, and say so in
+  the prompt. Belt-and-braces: open consultancy prompts with "Advisory only — do not modify
+  any files; answer on stdout." (`~/.gemini/agy.md` also enforces an advise-only default.)
+- **Convention: no model flag.** As of agy ≥1.0.5 a `--model` flag exists (and an `agy models`
+  subcommand lists choices), but our convention is to omit it and let `agy` use the
+  Antigravity-account configured model — do NOT add `--model` unless a call explicitly needs a
+  specific model. There is no short `-m` alias.
+- **No env prefix.** `agy` authenticates via the Antigravity account (`~/.antigravity/`); the
+  old `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` OAuth-forcing prefix does NOT apply.
+- **Headless prompt:** `-p` / `--print` / `--prompt`. Output is plain text on stdout.
+  `--print-timeout` defaults to `5m`; raise it for long deliberations.
+- Capture `served_by` at the call layer where verdict provenance matters (append a probe
+  line to the prompt) — self-reported model identity is unreliable.
+- Skills delegating headlessly should call `agy --sandbox -p` and follow this pattern. See the
+  `antigravity-cli` skill for full operational notes.
