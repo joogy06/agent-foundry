@@ -596,7 +596,7 @@ Forge is responsible for the session material and the signing payload.
 # Create session material once per forge session (idempotent)
 mkdir -p .forge
 [[ -f .forge/session-id ]] || uuidgen > .forge/session-id
-[[ -f .forge/session.key ]] || { openssl rand -hex 32 > .forge/session.key && chmod 0600 .forge/session.key; }
+[[ -f .forge/session.key ]] || ( umask 077; openssl rand -hex 32 > .forge/session.key )  # umask 077: created 0600, no readable window
 
 # Read current state
 MAP_HASH=$(sha256sum progress/contract-map.yaml | awk '{print $1}')

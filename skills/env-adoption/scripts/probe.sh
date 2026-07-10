@@ -355,7 +355,10 @@ do_check() {
     if [ -f "$INVENTORY_FILE" ]; then
       cp -f "$INVENTORY_FILE" "$(dirname "$INVENTORY_FILE")/inventory-prev.json" 2>/dev/null || true
     fi
-    printf '%s\n' "$inv" > "$INVENTORY_FILE"
+    # Atomic write-rename (#126 re-scope): a reader must never see a torn/
+    # empty manifest mid-write.
+    tmp_inv="${INVENTORY_FILE}.tmp.$$"
+    printf '%s\n' "$inv" > "$tmp_inv" && mv -f "$tmp_inv" "$INVENTORY_FILE"
     # History writer: merges plugins/mcp into inventory.json + appends change-records.
     if command -v python3 >/dev/null 2>&1; then
       timeout 5 python3 "$HOME/.claude/skills/env-adoption/scripts/inventory_history.py" >/dev/null 2>&1 || true
