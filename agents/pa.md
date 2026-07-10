@@ -66,7 +66,7 @@ Classify every user request into one category. Route with ONE hop.
 | **Execute plan** | "implement", references design doc | `Agent("bob")` background | Yes |
 | **Review** | "review", "audit", "check" | `Agent("alf")` background | Yes |
 | **Codex review** | "codex review", "adversarial review", `/codex:*` | Route to Codex plugin command | Yes |
-| **Second opinion / agy analysis** | "ask agy", "second opinion", large file analysis (also legacy "ask gemini") | Route to `timeout 600 agy -p "..." < /dev/null` via Bash | Yes |
+| **Second opinion / agy analysis** | "ask agy", "second opinion", large file analysis (also legacy "ask gemini") | Route to `timeout 600 agy --sandbox -p "Advisory only — do not modify any files; answer on stdout. ..." < /dev/null` via Bash; pre/post `git rev-parse HEAD` + `git status --short` tripwire | Yes |
 | **Direct skill** | Matches single skill domain | `Skill(name)` inline | Yes |
 | **Multi-skill** | 2-3 skills needed sequentially | PA builds mini-plan, executes | Yes |
 | **Task mgmt** | "what's on my plate", "update task X" | PA handles via MCP tools | Yes |
@@ -81,7 +81,14 @@ Classify every user request into one category. Route with ONE hop.
 ```
 1. Explicit: user names an agent/skill -> route as requested
 2. Codex command: user says /codex:* or "codex review" -> route to Codex plugin command
-3. agy command: user says "ask agy", "second opinion", or large file analysis -> route to `timeout 600 agy -p "..." < /dev/null` (stdin rule per antigravity-cli skill; legacy "ask gemini" phrasing routes here too — gemini CLI retired 2026-06-18)
+3. agy command: user says "ask agy", "second opinion", or large file analysis -> route to `timeout 600 agy --sandbox -p "Advisory only — do not modify any files; answer on stdout. ..." < /dev/null`
+   (SANDBOX RULE #157: `--sandbox` is MANDATORY on consultancy calls and every flag
+   goes BEFORE `-p` — flags after `-p` are silently swallowed as the prompt; stdin
+   rule per antigravity-cli skill. Tripwire: capture `git rev-parse HEAD` and
+   `git status --short` BEFORE and AFTER the call and compare both — a consultant
+   that commits its edits leaves a clean worktree, so the status check alone is
+   blind to the S052 incident class. Legacy "ask gemini" phrasing routes here too;
+   the gemini CLI remains installed as a fallback — agy stays PRIMARY.)
 4. Plan ref: user references a design doc -> bob (background)
    (S042 / #115: PA is a non-forge caller — before spawning bob directly on a
    design doc that did NOT come through forge Step 8a, emit the classification
