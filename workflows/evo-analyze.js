@@ -24,9 +24,7 @@ export const meta = {
   name: "evo-analyze",
   version: "1.0.0",
   description:
-    "owner:evo — clone/extract/intent/drift analysis for modes b/c; mode-c HR3 " +
-    "pre-check HALTs on unknown dep data; cold-audit is the first budget shed; " +
-    "consultations NEVER run in a stage.",
+    "owner:evo — clone/extract/intent/drift analysis for modes b/c; mode-c HR3 pre-check HALTs on unknown dep data; cold-audit is the first budget shed; consultations NEVER run in a stage.",
 };
 
 const PHASE_SCHEMA = {
@@ -75,12 +73,21 @@ const DRIFT_SCHEMA = {
   },
 };
 
-export default async function evoAnalyze({ args, agent, parallel, pipeline, budget }) {
+// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
+// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
+// original `export default` wrapper, which the runtime REJECTS at load
+// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
+// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
+
+{
+  // Harness compatibility: `args` may arrive as a JSON string — normalize before
+  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
+  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
   const skipped = [];
 
   // ── clone (evo stage: claim, manifest, HR6 sandbox clone) ──
   const clone = await agent(
-    `evo INIT/CLONING for ${args.project_root} mode=${args.mode} run_id=${args.run_id}. ` +
+    `evo INIT/CLONING for ${ARGS.project_root} mode=${ARGS.mode} run_id=${ARGS.run_id}. ` +
       "Issue a claim, write manifest.yaml phase=CLONING, HR6 sandbox clone " +
       "(0700 under $HOME/.cache/evo/sessions/<run_id>/clone/).",
     { agentType: "claude", schema: PHASE_SCHEMA },
@@ -93,7 +100,7 @@ export default async function evoAnalyze({ args, agent, parallel, pipeline, budg
     agent("Run dep-currency-check; report any direct-dep gap_kind.", { agentType: "claude", schema: PHASE_SCHEMA }),
   ]);
   // mode-c HR3: any direct-dep gap_kind:'unknown' => HALTED verdict NOW, zero intent spend.
-  if (args.mode === "cve-fix" && deps && deps.status_reason && deps.status_reason.includes("gap_kind:unknown")) {
+  if (ARGS.mode === "cve-fix" && deps && deps.status_reason && deps.status_reason.includes("gap_kind:unknown")) {
     return {
       status: "HALTED",
       phase: "HALTED",
@@ -103,7 +110,7 @@ export default async function evoAnalyze({ args, agent, parallel, pipeline, budg
   }
 
   // ── intent (pipeline: intent-extract stage -> cold-audit; audit is first shed) ──
-  const components = args.components_hint || [];
+  const components = ARGS.components_hint || [];
   const budgetOk = !budget || !budget.total ? true : budget.total > 0;
 
   async function intentStage(component) {
@@ -134,7 +141,7 @@ export default async function evoAnalyze({ args, agent, parallel, pipeline, budg
   return {
     status: "OK",
     phase: "DRIFT_SURFACED",
-    run_id: args.run_id,
+    run_id: ARGS.run_id,
     intent: intentResults,
     drift,
     skipped,

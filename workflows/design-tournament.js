@@ -27,8 +27,7 @@ export const meta = {
   name: "design-tournament",
   version: "1.0.0",
   description:
-    "owner:forge — parallel approach/challenge/converge design exploration; " +
-    "script computes the disagreement matrix; converge DECISION stays inline in forge.",
+    "owner:forge — parallel approach/challenge/converge design exploration; script computes the disagreement matrix; converge DECISION stays inline in forge.",
 };
 
 const APPROACH_SCHEMA = {
@@ -86,9 +85,18 @@ function computeDisagreementMatrix(challengerVerdicts) {
   return rows;
 }
 
-export default async function designTournament({ args, agent, parallel, budget }) {
+// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
+// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
+// original `export default` wrapper, which the runtime REJECTS at load
+// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
+// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
+
+{
+  // Harness compatibility: `args` may arrive as a JSON string — normalize before
+  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
+  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
   // ── prepare (pure JS) ──
-  const approaches = Array.isArray(args.approaches) ? args.approaches : [];
+  const approaches = Array.isArray(ARGS.approaches) ? ARGS.approaches : [];
   if (approaches.length < 2 || approaches.length > 5) {
     return { status: "INCOMPLETE", reason: "approaches must be 2..5", unresolved: [] };
   }
@@ -99,16 +107,16 @@ export default async function designTournament({ args, agent, parallel, budget }
   // ── diverge (ONE parallel() barrier) ──
   const approachStages = approaches.map((a) =>
     agent(
-      `Produce an approach-output.v1 for approach '${a.id || a}'. Brief at ${args.brief_path} ` +
-        `(sha256 ${args.brief_sha256}). Shared context at ${args.shared_context_path} ` +
-        `(sha256 ${args.shared_context_sha256}).`,
+      `Produce an approach-output.v1 for approach '${a.id || a}'. Brief at ${ARGS.brief_path} ` +
+        `(sha256 ${ARGS.brief_sha256}). Shared context at ${ARGS.shared_context_path} ` +
+        `(sha256 ${ARGS.shared_context_sha256}).`,
       { agentType: "claude", schema: APPROACH_SCHEMA },
     ),
   );
-  if (args.ui_facing) {
+  if (ARGS.ui_facing) {
     approachStages.push(
       agent(
-        `Produce a ux-review.v1 for the UI-facing aspects of the brief at ${args.brief_path}.`,
+        `Produce a ux-review.v1 for the UI-facing aspects of the brief at ${ARGS.brief_path}.`,
         { agentType: "multi-platform-apps:ui-ux-designer" },
       ),
     );
@@ -118,15 +126,15 @@ export default async function designTournament({ args, agent, parallel, budget }
   // ── challenge (parallel: Claude challenger + external W-EXT wrappers) ──
   const challengeStages = [
     agent(
-      `Challenge the approaches. Emit a challenger-verdict.v1. Brief sha256 ${args.brief_sha256}.`,
+      `Challenge the approaches. Emit a challenger-verdict.v1. Brief sha256 ${ARGS.brief_sha256}.`,
       { agentType: "claude", schema: CHALLENGER_SCHEMA },
     ),
   ];
   // External challengers: forge PRE-LAUNCHED these (agy unreachable from stages,
-  // WP-2 finding 6). The transcripts arrive via args.external_transcripts; the
+  // WP-2 finding 6). The transcripts arrive via ARGS.external_transcripts; the
   // stage only EXTRACTS the verdict from the supplied transcript and wraps it in
   // the W-EXT envelope — it never makes a live external call.
-  for (const ext of args.external_transcripts || []) {
+  for (const ext of ARGS.external_transcripts || []) {
     challengeStages.push(
       agent(
         "You are a TRANSCRIPTION WRAPPER, not a reviewer. Extract the verdict from " +
