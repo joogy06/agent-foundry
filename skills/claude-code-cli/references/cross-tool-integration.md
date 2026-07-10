@@ -49,7 +49,7 @@ Always wrap with `timeout`. Long-running Codex tasks may exit non-zero before wr
 
 ## Calling Antigravity (agy) from Claude Code
 
-The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (the gemini CLI remains a fallback until Google retires it on 2026-06-18). The `gemini-cli` MCP server has been REMOVED — call `agy` directly via Bash. `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), but the host convention remains to OMIT it — the Antigravity-account default model is used.
+The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (the gemini CLI (v0.50.x) remains an available fallback — kept per user direction 2026-07-10). The `gemini-cli` MCP server has been REMOVED — call `agy` directly via Bash. `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), but the host convention remains to OMIT it — the Antigravity-account default model is used.
 
 ### Via the `agy` CLI directly
 For headless invocations or shell scripts:

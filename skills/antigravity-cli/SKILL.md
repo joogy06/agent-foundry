@@ -1,20 +1,20 @@
 ---
 name: antigravity-cli
-description: Use when delegating to or working with the Antigravity CLI (`agy`) — headless single-prompt orchestration (`agy -p`), interactive/resume modes, plugins, sandbox, and auth. `agy` is this host's PRIMARY second-opinion / challenger / research delegate; the gemini CLI (v0.45.0) remains an available fallback until Google retires the gemini CLI on 2026-06-18. Covers Antigravity CLI 1.0.5 (verified locally 2026-06-05 from `agy --help`).
+description: Use when delegating to or working with the Antigravity CLI (`agy`) — headless single-prompt orchestration (`agy -p`), interactive/resume modes, plugins, sandbox, and auth. `agy` is this host's PRIMARY second-opinion / challenger / research delegate; the gemini CLI (v0.50.0) remains an available fallback (kept per user direction 2026-07-10). Covers Antigravity CLI 1.1.0 (verified locally 2026-07-10 from `agy --version`).
 ---
 
 # Antigravity CLI (`agy`)
 
 Task-indexed reference for the Antigravity CLI. **`agy` is the PRIMARY second-opinion /
-challenger / research delegate** on this host. The `gemini` CLI (v0.45.0, `/usr/local/bin/gemini`)
-is still installed and remains an available **fallback** — **until Google retires the gemini
-CLI on 2026-06-18**, after which `agy` is the sole delegate. Prefer `agy` now so nothing breaks
-at the cutover. Verified locally 2026-06-05 from `agy --help`, `agy help <sub>`, and
-`agy --version` (1.0.5).
+challenger / research delegate** on this host. The `gemini` CLI (v0.50.0, `/usr/bin/gemini`)
+is still installed and remains an available **fallback** (kept per user direction 2026-07-10;
+the previously-announced 2026-06-18 retirement did not remove it from this host). Prefer `agy`
+for new delegation. Verified locally 2026-07-10 from `agy --version` (1.1.0); earlier surface
+notes verified 2026-06-05 on 1.0.5.
 
-**Three CLIs coexist on this host — don't confuse them:** `gemini` (`/usr/local/bin/gemini`,
-v0.45.0) = the standard Gemini CLI (`mcp`/`extensions`/`skills`/`hooks`/`gemma`, `-p` headless) —
-the retiring fallback; `agy` (`~/.local/bin/agy`, v1.0.5) = the Antigravity-runtime delegate
+**Three CLIs coexist on this host — don't confuse them:** `gemini` (`/usr/bin/gemini`,
+v0.50.0) = the standard Gemini CLI (`mcp`/`extensions`/`skills`/`hooks`/`gemma`, `-p` headless) —
+the kept fallback; `agy` (`~/.local/bin/agy`, v1.1.0) = the Antigravity-runtime delegate
 (this skill) — primary; `antigravity` (`/bin/antigravity`, v1.107.0) = the editor itself
 (VS Code/code-server fork — `chat`/`serve-web`/`tunnel`/`--diff`/`--goto`), NOT for headless
 orchestration.

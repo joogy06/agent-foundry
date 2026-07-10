@@ -81,7 +81,7 @@ timeout 600 agy --sandbox -p "<prompt>" < /dev/null
   instead), open the prompt with "Advisory only — do not modify any files; answer on stdout",
   and run `git status --short` afterwards if a repo was exposed. Omit `--sandbox`
   only when the task explicitly requires writes, and say so in the prompt.
-- Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself remains an available fallback until Google retires it on 2026-06-18, but route new delegation through agy.)
+- Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself (v0.50.x) remains an available fallback (kept per user direction 2026-07-10), but route new delegation through agy.)
 - `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current 1.0.15) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
 - For long-running prompts raise the wait timeout: `agy --print-timeout 15m -p "<prompt>" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).
 - Append a `served_by` probe line to the prompt if you need provenance — self-reported model identity is unreliable, so capture it at the call layer.

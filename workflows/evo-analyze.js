@@ -152,7 +152,7 @@ const DRIFT_SCHEMA = {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
-    verified_on: "2026-06-11"
+    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
+    verified_on: "2026-07-10"
     volatility: high
 --> */

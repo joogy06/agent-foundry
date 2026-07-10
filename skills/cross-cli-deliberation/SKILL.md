@@ -219,7 +219,7 @@ The orchestrator does NOT vote. The orchestrator synthesizes. If the orchestrato
 
 ## Worked example
 
-This skill was designed and ratified by applying itself to its own synthesis — a 4-round arc with Codex (gpt-5.5) and a second external CLI consultant. (At the time of the original arc the second consultant was the Gemini CLI; on this host that role is now primarily filled by the Antigravity CLI (`agy`), with gemini a fallback until Google retires it on 2026-06-18. The model-tier specifics below are preserved only as historical record of that original arc — see `references/origin-trace.md`.) Key findings:
+This skill was designed and ratified by applying itself to its own synthesis — a 4-round arc with Codex (gpt-5.5) and a second external CLI consultant. (At the time of the original arc the second consultant was the Gemini CLI; on this host that role is now primarily filled by the Antigravity CLI (`agy`), with gemini remaining an available fallback (kept per user direction 2026-07-10). The model-tier specifics below are preserved only as historical record of that original arc — see `references/origin-trace.md`.) Key findings:
 
 - Round 1 (open): each CLI proposed an independent mechanism (Codex → null-hypothesis gate; the second consultant → burden of falsification). Result: stacked synthesis.
 - Round 2 (ratification under self): both voted CHANGE_NEEDED on the synthesis with a 4th evidence class.

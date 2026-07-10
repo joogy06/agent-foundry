@@ -74,7 +74,7 @@ bash ~/.claude/skills/env-adoption/scripts/probe.sh check
 If the inventory (`~/.claude/state/inventory.json`) is less than 24 hours old, `check` reuses it and only creates fresh session state. Report the result:
 - "Environment: Tier 2 (full) -- all tools available"
 - "Environment: Tier 1 (standard) -- missing: copilot, docker"
-- "Environment: Tier 0 (minimal) -- missing: codex, gemini, gh"
+- "Environment: Tier 0 (minimal) -- missing: codex, agy, gh"
 
 Skills should read the manifest (`~/.claude/state/inventory.json` for persistent state, `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities) instead of inline `command -v` or `--version` probing. See the `env-adoption` skill for full schema.
 
@@ -116,8 +116,8 @@ This exists because AI models lose track of HARD-RULEs in long conversations. Th
 
 ## Skill Library
 
-- Claude skills: `~/.claude/skills/` (119 skills)
-- Codex skills: `~/.codex/skills/` (119 skills, 112 symlinked from Claude + 7 native)
+- Claude skills: `~/.claude/skills/` (184 skills)
+- Codex skills: `~/.codex/skills/` (188 symlinked from Claude + native Codex-only skills)
 - New skills MUST be symlinked to Codex (see `research-for-skills` skill for process)
 - Write skills in cross-model-compatible language (see tool mapping patterns in `research-for-skills`)
 - `affordance-advisor`: host-native command suggestions, single-CLI scope (gated, not symlinked to Codex/Gemini — drop a `.no-codex-symlink` sentinel for similar exceptions)
@@ -163,7 +163,7 @@ On session start, check if the superpowers plugin has been updated:
 
 ## Cross-Model Collaboration
 
-- Codex CLI (GPT-5.4) is available for second opinions, challenger reviews, and research
+- Codex CLI (GPT-5.6) is available for second opinions, challenger reviews, and research
 - For brainstorming/design/creative tasks: always run Codex in parallel (see `forge` skill)
 - When stuck after 2+ attempts: escalate to Codex before asking the user
 - See `codex-orchestration` skill for delegation patterns
@@ -171,8 +171,8 @@ On session start, check if the superpowers plugin has been updated:
 ### Antigravity CLI (`agy`) — host-specific directive
 
 The Antigravity CLI (`agy`, `~/.local/bin/agy`) is the **PRIMARY** delegate for ALL
-second-opinion / challenger / research work on this host (the gemini CLI retired 2026-06-18;
-`agy` is the sole delegate). When delegating a headless prompt on this host, use:
+second-opinion / challenger / research work on this host (the gemini CLI (v0.50.x) remains
+installed as an available fallback — kept per user direction 2026-07-10; `agy` is PRIMARY). When delegating a headless prompt on this host, use:
 
 ```bash
 timeout 600 agy --sandbox -p "..." < /dev/null

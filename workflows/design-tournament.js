@@ -184,17 +184,17 @@ function computeDisagreementMatrix(challengerVerdicts) {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
-    verified_on: "2026-06-11"
+    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
+    verified_on: "2026-07-10"
     volatility: high
   - kind: tool_version
     subject: codex-cli
-    verified_against: "0.139.0 (external-challenger transcripts pre-launched by forge)"
-    verified_on: "2026-06-11"
+    verified_against: "0.144.1 (external-challenger transcripts pre-launched by forge)"
+    verified_on: "2026-07-10"
     volatility: high
   - kind: tool_version
     subject: antigravity-cli
-    verified_against: "1.0.7 (UNREACHABLE from workflow stages — pre-launched inline, WP-2 finding 6)"
-    verified_on: "2026-06-11"
+    verified_against: "1.1.0 (stage reachability UNVERIFIED under corrected flag order — the WP-2 probe used the buggy `agy -p --sandbox` order; pre-launch inline until re-probed)"
+    verified_on: "2026-07-10"
     volatility: high
 --> */
