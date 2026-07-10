@@ -2,7 +2,7 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.3.2 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 9 workflows · 2 commands**
+> **Version:** 1.3.2 · **Last published:** 2026-06-24 · **184 skills · 5 agents · 8 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---

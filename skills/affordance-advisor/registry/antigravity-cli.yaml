@@ -1,14 +1,16 @@
 schema_version: affordance.v1
 validated_against:
-  cli_version: "1.0.5"
-  date: "2026-06-05"
+  cli_version: "1.1.0"
+  date: "2026-07-10"
 host_cli: antigravity-cli
 
 # Day-one entries derived from Antigravity CLI 1.0.4 (agy --help, verified 2026-06-03).
 # 2026-06-05 (S041): re-verified against agy 1.0.5; models + changelog rows added.
 #   validated_against bumped to 1.0.5.
+# 2026-07-10 (overhaul/agent-skills): re-verified against agy 1.1.0; no surface change
+#   detected from `agy --help`; validated_against bumped to 1.1.0.
 # See ~/.claude/skills/antigravity-cli for full operational notes.
-# NOTE: agy has a much smaller surface than the retired Gemini CLI. As of 1.0.5 it
+# NOTE: agy has a much smaller surface than the legacy Gemini CLI. As of 1.0.5 it
 # DOES have a `--model` flag and a `models` subcommand (convention: omit `--model`,
 # use the account default — see the antigravity-cli skill). It still has no short `-m`
 # alias, no worktree flag, no approval-mode/plan flag, no hooks/skills/mcp
