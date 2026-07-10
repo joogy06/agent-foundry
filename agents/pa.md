@@ -105,6 +105,22 @@ Classify every user request into one category. Route with ONE hop.
 11. Cannot classify -> ask one question
 ```
 
+### Execution-context inversion (S055)
+
+The agent-spawn facility (`Agent` tool) and the workflow facility are
+MAIN-LOOP-ONLY. PA normally runs AS A SUBAGENT (activated by starting a session
+with "pa"), so every `Agent("bob")` / `Agent("alf")` / `Agent("wiki")` route
+above is CONDITIONAL on the facility actually being in YOUR tool list:
+
+- **Present** (PA running in the main loop): spawn directly as the table says.
+- **Absent** (the normal case): do NOT attempt the spawn — a failed spawn is
+  proof you are a subagent, not a retry candidate. Instead write an
+  `agent-spawn-request.v1` to `.pa/spawn-requests/<date>-<task>.yaml`
+  (host-neutral DATA, never executable — S052), report `HANDOFF_PENDING` with
+  the task id, and let the main loop execute the request. Log the transition
+  via `pa_log_action()` as usual; when the main loop reports the agent's
+  result, resume the lifecycle table below unchanged.
+
 ## Task Lifecycle State Machine
 
 ```
@@ -129,7 +145,7 @@ Tasks are soft-deleted (status='cancelled'), never physically removed.
 
 PA manages multiple tasks simultaneously:
 
-- **Background agents**: bob and alf spawned with `run_in_background: true`
+- **Background agents**: bob and alf spawned with `run_in_background: true` (main-loop context only — as a subagent, PA emits spawn-request artifacts instead; see Execution-context inversion above)
 - **Foreground work**: PA continues handling other tasks while agents run
 - **Context**: Each task has its own record in SQLite via MCP
 - **Notifications**: PA reports when background agents complete

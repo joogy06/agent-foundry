@@ -367,7 +367,10 @@ If ALL of these are true:
 - No parallel execution needed
 
 Then SKIP agent-teams. Execute directly:
-1. For each WP: spawn a specialist agent with the WP + design doc + shared context
+1. For each WP: execute it IN-CONTEXT yourself (S055 / HARD-RULE 1: the
+   agent-spawn facility is absent in bob's context — never attempt a
+   specialist spawn; a failed spawn is proof you are a subagent, not a
+   retry candidate)
 2. Collect results
 3. Run verification (Step 4)
 4. Compile report (Step 5)
@@ -397,7 +400,13 @@ For each component in the contract map, before the implementation WP for that co
 
 ## Step 3: Delegate to agent-teams
 
-Invoke the `agent-teams` skill with a structured request. agent-teams owns ALL orchestration decisions — topology, team sizing, coordination infrastructure, spawning, monitoring, failure handling.
+Invoke the `agent-teams` skill IN-CONTEXT for POLICY ONLY (S055 orchestration
+inversion): topology, team sizing, and coordination policy come back as DATA.
+Bob then MATERIALIZES the plan as `progress/work-packages.yaml` (host-neutral
+data, never executable JS — S052) and HALTs `PARTIAL needs: plan-execution`.
+The MAIN LOOP runs the plan (preferred: the `bob-serial-exec` workflow when
+`capabilities.workflow_tool` is true via `probe.sh`; fallback:
+serial-with-checkpointing). Nothing is spawned from bob's context.
 
 ```
 Invoke `agent-teams` skill with:
@@ -425,7 +434,10 @@ Invoke `agent-teams` skill with:
 - You do NOT monitor outboxes or manage inbox/outbox flow
 - You do NOT handle circuit breakers or stall detection
 
-**Wait for agent-teams to return its result**, then proceed to Step 4.
+**Do NOT wait for an execution result here** — after materializing
+`progress/work-packages.yaml`, HALT `PARTIAL needs: plan-execution`. Step 4
+runs when the main loop re-invokes bob (or a `BOB_MODE: finalize` stage) with
+the execution reports to verify.
 
 ### Checkpoint Protocol
 
@@ -562,10 +574,10 @@ The only legal transitions out of AWAITING_AMENDMENT are `-> MAP_UPDATING`
 
 ## Step 8.7: MAP_UPDATING orchestration (S029, entered from Step 4.6)
 
-This step runs only after Step 4.6 has driven the pause-state machine to `PAUSED` (or, when bob is a subagent, after Step 8.7a parked it at `AWAITING_AMENDMENT` and a `BOB_MODE: resume-amendment` stage was spawned). Bob spawns forge in amendment mode (or, in resume-amendment mode, only APPLIES the already-approved proposal), receives a user-approved proposal, signs the amended map, applies the delta, and force-restarts the affected WPs.
+This step runs only after Step 4.6 has driven the pause-state machine to `PAUSED` (or, when bob is a subagent, after Step 8.7a parked it at `AWAITING_AMENDMENT` and a `BOB_MODE: resume-amendment` stage was spawned). The amendment proposal itself is produced by forge amendment mode run INLINE by the MAIN LOOP (Q3b/D1 — the user is present there; bob NEVER spawns forge — S055/HARD-RULE 1). Bob only APPLIES an already-approved proposal: signs the amended map, applies the delta, and force-restarts the affected WPs.
 
 1. **Transition to MAP_UPDATING** — `pause_state.transition_to(project_root, "MAP_UPDATING")`.
-2. **Spawn forge in amendment mode** — using bob's existing forge spawn convention (Agent tool / general-purpose), pass:
+2. **Obtain the amendment proposal** — in `resume-amendment` mode the proposal already exists (`amended_map_path`, `deltas_resolved`, approved inline by the main loop): skip to step 3 and only APPLY. If bob reaches MAP_UPDATING WITHOUT a resume-amendment proposal, that is the Step 8.7a park path — transition to `AWAITING_AMENDMENT` and exit `PARTIAL needs: forge-amendment-mode`; NEVER attempt a forge spawn (the agent-spawn facility is absent in bob's context — S055/HARD-RULE 1). The main-loop forge run receives:
    - `mode: amendment`
    - `project_root: <abs path>`
    - `contract_map_path: <abs path to progress/contract-map.yaml>`
