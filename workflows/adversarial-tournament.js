@@ -23,9 +23,7 @@ export const meta = {
   name: "adversarial-tournament",
   version: "1.0.0",
   description:
-    "owner:adversarial-team-brainstorm — diverge/crossfire/refine/arbiter; " +
-    "kill-criteria minItems 2 (role-collapse guard); attack minItems 1 per " +
-    "target; script downgrades-never-upgrades confidence.",
+    "owner:adversarial-team-brainstorm — diverge/crossfire/refine/arbiter; kill-criteria minItems 2 (role-collapse guard); attack minItems 1 per target; script downgrades-never-upgrades confidence.",
 };
 
 const TEAM_OUTPUT_SCHEMA = {
@@ -69,8 +67,17 @@ const TOURNAMENT_RESULT_SCHEMA = {
   },
 };
 
-export default async function adversarialTournament({ args, agent, parallel, budget }) {
-  const angles = args.angles || [];
+// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
+// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
+// original `export default` wrapper, which the runtime REJECTS at load
+// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
+// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
+
+{
+  // Harness compatibility: `args` may arrive as a JSON string — normalize before
+  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
+  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
+  const angles = ARGS.angles || [];
   if (angles.length < 2) {
     return { ranked_outputs: [], meta: { degraded_to: "insufficient_angles" } };
   }
@@ -80,7 +87,7 @@ export default async function adversarialTournament({ args, agent, parallel, bud
     agent(
       `You are TEAM ${i + 1}, angle '${angle}'. Produce a team-output.v1. You MUST ` +
         "state >=2 initial_kill_criteria (concrete conditions that would kill your " +
-        "idea). Grounding feeds: " + JSON.stringify(args.context_paths || []),
+        "idea). Grounding feeds: " + JSON.stringify(ARGS.context_paths || []),
       { agentType: "claude", schema: TEAM_OUTPUT_SCHEMA },
     ),
   );

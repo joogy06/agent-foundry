@@ -23,9 +23,7 @@ export const meta = {
   name: "cross-cli-deliberation",
   version: "1.0.0",
   description:
-    "owner:cross-cli-deliberation — two-gate (null-hypothesis ballot + burden " +
-    "of falsification) deliberation; ballots are transcription-wrapped; tests " +
-    "are NEVER executed in a stage (needs_inline_verification).",
+    "owner:cross-cli-deliberation — two-gate (null-hypothesis ballot + burden of falsification) deliberation; ballots are transcription-wrapped; tests are NEVER executed in a stage (needs_inline_verification).",
 };
 
 const BALLOT_SCHEMA = {
@@ -63,10 +61,19 @@ const EVIDENCE_SCHEMA = {
 
 const THRESHOLD = 60; // CHANGE_NEEDED confidence threshold to enter Gate 2.
 
-export default async function crossCliDeliberation({ args, agent, parallel, budget }) {
+// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
+// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
+// original `export default` wrapper, which the runtime REJECTS at load
+// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
+// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
+
+{
+  // Harness compatibility: `args` may arrive as a JSON string — normalize before
+  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
+  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
   // ── gate1_ballots (parallel transcription wrappers, one per consultant) ──
-  const consultants = args.consultants || [];
-  const transcripts = args.consultant_transcripts || {}; // pre-launched inline
+  const consultants = ARGS.consultants || [];
+  const transcripts = ARGS.consultant_transcripts || {}; // pre-launched inline
   const ballotStages = consultants.map((c) =>
     agent(
       "You are a TRANSCRIPTION WRAPPER, not a reviewer. From this PRE-LAUNCHED " +

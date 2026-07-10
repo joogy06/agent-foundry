@@ -22,9 +22,7 @@ export const meta = {
   name: "alf-sweep",
   version: "1.0.0",
   description:
-    "owner:alf — one parameterized read-only sweep (version/freshness/" +
-    "flow-pulse/full/flow-review); finders emit batches, ZERO .alf/ writes; " +
-    "synthesize is a pure JS reduce; the main loop is the single .alf/ writer.",
+    "owner:alf — one parameterized read-only sweep (version/freshness/flow-pulse/full/flow-review); finders emit batches, ZERO .alf/ writes; synthesize is a pure JS reduce; the main loop is the single .alf/ writer.",
 };
 
 const FINDING_BATCH_SCHEMA = {
@@ -61,18 +59,27 @@ function normTitle(t) {
   return (t || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 }
 
-export default async function alfSweep({ args, agent, pipeline, parallel, budget }) {
+// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
+// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
+// original `export default` wrapper, which the runtime REJECTS at load
+// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
+// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
+
+{
+  // Harness compatibility: `args` may arrive as a JSON string — normalize before
+  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
+  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
   // The launcher resolved tier->scope and wrote targets + feed excerpts + feed
   // sha256 hashes into the args file (via _meta/sweep_scope.py). The workflow
   // consumes them; it NEVER refreshes feeds or resolves scope itself.
-  const tier = args.tier;
-  const targets = args.targets || [];
-  const finderModel = args.finder_model || "sonnet";
-  const verifyArm = args.verify_arm || "external-only";
+  const tier = ARGS.tier;
+  const targets = ARGS.targets || [];
+  const finderModel = ARGS.finder_model || "sonnet";
+  const verifyArm = ARGS.verify_arm || "external-only";
 
   // ── plan (pure JS validate) ──
   if (targets.length === 0) {
-    return { sweep_id: args.sweep_id, tier, findings: [], skipped: ["no targets in scope"] };
+    return { sweep_id: ARGS.sweep_id, tier, findings: [], skipped: ["no targets in scope"] };
   }
 
   // ── find+verify (pipeline: finder -> verifier for critical/external) ──
@@ -85,8 +92,8 @@ export default async function alfSweep({ args, agent, pipeline, parallel, budget
     }
     return agent(
       `ALF_FORMAT: 5\ntier: ${tier}\ntarget: ${JSON.stringify(target)}\n` +
-        `feed_excerpts: ${JSON.stringify(args.feed_excerpts ? args.feed_excerpts[target.path] || {} : {})}\n` +
-        `feed_sha256: ${JSON.stringify(args.feed_sha256 ? args.feed_sha256[target.path] || {} : {})}\n` +
+        `feed_excerpts: ${JSON.stringify(ARGS.feed_excerpts ? ARGS.feed_excerpts[target.path] || {} : {})}\n` +
+        `feed_sha256: ${JSON.stringify(ARGS.feed_sha256 ? ARGS.feed_sha256[target.path] || {} : {})}\n` +
         "Apply the 7 lenses. Output is alf-finding-batch.v1 ONLY. Write NOTHING " +
         "under .alf/. Out-of-scope HIGH findings => handoff_requests[] data. " +
         "Cite feed_record or local evidence per finding (HR6). Budget honesty: " +
@@ -112,7 +119,7 @@ export default async function alfSweep({ args, agent, pipeline, parallel, budget
         "Cold-context cite-check: confirm this finding's cited evidence is real. " +
           `finding=${JSON.stringify({ target: batch.target.path, lens: batch.lens, title: f.title })} ` +
           `evidence=${JSON.stringify(f.evidence)}`,
-        { agentType: "alf", schema: VERIFY_SCHEMA, model: args.verifier_model },
+        { agentType: "alf", schema: VERIFY_SCHEMA, model: ARGS.verifier_model },
       ),
     );
     return parallel(stages);
@@ -167,10 +174,10 @@ export default async function alfSweep({ args, agent, pipeline, parallel, budget
   );
 
   return {
-    sweep_id: args.sweep_id,
+    sweep_id: ARGS.sweep_id,
     tier,
-    trigger_event: args.trigger_event || null,
-    detection_feeds: args.detection_feeds || [],
+    trigger_event: ARGS.trigger_event || null,
+    detection_feeds: ARGS.detection_feeds || [],
     findings,
     skipped,
     tokens_spent: null,
