@@ -105,7 +105,12 @@ function normTitle(t) {
   async function verifier(batch) {
     // Cold-context cite-check for critical / external-evidence findings,
     // mechanizing the Stage-1.5 firewall. The arm is tier-controlled.
-    if (verifyArm === "on-breach") return [];
+    // CONTRACT: pipeline() makes THIS stage's return the item's final value,
+    // so it must return {output, verifications} — the shape synthesize reads.
+    // (Previously returned a bare verdict array: synthesize found no
+    // .findings on it and silently dropped every batch.)
+    if (!batch) return null;
+    if (verifyArm === "on-breach") return { output: batch, verifications: [] };
     const toVerify = (batch.findings || []).filter((f) =>
       f.severity === "CRITICAL" ||
       (f.evidence && f.evidence.feed_record) ||
@@ -114,15 +119,22 @@ function normTitle(t) {
     // S059 smart-config (NORMATIVE §7): the verify arm gains an optional model. The
     // launcher resolves verifier_model caller-side (alf_sweep_launcher.sh) and writes
     // it into args; undefined => model is undefined => inherit (byte-identical to today).
-    const stages = toVerify.map((f) =>
-      agent(
+    const stages = toVerify.map((f) => {
+      // Script-computed join key, passed in and echoed back verbatim — the
+      // verifier cannot reconstruct the normalized ref on its own (the old
+      // agent-invented finding_ref never matched, so every finding degraded
+      // to UNVERIFIED).
+      const ref = `${batch.target.path}|${batch.lens}|${normTitle(f.title)}`;
+      return agent(
         "Cold-context cite-check: confirm this finding's cited evidence is real. " +
+          `finding_ref=${JSON.stringify(ref)} — echo this EXACT string back as finding_ref. ` +
           `finding=${JSON.stringify({ target: batch.target.path, lens: batch.lens, title: f.title })} ` +
           `evidence=${JSON.stringify(f.evidence)}`,
         { agentType: "alf", schema: VERIFY_SCHEMA, model: ARGS.verifier_model },
-      ),
-    );
-    return parallel(stages);
+      );
+    });
+    const verifications = await parallel(stages);
+    return { output: batch, verifications };
   }
 
   const batches = await pipeline(targets, finder, verifier);
@@ -132,11 +144,12 @@ function normTitle(t) {
   const flat = [];
   const skipped = [];
   for (const entry of batches) {
+    if (!entry) continue; // dropped item (finder null / stage threw)
     const batch = entry.output || entry; // pipeline shape: {output, verifications}
     const verifications = entry.verifications || [];
     const verdictByRef = {};
     for (const v of verifications) {
-      if (v) verdictByRef[v.finding_ref] = v.verdict;
+      if (v && v.finding_ref) verdictByRef[v.finding_ref] = v.verdict;
     }
     for (const s of batch.skipped || []) skipped.push(s);
     for (const f of batch.findings || []) {

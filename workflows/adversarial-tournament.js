@@ -91,7 +91,12 @@ const TOURNAMENT_RESULT_SCHEMA = {
       { agentType: "claude", schema: TEAM_OUTPUT_SCHEMA },
     ),
   );
-  const teams = await parallel(divergeStages);
+  // Null-guard: a diverge stage can return null (schema failure / user skip);
+  // filter at source so crossfire never dereferences t.team_id on null.
+  const teams = (await parallel(divergeStages)).filter(Boolean);
+  if (teams.length < 2) {
+    return { ranked_outputs: [], meta: { degraded_to: "insufficient_teams" } };
+  }
 
   // ── crossfire (parallel attackers; each sees ONLY other teams' outputs) ──
   async function runCrossfire() {
@@ -117,15 +122,21 @@ const TOURNAMENT_RESULT_SCHEMA = {
   // ── refine (parallel; budget floor: below floor before refine => skip) ──
   const budgetOk = !budget || !budget.total ? true : budget.total > 0;
   let degraded = null;
+  let refined = teams; // quick_tournament degrades to pre-refine outputs
   if (budgetOk) {
     const refineStages = teams.map((t) =>
       agent(
         `Refine team-output.v1 for ${t.team_id} addressing the attacks. Include ` +
-          "before/after and rejected_attacks[].",
+          "before/after and rejected_attacks[]. Your original output: " +
+          JSON.stringify(t) +
+          " All attack sets: " + JSON.stringify(attacks),
         { agentType: "claude", schema: TEAM_OUTPUT_SCHEMA },
       ),
     );
-    await parallel(refineStages);
+    // Capture the refine round (previously discarded — the arbiter was asked to
+    // rank outputs it never received); a null refine falls back per-team.
+    const refinedRaw = await parallel(refineStages);
+    refined = refinedRaw.map((r, i) => r || teams[i]);
   } else {
     degraded = "quick_tournament"; // documented mode, not silent loss
   }
@@ -133,7 +144,8 @@ const TOURNAMENT_RESULT_SCHEMA = {
   // ── arbiter (single stage) ──
   const result = await agent(
     "Emit a tournament-result.v1 ranking the refined outputs. Each ranked output " +
-      "MUST carry >=2 kill_criteria. Attacks: " + JSON.stringify(attacks),
+      "MUST carry >=2 kill_criteria. Refined outputs: " + JSON.stringify(refined) +
+      " Attacks: " + JSON.stringify(attacks),
     { agentType: "claude", schema: TOURNAMENT_RESULT_SCHEMA },
   );
 
