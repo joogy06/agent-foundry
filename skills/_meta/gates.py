@@ -4157,21 +4157,25 @@ def check_G_SECURITY(project_root: Path) -> None:
 
 
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
+    usage = (
+        "usage: gates.py "
+        "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
+        "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
+        "G_IDENTITY|G_DUAL_VERDICT ...\n"
+        "  G_SECURITY <project_root>  "
+        "(universal advisory security checkpoint; git-diff-scoped)\n"
+        "  G_CLASSIFY <project_root> [--design-doc <path>] "
+        "[--asserted N/A|provided] [--files-from <list>] [--verify-diff]\n"
+        "  G_IDENTITY <project_root> "
+        "[--pair prod-shadow|prod-foundry|all] [--foundry-root <path>]\n"
+        "  G_DUAL_VERDICT <project_root> --bundle-hash <hash>"
+    )
     if len(argv) < 2:
-        env_error(
-            "usage: gates.py "
-            "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
-            "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
-            "G_IDENTITY|G_DUAL_VERDICT ...\n"
-            "  G_SECURITY <project_root>  "
-            "(universal advisory security checkpoint; git-diff-scoped)\n"
-            "  G_CLASSIFY <project_root> [--design-doc <path>] "
-            "[--asserted N/A|provided] [--files-from <list>] [--verify-diff]\n"
-            "  G_IDENTITY <project_root> "
-            "[--pair prod-shadow|prod-foundry|all] [--foundry-root <path>]\n"
-            "  G_DUAL_VERDICT <project_root> --bundle-hash <hash>"
-        )
+        env_error(usage)
     gate = argv[1]
+    if gate in ("-h", "--help"):
+        print(usage)
+        sys.exit(0)
     positional: List[str] = []
     flags: Dict[str, str] = {}
     i = 2
@@ -4324,6 +4328,11 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
             flags["identity_foundry_root"] = argv[i + 1]
             i += 2
             continue
+        if a.startswith("-"):
+            # A typo'd/unknown flag must never fall through as a filesystem
+            # path — a literal '--help/' directory (with junk classify
+            # artifacts inside) was created exactly this way on 2026-06-25.
+            env_error(f"unknown flag: {a}\n{usage}")
         positional.append(a)
         i += 1
     return gate, positional, flags
@@ -4361,6 +4370,19 @@ def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> N
             env_error("G1 requires <design_dir>")
         design_dir = Path(positional[0]).resolve()
         expect_binding = "no_ledger_binding" not in flags
+        if not expect_binding:
+            # Mechanized guard (previously prose-only in bob.md):
+            # --no-ledger-binding is legal only BEFORE the ledger exists —
+            # afterwards it would bypass the CB2 stale-map-replay/rollback
+            # checks the binding was added to close.
+            g1_root = Path(flags.get("project_root", str(design_dir.parent))).resolve()
+            g1_candidates = (
+                g1_root / "progress" / "integration-ledger.md",
+                design_dir / "integration-ledger.md",
+            )
+            for g1_ledger in g1_candidates:
+                if g1_ledger.exists():
+                    fail("G1", f"--no-ledger-binding refused: ledger already exists at {g1_ledger}")
         check_G1(design_dir, expect_ledger_binding=expect_binding)
         ok("G1", f"contract map verified at {design_dir} (binding={expect_binding})")
     elif gate == "G2":

@@ -37,6 +37,11 @@ import os
 import re
 import sys
 import uuid
+
+try:  # POSIX-only; the append degrades to O_APPEND-only where absent
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -266,14 +271,26 @@ def append_records(records: list) -> int:
         return 0
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        # O_APPEND guarantees each write lands at EOF even with concurrent writers.
-        fd = os.open(str(HISTORY_FILE), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        # #126 (S055 re-scope): single-call flock so a multi-record batch lands
+        # contiguously under concurrent writers; O_APPEND still guarantees EOF
+        # positioning per write. Lock: ~/.claude/state/.locks/feeds.lock.
+        lock_fd = None
+        if fcntl is not None:
+            lock_dir = STATE_DIR / ".locks"
+            lock_dir.mkdir(parents=True, exist_ok=True)
+            lock_fd = os.open(str(lock_dir / "feeds.lock"), os.O_WRONLY | os.O_CREAT, 0o644)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
         try:
-            for rec in records:
-                line = json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n"
-                os.write(fd, line.encode("utf-8"))
+            fd = os.open(str(HISTORY_FILE), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+            try:
+                for rec in records:
+                    line = json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n"
+                    os.write(fd, line.encode("utf-8"))
+            finally:
+                os.close(fd)
         finally:
-            os.close(fd)
+            if lock_fd is not None:
+                os.close(lock_fd)  # close releases the flock
         return len(records)
     except OSError:
         # best-effort-never-raise: a history-write failure must not break the probe.
