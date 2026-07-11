@@ -21,6 +21,12 @@
 
 ## Open
 
+- [ ] **NEXT SESSION: roundtable skill initiative** — full forge cycle (COMPLEX) for the mixed-provider dialogue harness. Seed brief = the 2026-07-11 sketch in history.md: role cards w/ conflicting incentives, seat→provider map, transcript-as-state memory, blind diverge → addressed cross-examine → converge → arbiter, visual track. Sibling of adversarial-team-brainstorm.
+- [ ] Merge `feat/codex-effort-policy` into main when ready (pushed to origin 2026-07-11; contains effort policy + this session's docs).
+- [ ] skill_factory: staged S059 backport + pre-push identity gate awaiting USER COMMIT (six files in index; suggested message in 2026-07-11 session log).
+- [ ] Decide `~/.codex/config.toml` default: currently `model_reasoning_effort = "max"` (TUI-persisted mid-session). Per-call pins make it mostly moot for delegation; affects interactive + any unpinned call. Leave or lower — user call.
+- [ ] Sycophancy follow-up: NONE_FOUND honesty probe untested — run the delta-seeking challenger prompt against a genuinely CLEAN file at medium/xhigh/max and measure invention rate (extends `cross-cli-deliberation/references/sycophancy-tests.md`).
+- [ ] Propagate effort pins to remaining codex-exec call sites (forge external-finding-verification, adversarial-team-brainstorm, alf.md, workflow stage wrappers) — codex-orchestration is now the authority; other files still show unpinned exemplars.
 - [ ] Report the `-p` string-flag parsing bug upstream to the Antigravity CLI team (flags after `-p` are silently swallowed as the prompt; no warning, no error).
 - [ ] Re-probe `agy --sandbox -p` (correct order) from Workflow stages — workflow anchors now say "UNVERIFIED under corrected flag order"; `workflows/README.md` + `env-adoption/references/context-detection.md` stay conservative pending this.
 - [x] Gates 3-tree MISMATCH: S059 files (audit_spawn.py, verification_arbiter_spawn.py, freshness_nudge.py + hard-rules-checklist.md) byte-copied into /mnt/data/dev04/skill_factory and STAGED (user approval 2026-07-11: stage-but-don't-commit — commit remains with the user); strict `G_IDENTITY --pair prod-shadow` added to its pre-push hook via both installers (.sh + .py), block path verified live (drifted file → exit 1 BLOCKED; gate runs before secrets scan). Forbidden-pattern scrub check clean on all four files.
