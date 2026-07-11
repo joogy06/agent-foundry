@@ -10,6 +10,12 @@ Reference file for advanced Codex integration patterns. Load when needed — the
 > (`< /dev/null`) and carry a shell `timeout` — in background/harness shells codex reads non-TTY
 > stdin to EOF and hangs otherwise. Piped forms (`cat brief | codex exec -`) are inherently safe.
 
+> **EFFORT PIN (benchmarked 2026-07-11):** every pattern below additionally takes
+> `-c model_reasoning_effort=<tier>` — `medium` for quick consults, `xhigh` for
+> challenger/review/ballot roles (the floor for those), `max` for conceptual/ratification
+> calls (raise `timeout` to 1200). Never inherit the config default (TUI-persisted). Retry
+> once on `Selected model is at capacity`. See SKILL.md "Reasoning-Effort Tiers".
+
 ### Pattern 1: Claude → Codex → Claude (Simple)
 
 ```
@@ -56,9 +62,10 @@ For each issue found:
 Write your findings to this file, replacing its contents.
 BRIEF
 
-# Step 2: Codex processes the brief
+# Step 2: Codex processes the brief (challenger role -> xhigh floor)
 timeout 600 codex exec --ephemeral -C /path/to/project \
   -s read-only \
+  -c model_reasoning_effort=xhigh \
   -o "$CODEX_WORK/challenger-result.md" \
   "Read $CODEX_WORK/brief-challenger.md and execute the challenger review described within. Read any files referenced in the brief." < /dev/null
 

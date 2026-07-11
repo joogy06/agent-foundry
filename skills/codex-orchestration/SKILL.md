@@ -1,11 +1,15 @@
 ---
 name: codex-orchestration
-description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.5) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec, and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
+description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.6) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec (incl. per-call reasoning-effort tiers), and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
 ---
 
 # Cross-Model Orchestration — Claude + Codex + Antigravity (agy)
 
-Delegate tasks to **Codex CLI (GPT-5.5)** and the **Antigravity CLI (`agy`)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
+Delegate tasks to **Codex CLI (GPT-5.6-sol)** and the **Antigravity CLI (`agy`)** from Claude Code for second opinions, parallel research, challenger reviews, and idea generation. Each model runs as an independent agent with its own context, tools, and reasoning — different models catch different things.
+
+<HARD-RULE>
+Pin reasoning effort PER CALL on every `codex exec` delegation: `-c model_reasoning_effort=<tier>` (see "Reasoning-Effort Tiers" below). Never rely on the config default — `~/.codex/config.toml` holds whatever the interactive TUI last persisted, so an unpinned headless call can silently run anywhere from `none` to `max`.
+</HARD-RULE>
 
 <HARD-RULE>
 Always check Codex availability before delegating. Read `tools.codex.installed` from `~/.claude/state/inventory.json` (written by `env-adoption` skill). If the inventory is missing, run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check --inventory-only --silent` first. If `tools.codex.installed` is false, fall back to Claude Code agents.
@@ -176,14 +180,58 @@ See `git-cli-bridge` skill for full protocol, security model, and client script 
 
 ---
 
+## Reasoning-Effort Tiers (benchmarked 2026-07-11)
+
+Measured on gpt-5.6-sol / codex-cli 0.144.1 with planted-bug review fixtures (14 scored
+runs, easy + hard rounds + a delta-seeking challenger round). Every tier found all planted
+bugs with zero false positives; the only quality separations were (a) one subtle unplanted
+defect caught only at `xhigh`/`max` under a plain review prompt, and (b) finding ALTITUDE
+under a delta-seeking prompt — `medium` returned concrete-bug deltas, `xhigh` added
+state-consistency reasoning, `max` alone produced a design-level finding. `high` never beat
+`medium` in any run — skip it. `ultra` matched `max`'s findings at 2.3x the time on bounded
+tasks; it exists for orchestrated deep dives, not verdicts.
+
+| Tier | Use for | Typical wall-clock | Shell timeout |
+|---|---|---|---|
+| `medium` | Inner-loop delta passes, mechanical consults, smoke checks | ~25–40s | 600s |
+| `xhigh` | Challenger, QC, devil's advocate, Gate-1 ballots, arbiter verdicts (FLOOR for these roles) | ~2–2.5 min | 600s |
+| `max` | Conceptual/direction reviews, design ratification, stuck-after-2-attempts escalation, post-incident analysis | ~5–7 min | 1200s |
+| `ultra` | Deliberate orchestrated deep-dives ONLY (codex spawns its own agents; rewrite the prompt contract for fan-out) | 10–30 min | 1800s+ |
+
+```bash
+# Challenger call — xhigh floor, effort pinned per call
+timeout 600 codex exec --ephemeral -s read-only \
+  -c model_reasoning_effort=xhigh \
+  -o "$CODEX_WORK/challenge.md" "$(cat "$CODEX_WORK/brief.md")" < /dev/null
+```
+
+**Delta-seeking challenger prompt (the honest-loop contract).** Prompt shape matters as
+much as tier: telling codex "the basics are done" reallocates attention to the tail — at
+`medium` this recovered a subtle bug that a plain review prompt missed even at `high`.
+Template to embed in challenger briefs:
+
+> A prior review already found: `<findings list>`. Your ONLY job: find genuine defects the
+> prior review MISSED. Do not repeat, rephrase, or elaborate on listed findings. Inventing
+> a finding to have something to say is a failure mode; if you find nothing genuinely new,
+> output exactly: NONE_FOUND
+
+**Operational notes:**
+- Retry ONCE on `Selected model is at capacity` (transient; fails within ~2s, so the retry is cheap).
+- Keep `-s read-only` on every consultancy call: at `max`, codex has run unrequested
+  read-only shell detours (reading its own skill files) despite an explicit "do not browse
+  the filesystem" instruction — the sandbox contained it.
+- `max`/`ultra` workflow stages need raised timeouts (1200s/1800s), not the default 600s.
+
+---
+
 ## Three-Model Validation Pattern
 
 For COMPLEX tasks, run all three models for maximum coverage:
 
 | Model | Role | Strength |
 |-------|------|----------|
-| Claude (Opus 4.8) | Orchestrator, architect | 1M context, skills/agents, MCP, conversation memory |
-| Codex (GPT-5.5) | Challenger, code review | Independent perspective, web search, structured review output |
+| Claude (Fable 5) | Orchestrator, architect | 1M context, skills/agents, MCP, conversation memory |
+| Codex (GPT-5.6-sol) | Challenger, code review | Independent perspective, web search, structured review output |
 | Antigravity (`agy`) | Analyst, research | Independent third-model perspective, headless `agy -p` delegation, brainstorming |
 
 **Diverge → Challenge → Converge:**
@@ -194,53 +242,41 @@ For COMPLEX tasks, run all three models for maximum coverage:
 
 ---
 
-## Current State (verified 2026-06-05)
+## Current State (verified 2026-07-11)
 
 | Component | Version / Value |
 |---|---|
-| Codex CLI | v0.139.0 (`codex-cli`) |
-| Codex Plugin | v1.0.4 (`@openai/codex-plugin-cc`) |
-| Antigravity CLI | v1.0.7 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
-| Default Codex model | GPT-5.5 (migrated from GPT-5.4) |
-| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist as of 1.0.5+ (current 1.0.15; no short `-m`), but omit `--model` unless explicitly needed |
-| Reasoning effort | xhigh |
-| Multi-agent | enabled |
-| Claude Code model | Claude Opus 4.8 (1M context) |
+| Codex CLI | v0.144.1 (`codex-cli`) |
+| Antigravity CLI | v1.1.1 (`agy`) — headless `agy -p`, self-authenticating, no MCP wrapper |
+| Default Codex model | gpt-5.6-sol (from `~/.codex/config.toml`; verified live via exec banner) |
+| Default agy model | account-default model used by convention; a `--model` flag + `agy models` exist (no short `-m`), but omit `--model` unless explicitly needed |
+| Reasoning effort | per-call pin (see Reasoning-Effort Tiers) — config default is TUI-persisted and untrustworthy for headless calls |
+| Claude Code model | Claude Fable 5 |
 | Handover mechanism | Plugin commands (preferred) OR session-scoped temp dirs + `codex exec -o` |
 
 ### System Configuration
 
 ```toml
-# ~/.codex/config.toml (as of 2026-03-24)
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
-personality = "pragmatic"
-
-[features]
-multi_agent = true
-
-[notice.model_migrations]
-"gpt-5.2" = "gpt-5.4"
-"gpt-5.4" = "gpt-5.5"
+# ~/.codex/config.toml (as of 2026-07-11) — effort levels for gpt-5.6-sol:
+# low | medium (TUI default) | high | xhigh | max | ultra
+model = "gpt-5.6-sol"
+model_reasoning_effort = "max"   # TUI-persisted; do NOT rely on it — pin per call
 ```
 
-### Available Models (2026)
+### Model Override
 
-```bash
-# Override model per-task
-codex exec -m gpt-5.5 ...        # default, strongest reasoning
-codex exec -m o3 ...              # OpenAI reasoning model
-codex exec -m gpt-4.1 ...        # faster, lower cost
-codex exec --oss ...              # local open-source (Ollama/LMStudio)
-```
+The interactive `/model` picker persists both `model` and `model_reasoning_effort` into
+`config.toml`, and headless `codex exec` inherits both. Omit `-m` in delegation calls
+(inherit the configured model) and pin only the EFFORT per call. Use `-m` solely when a
+task explicitly needs a different model than the configured default.
 
 ### Cross-Model Advantage
 
-Claude Opus 4.8 (1M context) and GPT-5.5 have different strengths. Use both:
+Claude Fable 5 and GPT-5.6-sol have different strengths. Use both:
 
-| Strength | Claude Opus 4.8 | GPT-5.5 via Codex |
+| Strength | Claude Fable 5 | GPT-5.6-sol via Codex |
 |---|---|---|
-| Context window | 1M tokens | ~256K tokens |
+| Context window | 1M tokens | provider default (not re-verified for 5.6-sol) |
 | Tool ecosystem | MCP, skills, agents, Read/Edit/Grep | Shell, file I/O, web search |
 | Code editing | Precise Edit tool with diffs | Full-file rewrites |
 | Orchestration | Agent spawning, parallel teams | Multi-agent feature |
@@ -282,7 +318,9 @@ echo "prompt" | codex exec -
 #   -o, --output-last-message FILE Write final response to file
 #   --json                         Stream JSONL events to stdout
 #   --output-schema FILE           Enforce structured JSON output
-#   -m, --model MODEL              Override model (default: gpt-5.5)
+#   -m, --model MODEL              Override model (default: from config; currently gpt-5.6-sol)
+#   -c KEY=VALUE                   Config override — used for per-call effort pins
+#                                  (-c model_reasoning_effort=medium|xhigh|max|ultra)
 #   -C, --cd DIR                   Set working directory
 #   -s, --sandbox MODE             read-only | workspace-write | danger-full-access
 #   --full-auto                    Sandboxed auto-execution

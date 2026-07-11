@@ -146,7 +146,14 @@ Full test cases + scoring: `references/sycophancy-tests.md`.
 agy --sandbox -p "$(cat ballot-prompt.md)" > /tmp/agy-ballot.md < /dev/null
 
 # Canonical pattern for Codex consultant
-codex exec "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md
+# Effort is pinned PER CALL (codex-orchestration "Reasoning-Effort Tiers", benchmarked
+# 2026-07-11): `xhigh` is the FLOOR for ballot/challenger verdicts; use `max` (and
+# timeout 1200) for design-ratification, stuck-escalation, and post-incident ballots.
+# Never inherit the config default — it is whatever the interactive TUI last persisted.
+# Retry once on "Selected model is at capacity" (transient; fails within ~2s).
+timeout 600 codex exec --ephemeral -s read-only \
+  -c model_reasoning_effort=xhigh \
+  "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md < /dev/null
 
 # Run them in parallel via background tasks; collect both before synthesizing
 ```
