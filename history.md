@@ -1,5 +1,18 @@
 # Session History
 
+## 2026-07-11 — merge, skill_factory gate, sol effort benchmark, codex effort policy
+
+**Summary:**
+- **Merged `overhaul/agent-skills` into `main`** (fast-forward to 0674a82; 9 commits). Byte-sync repo → live trees DEFERRED per user ("merge only, no sync yet"); 3-tree identity mismatch is now 1 (gates.py — repo AHEAD of live, resolved by the deferred sync).
+- **skill_factory S059 backport STAGED** (user approval: stage-but-don't-commit): four files (audit_spawn.py, verification_arbiter_spawn.py, freshness_nudge.py, hard-rules-checklist.md) byte-copied from `~/.claude/skills/_meta` after verifying clean against all six forbidden scrub patterns; strict `G_IDENTITY --pair prod-shadow` wired into the pre-push hook via BOTH installers (.sh + .py; the .py hook was restructured — its old template exec'd the scanner, unreachable-code trap). Block path verified live (drifted critical file → exit 1 BLOCKED before secrets scan; `--strict` writes no state by design; the gate watches CRITICAL_FILES .py subset only). Commit remains with the user.
+- **Benchmarked gpt-5.6-sol reasoning-effort tiers** (14 scored runs, 3 rounds: easy 8-bug fixture, hard 10-bug concurrency/security fixture, delta-seeking challenger round). Codex confirmed live on gpt-5.6-sol (codex-cli 0.144.1). Results: every tier found all planted bugs, zero false positives; `high` NEVER beat `medium` (retired); `xhigh` = the only tier that caught the subtle unplanted tail bug under a plain prompt (~2–2.5 min) — FLOOR for challenger/ballot roles; `max` alone reached design-altitude findings under the delta prompt (~5–7 min) but ran an unrequested read-only shell detour (sandbox contained it); `ultra` = max's findings at 2.3x time (orchestrated deep-dives only). Delta-seeking prompt ("basics done, find only misses, NONE_FOUND allowed") let even `medium` reach the tail — prompt contract ≈ as important as tier. One transient "model at capacity" failure → retry-once rule. Full data: project memory `codex-sol-effort-benchmark.md`; fixtures in session scratchpad.
+- **Implemented the effort policy** on branch `feat/codex-effort-policy` (52a7896, pushed): codex-orchestration SKILL.md (Reasoning-Effort Tiers section, per-call-pin HARD-RULE, delta-prompt template, Current State refreshed to 0.144.1/gpt-5.6-sol/agy 1.1.1/Fable 5), patterns.md (EFFORT PIN preamble + xhigh exemplar), cross-cli-deliberation (canonical codex ballot call gained full guard set: --ephemeral, -s read-only, effort pin, stdin close, timeout). Live `~/.claude` tree byte-synced for the three touched files.
+
+**Decisions:**
+- Effort is a PER-CALL pin, never inherited: `~/.codex/config.toml` is TUI-persisted (the `/model` picker wrote `max` mid-session) so headless defaults are untrustworthy. Tier map: medium (inner-loop/mechanical) / xhigh (challenger, QC, ballots, arbiter — floor) / max (conceptual, ratification, stuck-escalation; 1200s timeouts) / ultra (orchestrated deep-dives only). `high` retired.
+- Three-flow delegation taxonomy named: verdict (one-shot, effort-pinned), dialogue (multi-turn, roles, memory — GAP), delegation (autonomous brief→report).
+- **Roundtable skill initiative** (next session, full forge cycle): mixed-provider professional-team dialogue harness — role cards with conflicting incentives, seat→provider map (Claude/Codex/agy), transcript-as-state memory (explicitly NOT native session resume — agy hidden memory = #157 class), blind diverge → addressed cross-examine → converge → arbiter, visual track via visual-companion/nano-banana. Build as sibling of adversarial-team-brainstorm sharing arbiter machinery.
+
 ## 2026-07-10 — overhaul/agent-skills branch: four-surface review fixes
 
 **Summary:**
