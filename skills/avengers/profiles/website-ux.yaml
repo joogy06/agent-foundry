@@ -1,0 +1,86 @@
+# avengers composition profile (DATA). Design §7.
+# Family: website-ux — deliberate a website / app UX direction. GENERATIVE
+# convergence via the dissent schema. VISUAL TRACK ON: the outcome auto-invokes
+# visual-companion `show-comparison` (a deliberate override of visual-companion's
+# offer-first default; adapter note in skills/visual-companion/SKILL.md).
+# Closed primitive vocabulary; an unknown primitive is a fail-closed validate
+# error in convene.py. This file is DATA — nothing here is executed.
+schema: avengers-profile.v1
+family: website-ux
+description: >
+  Choose a UX / interaction / layout direction under contention. The user-advocate
+  (agy) argues the end user's path; the architect holds design-system coherence;
+  the skeptic (adversary) falsifies the direction on usability and accessibility
+  grounds. The arbiter returns ONE direction plus a mandatory attributed dissent
+  record and actionable trip-wires, and the router auto-shows a side-by-side
+  comparison of the contending layouts.
+
+# --- Roster resolution (refs into roster/<seat_id>.yaml) ---
+seats:
+  - ref: user-advocate
+    provider: agy             # voice of the user (design §7)
+    effort: default
+  - ref: architect
+    provider: claude
+    effort: default
+  - ref: skeptic
+    provider: codex
+    effort: xhigh            # pinned challenger floor; NEVER 'high'
+    adversarial_role: true
+
+arbiter:
+  prefer: architect          # claude; provider != skeptic(codex) adversary
+  provider_must_not_equal_adversarial: true
+  effort_on_codex: max
+
+# --- Phase parameters (design §4) ---
+phases:
+  blind_diverge: true
+  docket:
+    max_issues: 6
+  cross_exam:
+    max_cycles: 1
+    max_new_challenges_per_seat_per_cycle: 2
+    stalemate_unchanged_exchanges: 2
+  converge:
+    semantics: generative
+    dissent_schema:
+      final_position: required
+      unresolved_concerns: required
+      compromises_made: required
+      genuine_unanimity_allowed: true
+
+# --- Visual track (design §9) ---
+# ON: the router auto-invokes visual-companion `show-comparison` at ROUTE time,
+# overriding visual-companion's offer-first default (documented in its SKILL.md).
+visual:
+  track: on
+  mode: show-comparison       # side-by-side of the contending layouts
+  auto: true                  # do NOT offer-first; show automatically for this family
+  companion_skill: visual-companion
+
+# --- Grounding & arbiter rules (design §4 ARBITER) ---
+grounding:
+  no_confidence_above_speculative_without_external_grounding: true
+  min_trip_wires_on_decision: 2
+  dissent_record: mandatory
+
+# --- Outcome routing (design §8) ---
+outcome:
+  type: [decision, deliverable]
+  default: decision
+  template: outcome/decision-record.md
+
+# --- Sensitivity & memory policy ---
+sensitivity:
+  pii: false
+  retain: full
+memory:
+  tier: project
+  writeback: on
+
+# --- Budgets (design §4/§7) ---
+budgets:
+  max_seat_calls: 10
+  wall_clock_s: 900
+  max_cycles: 1

@@ -1,0 +1,88 @@
+# avengers composition profile (DATA). Design §7.
+# Family: business-ideation — generate and pressure-test a business direction
+# (product, market, go-to-market, pricing). GENERATIVE convergence via the
+# dissent schema (final position + unresolved_concerns[] + compromises_made[]),
+# NOT ratification ballots. Kill-criteria are REQUIRED on the arbiter output.
+# Closed primitive vocabulary; an unknown primitive is a fail-closed validate
+# error in convene.py. This file is DATA — nothing here is executed.
+schema: avengers-profile.v1
+family: business-ideation
+description: >
+  Explore and choose a business direction under genuine contention. The skeptic
+  (adversary) tries to falsify the bet on its own terms; the economist holds the
+  unit economics; the operator holds execution reality; the architect holds
+  product coherence. The arbiter returns ONE recommended direction plus a
+  mandatory attributed dissent record and >=2 KILL CRITERIA (falsifiable trip-
+  wires that would retire the idea).
+
+# --- Roster resolution (refs into roster/<seat_id>.yaml) ---
+# Four member seats. >=1 MUST resolve adversarial_role: true; the arbiter's
+# provider MUST differ from every adversarial seat's provider (resolver-enforced).
+seats:
+  - ref: skeptic
+    provider: codex
+    effort: xhigh            # pinned challenger floor; NEVER 'high'
+    adversarial_role: true
+  - ref: economist
+    provider: claude
+    effort: default
+  - ref: operator
+    provider: agy
+    effort: default
+  - ref: architect
+    provider: claude
+    effort: default
+
+arbiter:
+  # Resolver picks a can_arbitrate seat whose provider != every adversarial
+  # seat's provider. With skeptic=codex(adversarial), the arbiter is economist/
+  # architect (claude) or operator (agy). Pinned preference below; resolver validates.
+  prefer: architect
+  provider_must_not_equal_adversarial: true
+  effort_on_codex: max        # defensive; a codex arbiter would pin 'max' (never happens while codex is the adversary)
+
+# --- Phase parameters (design §4) ---
+phases:
+  blind_diverge: true
+  docket:
+    max_issues: 6
+  cross_exam:
+    max_cycles: 1
+    max_new_challenges_per_seat_per_cycle: 2
+    stalemate_unchanged_exchanges: 2   # INTERNAL counter, distinct from max_cycles
+  converge:
+    semantics: generative      # dissent-schema convergence (NOT ratification ballots)
+    dissent_schema:
+      final_position: required
+      unresolved_concerns: required
+      compromises_made: required
+      genuine_unanimity_allowed: true   # empty concerns/compromises only with explicit declaration
+
+# --- Grounding & arbiter rules (design §4 ARBITER) ---
+grounding:
+  no_confidence_above_speculative_without_external_grounding: true
+  kill_criteria_required: true
+  min_trip_wires_on_decision: 2   # kill criteria ARE the trip-wires for a generative bet
+  dissent_record: mandatory       # attribution + convergence margin (unanimous / converged N-M / arbiter broke tie)
+
+# --- Outcome routing (design §8) ---
+outcome:
+  type: [decision, forge_brief]   # a chosen direction (decision), or a forge_brief on the build path
+  default: decision
+  template: outcome/decision-record.md
+
+# --- Sensitivity & memory policy ---
+sensitivity:
+  pii: false
+  retain: full
+memory:
+  tier: project               # v1: project only. NO global-tier loader branch (design §2/§14).
+  writeback: on               # gated, default-reject per item
+
+# --- Budgets (design §4/§7) ---
+# Full profile: 4 seats, 1 cycle, ~10-12 calls. Explicit opt-in with the honest
+# estimate shown first (design §7 default-small shape).
+budgets:
+  max_seat_calls: 13
+  wall_clock_s: 1200
+  max_cycles: 1

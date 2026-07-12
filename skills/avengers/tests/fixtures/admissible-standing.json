@@ -1,0 +1,38 @@
+[
+  {
+    "id": "mem-0001",
+    "topic_key": "python-deps",
+    "kind": "constraint",
+    "statement": "This project pins to stdlib-only plus PyYAML for human-authored YAML; no third-party runtime deps.",
+    "applies_when": "always",
+    "provenance": {
+      "run_id": "20260711-2003-codex-effort-default",
+      "source_type": "user_confirmed_constraint",
+      "source_refs": ["t0003"],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    "approval": {"status": "approved", "by": "tadas", "at": "2026-07-11T20:30:00Z"},
+    "sensitivity": {"pii": false},
+    "status": "active",
+    "expires_at": null,
+    "supersedes": null
+  },
+  {
+    "id": "mem-0002",
+    "topic_key": "codex-effort",
+    "kind": "decision",
+    "statement": "The ~/.codex config default model_reasoning_effort was lowered from max to xhigh (2026-07-11 benchmark).",
+    "applies_when": "task_family=coding-ratification",
+    "provenance": {
+      "run_id": "20260711-2003-codex-effort-default",
+      "source_type": "user_selected_decision",
+      "source_refs": ["t0011"],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    "approval": {"status": "approved", "by": "tadas", "at": "2026-07-11T20:31:00Z"},
+    "sensitivity": {"pii": false},
+    "status": "active",
+    "expires_at": null,
+    "supersedes": null
+  }
+]

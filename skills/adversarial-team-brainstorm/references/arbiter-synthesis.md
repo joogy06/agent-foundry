@@ -8,6 +8,45 @@ does not generate new outputs from scratch. Its job is to judge survival, not to
 
 ---
 
+## Arbiter Mode (top-level switch)
+
+`arbiter_mode` selects WHAT the arbiter produces. It is the **top-level switch**; the Steps below are
+written for the default and are overridden per-mode where noted.
+
+| `arbiter_mode` | Produces | Consults `output_class`? | Primary caller |
+|---|---|---|---|
+| `ideas` (**default**) | Ranked list of surviving outputs (tournament semantics) | **YES** — the `output_class` sub-switch (Step 7) operates unchanged beneath it | ATB inline, founder-ideation, alf, adversarial-tournament workflow |
+| `decision` | ONE selected decision + a dissent record (not a ranked list) | **NO** | avengers (ratification / generative families) |
+| `deliverable` | ONE consolidated deliverable + a dissent record | **NO** | avengers (deliverable outcome) |
+| `forge_brief` | ONE `avengers_brief` block (build path) + a dissent record | **NO** | avengers (build path → forge Step 3 intake) |
+
+**An absent `arbiter_mode` defaults to `ideas`** — existing callers are untouched by construction.
+Under `arbiter_mode: ideas`, EVERYTHING in this document behaves exactly as it did before this switch
+was introduced: Steps 1–7 run verbatim, the `output_class: ideas|signals|proposals|designs` sub-switch
+(Step 7) is the only per-output-shape control, and the output is the ranked list (see Arbiter Output
+Format). This is the semantic-equivalence guarantee — no behavior change for tournament callers.
+
+**The three non-`ideas` modes do NOT consult `output_class` at all.** They replace the ranked-list
+output with a single-decision-plus-dissent schema (see "Non-`ideas` modes" below), and they key
+survivor selection on the deliberation's obligation ledger rather than on tournament rounds. These
+modes are used by `avengers`; the four tournament callers never set `arbiter_mode`.
+
+### Caller sweep (regression contract)
+
+| Caller | `arbiter_mode` | Behavior |
+|---|---|---|
+| ATB inline | `ideas` (default, unset) | unchanged tournament ranked list |
+| founder-ideation | `ideas` (default, unset) | unchanged; still passes its kill-criteria-library reference |
+| alf | `ideas` (default, unset) | unchanged adversarial-review ranking |
+| adversarial-tournament workflow | `ideas` (default, unset) | unchanged |
+| avengers | `decision` \| `deliverable` \| `forge_brief` | new single-decision + dissent path |
+
+None of the four pre-existing callers set `arbiter_mode`; they inherit `ideas` and are semantically
+unchanged. This table is the caller-sweep regression contract enforced by
+`tests/test_arbiter_mode_regression.py`.
+
+---
+
 ## Arbiter Model Selection
 
 - Default: **Claude** (good at long-context synthesis across multiple Round 3 documents)
@@ -108,6 +147,10 @@ gate.
 
 ## Step 7: Output Class Sanity Check
 
+**This step is the `output_class` sub-switch and applies ONLY under `arbiter_mode: ideas` (the default).**
+The rules for the four `output_class` values below are unchanged from before the `arbiter_mode` switch
+existed (semantic equivalence). The three non-`ideas` modes skip this step entirely.
+
 If `output_class: ideas`:
 - every output has kill_criteria + first_experiment + data_sources → enforced
 - arbiter_notes mentions any output that failed the check and was dropped
@@ -123,6 +166,71 @@ If `output_class: proposals` or `designs`:
 
 Callers that need different rules pass a custom `output_class` and document the rules in their own
 skill.
+
+---
+
+## Non-`ideas` modes (`decision` | `deliverable` | `forge_brief`)
+
+These modes are used by `avengers`. They do NOT run tournament rounds and they do NOT consult
+`output_class`. They consume a deliberation transcript + obligation ledger and produce ONE outcome plus
+a **mandatory dissent record**. Steps 1–7 above (survivor selection by tournament round, hybridization,
+the `output_class` sanity check, ranking) are REPLACED by the rules in this section.
+
+### Candidate units per mode
+
+- `decision`: the candidate units are the seats' converged **private final positions**, not team outputs.
+- `deliverable`: the candidate unit is the single consolidated artifact drafted from the surviving position.
+- `forge_brief`: the candidate unit is the front-runner **direction** plus the ruled-out approaches.
+
+### Obligation-keyed survival rules (replaces Step 1 for these modes)
+
+Survivor selection is keyed on the **obligation ledger**, not tournament rounds:
+
+1. A position carrying an `open` or `stalemate` obligation against it cannot be selected as the outcome
+   unless the arbiter records WHY it survives the open obligation.
+2. `conceded` positions are dropped.
+3. `stalemate` obligations flow into the dissent record as **unresolved dissent** — never silently
+   dropped, never converted to consensus (termination guarantee: stalemate → dissent, not deadlock).
+4. The arbiter does NOT invent novel proposals — it selects among positions the seats actually argued.
+
+### Grounding & kill-criteria mapping
+
+- **Grounding rule (unchanged spirit):** no confidence above `speculative` without ≥1 external grounding
+  source (the same HARD rule as Step 4).
+- `decision` / `forge_brief`: ≥2 kill-criteria / trip-wires attached to the selected outcome, each
+  actionable ("reopen if X").
+- `deliverable`: kill-criteria optional; the dissent record is still mandatory.
+
+### Output schema (single decision + dissent — NOT a ranked list)
+
+```yaml
+arbiter_mode: decision            # or deliverable | forge_brief
+decision:                         # renamed `deliverable:` / `avengers_brief:` for the other two modes
+  statement: string
+  selected_from_seat: string
+  confidence: high|medium|low|speculative
+  kill_criteria: list[string]     # >=2 for decision / forge_brief
+  grounding: list[string]
+dissent_record:                   # ALWAYS present, even when unanimous
+  convergence_margin: unanimous | converged N-M | arbiter-broke-tie
+  entries:
+    - seat: string
+      position: string
+      status: open|stalemate|minority
+      trip_wire: string
+  honesty_line: string            # printed when unanimous + empty dissent
+meta:
+  obligations_open: int
+  obligations_stalemate: int
+  seats_used: list[string]
+```
+
+For `arbiter_mode: forge_brief` the `decision:` block is replaced by an `avengers_brief:` block whose
+shape MUST match the forge Step 3 `came_from_avengers` intake: `problem`, `constraints`,
+`success_criteria`, `ruled_out_approaches`, `recommended_direction` (advisory, not locked), `dissent[]`,
+`confidence`, `deliberation_record` (path, never inlined), with `contract_map_signed: false` and
+`bob_ready: false` **mechanically always-false** (avengers never signs a map or marks anything
+bob-ready). See `skills/forge/SKILL.md` Step 3.
 
 ---
 

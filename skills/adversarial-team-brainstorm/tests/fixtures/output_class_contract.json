@@ -1,0 +1,27 @@
+{
+  "_comment": "Frozen semantic contract for the FOUR pre-existing output_class values. WP-4 introduced arbiter_mode as a top-level switch; arbiter_mode:ideas (the default) MUST preserve these rules verbatim. These substrings are asserted to be present inside the '## Step 7: Output Class Sanity Check' section of arbiter-synthesis.md. If a substring here no longer matches the doc, the semantic-equivalence guarantee for tournament callers is broken.",
+  "output_class_rules": {
+    "ideas": [
+      "output_class: ideas",
+      "kill_criteria + first_experiment + data_sources",
+      "enforced"
+    ],
+    "signals": [
+      "output_class: signals",
+      "every output has data_sources",
+      "enforced",
+      "kill_criteria and first_experiment are NOT required"
+    ],
+    "proposals": [
+      "output_class: proposals",
+      "kill_criteria + first_experiment",
+      "enforced",
+      "data_sources recommended but not required"
+    ],
+    "designs": [
+      "output_class: proposals` or `designs",
+      "kill_criteria + first_experiment",
+      "data_sources recommended but not required"
+    ]
+  }
+}

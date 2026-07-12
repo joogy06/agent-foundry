@@ -78,6 +78,21 @@ You MUST create a task for each item and complete in order:
 - `ideas_considered` / `assumptions` / `experiments` -> include as "Prior founder exploration" in shared_context for all design agents
 
 If `came_from_founder` is absent or false, proceed with normal forge flow. Forge NEVER reads `.founder/venture-brief.yaml` at session start -- only on explicit handoff.
+
+**Explicit avengers handoff**: If the spawn prompt or user message includes `came_from_avengers: true` with an `avengers_brief_path`, read that file and use its `avengers_brief` block as the pre-clarified task statement (mirrors `came_from_founder`; the avengers build path enters forge HERE at Step 3 intake, then flows through forge's own Step 4–9 gates — classification, contract map, spec review, bob):
+
+- `avengers_brief.problem` -> the design challenge (skip "what are we building?" questions)
+- `avengers_brief.constraints` -> passed to design agents as constraints
+- `avengers_brief.success_criteria` -> passed to design agents as constraints
+- `avengers_brief.ruled_out_approaches` -> non-goals + hard "do not explore" signals (each carries which seat killed it; same treatment as the founder phase-2 rule)
+- `avengers_brief.recommended_direction` -> seed front-runner for Step 6 exploration (**advisory, NEVER locked** — design agents may reject it)
+- `avengers_brief.dissent[]` -> surfaced **verbatim** to the user during Step 7 presentation (never summarized away)
+- `avengers_brief.confidence` -> input to Step 4 complexity assessment (high+narrow MAY downgrade team size; low/speculative FORCES full exploration)
+- `avengers_brief.deliberation_record` -> listed as a prior-exploration reference in shared_context (path, never inlined)
+
+`avengers_brief.contract_map_signed` and `avengers_brief.bob_ready` are **mechanically always-false** — avengers NEVER signs a contract map or marks anything bob-ready; forge owns those gates. If either is true in the brief, treat the brief as malformed and re-clarify with the user.
+
+If `came_from_avengers` is absent or false, proceed with normal forge flow. Forge NEVER reads an avengers session directory at session start -- only on explicit handoff. **Recursion guard**: a forge-convened avengers session (forge itself invoked avengers for design exploration, carrying `forge_session_id`) MUST NOT emit a brief back into forge — see the Step 6 recursion-guard note.
 4. **Assess complexity** — determine design exploration team size needed
 4b. **Check tool availability via env-adoption manifest** — Read `~/.claude/state/inventory.json` for tool availability and `$XDG_RUNTIME_DIR/env-adoption/session-*.json` for session capabilities. If the inventory is missing or stale (>24h), run `bash ~/.claude/skills/env-adoption/scripts/probe.sh check` first (completes in <3s). Branch on capabilities:
 
@@ -181,6 +196,8 @@ the Claude challenger or UX-when-`ui_facing`. Spend is reported observe-only
 Step 6B (byte-identical, portable).
 
 ## Step 6B: Design exploration team (portable, canonical) — Phase 1
+
+**Recursion guard (avengers ↔ forge)**: forge MAY convene `avengers` in design-exploration mode as an adjunct to the approach team. When it does, forge passes its `forge_session_id` in the avengers `came_from` block. A forge-convened avengers session is depth-capped and its build path is **BLOCKED**: it returns a `decision` (forced), never a `forge_brief`, so it cannot emit a `came_from_avengers` handoff back into forge (which forge itself started). This prevents infinite forge→avengers→forge recursion. Forge already pays for its own challengers; a convened avengers is for contention, not a second build gate.
 
 ### Step 1: Understanding (Lead Only)
 
@@ -523,6 +540,7 @@ After convergence:
 - Ask after each section: "Does this look right so far?"
 - Cover: architecture, components, data flow, error handling, testing approach, performance considerations
 - **Always include a UX section** for UI-facing work
+- **If `came_from_avengers`**: surface the `avengers_brief.dissent[]` entries **verbatim** in the presentation — attributed to the seat, with each entry's trip-wire. Do NOT summarize or drop them; the user judges the design with the deliberation's dissent in view (mirrors the founder minority-report surfacing).
 - Be ready to revise based on user feedback
 
 ### Step 4: Write Design Doc
@@ -976,6 +994,9 @@ For UI-facing work, apply these when evaluating designs:
 
 - Starting design-team exploration before the user has validated their idea via `founder-ideation` (Phase 1) / `founder-validation` (Phase 2) — pre-execution founder intent belongs in the founder family FIRST, then hand back at the Scope->Launch gate
 - Reading `.founder/venture-brief.yaml` at session start without an explicit `came_from_founder` handoff — ambient coupling creates stale-state bugs
+- Reading an avengers session directory at session start without an explicit `came_from_avengers` handoff — same ambient-coupling stale-state bug class
+- Letting a forge-convened avengers session emit a `forge_brief` back into forge (recursion) — a forge-convened avengers is `decision`-only, build path blocked (see Step 6 recursion guard)
+- Treating `avengers_brief.contract_map_signed` / `bob_ready` as anything but always-false — avengers never signs a map or marks bob-ready
 - Starting to code before design is approved
 - Skipping the Claude challenger "to save tokens"
 - Skipping the Codex challenger "Codex is unavailable" (check first, then skip only if truly unavailable)

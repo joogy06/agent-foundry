@@ -1,0 +1,73 @@
+{
+  "asserted": "N/A",
+  "classify_version": "1.0.0",
+  "decision_trace": {
+    "confirmed_positive_signals": [],
+    "has_n4": false,
+    "has_p1_confirmed": false,
+    "rule_fired": "band:no",
+    "score": -4
+  },
+  "design_doc": "/mnt/data/dev04/agent-foundry/docs/plans/2026-07-11-avengers-skill-design.md",
+  "evidence": {
+    "confirmed_positives": [],
+    "negatives": [
+      {
+        "candidate": true,
+        "confirmed": true,
+        "detail": "exempt lexicon x1: ['stdlib']",
+        "id": "N2",
+        "weight": -4
+      }
+    ],
+    "prose_only": []
+  },
+  "file_profile": [
+    "skills/avengers/SKILL.md",
+    "skills/avengers/references/dialogue-protocol.md",
+    "skills/avengers/references/convene-contract.md",
+    "skills/avengers/references/memory-policy.md",
+    "skills/avengers/references/trust-boundary.md",
+    "skills/avengers/references/outcome-routing.md",
+    "skills/avengers/references/reuse-map.md",
+    "skills/avengers/roster/skeptic.yaml",
+    "skills/avengers/roster/architect.yaml",
+    "skills/avengers/roster/operator.yaml",
+    "skills/avengers/roster/user-advocate.yaml",
+    "skills/avengers/roster/economist.yaml",
+    "skills/avengers/roster/wordsmith.yaml",
+    "skills/avengers/profiles/coding-ratification.yaml",
+    "skills/avengers/profiles/website-ux.yaml",
+    "skills/avengers/profiles/business-ideation.yaml",
+    "skills/avengers/profiles/writing-cv.yaml",
+    "skills/avengers/profiles/research-synthesis.yaml",
+    "skills/avengers/schemas/session-plan.v1.schema.json",
+    "skills/avengers/schemas/memory-record.v1.schema.json",
+    "skills/avengers/scripts/kernel.py",
+    "skills/avengers/scripts/seat_prompt.py",
+    "skills/avengers/scripts/convene.py",
+    "skills/avengers/scripts/memory_writeback.py",
+    "skills/avengers/tests/test_kernel.py",
+    "skills/avengers/tests/test_prompt_boundaries.py",
+    "skills/avengers/tests/test_memory_gate.py",
+    "skills/adversarial-team-brainstorm/references/arbiter-synthesis.md",
+    "skills/forge/SKILL.md",
+    "skills/visual-companion/SKILL.md",
+    "skills/avengers/tests/fixtures/injected-material.json",
+    "skills/avengers/tests/fixtures/injected-seat-output.json",
+    "skills/avengers/tests/fixtures/poisoned-memory.md",
+    "skills/adversarial-team-brainstorm/tests/test_arbiter_mode_regression.py",
+    "skills/forge/tests/test_avengers_intake.py"
+  ],
+  "score": -4,
+  "signals": [
+    {
+      "candidate": true,
+      "confirmed": true,
+      "detail": "exempt lexicon x1: ['stdlib']",
+      "id": "N2",
+      "weight": -4
+    }
+  ],
+  "verdict": "no"
+}
