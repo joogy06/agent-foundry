@@ -93,6 +93,17 @@ For architecture diagrams, flowcharts, sequence diagrams, ER diagrams:
 
 Use `templates/comparison.html`. Two columns, one mockup per side.
 
+> **Adapter note — avengers `website-ux` profile (auto `show-comparison`).** The
+> `avengers` skill's `website-ux` composition profile invokes `show-comparison`
+> AUTOMATICALLY at its ROUTE phase (`visual.auto: true`), deliberately overriding
+> the `offer`-first default above. Rationale: a UX deliberation's whole point is
+> comparing contending layouts, so the offer-first friction is not wanted for that
+> one profile — the side-by-side is the payload, not an optional aid. This is a
+> documented, profile-scoped exception; every OTHER caller (and every other
+> avengers profile) still uses the offer-first default. If `show-comparison` is
+> renamed or its `templates/comparison.html` contract changes, update the avengers
+> `website-ux` visual track (see `skills/avengers/references/reuse-map.md`).
+
 ## File path convention
 
 ```

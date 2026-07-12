@@ -1,0 +1,37 @@
+{
+  "session_id": "20260711-2003-codex-effort-default",
+  "obligations": [
+    {
+      "id": "OB-1",
+      "challenger": "skeptic",
+      "respondent": "architect",
+      "topic": "medium vs xhigh as the default",
+      "status": "answered",
+      "resolution": "architect defended medium (flow-tax argument); not conceded, carried to arbiter as the minority position"
+    },
+    {
+      "id": "OB-2",
+      "challenger": "operator",
+      "respondent": "skeptic",
+      "topic": "unpinned-hard-task under-powering hazard",
+      "status": "conceded",
+      "resolution": "skeptic conceded; flipped medium->xhigh"
+    },
+    {
+      "id": "OB-3",
+      "challenger": "architect",
+      "respondent": "operator",
+      "topic": "medium latency is unmeasured",
+      "status": "conceded",
+      "resolution": "operator conceded; flipped medium->xhigh"
+    }
+  ],
+  "ballots": {
+    "skeptic": "CHANGE_NEEDED->xhigh",
+    "operator": "CHANGE_NEEDED->xhigh",
+    "architect": "CHANGE_NEEDED->medium"
+  },
+  "incumbent_premise": "Leave the default at max.",
+  "premise_verdict": "REJECTED unanimously (all three CHANGE_NEEDED)",
+  "tier_split": "xhigh 2 / medium 1"
+}

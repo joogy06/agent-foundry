@@ -1,0 +1,31 @@
+{
+  "_comment": "Caller-sweep regression contract (design section 10). The four pre-existing callers of arbiter-synthesis.md MUST NOT set arbiter_mode; they inherit the default 'ideas' and are semantically unchanged. avengers is the only caller of the three new modes. Each entry's substrings must appear in the '### Caller sweep (regression contract)' table of arbiter-synthesis.md.",
+  "callers": {
+    "atb-inline": {
+      "row_marker": "ATB inline",
+      "expected_mode": "ideas",
+      "sets_arbiter_mode": false
+    },
+    "founder-ideation": {
+      "row_marker": "founder-ideation",
+      "expected_mode": "ideas",
+      "sets_arbiter_mode": false
+    },
+    "alf": {
+      "row_marker": "alf",
+      "expected_mode": "ideas",
+      "sets_arbiter_mode": false
+    },
+    "adversarial-tournament": {
+      "row_marker": "adversarial-tournament workflow",
+      "expected_mode": "ideas",
+      "sets_arbiter_mode": false
+    },
+    "avengers": {
+      "row_marker": "avengers",
+      "expected_mode": "decision",
+      "sets_arbiter_mode": true
+    }
+  },
+  "new_modes": ["decision", "deliverable", "forge_brief"]
+}

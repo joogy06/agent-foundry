@@ -1,0 +1,22 @@
+{
+  "_comment": "WP-4 forge Step 3 came_from_avengers intake contract (design section 10). Each field maps to substrings that MUST appear in forge/SKILL.md. This locks the per-field intake mapping, the always-false fields, the recursion guard, and dissent surfacing against drift (blast-radius control).",
+  "required_markers": {
+    "intake_flag": "came_from_avengers: true",
+    "brief_path": "avengers_brief_path",
+    "mirrors_founder": "mirrors `came_from_founder`",
+    "absent_flag_normal_flow": "If `came_from_avengers` is absent or false",
+    "recursion_guard_step6": "Recursion guard (avengers ↔ forge)",
+    "dissent_surfacing_step7": "surface the `avengers_brief.dissent[]` entries **verbatim**"
+  },
+  "intake_field_mapping": {
+    "problem": ["avengers_brief.problem", "design challenge"],
+    "constraints": ["avengers_brief.constraints", "constraints"],
+    "success_criteria": ["avengers_brief.success_criteria", "constraints"],
+    "ruled_out_approaches": ["avengers_brief.ruled_out_approaches", "do not explore"],
+    "recommended_direction": ["avengers_brief.recommended_direction", "advisory", "Step 6"],
+    "dissent": ["avengers_brief.dissent[]", "verbatim", "Step 7"],
+    "confidence": ["avengers_brief.confidence", "Step 4 complexity"],
+    "deliberation_record": ["avengers_brief.deliberation_record", "shared_context"]
+  },
+  "always_false_fields": ["contract_map_signed", "bob_ready"]
+}

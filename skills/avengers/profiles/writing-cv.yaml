@@ -1,0 +1,85 @@
+# avengers composition profile (DATA). Design §7.
+# Family: writing-cv — deliberate the positioning / content of a CV / resume /
+# application package. GENERATIVE convergence via the dissent schema.
+# PII-HARDENED: sensitivity.pii true, external-egress packets redacted by default,
+# retention = redacted, memory write-back OFF (design §5/§6). The RENDERING of the
+# final document is HANDED OFF to the career-* skill family — avengers deliberates
+# positioning + truthfulness, it does not typeset the CV.
+# Closed primitive vocabulary; an unknown primitive is a fail-closed validate
+# error in convene.py. This file is DATA — nothing here is executed.
+schema: avengers-profile.v1
+family: writing-cv
+description: >
+  Decide how to position a candidate truthfully and effectively. The wordsmith
+  holds clarity and human voice; the user-advocate argues the hiring-manager /
+  recruiter perspective; the skeptic (adversary) red-teams every claim for
+  truthfulness and defensibility (nothing survives that the candidate cannot
+  substantiate in an interview). The arbiter returns ONE positioning direction
+  plus a mandatory attributed dissent record; rendering is handed to career-*.
+
+# --- Roster resolution (refs into roster/<seat_id>.yaml) ---
+seats:
+  - ref: wordsmith
+    provider: claude
+    effort: default
+  - ref: user-advocate
+    provider: agy             # the hiring-manager / recruiter perspective
+    effort: default
+  - ref: skeptic
+    provider: codex
+    effort: xhigh            # red-teams claim truthfulness; NEVER 'high'
+    adversarial_role: true
+
+arbiter:
+  prefer: wordsmith          # claude; provider != skeptic(codex) adversary
+  provider_must_not_equal_adversarial: true
+  effort_on_codex: max
+
+# --- Phase parameters (design §4) ---
+phases:
+  blind_diverge: true
+  docket:
+    max_issues: 6
+  cross_exam:
+    max_cycles: 1
+    max_new_challenges_per_seat_per_cycle: 2
+    stalemate_unchanged_exchanges: 2
+  converge:
+    semantics: generative
+    dissent_schema:
+      final_position: required
+      unresolved_concerns: required
+      compromises_made: required
+      genuine_unanimity_allowed: true
+
+# --- Grounding & arbiter rules (design §4 ARBITER) ---
+grounding:
+  no_confidence_above_speculative_without_external_grounding: true
+  min_trip_wires_on_decision: 2
+  dissent_record: mandatory
+  truthfulness_gate: true    # no claim survives that the candidate cannot substantiate
+
+# --- Outcome routing (design §8) ---
+# Deliverable is the positioning brief; RENDERING is handed off (never done here).
+outcome:
+  type: [deliverable, decision]
+  default: deliverable
+  template: outcome/deliverable.md
+  handoff:
+    to: career-application-writer   # career-* family renders the actual CV / cover letter
+    reason: "avengers deliberates positioning + truthfulness; career-* owns the rendered document"
+
+# --- Sensitivity & memory policy (PII-HARDENED, design §5/§6) ---
+sensitivity:
+  pii: true
+  retain: redacted           # NOT full — PII profile retains a redacted transcript
+  egress_redaction: true     # external-egress packets (codex/agy) redacted by default
+memory:
+  tier: project
+  writeback: off             # PII profiles: write-back OFF (design §6); at most 0-1 if ever enabled
+
+# --- Budgets (design §4/§7) ---
+budgets:
+  max_seat_calls: 10
+  wall_clock_s: 900
+  max_cycles: 1
