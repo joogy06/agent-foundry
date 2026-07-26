@@ -29,7 +29,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 
 import uri  # noqa: E402
 
-# Fixture root lives inside the skill_factory project workspace.
+# Fixture root lives inside the foundry-lab project workspace.
 FIXTURE_ROOT = (
     Path("/path/to/project/tests/fixtures/uri-resolver/"
          "project-root-sample")

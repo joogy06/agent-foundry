@@ -4,7 +4,7 @@
       *> Exercises: paragraphs, PERFORM call-edges, COPY copybook, EXEC SQL
       *> with a connection credential (redaction target), and one DYNAMIC CALL
       *> (must classify speculative).
-       AUTHOR. SKILL-FACTORY.
+       AUTHOR. FOUNDRY-LAB.
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.

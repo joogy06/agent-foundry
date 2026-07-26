@@ -373,7 +373,7 @@ def _emit_scope_deltas(report: Report, project_root: Path,
     """Emit scope_delta entries for STRICT blocking criteria findings.
     Returns count emitted. Dedup BEFORE write (S029 lesson)."""
     try:
-        # Lazy import: scope_delta lives in skill_factory's _meta dir
+        # Lazy import: scope_delta lives in foundry-lab's _meta dir
         sys.path.insert(0, str(Path.home() / ".claude" / "skills" / "_meta"))
         import scope_delta as _sd
     except ImportError:

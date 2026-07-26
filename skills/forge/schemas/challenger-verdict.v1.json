@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/challenger-verdict.v1.json",
+  "$id": "https://foundry-lab.local/schemas/challenger-verdict.v1.json",
   "title": "challenger-verdict.v1",
   "description": "S055 §5.1 — output of the design-tournament Claude challenger stage. Owner: forge. Consumed by design-tournament converge + forge inline. The external-challenger-verdict.v1 schema wraps THIS shape in the W-EXT envelope.",
   "type": "object",

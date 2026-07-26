@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/evo-manifest.v1.json",
+  "$id": "https://foundry-lab.local/schemas/evo-manifest.v1.json",
   "title": "evo-manifest.v1",
   "description": "S032 EVO run lifecycle anchor at .ledger/evo/runs/<run_id>/manifest.yaml. Written by evo at INIT; phase mutated on every state-machine transition; ttl_at enforces 72h auto-cleanup default; resume reads phase here.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/evo-phase-result.v1.json",
+  "$id": "https://foundry-lab.local/schemas/evo-phase-result.v1.json",
   "title": "evo-phase-result.v1",
   "description": "S055 §5.7 / §12 — generic per-phase result of an evo-analyze stage (clone/extract/intent/drift). Owner: evo. Home: _meta/schemas/. Consumed by the evo-analyze script. Carries HR8 budget honesty (skipped[]).",
   "type": "object",

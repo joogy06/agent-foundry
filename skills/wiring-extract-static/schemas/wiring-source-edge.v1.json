@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/wiring-source-edge.v1.json",
+  "$id": "https://foundry-lab.local/schemas/wiring-source-edge.v1.json",
   "title": "wiring-source-edge.v1",
   "description": "One edge emitted by a static extractor, per design 2026-04-14 §4.1.",
   "type": "object",

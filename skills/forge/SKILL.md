@@ -636,7 +636,7 @@ CANONICAL=$(printf '%s' "$PAYLOAD" | jq -cS .)
 # (64 hex chars + newline). Shell command substitution `$(cat file)` strips trailing
 # newlines and produces a 64-byte key — mismatches gates.py. This produced a G1
 # signature-mismatch on every forge-signed contract map before 2026-04-19; see
-# skill_factory/docs/reviews/2026-04-19-product-merger-codex-spec-review.md (tasks.md #85).
+# foundry-lab/docs/reviews/2026-04-19-product-merger-codex-spec-review.md (tasks.md #85).
 #
 # Mirrors _meta/gates.sh §HMAC verification (Python oracle preferred; bash fallback uses
 # xxd round-trip + openssl -macopt hexkey: to preserve the trailing newline byte).

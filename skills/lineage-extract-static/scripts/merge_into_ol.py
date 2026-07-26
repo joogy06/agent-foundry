@@ -55,7 +55,7 @@ from validate_ol import (  # noqa: E402
 PINNED_OL_VERSION = "2.0.2"
 STATIC_PRODUCER_URI = "urn:lineage:static-scan"
 STATIC_ANALYSIS_FACET_URI = (
-    "https://skill-factory.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json"
+    "https://foundry-lab.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json"
 )
 # SchemaDatasetFacet (structure-recovery WP-9, M1). The facet name `schema`
 # matches the upstream OpenLineage SchemaDatasetFacet convention; the vendored
@@ -127,7 +127,7 @@ def make_dataset_event(
     facets: dict = {
         "datasetKind": {
             "_producer": STATIC_PRODUCER_URI,
-            "_schemaURL": "https://skill-factory.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
+            "_schemaURL": "https://foundry-lab.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
             "kind": dataset.get("kind", "file"),
         },
     }
@@ -249,7 +249,7 @@ def make_job_event(
     facets: dict = {
         "jobKind": {
             "_producer": STATIC_PRODUCER_URI,
-            "_schemaURL": "https://skill-factory.local/openlineage/facets/JobKindFacet/1-0-0.json",
+            "_schemaURL": "https://foundry-lab.local/openlineage/facets/JobKindFacet/1-0-0.json",
             "kind": job_kind,
         },
         "staticAnalysis": {

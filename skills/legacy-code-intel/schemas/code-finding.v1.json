@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/code-finding.v1.json",
+  "$id": "https://foundry-lab.local/schemas/code-finding.v1.json",
   "title": "code-finding.v1",
   "description": "legacy-code-intel per-chunk emission from the in-session AI CLI's LLM analysis (prompts/analyze-symbols.md + per-format addendum). Captures symbols + occurrences + relationships for ONE chunk of an artifact, with per-format kind enums and bright-line confidence. accumulate.py reads these chunk findings, applies deterministic boundary-pairing, and emits the artifact-level rollup that emit_index.py assembles into code-index.v1. Draft-07, lowercase types (anti-requirement vs the discarded agy build).",
   "type": "object",

@@ -49,7 +49,7 @@ from pathlib import Path
 
 # REPO_ROOT auto-detection:
 # - Bundled mode (public agent-foundry): install.py lives next to skills/agents/commands.
-# - Dev mode (skill_factory/installer/): those siblings live in the parent directory.
+# - Dev mode (foundry-lab/installer/): those siblings live in the parent directory.
 _HERE = Path(__file__).resolve().parent
 if any((_HERE / d).exists() for d in ("skills", "agents", "commands")):
     REPO_ROOT = _HERE                  # bundled mode

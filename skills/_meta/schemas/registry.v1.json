@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/registry.v1.json",
+  "$id": "https://foundry-lab.local/schemas/registry.v1.json",
   "title": "registry.v1",
   "description": "S055 §12 (frozen — Codex #13 / R9). The single machine registry of every schema in the ecosystem's orchestration surface. No schema ships outside the registry. A generated test (tests/schemas/test_schema_registry.py) walks this file: every canonical path exists + parses; every fixture round-trips; every workflow SCHEMA-TWIN annotation hash matches its canonical file. Rows are added INCREMENTALLY by their owning WPs — the generated test validates whatever the registry lists at run time, so later WPs extend rather than break it.",
   "schema_version": "registry.v1",

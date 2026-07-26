@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/execution-report.v1.json",
+  "$id": "https://foundry-lab.local/schemas/execution-report.v1.json",
   "title": "execution-report.v1",
   "description": "S055 §6.3 — the schema-mapped Execution Report bob emits when the spawn context supplies a structured-output schema. Producer: bob stages / bob standalone. Consumed by the main loop, forge Step 9, evo-apply, alf Step 6. The `needs.kind` enum is THE machine-readable escalation channel of the whole inversion. Host-neutral data.",
   "type": "object",

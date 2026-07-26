@@ -25,7 +25,7 @@ Reference doc for the `lineage-extract-static` skill. Pinned to OpenLineage 2.0.
     "facets": {
       "datasetKind": {
         "_producer": "urn:lineage:static-scan",
-        "_schemaURL": "https://skill-factory.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
+        "_schemaURL": "https://foundry-lab.local/openlineage/facets/DatasetKindFacet/1-0-0.json",
         "kind": "table"
       }
     }
@@ -50,12 +50,12 @@ Reference doc for the `lineage-extract-static` skill. Pinned to OpenLineage 2.0.
     "facets": {
       "jobKind": {
         "_producer": "urn:lineage:static-scan",
-        "_schemaURL": "https://skill-factory.local/openlineage/facets/JobKindFacet/1-0-0.json",
+        "_schemaURL": "https://foundry-lab.local/openlineage/facets/JobKindFacet/1-0-0.json",
         "kind": "script"
       },
       "staticAnalysis": {
         "_producer": "urn:lineage:static-scan",
-        "_schemaURL": "https://skill-factory.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json",
+        "_schemaURL": "https://foundry-lab.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json",
         "extractor_id": "lineage-extract-static",
         "extractor_version": "1.0.0",
         "workspace_tree_hash": "abc123...",
@@ -155,19 +155,19 @@ The `runId` is **deterministic**: `uuid5(NAMESPACE_OID, workspace_tree_hash + sc
 
 ### `datasetKind` (custom)
 
-URI: `https://skill-factory.local/openlineage/facets/DatasetKindFacet/1-0-0.json`
+URI: `https://foundry-lab.local/openlineage/facets/DatasetKindFacet/1-0-0.json`
 
 Carries `kind: "table" | "file" | "topic" | "endpoint" | "queue"`. Used by the renderer for node-shape selection.
 
 ### `jobKind` (custom)
 
-URI: `https://skill-factory.local/openlineage/facets/JobKindFacet/1-0-0.json`
+URI: `https://foundry-lab.local/openlineage/facets/JobKindFacet/1-0-0.json`
 
 Carries `kind: "script" | "dag_task" | "dsx_job" | "spark_app" | "stored_procedure"`.
 
 ### `staticAnalysis` (custom — HARD-RULE 1)
 
-URI: `https://skill-factory.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json`
+URI: `https://foundry-lab.local/openlineage/facets/StaticAnalysisFacet/1-0-0.json`
 
 Attached at JobEvent level. Carries:
 - `extractor_id` — always `"lineage-extract-static"`
@@ -180,7 +180,7 @@ Signals to consumers: "This event came from static scanning, not runtime observa
 
 ### `possible_alias` (custom, only when `--merge-by-basename`)
 
-URI: `https://skill-factory.local/openlineage/facets/PossibleAliasFacet/1-0-0.json`
+URI: `https://foundry-lab.local/openlineage/facets/PossibleAliasFacet/1-0-0.json`
 
 Attached when basename-only matching produces a speculative-confidence merge candidate. Lists the candidate canonical datasets that share the basename. NEVER auto-merged.
 

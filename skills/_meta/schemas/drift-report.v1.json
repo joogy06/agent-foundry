@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/drift-report.v1.json",
+  "$id": "https://foundry-lab.local/schemas/drift-report.v1.json",
   "title": "drift-report.v1",
   "description": "S032 EVO drift-report.yaml produced at DRIFT_SURFACED phase. Aggregates dep-currency-check findings (CVE + version_lag) with intent-derived api_break warnings + advisory optimization_suggestion entries. Consumed by user (consultation) and bob (APPLY handoff).",
   "type": "object",

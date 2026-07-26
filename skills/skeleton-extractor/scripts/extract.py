@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # --- locate _meta on sys.path so we can import trusted_runner ---------------
-# When run from the staged location in skill_factory/skills/skeleton-extractor/scripts/,
-# _meta sits at ~/.claude/skills/_meta OR at skill_factory/skills/_meta once
+# When run from the staged location in foundry-lab/skills/skeleton-extractor/scripts/,
+# _meta sits at ~/.claude/skills/_meta OR at foundry-lab/skills/_meta once
 # synced. Support both lookup paths.
 _META_CANDIDATES = [
     Path.home() / ".claude" / "skills" / "_meta",
@@ -78,7 +78,7 @@ def _observe(category: str, what_happened: str, subject_id: str = "skeleton-extr
 # --- Node subprocess --------------------------------------------------------
 def _find_extractor_mjs() -> Path:
     """Locate skeleton_extractor.mjs. Prefer ~/.claude/skills/_meta, fall back
-    to the staged copy under skill_factory/skills/_meta.
+    to the staged copy under foundry-lab/skills/_meta.
     """
     candidates = [
         Path.home() / ".claude" / "skills" / "_meta" / "skeleton_extractor.mjs",

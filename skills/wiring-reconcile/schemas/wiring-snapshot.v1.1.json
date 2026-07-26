@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/wiring-snapshot.v1.1.json",
+  "$id": "https://foundry-lab.local/schemas/wiring-snapshot.v1.1.json",
   "title": "wiring-snapshot.v1.1",
   "description": "Reconciled snapshot, single JSON. v1.1 (S032) extends v1 with an optional per-component intent block populated by intent-extract. Backward-compatible: v1.0 readers continue to parse v1.1 snapshots; v1.1 readers parse v1.0 snapshots (intent absent).",
   "type": "object",

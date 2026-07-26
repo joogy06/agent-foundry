@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/external-challenger-verdict.v1.json",
+  "$id": "https://foundry-lab.local/schemas/external-challenger-verdict.v1.json",
   "title": "external-challenger-verdict.v1",
   "description": "S055 §5.1 / R10 — challenger-verdict.v1 WRAPPED in the full W-EXT external-model anti-laundering envelope (codex/agy challenger stages). Owner: forge. Two-layer verbatim enforcement: the schema carries the raw transcript + tee'd file + sha256; the consumer cross-checks every extracted verdict substring against raw_transcript.",
   "type": "object",

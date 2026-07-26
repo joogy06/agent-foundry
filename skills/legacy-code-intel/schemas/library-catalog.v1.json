@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/library-catalog.v1.json",
+  "$id": "https://foundry-lab.local/schemas/library-catalog.v1.json",
   "title": "library-catalog.v1",
   "description": "legacy-code-intel PROMOTED catalog projection (catalog/latest.json). The query layer reads ONLY this file — never the per-artifact objects/ store directly. Written exclusively by store.py under fcntl.flock + atomic os.replace (HARD-RULE 5: producers never write latest.json). Aggregates all promoted artifacts into a single flat symbol/occurrence/relationship view plus a path index and per-format accuracy numbers. Deterministic (sort_keys, stable ordering). Draft-07, lowercase types.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/project-state.v1.json",
+  "$id": "https://foundry-lab.local/schemas/project-state.v1.json",
   "title": "project-state.v1",
   "description": "Holistic projection over all source ledgers. Per design 2026-04-23 section 3.2.",
   "type": "object",

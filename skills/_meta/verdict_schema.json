@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory/schemas/verdict.schema.json",
+  "$id": "https://foundry-lab/schemas/verdict.schema.json",
   "title": "verification-arbiter verdict",
   "description": "Strict JSON contract emitted on stdout by the verification-arbiter subprocess (tester-split design §5.1, §5.3). Bob captures stdout, validates against this schema, then validates the 8-field tuple match against the open verification request before applying any ledger transition. Phase 1 ships only this schema; the arbiter binary is Phase 2.",
   "type": "object",

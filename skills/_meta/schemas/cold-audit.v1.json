@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/cold-audit.v1.json",
+  "$id": "https://foundry-lab.local/schemas/cold-audit.v1.json",
   "title": "cold-audit.v1",
   "description": "S055 §5.7 — output of the evo-analyze cold-audit stage (the FIRST budget shed — shedding forfeits the audit, never HR7 grounding; every shed is recorded in skipped[] per HR8). Owner: evo. Consumed by the evo-analyze script.",
   "type": "object",

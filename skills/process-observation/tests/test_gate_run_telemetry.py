@@ -29,7 +29,7 @@ if str(_SCRIPTS) not in sys.path:
 import gate_runs  # noqa: E402
 
 # Locate the real gates.py. Prefer the production path; the shadow under
-# skill_factory imports the same way. We resolve relative to this skill's
+# foundry-lab imports the same way. We resolve relative to this skill's
 # install location: ~/.claude/skills/process-observation/tests/ ->
 # ~/.claude/skills/_meta/gates.py.
 _GATES_PY = (

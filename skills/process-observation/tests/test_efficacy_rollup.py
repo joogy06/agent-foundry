@@ -531,7 +531,7 @@ def test_cli_rollup_against_real_archive():
     """End-to-end against the 24 real s028 verdict files incl. the trap case.
     The disagreement metric must have 0 indeterminate (trap not mis-bucketed)."""
     archive = Path(
-        "/path/to/skill_factory/progress/archive/s028-ecosystem-keystone"
+        "/path/to/foundry-lab/progress/archive/s028-ecosystem-keystone"
     )
     if not (archive / ".ledger" / "verdicts").is_dir():
         pytest.skip("real archive not present")

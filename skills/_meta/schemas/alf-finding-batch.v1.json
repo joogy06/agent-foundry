@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/alf-finding-batch.v1.json",
+  "$id": "https://foundry-lab.local/schemas/alf-finding-batch.v1.json",
   "title": "alf-finding-batch.v1",
   "description": "S055 §8 — schema-forced output of an alf Format-5 workflow-stage finder. Owner: alf. Home: _meta/schemas/. The finder writes ZERO files under .alf/ (the synthesis pipeline is the single consumer; the MAIN LOOP is the single .alf/ writer). Out-of-scope HIGH findings become handoff_requests[] DATA (no bob handoff, no tasks.md, no pa_*). Every finding carries feed_record or local evidence (HR5/HR6). Budget honesty via skipped[] + limits.",
   "type": "object",

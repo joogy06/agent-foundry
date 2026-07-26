@@ -28,7 +28,7 @@ def discover_integration_flow_testing() -> Optional[Path]:
 
     Checked locations:
       - ~/.claude/skills/integration-flow-testing/scripts/
-      - <skill_factory>/skills/integration-flow-testing/scripts/
+      - <foundry-lab>/skills/integration-flow-testing/scripts/
     """
     here = Path(__file__).resolve().parent.parent.parent
     candidates = [

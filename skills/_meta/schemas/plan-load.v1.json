@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/plan-load.v1.json",
+  "$id": "https://foundry-lab.local/schemas/plan-load.v1.json",
   "title": "plan-load.v1",
   "description": "S055 §5.3 — output of the bob-serial-exec `plan-load` stage. A read-only agent validates work-packages.v1, verifies sha256(plan)==plan_hash, and returns a topological wp_order. Consumed by the bob-serial-exec script to drive STRICTLY SERIAL execution. Host-neutral data.",
   "type": "object",

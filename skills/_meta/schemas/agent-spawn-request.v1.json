@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/agent-spawn-request.v1.json",
+  "$id": "https://foundry-lab.local/schemas/agent-spawn-request.v1.json",
   "title": "agent-spawn-request.v1",
   "description": "S055 §12 — host-neutral DATA describing a spawn the main loop must perform on behalf of a subagent that cannot spawn. Shared by alf Step 5 (.alf/spawn-requests/) and evo C3 (.ledger/evo/runs/<id>/spawn-request.yaml). The main-loop consumer RENDERS prompt_context into the spawn prompt — NEVER executable (S052). Every *_path is hash-paired (W-A).",
   "type": "object",

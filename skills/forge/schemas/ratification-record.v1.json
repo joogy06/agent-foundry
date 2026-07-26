@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/ratification-record.v1.json",
+  "$id": "https://foundry-lab.local/schemas/ratification-record.v1.json",
   "title": "ratification-record.v1",
   "description": "S055 §5.2 — deterministic JS assembly output of the ratify-design `assemble` phase. Carries per-run measured fp_rate feeding the 60-65% baseline. Budget exhaustion mid-verify => ALL remaining findings NEEDS_FOLLOWUP (never auto-VERIFIED) + degraded:true. Owner: forge. Consumed by forge inline (merges VERIFIED findings into the doc — the workflow NEVER edits the doc).",
   "type": "object",

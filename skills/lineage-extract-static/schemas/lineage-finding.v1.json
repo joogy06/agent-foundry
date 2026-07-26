@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/lineage-finding.v1.json",
+  "$id": "https://foundry-lab.local/schemas/lineage-finding.v1.json",
   "title": "lineage-finding.v1",
   "description": "S033 lineage-extract-static per-chunk emission from the in-session AI CLI's LLM analysis. Captures data-flow edges (reads_from / writes_to / schedules / depends_on) with confidence classification (grounded / inferred / speculative) and gap[] entries for honest disclosure of static-analysis lossiness. Used at chunk-level (single chunk of a file) AND at file-level (rollup from accumulate after merge-chunks-within-file). Validated by scripts/validate_finding.py before accumulation and before OL emission.",
   "type": "object",

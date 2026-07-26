@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/retro_scan.v1.json",
+  "$id": "https://foundry-lab.local/schemas/retro_scan.v1.json",
   "title": "retro_scan.v1",
   "description": "S029 retro-scan-s028 baseline output. Frozen one-shot snapshot of the workspace classified against the contract-map at a specific revision. Consumed by G_CONTRACT_SCOPE during #45 Phase-5b execution to determine whether a delta is new (block) vs pre-existing (advisory).",
   "type": "object",

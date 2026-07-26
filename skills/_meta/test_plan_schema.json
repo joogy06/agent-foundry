@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory/schemas/test-plan.schema.json",
+  "$id": "https://foundry-lab/schemas/test-plan.schema.json",
   "title": "test-architect test plan",
   "description": "Hash-addressed, signed test-plan artifact emitted by test-architect (tester-split design §5.1). Loaded by the verification-arbiter to score coverage, by bob to enforce skip declarations, and by forge to surface testability blockers. Phase 1 ships only this schema; the test-architect agent is Phase 3.",
   "type": "object",

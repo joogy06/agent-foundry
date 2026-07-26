@@ -97,7 +97,7 @@ Before a refresh WP is "done", bob verifies:
 4. **No banned-phrase regression** — the publish forbidden-patterns grep is clean.
 5. **Symlink / sentinel intact** — Codex symlink resolves (or the `.no-codex-symlink`
    sentinel is honored, e.g. affordance-advisor).
-6. **Shadow sync LAST** — the skill_factory shadow copy is updated only after the
+6. **Shadow sync LAST** — the foundry-lab shadow copy is updated only after the
    production edit + checks pass (mirrors the publish pipeline order).
 
 ## Cost guardrail (the throughline)

@@ -100,13 +100,13 @@ PRODUCER_URI = "urn:lineage:mainframe-lineage-parsers"
 # Custom-facet self-description URIs (each facet self-describes per the OL open
 # facets convention; these are this skill's facet spec URIs).
 MAINFRAME_LINEAGE_FACET_URI = (
-    "https://skill-factory.local/openlineage/facets/MainframeLineageFacet/1-0-0.json"
+    "https://foundry-lab.local/openlineage/facets/MainframeLineageFacet/1-0-0.json"
 )
 MAINFRAME_GAP_FACET_URI = (
-    "https://skill-factory.local/openlineage/facets/MainframeGapFacet/1-0-0.json"
+    "https://foundry-lab.local/openlineage/facets/MainframeGapFacet/1-0-0.json"
 )
 ENGINE_FACET_URI = (
-    "https://skill-factory.local/openlineage/facets/EngineFacet/1-0-0.json"
+    "https://foundry-lab.local/openlineage/facets/EngineFacet/1-0-0.json"
 )
 
 # WP-4 (a): the STANDARD OpenLineage columnLineage dataset facet (live-verified
@@ -121,7 +121,7 @@ COLUMN_LINEAGE_FACET_URI = (
 # names deliberately mirror JobDependenciesRunFacet so a future Run-stream
 # migration is a rename. Honest: it is static design-time scheduling deps.
 CONTROLM_DEPS_FACET_URI = (
-    "https://skill-factory.local/openlineage/facets/ControlmDependenciesJobFacet/1-0-0.json"
+    "https://foundry-lab.local/openlineage/facets/ControlmDependenciesJobFacet/1-0-0.json"
 )
 
 # WP-4 (d): the STANDARD OpenLineage sourceCodeLocation JOB facet, carrying the
