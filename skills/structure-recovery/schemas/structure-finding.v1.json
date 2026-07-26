@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/structure-finding.v1.json",
+  "$id": "https://foundry-lab.local/schemas/structure-finding.v1.json",
   "title": "structure-finding.v1",
   "description": "structure-recovery per-chunk emission from the in-session AI CLI's LLM-as-parser analysis (model-neutral prompts under prompts/). Captures DECLARED structural facts for ONE chunk of ONE legacy artifact (SQL DDL/DML, DataStage .dsx read as text, COBOL source + copybook, or flat-file layout doc): the object kind, its qualified name, the declared field tree (name, ordinal, PIC clause, USAGE, declared/normalized type, OCCURS, REDEFINES, RENAMES, group/filler flags, level), declared relationships (PK/FK/join), and gap[] entries for honest disclosure of static-analysis lossiness. CRITICAL SAFETY INVARIANT (design §3.2 / §3.3 / §9 note 1): byte_offset and length on a chunk-level finding MUST be null — byte offsets are computed deterministically DOWNSTREAM by scripts/cobol_offset_calc.py from the declared level-tree, NEVER declared/guessed by the LLM. scripts/validate_finding.py enforces this rejection rule in pure Python (independent of the optional jsonschema library) before any finding is accumulated. The accumulated, offset-computed catalog is a SEPARATE contract: structure-index.v1.json.",
   "type": "object",

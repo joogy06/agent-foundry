@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/consult-decision.v1.json",
+  "$id": "https://foundry-lab.local/schemas/consult-decision.v1.json",
   "title": "consult-decision.v1",
   "description": "One line in .ledger/evo/runs/<run_id>/consult-log.jsonl. Append-only decision tape — replay reconstructs evo's CONSULTED state on resume. User_decision is closed-set; default_on_timeout is required per HARD-RULE 4.",
   "type": "object",

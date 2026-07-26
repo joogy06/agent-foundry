@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/evergreen-verdict.v1.json",
+  "$id": "https://foundry-lab.local/schemas/evergreen-verdict.v1.json",
   "title": "evergreen-verdict.v1",
   "description": "S032 EVO final report written at REPORTED phase. The single user-facing artifact summarising the run; consumed by pa for cross-run carryover.",
   "type": "object",

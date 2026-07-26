@@ -1429,7 +1429,7 @@ def check_G_IDENTITY(
 
     pair ∈ {prod-shadow, prod-foundry, all}:
       - prod-shadow  : the continuous (commit-boundary) invariant — default for
-                       the skill_factory pre-commit hook (C4).
+                       the foundry-lab pre-commit hook (C4).
       - prod-foundry : the publish gate — the published _meta CRITICAL subset
                        must be byte-identical to prod (C2; reconcile-before-commit
                        lives in stage-to-public.sh, this gate asserts it).

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/scope_delta.v1.json",
+  "$id": "https://foundry-lab.local/schemas/scope_delta.v1.json",
   "title": "scope_delta.v1",
   "description": "S029 canonical workflow object representing a divergence between the frozen contract-map and the actual implementation. Append-only; written by G_CONTRACT_SCOPE; read by bob, forge, retro-scan-s028.",
   "type": "object",

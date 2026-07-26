@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/work-packages.v1.json",
+  "$id": "https://foundry-lab.local/schemas/work-packages.v1.json",
   "title": "work-packages.v1",
   "description": "S055 workflow-adoption keystone (§6.2). The host-neutral DATA plan bob materializes at progress/work-packages.yaml and HALTs with `needs: plan-execution`. Writer: bob (atomic, revision-bumped on amendment). NEVER executable code (S052 provenance). Consumed by the main-loop compiler, bob stages, agent-teams, fallback callers, and vs-code-foundry serially.",
   "type": "object",

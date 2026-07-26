@@ -313,7 +313,7 @@ def main(argv=None) -> int:
     p.add_argument("--claude-home", default=str(Path.home() / ".claude"))
     p.add_argument("--project", default=None,
                    help="a project dir to also review (defaults to CWD if it has .claude/).")
-    p.add_argument("--repo", default=None, help="agent-foundry/skill_factory repo root (for installer pointers).")
+    p.add_argument("--repo", default=None, help="agent-foundry/foundry-lab repo root (for installer pointers).")
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true", help="exit 1 when verdict is NOT-READY.")
     a = p.parse_args(argv)

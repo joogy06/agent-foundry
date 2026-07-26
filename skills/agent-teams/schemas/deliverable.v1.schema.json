@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/deliverable.v1.json",
+  "$id": "https://foundry-lab.local/schemas/deliverable.v1.json",
   "title": "deliverable.v1",
   "description": "S055 §4.2 / §12 — the schema-forced output of a team stage (Part III Workflow-stage backend) and the normalized shape of a team outbox TEAM_COMPLETE (Part IV File backend). Owner: agent-teams. Home: skills/agent-teams/schemas/. Consumed by the orchestrating context (bob / main loop). Host-neutral data.",
   "type": "object",

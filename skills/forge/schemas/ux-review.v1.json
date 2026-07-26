@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/ux-review.v1.json",
+  "$id": "https://foundry-lab.local/schemas/ux-review.v1.json",
   "title": "ux-review.v1",
   "description": "S055 §5.1 — output of the design-tournament UX stage (agentType: multi-platform-apps:ui-ux-designer) when ui_facing. Owner: forge. Consumed by design-tournament converge + forge inline.",
   "type": "object",

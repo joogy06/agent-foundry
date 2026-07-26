@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/design-synthesis.v1.json",
+  "$id": "https://foundry-lab.local/schemas/design-synthesis.v1.json",
   "title": "design-synthesis.v1",
   "description": "S055 §5.1 — DRAFT synthesis emitted by the design-tournament `converge` synthesis stage. The script computes `disagreement_matrix` as a PURE FUNCTION of the verdict objects (the synthesis agent can never launder a disagreement away); the script may ADD to `unresolved[]`, never remove. Owner: forge. Consumed by forge inline (presents section-by-section; the converge DECISION stays with forge/user).",
   "type": "object",

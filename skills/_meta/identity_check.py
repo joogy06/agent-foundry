@@ -4,7 +4,7 @@
 Part of Ecosystem Evergreening v1 (S041); DETECTION half shipped S041, the
 ENFORCEMENT (remediation) half is S043 / #119 (review G5). The security-relevant
 _meta engines (gates.py, claims.py, trusted_runner.py, classify.py, …) exist in
-three trees — production, the skill_factory shadow, and the agent-foundry publish
+three trees — production, the foundry-lab shadow, and the agent-foundry publish
 mirror — with NO gate asserting they are byte-identical. Task #62 already
 reconciled a prod-vs-shadow drift once.
 
@@ -31,7 +31,7 @@ S043 / §9 (Codex resolutions, BINDING) fixes a CRITICAL checker-core bug:
        absent — never silently pass. --pair prod-shadow is unaffected.
 
 Pairs (design §2 — trees have DIFFERENT freshness contracts):
-  prod-shadow   : ~/.claude  vs  skill_factory  — MUST match at every commit
+  prod-shadow   : ~/.claude  vs  foundry-lab  — MUST match at every commit
                   boundary (a drift here is a real bug).
   prod-foundry  : ~/.claude  vs  agent-foundry  — match at PUBLISH time only;
                   lag between publishes is benign. The publish SCRIPT reconciles

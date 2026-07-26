@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/evidence.v1.json",
+  "$id": "https://foundry-lab.local/schemas/evidence.v1.json",
   "title": "evidence.v1",
   "description": "S055 §5.6 — a Gate-2 burden-of-falsification evidence package from one dissenting consultant, WRAPPED in the W-EXT envelope. Owner: cross-cli-deliberation. One of three admissible classes. `constraint_violation` => deterministic grep of the quoted source by the script; `reproduction/executable_test` => `needs_inline_verification` (the workflow NEVER executes tests — trusted-runner provenance is bob-only, CB3; the inline caller runs the evidence under canonical trusted-runner discipline).",
   "type": "object",

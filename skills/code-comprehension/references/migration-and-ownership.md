@@ -8,7 +8,7 @@ Once a repo *adopts* generated comprehension docs, the front-door is split:
 |---|---|---|
 | `PROJECT.md` (generated) | **code-comprehension** (regenerated) | Components table, structural Interaction Edges, external deps, entry points, testing — the *structural* facts that drift. |
 | `ARCHITECTURE.md` (root sibling) | **human** | The *why*, integration-semantics judgment, external-service failure-impact prose, cross-repo notes — the things a generator **cannot** produce and must never fake. |
-| `history.md` | **human / project-documentation** | Changelog / dated entries (a generator must NOT dump changelog into ARCHITECTURE.md — the S025 skill_factory finding). |
+| `history.md` | **human / project-documentation** | Changelog / dated entries (a generator must NOT dump changelog into ARCHITECTURE.md — the S025 foundry-lab finding). |
 
 `CLAUDE.md`'s "read PROJECT.md first" survives and strengthens via a header pointer to `ARCHITECTURE.md` (the generated PROJECT.md carries `see_also: ARCHITECTURE.md`).
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/cross-project-mail/envelope.v1.json",
+  "$id": "https://foundry-lab.local/schemas/cross-project-mail/envelope.v1.json",
   "title": "cross-project-mail envelope v1",
   "description": "Frontmatter envelope for a single message in the cross-project-mail flat-file mailbox. Closed-set field whitelist.",
   "type": "object",

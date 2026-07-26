@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/code-index.v1.json",
+  "$id": "https://foundry-lab.local/schemas/code-index.v1.json",
   "title": "code-index.v1",
   "description": "legacy-code-intel SCIP-inspired custom code-intelligence index for a single artifact. Symbol / occurrence / relationship triad (SCIP's package and type hierarchy dropped). ~75% shared core + per-format symbol.kind enum + an open attributes{} bag for per-format extras. Produced by emit_index.py from accumulated per-chunk findings; schema-validated before store.persist. Symbol IDs are content-hash-based (codelib://sha256/<artifact_hash>#sym/<scoped-name>), NEVER path-derived. Draft-07, lowercase types throughout (anti-requirement vs the discarded agy build which used uppercase STRING/OBJECT and could never validate).",
   "type": "object",

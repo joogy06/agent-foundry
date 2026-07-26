@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/finding-list.v1.json",
+  "$id": "https://foundry-lab.local/schemas/finding-list.v1.json",
   "title": "finding-list.v1",
   "description": "S055 §5.2 — output of a ratify-design `extract-findings` stage (one per ballot). Each finding carries an EXACT citation; the script substring-checks every quote against the ballot's raw_transcript — a non-matching quote => extraction_suspect => NEEDS-FOLLOWUP. Owner: forge. Consumed by ratify-design verify-findings + assemble.",
   "type": "object",

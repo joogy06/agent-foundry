@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/deliberation-record.v1.json",
+  "$id": "https://foundry-lab.local/schemas/deliberation-record.v1.json",
   "title": "deliberation-record.v1",
   "description": "S055 §5.6 — the deterministic bundle emitted by the cross-cli-deliberation `assemble` phase: every ballot, every Gate-2 evidence package, the quorum outcome, and per-evidence verification results. Owner: cross-cli-deliberation. Consumed by the inline skill + ratify-design (consumed, NEVER forked).",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/ballot.v1.json",
+  "$id": "https://foundry-lab.local/schemas/ballot.v1.json",
   "title": "ballot.v1",
   "description": "S055 §5.6 — a Gate-1 null-hypothesis ballot from one consulted CLI, WRAPPED in the W-EXT external-model anti-laundering envelope. Owner: cross-cli-deliberation. Home: skills/cross-cli-deliberation/schemas/. The gate1 wrapper stage is a TRANSCRIPTION WRAPPER (not a reviewer): it runs the args-supplied command, tees the transcript, extracts the literal ballot fields, emits UNPARSEABLE if not locatable verbatim, and NEVER reinterprets. Consumed by the deliberation script + ratify-design (consumed, NEVER forked).",
   "type": "object",

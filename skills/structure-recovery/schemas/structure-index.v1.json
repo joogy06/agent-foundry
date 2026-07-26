@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/structure-index.v1.json",
+  "$id": "https://foundry-lab.local/schemas/structure-index.v1.json",
   "title": "structure-index.v1",
   "description": "structure-recovery ACCUMULATED catalog — the queryable cross-file structure index produced by accumulate_structure.py (per-file summary) and the cross-file pass (store.py build_catalog). Unlike structure-finding.v1 (per-chunk, DECLARED facts, offsets MUST be null), this catalog carries the DETERMINISTICALLY COMPUTED byte layout from scripts/cobol_offset_calc.py: per-field byte_offset / length, and for variable-length records byte_offset_min / byte_offset_max / variable_length / ranged, plus gap-flagged fields (SYNCHRONIZED, ODO-tail, unresolved-COPY). Relationships are resolved across files (SQL declared FK = grounded; convention *_id = inferred; COBOL cross-record = speculative, opt-in --infer-relationships). Every entity/field/relationship carries confidence x evidence_kind x enforcement. Inferred DDL and speculative FKs derived from this index are advisory-only, human-review-headered, and NEVER executed (design §5 / §6).",
   "type": "object",

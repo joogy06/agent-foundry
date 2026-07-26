@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/lineage-manifest.v1.json",
+  "$id": "https://foundry-lab.local/schemas/lineage-manifest.v1.json",
   "title": "lineage-manifest.v1",
   "description": "Per-run metadata emitted to /tmp/lineage-extract-static-<session>/manifest.json at the end of every lineage-extract-static run. Captures provenance, costs, counters, and error log for auditability. Validated against this schema before the run terminates.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory/schemas/dual-verdict.v1.json",
+  "$id": "https://foundry-lab/schemas/dual-verdict.v1.json",
   "title": "dual-verdict.v1 — bob-persisted INTEGRATED->VERIFIED archive",
   "description": "Frozen envelope for the dual-arm verdict archive bob writes to .ledger/verdicts/<bundle_hash>.verdict.yaml before any INTEGRATED -> VERIFIED transition (S044 / #118, design §10 B4). claims.assert_verified_preconditions (R6) READS this archive and refuses the transition unless: schema_version == 'dual-verdict.v1', all cross-binding fields present, BOTH arms present at the ASYMMETRIC canonical keys (audit_arm.result vs arbiter_arm.verdict), and BOTH arms in the closed pass-set {VERIFIED, VERIFIED_WITH_CONCERNS} with neither AUDIT_UNAVAILABLE/REJECTED. HONEST SCOPE: bob writes this archive, so a complete fabricated archive is NOT defended against here (that needs the deferred spawner non-bob-provenance, design §10 B2/B7). R6 catches rationalized/accidental skips, arbiter-only archives, AUDIT_UNAVAILABLE-ignored, unversioned envelopes, and cross-binding mismatch — the observed #43-dev3 drift class.",
   "type": "object",

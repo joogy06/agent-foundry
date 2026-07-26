@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/functional-intent.v1.json",
+  "$id": "https://foundry-lab.local/schemas/functional-intent.v1.json",
   "title": "functional-intent.v1",
   "description": "S032 EVO per-component output of the intent-extract skill. Captures both mechanically-derived structural fields (gate-validatable) and LLM-inferred prose intent (advisory, never feeds gates). Cache-keyed by content_hash; promoted into .wiring/runs/<run_id>/intent/<component_id>.yaml under evo's claim.",
   "type": "object",

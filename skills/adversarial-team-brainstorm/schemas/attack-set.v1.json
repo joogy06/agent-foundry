@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/attack-set.v1.json",
+  "$id": "https://foundry-lab.local/schemas/attack-set.v1.json",
   "title": "attack-set.v1",
   "description": "S055 §5.5 — output of one attacking team in the `crossfire` round. Each attacker sees ONLY other teams' outputs. `attacks` has minItems:1 per target — a 'looks good / all good' verdict is SCHEMA-INVALID (the attacker is punting). Owner: adversarial-team-brainstorm. The tournament script validates target coverage and does a deterministic single retry on a sycophantic miss.",
   "type": "object",

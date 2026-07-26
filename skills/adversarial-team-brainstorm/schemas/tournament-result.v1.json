@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/tournament-result.v1.json",
+  "$id": "https://foundry-lab.local/schemas/tournament-result.v1.json",
   "title": "tournament-result.v1",
   "description": "S055 §5.5 — output of the single `arbiter` stage. Owner: adversarial-team-brainstorm. Script post-check: empty grounding_sources => confidence FORCED 'speculative' (the script may DOWNGRADE confidence, NEVER upgrade). Below-floor before refine => meta.degraded_to: 'quick_tournament', confidence capped 'low'. Consumed by the tournament script + caller.",
   "type": "object",

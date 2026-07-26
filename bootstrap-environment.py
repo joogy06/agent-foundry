@@ -44,7 +44,7 @@ from pathlib import Path
 
 # REPO_ROOT auto-detection:
 # - When bundled at agent-foundry/ root: __file__'s parent has CLAUDE.md, pa-server/, skills/.
-# - When run from skill_factory/installer/ in dev: those siblings live in the parent dir.
+# - When run from foundry-lab/installer/ in dev: those siblings live in the parent dir.
 _HERE = Path(__file__).resolve().parent
 if (_HERE / "CLAUDE.md").exists() or (_HERE / "skills").exists():
     REPO_ROOT = _HERE                         # bundled mode
@@ -60,7 +60,7 @@ def _resolve_install_py() -> "Path | None":
     `_HERE/install.py` is canonical. `REPO_ROOT/install.py` is only a
     fallback for unusual layouts.
 
-    Fixes the dev-layout bug where REPO_ROOT == _HERE.parent (skill_factory/)
+    Fixes the dev-layout bug where REPO_ROOT == _HERE.parent (foundry-lab/)
     made `REPO_ROOT / "install.py"` point at a nonexistent path while the
     real script was at installer/install.py.
     """

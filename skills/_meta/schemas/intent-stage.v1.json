@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/intent-stage.v1.json",
+  "$id": "https://foundry-lab.local/schemas/intent-stage.v1.json",
   "title": "intent-stage.v1",
   "description": "S055 §5.7 — output of an evo-analyze `intent` pipeline stage (intent-extract runs UNCHANGED including its internal two_arm_verify.py — the canonical HR7 arm). Owner: evo. Consumed by the evo-analyze script + the cold-audit stage.",
   "type": "object",

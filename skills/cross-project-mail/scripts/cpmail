@@ -399,7 +399,7 @@ def cmd_ack(args: argparse.Namespace) -> int:
 
 
 def _extract_recipients(section_heading: str, sender_project: str) -> list[str]:
-    """From '## Outbound — skill_factory → vs-code-foundry (...)' return recipients.
+    """From '## Outbound — foundry-lab → vs-code-foundry (...)' return recipients.
     Ignores Inbound sections (those are the receiving side's view, already
     covered by the SENDING side's Outbound entry on the other end).
     """

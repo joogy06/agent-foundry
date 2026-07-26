@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/team-output.v1.json",
+  "$id": "https://foundry-lab.local/schemas/team-output.v1.json",
   "title": "team-output.v1",
   "description": "S055 §5.5 — output of one isolated team in the adversarial-tournament `diverge` round. Owner: adversarial-team-brainstorm. `initial_kill_criteria` has minItems:2 — role collapse is mechanically prevented (a team that cannot state how its idea could fail is schema-invalid). Consumed by the tournament script + caller.",
   "type": "object",

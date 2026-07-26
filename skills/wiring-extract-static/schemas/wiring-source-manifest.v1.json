@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://skill-factory.local/schemas/wiring-source-manifest.v1.json",
+  "$id": "https://foundry-lab.local/schemas/wiring-source-manifest.v1.json",
   "title": "wiring-source-manifest.v1",
   "description": "One manifest per .wiring/runs/<run_id>/ describing what extractor sources ran.",
   "type": "object",

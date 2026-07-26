@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://skill-factory.local/schemas/workflow-run-record.v1.json",
+  "$id": "https://foundry-lab.local/schemas/workflow-run-record.v1.json",
   "title": "workflow-run-record.v1",
   "description": "S055 §4.3 — one JSONL line per workflow-run state transition in progress/workflow-runs.jsonl. The MAIN LOOP is the sole writer (via _meta/workflow_dispatch.py). Doubles as the #147 enforcement hook and the #124 cost-correlation point (designed now, enforced never this cycle).",
   "type": "object",
