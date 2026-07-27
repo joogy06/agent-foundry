@@ -129,7 +129,7 @@ sent_at: "2026-05-17T14:32:10Z"
 sender:
   project: vs-code-foundry
   agent: claude_code
-  host: dev04
+  host: workstation
 recipient:
   project: foundry-lab
   agent: null
@@ -163,4 +163,4 @@ Output (only when unread > 0):
 - Design doc: [`docs/plans/2026-05-16-cross-project-mail-v1-design.md`](../../docs/plans/2026-05-16-cross-project-mail-v1-design.md)
 - M3 follow-up (mcp_agent_mail wrapper for cross-machine): preserved in archive at `progress/forge-cycle-s034/stage2-design/`
 - M4 follow-up (wiki-MCP for global knowledge search): separate cycle, not in this skill
-- Related: `process-observation` (telemetry sink we may use in M2), `git-cli-bridge` (security model template for M3), `wiki` (M4 substrate)
+- Related: `process-observation` (telemetry sink we may use in M2), `wiki` (M4 substrate)

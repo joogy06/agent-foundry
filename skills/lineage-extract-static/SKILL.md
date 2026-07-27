@@ -73,7 +73,23 @@ When a user issues `lineage-extract-static <project_root>` (or equivalent NL: *"
 6. Agent runs `scripts/merge_into_ol.py` → emits openlineage.ndjson + openlineage.json
    + lineage_edges.csv to /tmp/lineage-extract-static-<session>/. JobEvents now
    carry a `sourceCodeLocation.contentSha256` JOB facet (sha256 of the RAW
-   on-disk source bytes — the cross-engine v1.1 join key; see below).
+   on-disk source bytes — the cross-engine v1.1 join key; see below). DatasetEvents
+   carry a `schema` facet (SchemaDatasetFacet, 2026-07-01 uplift) when the rollup's
+   `dataset_schemas` names the dataset's columns — named-in-source only (dbt
+   schema.yml, SQL DDL, CSV headers, COBOL copybooks, staged SELECT lists), `type`
+   only when stated, never invented (see references/output-formats.md).
+   OUTPUT DatasetEvents additionally carry a `columnLineage` 1-2-0 facet
+   (2026-07-02 uplift) when the rollup's `column_lineage` names per-column
+   derivations (SQL rename lists, explicit passthroughs, expressions naming
+   their sources; `select * from <single known parent>` expands 1:1 via the
+   passthrough marker — multi-input or unknown-parent SELECT-* yields NOTHING),
+   and a `documentation` facet when `dataset_descriptions` states one. Schema
+   facet fields carry `description` when stated in source. No confidence key
+   ever rides on facets — confidence stays in the edge/report layer.
+   §9 corollary (a) (user-approved 2026-07-02): a `select * from <one known
+   parent>` model with no own column set inherits the parent's NAMED set as
+   its own schema facet (name + parent-stated type only) — deterministic SQL
+   semantics, same single-input/known-parent constraints, never invented.
 6b. Agent runs `scripts/project_views.py` → consumes the just-emitted
    openlineage.ndjson + lineage_edges.csv and emits `views.json` (the L1/L2
    render payload). DETERMINISTIC, stdlib, NO LLM — pure graph algebra. Skipped
@@ -222,7 +238,7 @@ facet is purely additive and self-describing.
 Prompts in `prompts/*.md` are tested against all four AI CLIs:
 - Claude Code (Claude Opus 4.7)
 - Codex CLI (GPT-5.4)
-- Antigravity CLI (agy) — replaces Gemini CLI, retired 2026-06-18
+- Antigravity CLI (agy)
 - Copilot CLI (GPT-5.4 backend)
 
 Run `~/.claude/skills/research-for-skills/cross-tool-portability/scripts/verify-skill-portability.sh` to confirm. HARD-RULE 8.

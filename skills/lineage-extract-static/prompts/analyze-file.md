@@ -53,9 +53,45 @@ You are analysing one chunk of one file as part of a data + process lineage extr
       "line": <1-indexed line number, file-relative>,
       "description": "<one-line explanation>"
     }
+  ],
+  "dataset_schemas": [
+    {
+      "namespace": "<same namespace vocabulary as edges[].source_dataset.namespace>",
+      "name": "<same in-namespace identifier as edges[].source_dataset.name>",
+      "fields": [
+        {"name": "<column name AS NAMED IN SOURCE>", "type": "<only when stated in source>", "description": "<only when stated in source>"}
+      ],
+      "evidence_line": <1-indexed line where the column list is declared>
+    }
+  ],
+  "column_lineage": [
+    {
+      "namespace": "<OUTPUT dataset namespace>",
+      "name": "<OUTPUT dataset name>",
+      "fields": {
+        "<output_field>": {"inputFields": [{"namespace": "<input ds ns>", "name": "<input ds name>", "field": "<input column>"}]}
+      },
+      "evidence_line": <1-indexed line of the defining statement>
+    },
+    {
+      "namespace": "<OUTPUT dataset namespace>",
+      "name": "<OUTPUT dataset name>",
+      "passthrough_from": {"namespace": "<single upstream ns>", "name": "<single upstream name>"},
+      "evidence_line": <1-indexed line of the `select *` statement>
+    }
+  ],
+  "dataset_descriptions": [
+    {
+      "namespace": "<dataset namespace>",
+      "name": "<dataset name>",
+      "description": "<description text AS STATED IN SOURCE>",
+      "evidence_line": <1-indexed line where the description is declared>
+    }
   ]
 }
 ```
+
+`dataset_schemas`, `column_lineage`, and `dataset_descriptions` are OPTIONAL — omit each key entirely when the chunk carries nothing for it.
 
 ## Edge kind taxonomy
 
@@ -100,6 +136,38 @@ You MUST apply these rules verbatim. If you cannot determine the confidence, def
 → the edge MUST be `speculative`. NEVER `grounded` when interpolation is present.
 
 If a symbol like `path = foo()` cannot be resolved to a literal within the current chunk, the edge MUST be `speculative` with `confidence_reason: "unresolved_symbol"`.
+
+## Dataset schemas (SchemaDatasetFacet, 2026-07-01 uplift)
+
+When the chunk NAMES a dataset's columns in source, emit a `dataset_schemas` entry so the OL emission can attach a `SchemaDatasetFacet` (`facets.schema.fields`) to that dataset. Derivable sources:
+
+- **dbt `schema.yml`** — model/source `columns:` lists (use `data_type` as `type` when present).
+- **SQL DDL** — `CREATE TABLE x.y (col TYPE, …)` / `CREATE VIEW … (col, …)` column lists.
+- **CSV header rows** — the first line of a CSV the chunk reads/writes when the header is literally present in the chunk (or the file IS the CSV).
+- **COBOL copybooks** — level-numbered field definitions (PIC clauses → `type`).
+- **Staged-model SELECT column lists** — an explicit `SELECT a, b, c FROM …` that DEFINES a model/view/table's output columns.
+
+**Confidence rule (STRICT):** only emit columns actually NAMED in the source artifact. NEVER invent, infer, or guess columns; speculative columns are OMITTED, not banded. `SELECT *` yields NO `dataset_schemas` entry. `type` is emitted only when the source states it (DDL type, `data_type:`, PIC clause) — never guessed.
+
+The `namespace`/`name` MUST match the vocabulary used by this chunk's `edges[].source_dataset` for the same dataset, or downstream OL emission cannot join them.
+
+**Field descriptions (2026-07-02 column-level uplift):** when the source states a per-column description (dbt `schema.yml` column `description:`, copybook comment), emit it as the field's `description`. NEVER invent or paraphrase a description that is not literally stated in the source.
+
+## Column lineage (columnLineage 1-2-0, 2026-07-02 uplift)
+
+When the chunk DEFINES an output dataset and the per-column derivation is NAMED in source, emit a `column_lineage` entry for that OUTPUT dataset. STRICT rules — a mapping exists ONLY when the source names both ends:
+
+- **SQL rename lists** — `select id as order_id from raw_orders` → `fields: {"order_id": {"inputFields": [{namespace, name: "raw_orders", field: "id"}]}}`.
+- **Explicit passthrough columns** — `select tax_rate from x` → `tax_rate → tax_rate`.
+- **Single-input expressions naming their source column(s)** — `cents_to_dollars('cost') as supply_cost` → `cost → supply_cost`. Multi-input expressions list ALL named source fields under the one output field's `inputFields`.
+- **`SELECT *` / unresolved macros** yield NOTHING for those fields — with ONE exception:
+- **`SELECT *` single-parent identity passthrough (§9 amendment):** when the statement is a plain `select * from <exactly one upstream>` (no joins, no explicit column list, no set operations), emit the `passthrough_from` marker form instead of `fields`. The deterministic merge step expands it 1:1 against the parent's NAMED column set — if the parent's columns are not named anywhere in the scanned source, nothing is emitted. NEVER emit the marker for multi-input statements. **Corollary (a), user-approved 2026-07-02:** the same merge step ALSO propagates the parent's named column set as the passthrough model's own `dataset_schemas` entry (name + parent-stated type only) when the model declares no column set of its own — deterministic SQL semantics, same constraints, never an emission you make here.
+
+The OUTPUT `namespace`/`name` and every `inputFields` entry MUST use the same dataset vocabulary as this chunk's edges. No confidence key rides on `column_lineage` — confidence stays on the edges.
+
+## Dataset descriptions (documentation facet, 2026-07-02 uplift)
+
+When the source states a dataset-level description (dbt model/source `description:` in `schema.yml`, table `COMMENT` DDL), emit a `dataset_descriptions` entry. Verbatim text only — never invented, never summarized.
 
 ## Gap reporting (honest disclosure)
 

@@ -26,6 +26,13 @@ sp = importlib.util.module_from_spec(_spec)
 sys.modules["avengers_seat_prompt"] = sp
 _spec.loader.exec_module(sp)
 
+# convene owns the authoritative fail-closed overlay LINT (design §3); the overlay
+# INJECT/STRIP phase boundary lives in seat_prompt. Both are tested here.
+_cspec = importlib.util.spec_from_file_location("avengers_convene_pb", _SCRIPTS / "convene.py")
+convene = importlib.util.module_from_spec(_cspec)
+sys.modules["avengers_convene_pb"] = convene
+_cspec.loader.exec_module(convene)
+
 _FIX = Path(__file__).resolve().parent / "fixtures"
 _ROSTER = Path(__file__).resolve().parent.parent / "roster" / "skeptic.yaml"
 
@@ -209,3 +216,123 @@ def test_memory_hit_detection_and_line():
 
 def test_no_memory_hit_when_uncited():
     assert sp.scan_memory_hits("no citations here", [_mem(id="mem-0001")]) == []
+
+
+# --------------------------------------------------------------------------- #
+# D2 divergence-overlay inject/strip boundary (design §3, WP-3 · SC#6)
+# --------------------------------------------------------------------------- #
+def test_overlay_injected_in_blind_diverge_only():
+    # The real skeptic card carries a valid divergence_overlay. It appears ONLY in an
+    # ideation phase and is STRIPPED for converge/verify/arbiter (de-personaed position
+    # artifact is what carries into converge).
+    blind = sp.assemble_prompt(_card(), "task", "position", phase=sp.BLIND_DIVERGE)
+    assert "DIVERGENCE OVERLAY" in blind
+    for later in ("CONVERGE", "ARBITER", "VERIFY"):
+        prompt = sp.assemble_prompt(_card(), "task", "position", phase=later)
+        assert "DIVERGENCE OVERLAY" not in prompt
+    # No phase at all -> stripped (safe default).
+    assert "DIVERGENCE OVERLAY" not in sp.assemble_prompt(_card(), "task", "position")
+
+
+def test_no_overlays_flag_suppresses_injection_even_in_blind_diverge():
+    prompt = sp.assemble_prompt(_card(), "task", "position", phase=sp.BLIND_DIVERGE, no_overlays=True)
+    assert "DIVERGENCE OVERLAY" not in prompt
+
+
+def test_overlay_kept_inside_role_card_no_new_section():
+    # Injecting the overlay must NOT add a top-level section (order invariant holds).
+    prompt = sp.assemble_prompt(_card(), "task", "position", phase=sp.BLIND_DIVERGE)
+    order = _section_order(prompt)
+    assert order == ["TRUSTED_PROTOCOL", "TRUSTED_ROLE_CARD",
+                     "AUTHORIZED_TASK_DIRECTIVE", "TRUSTED_PHASE_REQUEST"]
+
+
+# --------------------------------------------------------------------------- #
+# D2 overlay LINT (convene.py, validate-time fail-closed · SC#6)
+# --------------------------------------------------------------------------- #
+def test_overlay_lint_accepts_valid_types():
+    assert convene.lint_overlay("s", {"divergence_overlay": {"type": "expertise-cue", "cue": "x"}})["type"] == "expertise-cue"
+    assert convene.lint_overlay("s", {"divergence_overlay": {"type": "divergence-direction", "direction": "x"}})["type"] == "divergence-direction"
+    assert convene.lint_overlay("s", {}) is None  # no overlay -> None (not an error)
+
+
+def test_overlay_lint_rejects_decorative_and_demographic():
+    for bad in ("decorative", "demographic", "persona", None):
+        with pytest.raises(convene.ConveneError):
+            convene.lint_overlay("s", {"divergence_overlay": {"type": bad, "cue": "x"}})
+    # a missing type key is also rejected
+    with pytest.raises(convene.ConveneError):
+        convene.lint_overlay("s", {"divergence_overlay": {"cue": "x"}})
+
+
+def test_overlay_lint_fails_closed_at_validate_time(tmp_path):
+    # SC#6: a decorative/demographic overlay on a card is rejected at build (no run).
+    rdir, pdir = tmp_path / "roster", tmp_path / "profiles"
+    rdir.mkdir(parents=True)
+    (rdir / "skeptic.yaml").write_text(
+        "seat_id: skeptic\nprofession: t\nadversarial_role: true\ncan_arbitrate: false\n"
+        "incentive: {optimizes_for: x, discounts: y, standing_challenge: z, failure_mode: w}\n"
+        "provider: {affinity: codex, fallback_ok: true, effort: xhigh}\nforbidden: []\n"
+        "divergence_overlay: {type: demographic, cue: 'a 55-year-old banker from Vilnius'}\n",
+        encoding="utf-8",
+    )
+    (rdir / "architect.yaml").write_text(
+        "seat_id: architect\nprofession: t\nadversarial_role: false\ncan_arbitrate: true\n"
+        "incentive: {optimizes_for: x, discounts: y, standing_challenge: z, failure_mode: w}\n"
+        "provider: {affinity: claude, fallback_ok: true, effort: default}\nforbidden: []\n",
+        encoding="utf-8",
+    )
+    (rdir / "operator.yaml").write_text(
+        "seat_id: operator\nprofession: t\nadversarial_role: false\ncan_arbitrate: true\n"
+        "incentive: {optimizes_for: x, discounts: y, standing_challenge: z, failure_mode: w}\n"
+        "provider: {affinity: agy, fallback_ok: true, effort: default}\nforbidden: []\n",
+        encoding="utf-8",
+    )
+    pdir.mkdir(parents=True)
+    (pdir / "fam.yaml").write_text(
+        "schema: avengers-profile.v1\nfamily: fam\nseats:\n"
+        "  - ref: skeptic\n  - ref: architect\n  - ref: operator\n"
+        "arbiter:\n  effort_on_codex: max\n"
+        "phases:\n  converge:\n    semantics: ratification\n"
+        "outcome:\n  type: [decision]\n  default: decision\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(convene.ConveneError) as e:
+        convene.build_session_plan({"profile": "fam"}, profiles_dir=pdir, roster_dir=rdir)
+    assert "demographic" in str(e.value) or "not in" in str(e.value)
+
+
+# --------------------------------------------------------------------------- #
+# Memory provider-stamping (design §8, WP-3)
+# --------------------------------------------------------------------------- #
+def test_inherited_memory_renders_third_person_with_provider_stamp():
+    rec = _mem(id="mem-9001", writing_provider="codex")
+    block = sp.render_member_memory([rec], seat_id="skeptic", seat_provider="claude")
+    assert block is not None
+    # third-person + writing-provider stamp
+    assert "the previous skeptic (codex)" in block
+    assert '"inherited": true' in block
+
+
+def test_own_provider_memory_stays_first_person():
+    rec = _mem(id="mem-9002", writing_provider="claude")
+    block = sp.render_member_memory([rec], seat_id="skeptic", seat_provider="claude")
+    assert block is not None
+    # same provider -> the RECORD is not annotated (assert on the JSON-key form; the
+    # untrusted-data warning above the JSON legitimately mentions these field names).
+    assert '"inherited": true' not in block
+    assert '"third_person_stamp"' not in block
+
+
+def test_unstamped_memory_unchanged():
+    # A record with no writing_provider renders exactly as before (back-compat).
+    rec = _mem(id="mem-9003")
+    block = sp.render_member_memory([rec], seat_id="skeptic", seat_provider="claude")
+    assert '"inherited": true' not in block and '"third_person_stamp"' not in block
+
+
+def test_memory_stamp_flows_through_assemble_prompt():
+    rec = _mem(id="mem-9004", writing_provider="codex")
+    prompt = sp.assemble_prompt(_card(), "task", "position",
+                                member_memory=[rec], seat_provider="claude")
+    assert "the previous skeptic (codex)" in prompt

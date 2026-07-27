@@ -53,6 +53,33 @@ scoping. This definition is IDENTICAL to the `mainframe-lineage-parsers` engine'
 deferred-to-v1.1 L3 functional view's lineage-JOB ↔ legacy-code-intel-artifact
 join). The OL core pin stays at 2.0.2 — the facet is additive and self-describing.
 
+### `schema` DATASET facet (SchemaDatasetFacet, 2026-07-01 uplift)
+
+Each DatasetEvent carries a `schema` facet when the project-aggregate rollup has
+a `dataset_schemas` entry for that `(namespace, name)` — i.e. when the dataset's
+columns are NAMED IN SOURCE (dbt `schema.yml`, SQL DDL column lists, CSV header
+rows, COBOL copybook fields, staged-model SELECT column lists):
+
+```json
+"schema": {
+  "_producer": "urn:lineage:static-scan",
+  "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+  "fields": [
+    {"name": "id", "type": "bigint"},
+    {"name": "email"}
+  ]
+}
+```
+
+Confidence rule: only columns actually named in source are emitted — speculative
+columns are OMITTED, not banded; `type` appears only when the source states it
+(never guessed). Attachment is fail-open (`attach_schema_facet_fail_closed`): a
+facet the vendored OL schema rejects is dropped and the DatasetEvent is emitted
+facet-less, with the reason surfaced in the merge summary's `schema_facet_gaps`.
+Downstream, the DLP OpenLineage importer materializes these fields as
+`type='column'` child elements (`facets.schema.fields[].name` is the contract it
+parses). The OL core pin stays at 2.0.2 — the facet is additive.
+
 ## `views.json` — L1/L2 render payload (`project_views.py`)
 
 A DETERMINISTIC, stdlib, NO-LLM post-pass over `openlineage.ndjson` +

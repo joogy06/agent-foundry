@@ -236,6 +236,5 @@ copilot -p "fix all linter errors" \
 - `references/legacy-gh-copilot.md` — old `gh copilot suggest/explain` extension
 - `references/first-boot-verification.md` — exact commands to validate after install
 - `claude-code-cli` — Claude Code CLI counterpart
-- `gemini-cli` — Gemini CLI counterpart
 - `gcp-workstations/references/auth-per-tool.md` — Copilot device flow on a GCP Workstation
 - `research-for-skills/cross-tool-portability/agents-md-canonical.md` — AGENTS.md as canonical content

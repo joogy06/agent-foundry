@@ -39,7 +39,7 @@ Orchestrator (dep_currency_check.py)
         v
 +-- Layer 2A: PRIMARY data path -- community wrappers --+
 |   osv_scanner, pip_audit, cargo_audit, govulncheck    |
-|   (NO npm_audit -- FP rate too high per Gemini)       |
+|   (NO npm_audit -- FP rate too high )       |
 +-------------------------------------------------------+
         | (fallback when wrapper unavailable)
         v
@@ -140,7 +140,7 @@ Other reference docs:
 | Add `requests` / `httpx` / `pydantic` to make the HTTP layer "nicer" | Skill MUST work in the global skills library without virtualenv. Stdlib is the contract. |
 | Block on the LLM fallback | Codex/agy can hang. 30s subprocess timeout, hard. On timeout, treat as "couldn't interpret" and continue. |
 | Skip lockfile scanning ("manifest-only is enough") | Majority of CVEs hide in transitive deps. Read lockfiles for direct + first-level transitive minimum. |
-| Wrap `npm audit` | FP rate too high (Gemini research). Use OSV-direct for npm. |
+| Wrap `npm audit` | FP rate too high. Use OSV-direct for npm. |
 | Treat the 24h cache TTL as a hard rule | 24h is the FLOOR for AUTOMATIC refresh. `--no-cache` always bypasses. Vulns get 2h TTL. |
 | Fail loudly on a single registry being unreachable | Multi-ecosystem projects must produce partial reports. Mark deferred + advisory; never abort. |
 | Query GHSA directly | OSV aggregates GHSA. Direct GHSA = redundant queries + extra auth surface. |

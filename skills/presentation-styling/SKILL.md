@@ -28,7 +28,7 @@ Child of `presentation-builder`. This skill owns all visual identity concerns: t
 | Building architecture diagrams or flowcharts | `presentation-diagrams` |
 | Exporting to PPTX/HTML or format conversion | `presentation-renderer` |
 | Full end-to-end deck creation (intake + routing) | `presentation-builder` |
-| Image generation not destined for slides | `nano-banana` or `vertex-banana` |
+| Image generation not destined for slides | `vertex-banana` |
 
 ---
 

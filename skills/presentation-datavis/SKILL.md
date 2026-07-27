@@ -23,7 +23,7 @@ Child of `presentation-builder`. This skill handles all chart, table, and data v
 ## When NOT to Use
 
 - **Standalone data analysis** without a presentation context — use general Python data tools instead.
-- **Infographics or illustrations** that are not data-driven — use `nano-banana` or `vertex-banana` for image generation.
+- **Infographics or illustrations** that are not data-driven — use `vertex-banana` for image generation.
 - **Simple text tables in markdown** that do not need visual rendering — just write the markdown directly.
 - **Dashboard or web app visualizations** — this skill targets static slide assets, not interactive dashboards.
 - **Data cleaning or ETL** — handle data preparation before invoking this skill.

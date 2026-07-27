@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# pre-commit — refuse a commit that stages secret-looking values.
+#
+# Delegates to scripts/secrets-scan.py --staged, which reads content from the GIT
+# INDEX (not the worktree), so it scans exactly what is about to be committed.
+# Sharing that scanner is the point: the commit hook, the pre-push hook and the
+# G_SECRETS_SCAN gate all enforce ONE pattern set and cannot drift apart.
+#
+# Install: bash skills/secret-scanning/hooks/install.sh
+set -uo pipefail
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+scanner="$repo_root/scripts/secrets-scan.py"
+
+# Fall back to the skill copy so the hook works in repos that don't vendor the scanner.
+[ -f "$scanner" ] || scanner="$HOME/.claude/skills/secret-scanning/scripts/secrets-scan.py"
+
+if [ ! -f "$scanner" ]; then
+  # install.sh refuses to install when no scanner resolves, so reaching here means
+  # the scanner was REMOVED after install. Fail CLOSED: an enforcement hook that
+  # silently skips is worse than no hook, because it advertises protection that is
+  # not there. Explicit --no-verify remains the escape hatch.
+  echo "pre-commit: BLOCKED — secrets scanner missing." >&2
+  echo "  expected: \$repo/scripts/secrets-scan.py or ~/.claude/skills/secret-scanning/scripts/secrets-scan.py" >&2
+  echo "  Restore it, or bypass deliberately with: git commit --no-verify" >&2
+  exit 1
+fi
+
+py=$(command -v python3 || command -v python) || {
+  echo "pre-commit: no python found; skipping secrets scan" >&2; exit 0; }
+
+"$py" "$scanner" "$repo_root" --staged
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo "" >&2
+  echo "pre-commit: BLOCKED — staged content matches a secret pattern." >&2
+  echo "  Move the value to ~/.secrets/<project>.env (0600) and load it at runtime." >&2
+  echo "  See: skills/secret-scanning/references/storage-standard.md" >&2
+  echo "  If the credential was ever committed, ROTATE it — scrubbing is not rotation." >&2
+fi
+exit $status

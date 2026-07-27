@@ -142,10 +142,19 @@ class Ledger:
 # 2026-04-09 DLP pilot where `claims.issue_claim("WP-2.A", ...)` failed because
 # the previous `[A-Za-z0-9_-]+` regex rejected the dot. Tests in
 # tests/test_claims_row_re.py.
+#
+# NOTE (S070 #142, design §A1.1): the `stage` cell accepts `-` so the
+# hyphenated UI-lane stages (`UI-INTEGRATED`, `UI-VERIFIED`) parse. Before the
+# widening, `[A-Z_]+` could not match a hyphen and this row SILENTLY VANISHED
+# from the projection — writing is mere formatting, so the engine happily wrote
+# a row it could never read back, and every subsequent transition for that
+# component returned `unknown_wp`. Silent ledger corruption that reports
+# success. The separator row `|------|...` is still rejected because `gen`
+# requires `\d+`. Round-trip tests in tests/test_claims_row_re.py.
 _ROW_RE = re.compile(
     r"^\|\s*(?P<wp>[A-Za-z0-9_.-]+)\s*\|"
     r"\s*(?P<component>[A-Za-z0-9_.-]+)\s*\|"
-    r"\s*(?P<stage>[A-Z_]+)\s*\|"
+    r"\s*(?P<stage>[A-Z_-]+)\s*\|"
     r"\s*(?P<gen>\d+)\s*\|"
     r"\s*(?P<deps>[^|]*)\|"
 )
@@ -995,6 +1004,50 @@ class VerifiedPreconditionError(RuntimeError):
     """
 
 
+class UiVerifiedPreconditionError(VerifiedPreconditionError):
+    """Raised by `assert_ui_verified_preconditions` when the visual verdict for
+    a UI-INTEGRATED -> UI-VERIFIED transition does not satisfy the read-only
+    G_V preconditions (S070 #142, design §A3.1).
+
+    MUST subclass `VerifiedPreconditionError`: the engine's `except` clause in
+    `apply_request_idempotent` step 4 catches exactly that type, so a sibling
+    type would propagate as an unhandled crash instead of a structured
+    `outcome: "precondition_failed"`.
+
+    Carries FOUR fields, because the thin CLI caller in `gates.check_G_V` has
+    to reconstruct today's exit behaviour from them:
+
+      kind        'violation' -> `_gv_fail` (exit 2)
+                  'env'       -> `_gv_env_error` (exit 3, severity degraded,
+                                 category external_tool_fail, dynamic
+                                 fingerprint G_V-env-<impl_hash[:8]>)
+      category    e.g. 'gate_false_pass' on the skeleton-version path
+      fingerprint the stable observation fingerprint (see the enumerated set
+                  in design §A2); None on `kind='env'`, where the fingerprint
+                  is computed from impl_hash by the caller
+      message     human-readable detail
+
+    ENGINE BEHAVIOUR ON kind='env': FAIL CLOSED. A degraded environment must
+    never be read as a pass, so the engine rejects the transition either way —
+    it does not need to branch on `kind`, which is precisely why `kind` exists
+    only for the CLI caller.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str = "violation",
+        category: Optional[str] = None,
+        fingerprint: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+        self.category = category
+        self.fingerprint = fingerprint
+
+
 class IllegalTransitionError(RuntimeError):
     """Raised by `apply_request_idempotent` when a requested from->to pair is
     not in `LEGAL_TRANSITIONS`. Subclass of RuntimeError for the same reason
@@ -1013,19 +1066,62 @@ class IllegalTransitionError(RuntimeError):
 #   - DOCUMENTED is terminal (empty set).
 #   - BLOCKED unblocks only by demote-to-PLANNED.
 #
-# The UI lane (UI-INTEGRATED -> UI-VERIFIED) is OUT this cycle (A5 deferred,
-# design §10 B3). UI transitions keep their current path; this table covers
-# only the core lane.
+# The UI lane (UI-INTEGRATED -> UI-VERIFIED) is IN as of S070 (#142, design
+# `docs/plans/2026-07-25-ui-lane-enforcement-and-visual-feedback-design.md`
+# §A1). It supersedes the prior note here that the lane was "OUT this cycle
+# (A5 deferred, design §10 B3)" — that exclusion was explicitly temporal, and
+# this is the later cycle it anticipated. Before S070, `check_transition_legal`
+# fails closed on an unknown `from_stage`, so UI transitions could not route
+# through the sole-writer engine AT ALL: they ran on their own path (G_V +
+# consume_visual_verdict), outside the chokepoint this engine exists to be, and
+# the visual gate was therefore structurally skippable.
+#
+# The UI lane is an ADDITIONAL HOP, not a substitute:
+#
+#   UNIT_TESTED -> INTEGRATED -> VERIFIED -> UI-INTEGRATED -> UI-VERIFIED -> DOCUMENTED
+#                                  (R6)                          (G_V)
+#
+# `VERIFIED -> DOCUMENTED` is RETAINED so non-UI components are completely
+# unaffected, and a UI component passes BOTH gates — R6 always runs first, so
+# this change can only tighten enforcement, never weaken it. Entry is
+# deliberately from VERIFIED and NOT from INTEGRATED: an
+# `INTEGRATED -> UI-INTEGRATED -> UI-VERIFIED -> DOCUMENTED` path would reach
+# terminal without ever passing R6, an unflagged bypass of the core lane's
+# strongest gate. The decided shape forecloses it.
+#
+# KNOWN RESIDUAL (deliberate, tracked as its own task — do NOT read #142 as
+# closing it): this table declares what is PERMITTED, not what is REQUIRED.
+# `VERIFIED -> DOCUMENTED` remains legal, so a UI-scoped component can still
+# reach terminal without a visual verdict. Compelling the hop needs a separate
+# precondition on `VERIFIED -> DOCUMENTED` plus a component->screen mapping
+# that does not exist yet; it sits on the path of EVERY component, so a
+# false-positive UI-scope signal would block non-UI work factory-wide. That
+# deserves its own cycle. The core lane has the identical property (nothing
+# compels a component to seek VERIFIED either) — enforcement-on-claim is this
+# ledger's established trust model, and S070 brings the UI stage up to exactly
+# that standard rather than inventing a stricter one for it alone.
+#
+# Demote semantics (design §A1.2), recorded so nobody patches them ad hoc:
+#   - BLOCKED from either UI state inherits `BLOCKED: {PLANNED}`, and any
+#     ->PLANNED fires is_demote_to_planned -> CB1 generation bump. There is no
+#     partial demote anywhere in this table, so a purely visual defect
+#     re-climbs the full ladder and re-runs R6. That is the house style.
+#   - DOCUMENTED is terminal, so UI-or-not must be decided BEFORE documenting;
+#     a component documented via the plain path cannot take the UI hop later
+#     without a full demote.
 # ---------------------------------------------------------------------------
 
 LEGAL_TRANSITIONS: Dict[str, frozenset] = {
-    "PLANNED":     frozenset({"SCAFFOLDED", "BLOCKED"}),
-    "SCAFFOLDED":  frozenset({"UNIT_TESTED", "BLOCKED", "PLANNED"}),   # PLANNED = demote
-    "UNIT_TESTED": frozenset({"INTEGRATED", "BLOCKED", "PLANNED"}),
-    "INTEGRATED":  frozenset({"VERIFIED", "BLOCKED", "PLANNED"}),
-    "VERIFIED":    frozenset({"DOCUMENTED", "BLOCKED", "PLANNED"}),
-    "DOCUMENTED":  frozenset(),                                        # terminal
-    "BLOCKED":     frozenset({"PLANNED"}),                             # unblock = demote
+    "PLANNED":       frozenset({"SCAFFOLDED", "BLOCKED"}),
+    "SCAFFOLDED":    frozenset({"UNIT_TESTED", "BLOCKED", "PLANNED"}),  # PLANNED = demote
+    "UNIT_TESTED":   frozenset({"INTEGRATED", "BLOCKED", "PLANNED"}),
+    "INTEGRATED":    frozenset({"VERIFIED", "BLOCKED", "PLANNED"}),
+    "VERIFIED":      frozenset({"DOCUMENTED", "BLOCKED", "PLANNED",
+                                "UI-INTEGRATED"}),                     # +UI hop (S070)
+    "UI-INTEGRATED": frozenset({"UI-VERIFIED", "BLOCKED", "PLANNED"}),  # NEW (S070)
+    "UI-VERIFIED":   frozenset({"DOCUMENTED", "BLOCKED", "PLANNED"}),   # NEW (S070)
+    "DOCUMENTED":    frozenset(),                                      # terminal
+    "BLOCKED":       frozenset({"PLANNED"}),                           # unblock = demote
 }
 
 
@@ -1064,11 +1160,20 @@ def is_demote_to_planned(to_stage: str) -> bool:
 # Accepts either ASCII "->" or unicode "→" in the from->to cell (S029 archive
 # used "→"; the production ledger template uses "->"). We WRITE with the same
 # arrow the file already uses (sniffed per-file) so round-trips stay clean.
+#
+# NOTE (S070 #142, design §A1.1): `from`/`to` accept `-` for the same reason as
+# `_ROW_RE`'s stage cell — but this one failed WORSE. `[A-Z_]+` did not simply
+# reject "UI-INTEGRATED -> UI-VERIFIED"; it matched a SUBSTRING and yielded the
+# wrong-but-plausible parse `{'from': 'INTEGRATED', 'to': 'UI'}` — a transition
+# into a nonexistent stage called `UI`. Combined with the dropped projection
+# row that is silent corruption reporting success, which is strictly worse than
+# a parse error. The spaceless `UI-INTEGRATED->UI-VERIFIED` form resolves
+# correctly only via backtracking, so it is asserted explicitly in the tests.
 _EVENT_ROW_RE = re.compile(
     r"^\|\s*(?P<num>\d+)\s*\|"
     r"\s*(?P<wp>[A-Za-z0-9_.-]+)\s*\|"
     r"\s*(?P<component>[A-Za-z0-9_.-]+)\s*\|"
-    r"\s*(?P<from>[A-Z_]+)\s*(?:->|→)\s*(?P<to>[A-Z_]+)\s*\|"
+    r"\s*(?P<from>[A-Z_-]+)\s*(?:->|→)\s*(?P<to>[A-Z_-]+)\s*\|"
     r"\s*(?P<gen>\d+)\s*\|"
     r"\s*(?P<evidence>.*?)\s*\|\s*$"
 )
@@ -1580,8 +1685,36 @@ def _precondition_integrated_to_verified(
     assert_verified_preconditions(bundle_hash, project_root, expected=expected)
 
 
+def _precondition_ui_integrated_to_ui_verified(
+    request: Dict[str, Any],
+    row: "LedgerRow",
+    project_root: Path,
+) -> None:
+    """G_V hook dispatched on UI-INTEGRATED -> UI-VERIFIED (S070 #142).
+
+    READ-ONLY. It delegates to `assert_ui_verified_preconditions` and NEVER
+    consumes the verdict — see the long note above that function for the three
+    defects engine-side consumption introduced. Consumption remains in
+    `gates.check_G_V`, invoked by bob before the transition.
+
+    `UiVerifiedPreconditionError` subclasses `VerifiedPreconditionError`, so
+    the engine's step-4 `except` catches it and returns a structured
+    `outcome: "precondition_failed"`. That is also why `kind='env'` needs no
+    branch here: a degraded environment raises the same type and therefore
+    FAILS CLOSED, which is the required behaviour.
+    """
+    impl_hash = request.get("impl_hash")
+    if not impl_hash:
+        raise UiVerifiedPreconditionError(
+            "G_V: UI-INTEGRATED->UI-VERIFIED request carries no impl_hash; "
+            "cannot locate the visual verdict — refuse"
+        )
+    assert_ui_verified_preconditions(impl_hash, project_root)
+
+
 _TRANSITION_PRECONDITIONS: Dict[Tuple[str, str], Any] = {
     ("INTEGRATED", "VERIFIED"): _precondition_integrated_to_verified,
+    ("UI-INTEGRATED", "UI-VERIFIED"): _precondition_ui_integrated_to_ui_verified,
 }
 
 
@@ -1711,7 +1844,8 @@ def apply_request_idempotent(
                               "missing)",
                 }
 
-        # (4) stage-specific precondition dispatch (R6 on INTEGRATED->VERIFIED).
+        # (4) stage-specific precondition dispatch (R6 on INTEGRATED->VERIFIED;
+        #     the read-only G_V predicate on UI-INTEGRATED->UI-VERIFIED, S070).
         hook = _TRANSITION_PRECONDITIONS.get((from_stage, to_stage))
         if hook is not None:
             try:
@@ -1930,6 +2064,285 @@ def _safe_observe(**kwargs: Any) -> None:
         claude_observe(**kwargs)
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# S070 #142 — the READ-ONLY visual precondition (design §A2/§A3/§A3.1/§A3.2)
+#
+# Extracted from `gates.check_G_V` checks 1-4 (+ the request-id/tuple binding)
+# so the UI-INTEGRATED -> UI-VERIFIED transition can be gated INSIDE the
+# sole-writer engine, not merely by a CLI gate a caller can decline to run.
+#
+# HARD CONSTRAINT — THIS FUNCTION IS PURE AND READ-ONLY. IT NEVER CONSUMES.
+# `consume_visual_verdict` MUTATES and stays exactly where it is today, in
+# `check_G_V`. An earlier draft of the design had the engine consume too;
+# that was struck because it introduced three defects at once:
+#   1. double-consume deadlock — bob consumes BEFORE transitioning
+#      (bob.md:76), so the engine's own consume would return
+#      `rejected_not_open` and the transition would fail PERMANENTLY
+#      (requests cannot reopen);
+#   2. self-deadlock — `_bob_claim_lock` opens a NEW fd per call and takes a
+#      blocking LOCK_EX; the engine already holds it, and `flock` treats
+#      separate open file descriptions in the same process as independent, so
+#      the nested acquisition blocks forever (a hang, not an error);
+#   3. consume-before-write crash window — a crash between consumption and the
+#      ledger write leaves the verdict consumed with no ledger event; dedup
+#      never fires and re-consumption is refused. Bricked replay.
+#
+# NO LOCK IS ACQUIRED HERE, for the same reason. `_read_yaml_dict` is
+# is_file + read_text + safe_load with no flock, and `_visual_request_path` is
+# pure path construction. On the ENGINE path this runs inside the engine's
+# `_bob_claim_lock`, which is a benefit: the only writer of request files
+# mutates under that same lock via `atomic_write`, so the read is stable and
+# race-free with nothing to deadlock on. On the GATE path the read is unlocked
+# — identical exposure to today's unlocked pre-read in `consume_visual_verdict`,
+# with the authoritative decision still taken by consume's re-read under lock.
+#
+# CHECK ORDER IS LOAD-BEARING. It mirrors `check_G_V` exactly, including the
+# ordering inside `consume_visual_verdict` (missing record, THEN status, THEN
+# tuple). A fixture with several simultaneous failures must emit the same
+# fingerprint it emits today, or downstream observation consumers silently
+# change meaning without any test failing.
+#
+# NOT IMPLEMENTED, DELIBERATELY: a `schema: visual-verdict.v1` check. The
+# `check_G_V` docstring claimed one, but its body never read a `schema` field.
+# Adding it would introduce a new failure class and break the
+# fingerprint-set-unchanged regression test. The docstring was wrong and has
+# been corrected instead.
+# ---------------------------------------------------------------------------
+
+VISUAL_VERDICTS_SUBDIR = ".design-ledger/visual-verdicts"
+SKELETONS_SUBDIR = ".design-ledger/skeletons"
+
+
+def _visual_verdict_path(project_root: Path, impl_hash: str) -> Path:
+    return project_root / VISUAL_VERDICTS_SUBDIR / f"{impl_hash}.verdict.yaml"
+
+
+def _load_current_skeleton_version(project_root: Path) -> Optional[str]:
+    """Read `.design-ledger/skeletons/index.yaml` and return the pinned
+    `skeleton_version` (design §2.2). Returns None on any read/parse failure;
+    the caller decides whether that is an env error or a gate violation.
+
+    Semantics are byte-for-byte those of the `gates.py` helper this replaced
+    (S070 extraction) — including "absent index is indistinguishable from
+    unreadable index", which `check_G_V` maps to an env error (exit 3).
+    """
+    index_path = project_root / SKELETONS_SUBDIR / "index.yaml"
+    if not index_path.is_file():
+        return None
+    try:
+        data = yaml.safe_load(index_path.read_text()) or {}
+    except (yaml.YAMLError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sv = data.get("skeleton_version")
+    if not isinstance(sv, str) or not sv:
+        return None
+    return sv
+
+
+def assert_ui_verified_preconditions(
+    impl_hash: str,
+    project_root: Path,
+) -> Dict[str, Any]:
+    """Read-only precondition for UI-INTEGRATED -> UI-VERIFIED (S070 #142).
+
+    Returns the parsed verdict mapping on success so `check_G_V` can proceed
+    to its own check 5 (consumption) without re-reading the file. Raises
+    `UiVerifiedPreconditionError` on the first failure.
+
+    Checks, in order:
+      1. verdict file exists / parses / is a mapping
+         -> `verdict-missing`, `verdict-malformed` (+ env on read/parse error)
+      2. both arms present -> `arm-missing-arbiter`, `arm-missing-drift`
+      3. both arms pass (drift may be `auto_approved` for micro-drift)
+         -> `arbiter-not-pass`, `drift-not-pass`
+      4. verdict's skeleton_version matches the pinned index
+         -> `skeleton-version-mismatch` (category `gate_false_pass`), env when
+            the index is unreadable
+      5. request_id present -> `request-id-missing`
+      6. the 8-field tuple is bound to the persisted request record
+         -> `request-not-found`, `request-not-open`, `tuple-mismatch`
+
+    Check 6 (design §A3.2) is what closes the freshness hole: a predicate
+    limited to checks 1-4 never looks at the verification REQUEST, so a caller
+    reaching the engine without running `check_G_V` would pass with a stale
+    verdict (same impl_hash and skeleton version, but an older `attempt_id` /
+    `inventory_hash` / `runner_version` / `rubric_version` — e.g. a verdict
+    produced under an older measurement runner for a byte-identical artifact),
+    or with an already-consumed verdict re-authorizing a second transition
+    after a demote-and-reclimb that rebuilt to an identical impl_hash. This is
+    not the fabrication threat (out of scope, per R6's own honest scoping) —
+    it is exactly the accidental/rationalized gate-skip the chokepoint exists
+    to stop.
+    """
+    project_root = Path(project_root).resolve()
+    verdict_path = _visual_verdict_path(project_root, impl_hash)
+
+    # --- 1. verdict file exists, parses, is a mapping ---------------------
+    if not verdict_path.is_file():
+        raise UiVerifiedPreconditionError(
+            f"verdict file missing at {verdict_path} (expected after arbiter spawn)",
+            fingerprint="verdict-missing",
+        )
+    try:
+        verdict = yaml.safe_load(verdict_path.read_text())
+    except yaml.YAMLError as e:
+        raise UiVerifiedPreconditionError(
+            f"verdict YAML unparseable: {e}", kind="env",
+        )
+    except OSError as e:
+        raise UiVerifiedPreconditionError(
+            f"verdict file unreadable: {e}", kind="env",
+        )
+
+    if not isinstance(verdict, dict):
+        raise UiVerifiedPreconditionError(
+            f"verdict is not a YAML mapping (got {type(verdict).__name__})",
+            fingerprint="verdict-malformed",
+        )
+
+    # --- 2. both arms present ---------------------------------------------
+    arbiter = verdict.get("arbiter_verdict")
+    drift = verdict.get("drift_arbiter_verdict")
+    if not isinstance(arbiter, dict):
+        raise UiVerifiedPreconditionError(
+            "verdict missing arbiter_verdict arm",
+            fingerprint="arm-missing-arbiter",
+        )
+    if not isinstance(drift, dict):
+        raise UiVerifiedPreconditionError(
+            "verdict missing drift_arbiter_verdict arm",
+            fingerprint="arm-missing-drift",
+        )
+
+    # --- 3. both arms pass -------------------------------------------------
+    arbiter_status = arbiter.get("status")
+    drift_status = drift.get("status")
+    if arbiter_status != "pass":
+        raise UiVerifiedPreconditionError(
+            f"arbiter_verdict.status={arbiter_status!r} (expected 'pass')",
+            fingerprint="arbiter-not-pass",
+        )
+    if drift_status not in ("pass", "auto_approved"):
+        raise UiVerifiedPreconditionError(
+            f"drift_arbiter_verdict.status={drift_status!r} "
+            f"(expected 'pass' or 'auto_approved')",
+            fingerprint="drift-not-pass",
+        )
+
+    # --- 4. skeleton version match ----------------------------------------
+    verdict_skeleton_version = verdict.get("skeleton_version")
+    current_skeleton_version = _load_current_skeleton_version(project_root)
+    if current_skeleton_version is None:
+        raise UiVerifiedPreconditionError(
+            f"cannot read skeleton_version from "
+            f"{project_root / SKELETONS_SUBDIR / 'index.yaml'}",
+            kind="env",
+        )
+    if verdict_skeleton_version != current_skeleton_version:
+        # The arbiter passed a verdict against a skeleton the index has since
+        # rev'd past -> it implicitly missed the bump, hence gate_false_pass.
+        raise UiVerifiedPreconditionError(
+            f"verdict.skeleton_version={verdict_skeleton_version!r} "
+            f"but current index.yaml pins {current_skeleton_version!r} "
+            f"(arbiter missed a skeleton bump)",
+            category="gate_false_pass",
+            fingerprint="skeleton-version-mismatch",
+        )
+
+    # --- 5. request_id present --------------------------------------------
+    request_id = verdict.get("request_id")
+    if not isinstance(request_id, str) or not request_id:
+        raise UiVerifiedPreconditionError(
+            "verdict missing request_id field (required for tuple echo)",
+            fingerprint="request-id-missing",
+        )
+
+    # --- 6. 8-field tuple bound to the persisted request (read-only) ------
+    # Ordering below mirrors `consume_visual_verdict` exactly: missing record,
+    # THEN status, THEN tuple. Diverging here would change which fingerprint
+    # `check_G_V` emits when several conditions fail at once.
+    record = _read_yaml_dict(_visual_request_path(project_root, request_id))
+    if record is None:
+        raise UiVerifiedPreconditionError(
+            f"visual-verification request {request_id!r} not found at "
+            f"{_visual_request_path(project_root, request_id)}",
+            fingerprint="request-not-found",
+        )
+
+    status = record.get("status")
+    if status == VVR_STATUS_OPEN:
+        mismatches = [
+            field for field in VISUAL_VERDICT_TUPLE_FIELDS
+            if verdict.get(field) != (
+                request_id if field == "request_id" else record.get(field)
+            )
+        ]
+        if mismatches:
+            raise UiVerifiedPreconditionError(
+                f"8-field tuple echo mismatch for request_id={request_id} "
+                f"(fields: {', '.join(mismatches)})",
+                fingerprint="tuple-mismatch",
+            )
+    elif status == VVR_STATUS_CONSUMED:
+        # TWO-CASE STATUS RULE (design §A3.2) — accept `consumed` when the
+        # verdict stored on the request record is deep-equal to the presented
+        # one. A naive `status == "open"` requirement passes almost every test
+        # in the suite and BREAKS THE REAL FLOW: bob consumes BEFORE
+        # transitioning (bob.md:76), so by the time the engine runs, `open` is
+        # already false on the healthy path. That is HIGH-1 reborn in
+        # read-only form.
+        #
+        # DEEP-EQUAL MEANS PARSED STRUCTURES, NOT BYTES. `consume_visual_verdict`
+        # re-serialises the record via `_yaml_safe_dump_canonical` while the
+        # presented verdict file keeps its original formatting, so a byte or
+        # text comparison false-fails on whitespace and key order alone.
+        # Both sides are round-tripped through `yaml.safe_load` before
+        # comparison. (Round-tripping safe types is stable, so this is the only
+        # formulation that works.)
+        #
+        # The tuple is transitively validated here: `consume_visual_verdict`
+        # only ever stores a verdict AFTER its own tuple check passed, and the
+        # presented verdict is deep-equal to that stored copy.
+        stored = record.get("verdict")
+        if not _verdicts_deep_equal(stored, verdict):
+            raise UiVerifiedPreconditionError(
+                f"verification-request {request_id} is status=consumed and the "
+                f"stored verdict differs from the presented verdict "
+                f"(a consumed record may only re-authorize the IDENTICAL verdict)",
+                fingerprint="request-not-open",
+            )
+    else:
+        raise UiVerifiedPreconditionError(
+            f"verification-request {request_id} is not status=open "
+            f"(already consumed/abandoned)",
+            fingerprint="request-not-open",
+        )
+
+    return verdict
+
+
+def _verdicts_deep_equal(stored: Any, presented: Any) -> bool:
+    """Compare two verdicts as PARSED structures (design §A3.2).
+
+    The stored copy is canonically re-dumped by `consume_visual_verdict`, so a
+    byte comparison false-fails on formatting alone. Round-tripping each side
+    through `_yaml_safe_dump_canonical` -> `yaml.safe_load` normalises key
+    order and scalar style before comparison. Any non-round-trippable input
+    (a type `safe_dump` refuses) compares False rather than raising — a verdict
+    that cannot be canonicalised must not silently authorize a transition.
+    """
+    if stored is None:
+        return False
+    try:
+        norm_stored = yaml.safe_load(_yaml_safe_dump_canonical(stored))
+        norm_presented = yaml.safe_load(_yaml_safe_dump_canonical(presented))
+    except (yaml.YAMLError, TypeError, ValueError):
+        return False
+    return norm_stored == norm_presented
 
 
 # 1. open_visual_verification_request ----------------------------------------

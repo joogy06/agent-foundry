@@ -1,23 +1,30 @@
 ---
 name: antigravity-cli
-description: Use when delegating to or working with the Antigravity CLI (`agy`) — headless single-prompt orchestration (`agy -p`), interactive/resume modes, plugins, sandbox, and auth. `agy` is this host's PRIMARY second-opinion / challenger / research delegate; the gemini CLI (v0.50.0) remains an available fallback (kept per user direction 2026-07-10). Covers Antigravity CLI 1.1.0 (verified locally 2026-07-10 from `agy --version`).
+description: Use when delegating to or working with the Antigravity CLI (`agy`) — headless single-prompt orchestration (`agy -p`), interactive/resume modes, model selection, plugins, sandbox, and auth. `agy` is this host's SOLE second-opinion / challenger / research delegate — the gemini CLI was retired from this ecosystem on 2026-07-25 and has no fallback path. Covers Antigravity CLI 1.1.6 (verified locally 2026-07-24 from `agy --help`, `agy models`, `agy --version`).
 ---
 
 # Antigravity CLI (`agy`)
 
-Task-indexed reference for the Antigravity CLI. **`agy` is the PRIMARY second-opinion /
-challenger / research delegate** on this host. The `gemini` CLI (v0.50.0, `/usr/bin/gemini`)
-is still installed and remains an available **fallback** (kept per user direction 2026-07-10;
-the previously-announced 2026-06-18 retirement did not remove it from this host). Prefer `agy`
-for new delegation. Verified locally 2026-07-10 from `agy --version` (1.1.0); earlier surface
-notes verified 2026-06-05 on 1.0.5.
+Task-indexed reference for the Antigravity CLI. **`agy` is the SOLE second-opinion /
+challenger / research delegate** on this host. Verified locally 2026-07-24 from `agy --help`,
+`agy help <sub>`, `agy models`, and `agy --version` (1.1.6).
 
-**Three CLIs coexist on this host — don't confuse them:** `gemini` (`/usr/bin/gemini`,
-v0.50.0) = the standard Gemini CLI (`mcp`/`extensions`/`skills`/`hooks`/`gemma`, `-p` headless) —
-the kept fallback; `agy` (`~/.local/bin/agy`, v1.1.0) = the Antigravity-runtime delegate
-(this skill) — primary; `antigravity` (`/bin/antigravity`, v1.107.0) = the editor itself
-(VS Code/code-server fork — `chat`/`serve-web`/`tunnel`/`--diff`/`--goto`), NOT for headless
-orchestration.
+> **`agy` is the SOLE second-opinion / challenger / research delegate on this host.**
+> The gemini CLI was **retired from this ecosystem on 2026-07-25** by user directive — not
+> because Google withdrew it, but because `agy` replaced it. The `gemini-cli` skill, the
+> `nano-banana` image skill that wrapped it, and its affordance registry were **deleted**.
+> **There is no gemini fallback path. Do not add one**, and do not reintroduce `gemini -p`
+> or `mcp__gemini-cli__*` calls to any skill.
+>
+> **Do NOT confuse this with the Vertex AI Gemini API, which is alive and in use** —
+> `vertex-banana` calls it directly via `VERTEX_API_KEY` with no CLI dependency. Retiring the
+> *CLI* did not retire the *API*.
+
+**Two CLIs matter on this host:** `agy` (`~/.local/bin/agy`, v1.1.6) = the Antigravity-runtime
+delegate (this skill) — the SOLE second-opinion delegate; `antigravity` (`/bin/antigravity`,
+v1.107.0) = the editor (VS Code/code-server fork), NOT for headless orchestration. Note that
+`~/.gemini/` is **agy's own config home** (`agy.md`, `antigravity-cli/`, OAuth creds) despite
+the name — never delete it.
 
 > Canonical host directive: `~/.claude/CLAUDE.md` → "Antigravity CLI (`agy`) — host-specific
 > directive". This skill is the operational detail behind it.
@@ -28,14 +35,44 @@ orchestration.
   review, design ratification, or research — the `agy -p "..."` pattern.
 - Authoring skills/agents that shell out to `agy`.
 - Managing agy plugins, sessions, sandbox, or auth.
-- Anywhere a skill previously called `gemini -p` / `mcp__gemini-cli__*` — route it through
+- Any skill needing a non-Claude second opinion — route it through
   `agy -p` now.
 
 ## The headless orchestration pattern (primary use)
 
+Two patterns, chosen by whether agy must USE TOOLS (read files, run commands,
+search) or only reason over content you pipe in:
+
 ```bash
+# Pattern 1 — ADVISORY (default): agy reasons over an inline/self-contained prompt.
+# Under --sandbox, headless agy auto-denies EVERY tool, so this prompt MUST NOT
+# need to read a file or run a command — give it everything inline.
 timeout 600 agy --sandbox -p "<full self-contained prompt>" < /dev/null
+
+# Pattern 2 — TOOL-CAPABLE (opt-in): agy must read files / run commands / search.
+# --dangerously-skip-permissions is the ONLY thing that unlocks headless tool use;
+# it still runs INSIDE --sandbox (shell/git stay gated). Verified working 2026-07-17.
+timeout 600 agy --sandbox --dangerously-skip-permissions -p "<prompt>" < /dev/null
+git -C <repo> status --short   # tripwire after any repo-exposed call
 ```
+
+- **HEADLESS-TOOL RULE (verified 2026-07-17 on agy 1.1.3; RE-VERIFIED 2026-07-24 on 1.1.6
+  with `--model gemini-3.6-flash-high` — Pattern 2 read a real file successfully, ~29s).**
+  `--sandbox` in headless
+  `-p` mode auto-denies **every** tool — not just shell/git but `read_file` too
+  ("jetski: no output produced — a tool required the … permission that headless
+  mode cannot prompt for"). The `permissions.allow` list in
+  `~/.gemini/antigravity-cli/settings.json` is **inert under `--sandbox`** (its
+  `action(*)` grants only take effect un-sandboxed, and un-sandboxed `agy -p` is
+  blocked by the Claude Code auto-mode classifier). So a Pattern-1 call that needs
+  to READ a file silently no-shows — inline everything, or switch to Pattern 2.
+  `--dangerously-skip-permissions` overrides the auto-deny while `--sandbox` keeps
+  shell/git capped (the S052 commit vector); native `write_file` is the accepted
+  residual → keep the `git status --short` tripwire, never `--add-dir` a writable
+  repo. Standing config stays TIGHT (`command(agy)`, `command(cpmail)` only) —
+  capability is a per-call flag, not a standing broad grant. This SUPERSEDES the
+  older "omit `--sandbox` for writes" advice below: never drop `--sandbox`, add the
+  skip-permissions flag instead.
 
 - **FLAG ORDER RULE — every flag BEFORE `-p`** (root-caused 2026-07-02). `-p` is a Go *string*
   flag: it consumes the NEXT token as the prompt, even if that token starts with `-`. So
@@ -58,8 +95,10 @@ timeout 600 agy --sandbox -p "<full self-contained prompt>" < /dev/null
   point at a read-only copy; (3) open consultancy prompts with "Advisory only — do not modify
   any files; answer on stdout" (`~/.gemini/agy.md` also enforces an advise-only default at the
   directive layer); (4) tripwire: after any call that exposed a repo, run `git status --short`
-  and revert anything agy touched. Omit `--sandbox` ONLY when the task explicitly requires
-  writes, and say so in the prompt.
+  and revert anything agy touched. **Never omit `--sandbox`** (superseded 2026-07-17 by the
+  HEADLESS-TOOL RULE above): when agy must write/run tools, keep `--sandbox` AND add
+  `--dangerously-skip-permissions` — that gives tool use with shell/git still capped, which is
+  strictly safer than dropping the sandbox.
 - **STDIN RULE — `< /dev/null` is MANDATORY for headless calls** (root-caused 2026-06-05, task #135).
   agy reads non-TTY stdin until EOF **before** running the prompt; in background/harness/cron
   shells stdin is an open stream that never EOFs, so agy blocks forever with 0 bytes of output —
@@ -73,19 +112,70 @@ timeout 600 agy --sandbox -p "<full self-contained prompt>" < /dev/null
   `agy models` subcommand lists the choices) — but our convention is to omit it and let agy use
   the Antigravity-account configured model. Do **not** add `--model` unless a call explicitly
   needs a specific model. (There is no short `-m` alias; the gemini `-m gemini-3.1-pro-preview`
-  pattern still does NOT apply to agy.)
+  pattern still does NOT apply to agy.) See **Models** below — the account default moved to
+  **Gemini 3.6 Flash** on 2026-07-24, so the omit-the-flag convention now gets 3.6 for free.
 - `agy` takes **no API-key env prefix** — it authenticates via the Antigravity account
   (`~/.antigravity/`). The gemini `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` prefix does NOT apply to agy.
-- Output is **plain text on stdout** — parse text, not JSON. (The old `mcp__gemini-cli__*`
-  tools returned structured fields; agy `-p` does not.)
+- Output is **plain text on stdout** — parse text, not JSON. There are no structured
+  response fields.
 - `--print-timeout` defaults to `5m`; raise it for long deliberations:
   `agy --print-timeout 15m -p "..."`.
 - For verdict provenance, append a `served_by` probe line to the prompt — self-reported
   model identity is unreliable. Observed 2026-06-05: the account default served
-  `gemini-3.5-flash` — a **flash-tier** model. Weight challenger/analyst verdicts accordingly
-  (advisory tier), per the established tier-stratified-verdict practice.
+  `gemini-3.5-flash`. Observed 2026-07-24: the account default serves **Gemini 3.6 Flash**.
+  Both are **flash-tier** — weight challenger/analyst verdicts accordingly (advisory tier),
+  per the established tier-stratified-verdict practice. Flash-tier is not a limitation to work
+  around: **agy is flash-only by standing directive** (see the Models HARD-RULE). If a decision
+  needs pro-tier reasoning, escalate to a different arm rather than repointing agy's model.
 
-## Verified flags (from `agy --help`, v1.0.5)
+## Models (verified 2026-07-24, `agy models` on 1.1.6)
+
+```
+gemini-3.6-flash-{high,medium,low}    gemini-3.1-pro-{high,low}
+gemini-3.5-flash-{high,medium,low}    claude-sonnet-4-6
+                                      claude-opus-4-6-thinking
+                                      gpt-oss-120b-medium
+```
+
+- **Account default = `gemini-3.6-flash`** (verified 2026-07-24 via a `served_by` probe with
+  no `--model` flag). The omit-the-flag convention therefore rides the 3.6 line automatically.
+- **Effort suffixes** (`-high` / `-medium` / `-low`) are new relative to the 3.5 line and select
+  reasoning effort within a model. Measured on this host (Pattern 1, trivial prompt):
+  `gemini-3.6-flash-high` ≈ 5s, `gemini-3.6-flash-low` ≈ 5s; Pattern 2 (tool-capable, one
+  `read_file`) ≈ 29s on `-high`. Both patterns verified working on 3.6.
+<HARD-RULE>
+**agy runs GEMINI FLASH MODELS ONLY. No exceptions, no roles, no "utility work" carve-out.**
+(User directive, 2026-07-24.)
+
+| Verdict | Models |
+|---|---|
+| ✅ ALLOWED | `gemini-3.6-flash-{high,medium,low}` (current line — the account default) |
+| ✅ allowed, legacy | `gemini-3.5-flash-{high,medium,low}` |
+| ❌ FORBIDDEN | `claude-sonnet-4-6`, `claude-opus-4-6-thinking` |
+| ❌ FORBIDDEN | `gpt-oss-120b-medium` |
+| ❌ FORBIDDEN | `gemini-3.1-pro-{high,low}` — pro tier is NOT used on agy |
+
+Two independent reasons, both binding:
+
+1. **Provider diversity (the `claude-*` / `gpt-oss-*` half).** agy occupies the third-model slot
+   precisely because it is *not* Anthropic and *not* OpenAI. A claude-backed "third model" shares
+   the Claude arm's blind spots and the cross-check becomes theatre; `gpt-oss-*` collapses into
+   the Codex arm the same way. This is a live trap: agy seats in `avengers` already fail over to
+   claude hosts when the headless permission auto-deny fires (S062–S067 carry-over), and the
+   tempting "fix" for an agy no-show is `--model claude-sonnet-4-6`. That is the WRONG fix — it
+   converts a *recorded* provider gap into a *hidden* one.
+2. **Flash-only tier discipline (the `gemini-3.1-pro-*` half).** agy is a flash-tier delegate by
+   standing directive. Do not reach for pro to "get a better answer" — treat agy verdicts as
+   advisory-tier and weight them accordingly. If a decision genuinely needs pro-tier reasoning,
+   that is a reason to escalate to a different arm (Claude/Codex), not to repoint agy.
+
+**Correct responses to an agy no-show or a weak agy answer:** (a) re-apply the STDIN +
+FLAG-ORDER + Pattern-2 rules and retry, (b) record the provider gap honestly and proceed short-handed. There is no gemini fallback —
+that CLI was retired from this ecosystem 2026-07-25. Never repoint
+the model.
+</HARD-RULE>
+
+## Verified flags (from `agy --help`, v1.1.6)
 
 | Flag | Meaning |
 |---|---|
@@ -95,7 +185,7 @@ timeout 600 agy --sandbox -p "<full self-contained prompt>" < /dev/null
 | `-c`, `--continue` | Continue the most recent conversation |
 | `--conversation <id>` | Resume a specific conversation by ID |
 | `--add-dir <path>` | Add a directory to the workspace (repeatable) |
-| `--model <name>` | Model for the current CLI session (added in 1.0.5; no short `-m` alias). **Convention: omit it** — let agy use the account default. List choices with `agy models`. |
+| `--model <name>` | Model for the current CLI session (added in 1.0.5; no short `-m` alias). **Convention: omit it** — let agy use the account default (`gemini-3.6-flash` as of 2026-07-24). List choices with `agy models`. If you must pass it, **gemini flash models ONLY** — `claude-*`, `gpt-oss-*`, and `gemini-3.1-pro-*` are all FORBIDDEN on agy (Models HARD-RULE). |
 | `--sandbox` | Run with terminal restrictions enabled (bubblewrap on Linux). MANDATORY for consultancy/read-only calls, and MUST come BEFORE `-p` (see FLAG ORDER + SANDBOX RULEs). Scope: constrains shell/git commands only — does NOT gate native file writes (verified 2026-07-02, 1.0.15) |
 | `--dangerously-skip-permissions` | Auto-approve all tool permission requests (fully-headless only) |
 | `--log-file <path>` | Override the CLI log file path |
@@ -109,7 +199,7 @@ Bare `agy` (no `-p`/`-i`) opens an interactive session.
 | `agy changelog` | Show changelog / release notes |
 | `agy help [sub]` | Help for a subcommand |
 | `agy install [--dir D] [--skip-aliases] [--skip-path]` | Configure shell PATH + aliases |
-| `agy models` | List available models (added in 1.0.5; pairs with the `--model` flag) |
+| `agy models` | List available models (added in 1.0.5; pairs with the `--model` flag). Verified output on 1.1.6 in **Models** above. Note that most of what it lists is OFF-LIMITS here: agy is **flash-only**, so 3.1-pro, `claude-*`, and `gpt-oss-*` all appear in the listing but must never be selected |
 | `agy update` | Update the CLI |
 | `agy plugin …` | Plugin management (see below); alias `agy plugins` |
 
@@ -132,7 +222,7 @@ Bare `agy` (no `-p`/`-i`) opens an interactive session.
 - Authenticates via the Antigravity account; no per-call API-key env var.
 - Config lives under `~/.antigravity/` (`argv.json`, `extensions/`) and
   `~/.gemini/antigravity-cli/`. (`argv.json` is JSONC-style — not strict JSON.)
-- Binary: `~/.local/bin/agy` (v1.0.5). A separate `antigravity` binary is the IDE; for CLI
+- Binary: `~/.local/bin/agy` (v1.1.6). A separate `antigravity` binary is the IDE; for CLI
   orchestration always use `agy`.
 
 ## Context / instructions files (VERIFIED 2026-06-03, empirical probes)
@@ -164,24 +254,11 @@ sentinels and reading them back via `agy -p` from a clean working directory:
   a project root pulls that project's workspace context in as additive context. For a clean
   second opinion, call from a neutral cwd or keep the prompt fully self-contained.
 
-## Differences from the Gemini CLI (migration notes)
-
-> The gemini CLI is still installed (v0.45.0) as a fallback until its 2026-06-18 retirement;
-> this table is how to translate a gemini-orchestration call into the agy-primary equivalent.
-
-| Gemini CLI (fallback → retires 2026-06-18) | Antigravity CLI (`agy`, primary) |
-|---|---|
-| `gemini -m <model> -p "X"` | `agy -p "X"` (convention: omit `--model`; a `--model` flag exists from 1.0.5 but is not used by default) |
-| `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY= gemini …` | `agy …` (no env prefix; account auth) |
-| `--yolo` approval mode | `--dangerously-skip-permissions` |
-| `mcp__gemini-cli__ask-gemini` / `brainstorm` MCP tools | direct `agy -p` Bash call (plain-text out) |
-| `-o json` / `stream-json` output | plain text on stdout (no verified JSON mode) |
-| Model tiers / "don't accept downgrades" | Account-default model used by convention; `agy models` + `--model` exist (1.0.5) but no documented tier hierarchy |
 
 ## Not verified / do NOT assume
 
-The following were **Gemini-CLI-specific** and have **no verified `agy` equivalent** — do not
-assume agy supports them without checking `agy help`:
+The following have **no verified `agy` equivalent** — do not assume agy supports them without
+checking `agy help`:
 
 - Policy engine (`--policy` / `--admin-policy`), `--allowed-tools` semantics.
 - Hooks, A2A/ACP servers, `--output-format json/stream-json`, settings-schema specifics.
@@ -207,6 +284,6 @@ infer it from `agy`. (Deep IDE semantic analysis is a deferred v1.1 item.)
 anchors:
   - kind: tool_version
     subject: agy
-    verified_against: "1.0.15"
-    verified_on: "2026-07-02"
+    verified_against: "1.1.6"
+    verified_on: "2026-07-24"
 -->

@@ -2,7 +2,7 @@
 
 Record of the deliberation that produced this skill, captured here as both provenance and worked example. The protocol was self-applied during its own design — the artifact (this skill's stacked-protocol synthesis) was ratified through the very gates the artifact defines.
 
-Date: 2026-05-04. Session in `/path/to/project`.
+Date: 2026-05-04. Session in `/path/to/project` (then named `foundry-lab`).
 
 > **Tooling note (historical record).** The original arc used the now-retired Gemini CLI as the second consultant, invoked with a per-call `-m <model>` flag and OAuth-tier routing. On this host that consultant role is now filled by the Antigravity CLI (`agy -p`), which exposes a single configured model — no `-m` flag, no env prefix, no tier selection. The model names and tier-routing mechanics below are preserved verbatim as a faithful record of what actually happened during that arc; they are NOT a description of the current invocation pattern. The transferable lesson — *capture `served_by` observationally; the model that serves a request, not the one requested, drives the verdict* — survives the CLI change.
 

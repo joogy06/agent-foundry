@@ -116,11 +116,13 @@ This exists because AI models lose track of HARD-RULEs in long conversations. Th
 
 ## Skill Library
 
-- Claude skills: `~/.claude/skills/` (184 skills)
-- Codex skills: `~/.codex/skills/` (188 symlinked from Claude + native Codex-only skills)
+- Claude skills: `~/.claude/skills/` — the live tree is the count; do NOT hardcode a number
+  here (this line read "119" while the tree held 197). The SessionStart memory-primer digest
+  prints the live `skills · agents · gates` count every session; trust that, not this file.
+- Codex skills: `~/.codex/skills/` — mostly symlinks into `~/.claude/skills/` plus a few native.
 - New skills MUST be symlinked to Codex (see `research-for-skills` skill for process)
 - Write skills in cross-model-compatible language (see tool mapping patterns in `research-for-skills`)
-- `affordance-advisor`: host-native command suggestions, single-CLI scope (gated, not symlinked to Codex/Gemini — drop a `.no-codex-symlink` sentinel for similar exceptions)
+- `affordance-advisor`: host-native command suggestions, single-CLI scope (gated, not symlinked to Codex/Antigravity — drop a `.no-codex-symlink` sentinel for similar exceptions)
 
 ## Routing by Complexity
 
@@ -151,7 +153,21 @@ Only skip forge for:
 
 Only invoke `superpowers:brainstorming` directly if the user explicitly requests it by name.
 
+## Model policy (smart-config, S059)
+
+Route SPAWNED work to model tiers by task complexity — Fable (complex), Opus (medium),
+Sonnet (light) — per project, editable, Claude Code only for now. The orchestrator
+grades a task against the rubric into a tier; the `smart-config` resolver maps tier →
+model in the right spawn-surface dialect, fail-open. Before any Agent-tool / workflow /
+headless `claude -p` spawn, consider invoking the `smart-config` skill (or call
+`python3 ~/.claude/skills/smart-config/scripts/model_policy.py resolve --tier T --surface S`).
+Advisory only — a broken policy never blocks a spawn, and the INTERACTIVE session model
+is NEVER touched (use `/model`). Edit `~/.claude/model-policy.yaml` (or a per-project
+`<root>/.claude/model-policy.yaml`) to tune routing.
+
 ## Superpowers Plugin Version Tracker
+
+> **Fallback — superseded by the evergreen digest when present (Evergreening v1, S041).** The 4th SessionStart hook (`_meta/freshness_nudge.py`) tracks plugin versions via `inventory.json.plugins{}` and surfaces a "superpowers X unreviewed" line in the digest; this standalone tracker is the fallback, retired after one full nudge cycle proves the generalized path.
 
 On session start, check if the superpowers plugin has been updated:
 
@@ -161,21 +177,57 @@ On session start, check if the superpowers plugin has been updated:
    > "Superpowers plugin updated from [OLD] to [NEW]. Review needed to check for features to uplift into forge. Run review now?"
 4. If user approves: diff all SKILL.md files between versions, identify changes in brainstorming/writing-plans/using-superpowers/executing-plans/subagent-driven, flag new features worth uplifting to forge, update the tracker after review.
 
+## Commit message policy (global)
+
+When creating git commits, PR descriptions, or merge messages:
+
+- **NEVER add a `Co-Authored-By: Claude` / `Co-Authored-By: <any-model>` trailer.**
+- **NEVER add the `🤖 Generated with [Claude Code](...)` footer.**
+- **NEVER add any Anthropic / model attribution line to commit messages.**
+
+This overrides the Claude Code default commit-template behaviour. Co-author attribution is reserved for actual human collaborators the user explicitly names. Commit messages should stand on their own with the subject + body explaining the *what* and *why*.
+
+Project-level CLAUDE.md may add stricter rules but cannot relax this.
+
 ## Cross-Model Collaboration
 
-- Codex CLI (GPT-5.6) is available for second opinions, challenger reviews, and research
+- Codex CLI (GPT-5.4) is available for second opinions, challenger reviews, and research
 - For brainstorming/design/creative tasks: always run Codex in parallel (see `forge` skill)
 - When stuck after 2+ attempts: escalate to Codex before asking the user
 - See `codex-orchestration` skill for delegation patterns
 
 ### Antigravity CLI (`agy`) — host-specific directive
 
-The Antigravity CLI (`agy`, `~/.local/bin/agy`) is the **PRIMARY** delegate for ALL
-second-opinion / challenger / research work on this host (the gemini CLI (v0.50.x) remains
-installed as an available fallback — kept per user direction 2026-07-10; `agy` is PRIMARY). When delegating a headless prompt on this host, use:
+The Antigravity CLI (`agy`, `~/.local/bin/agy`, **v1.1.6**) is the **SOLE** delegate for ALL
+second-opinion / challenger / research work on this host.
+
+> **The gemini CLI was retired from this ecosystem on 2026-07-25 (user directive).** Not because
+> Google retired it — that anticipated 2026-06-18 cutover never happened and the binary may still
+> sit at `/usr/bin/gemini` — but because **`agy` replaced it**. The `gemini-cli` skill, the
+> `nano-banana` image skill that wrapped it, its affordance registry, and its `git-cli-bridge`
+> transport arm are all DELETED. There is no gemini fallback path. Do not add one, and do not
+> reintroduce `gemini -p` / `mcp__gemini-cli__*` calls to any skill.
+>
+> **Do NOT confuse this with the Vertex AI Gemini API**, which is alive and in use: `vertex-banana`
+> talks to it directly via `VERTEX_API_KEY` with no CLI dependency, and is the sole image skill.
+> Retiring the *CLI* did not retire the *API*. Likewise `~/.gemini/` is **agy's** config home
+> (`agy.md`, `antigravity-cli/`, OAuth creds) despite the directory name — never delete it.
+
+When delegating a headless prompt on this host, use ONE of two patterns by whether
+agy needs to USE TOOLS (read files, run commands, search) or only reason:
 
 ```bash
+# Pattern 1 — ADVISORY (default): agy only reasons over content you PIPE IN.
+# --sandbox headless auto-denies ALL tools, so this pattern MUST NOT need to
+# read files or run commands itself — give it everything inline.
 timeout 600 agy --sandbox -p "..." < /dev/null
+
+# Pattern 2 — TOOL-CAPABLE (opt-in): agy must read files / run commands / search.
+# --dangerously-skip-permissions is the ONLY thing that unlocks headless tool
+# use; it still runs INSIDE --sandbox (shell/git stay gated). REQUIRED tripwire
+# after any repo-exposed call. Verified working 2026-07-17.
+timeout 600 agy --sandbox --dangerously-skip-permissions -p "..." < /dev/null
+git -C <repo> status --short   # tripwire: catch native-write strays
 ```
 
 - **STDIN RULE (mandatory):** headless `agy` MUST have stdin closed (`< /dev/null`) or piped —
@@ -198,15 +250,60 @@ timeout 600 agy --sandbox -p "..." < /dev/null
   as a tripwire. Omit `--sandbox` ONLY when the task explicitly requires writes, and say so in
   the prompt. Belt-and-braces: open consultancy prompts with "Advisory only — do not modify
   any files; answer on stdout." (`~/.gemini/agy.md` also enforces an advise-only default.)
+- **TWO-PATTERN / HEADLESS-TOOL RULE (verified 2026-07-17 on agy 1.1.3; RE-VERIFIED
+  2026-07-24 on agy 1.1.6 with flash 3.6 — both patterns still behave exactly as below):** `--sandbox`
+  in headless `-p` mode **auto-denies EVERY tool** — not just shell/git, but `command`
+  AND `read_file` alike ("jetski: no output produced — a tool required the … permission
+  that headless mode cannot prompt for"). The `permissions.allow` list in
+  `~/.gemini/antigravity-cli/settings.json` is **inert under `--sandbox`** (its
+  `action(*)` grants only take effect un-sandboxed, and un-sandboxed `agy -p` is itself
+  blocked by the Claude Code auto-mode classifier). Therefore: a Pattern-1 `agy --sandbox -p`
+  call that needs to READ a file will silently no-show — give it everything inline. To let
+  agy touch tools headlessly you MUST add `--dangerously-skip-permissions` (Pattern 2), which
+  overrides the auto-deny while `--sandbox` still caps shell/git (the S052 commit vector).
+  Native `write_file` is the accepted residual under Pattern 2 → keep the `git status --short`
+  tripwire and NEVER `--add-dir` a writable live repo. Standing config stays TIGHT
+  (`command(agy)`, `command(cpmail)` only) — capability is a deliberate per-call flag, not a
+  standing broad grant. This SUPERSEDES the older "omit `--sandbox` for writes" guidance:
+  never drop `--sandbox`; add the skip-permissions flag instead.
 - **Convention: no model flag.** As of agy ≥1.0.5 a `--model` flag exists (and an `agy models`
   subcommand lists choices), but our convention is to omit it and let `agy` use the
   Antigravity-account configured model — do NOT add `--model` unless a call explicitly needs a
-  specific model. There is no short `-m` alias.
+  specific model. There is no short `-m` alias; the old `-m gemini-3.1-pro-preview` does NOT apply.
+  **Account default = `gemini-3.6-flash` as of 2026-07-24** (verified by `served_by` probe on
+  1.1.6), so omitting the flag now rides the 3.6 line for free. `agy models` on 1.1.6 offers
+  `gemini-3.6-flash-{high,medium,low}`, `gemini-3.5-flash-{high,medium,low}`,
+  `gemini-3.1-pro-{high,low}` (the ONLY pro tier — there is no 3.6-pro), plus
+  `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`.
+- **FLASH-ONLY RULE (user directive, 2026-07-24) — agy runs GEMINI FLASH MODELS ONLY.**
+  ✅ allowed: `gemini-3.6-flash-{high,medium,low}` (current), `gemini-3.5-flash-*` (legacy).
+  ❌ FORBIDDEN, no exceptions and no role-based carve-out: `claude-sonnet-4-6`,
+  `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`, **and `gemini-3.1-pro-{high,low}`**.
+  Two binding reasons: (1) **provider diversity** — agy holds the third-model slot *because* it
+  is neither Anthropic nor OpenAI; a claude-backed "third model" shares the Claude arm's blind
+  spots and the cross-check becomes theatre, and `gpt-oss-*` collapses into the Codex arm.
+  (2) **flash-tier discipline** — agy is an advisory-tier delegate; do not reach for pro to get
+  a better answer. This is live, not hypothetical: agy seats in `avengers` already fail over to
+  claude hosts on the headless auto-deny, and the tempting fix for an agy no-show is
+  `--model claude-sonnet-4-6` — that converts a *recorded* provider gap into a *hidden* one.
+  On an agy no-show or a weak answer: re-apply the STDIN/FLAG-ORDER/Pattern-2 rules and retry,
+  then **record the provider gap honestly and proceed short-handed**. There is no longer a gemini
+  fallback — that arm was deleted 2026-07-25. If the decision truly needs pro-tier reasoning,
+  escalate to a different arm (Claude/Codex) — never repoint agy's model.
+- **Provider-diversity honesty (2026-07-25).** agy and the old gemini CLI were both **Google**, so
+  gemini never added meaningful provider diversity over agy — only Claude and Codex do. When agy
+  no-shows, the genuine outcome is a two-provider round, and it should be RECORDED as such rather
+  than papered over with a same-vendor or same-family substitute.
 - **No env prefix.** `agy` authenticates via the Antigravity account (`~/.antigravity/`); the
   old `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` OAuth-forcing prefix does NOT apply.
 - **Headless prompt:** `-p` / `--print` / `--prompt`. Output is plain text on stdout.
   `--print-timeout` defaults to `5m`; raise it for long deliberations.
+- **Other modes:** `-i` (interactive-with-seed-prompt); `-c`/`--continue` or
+  `--conversation <id>` to resume; `--add-dir <path>` to widen the workspace; `--sandbox`
+  for restricted runs; `--dangerously-skip-permissions` to auto-approve tool calls in a
+  fully-headless context.
 - Capture `served_by` at the call layer where verdict provenance matters (append a probe
   line to the prompt) — self-reported model identity is unreliable.
-- Skills delegating headlessly should call `agy --sandbox -p` and follow this pattern. See the
-  `antigravity-cli` skill for full operational notes.
+- Skills delegating headlessly should use Pattern 1 (`agy --sandbox -p`, advisory/inline) by
+  default and Pattern 2 (`agy --sandbox --dangerously-skip-permissions -p` + git tripwire) only
+  when agy must use tools. See the `antigravity-cli` skill for full operational notes.

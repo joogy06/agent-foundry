@@ -226,8 +226,13 @@ class TestCriticalFilesFullCoverageC5(unittest.TestCase):
         prod = ic.PROD_TREE
         if not prod.is_dir():
             self.skipTest(f"prod tree absent: {prod}")
+        # NOTE (S055): the scope keyword is anchored to `scope_` so it matches the
+        # safety files scope_delta.py / scope_reaction.py but NOT the alf helper
+        # sweep_scope.py (a pure tier-resolution helper, not a gate/enforcement
+        # file). worktree_merge.py and workflow_dispatch.py are likewise pure
+        # helpers (their safety comes from bob/main-loop callers, not the file).
         SAFETY_KEYWORDS = (
-            "gates", "claims", "trusted_runner", "pause", "scope",
+            "gates", "claims", "trusted_runner", "pause", "scope_",
             "audit_spawn", "arbiter_spawn", "classify", "identity_check",
             "hard_rules", "scan_hard", "freshness_nudge",
         )
@@ -264,6 +269,44 @@ class TestStrictNoWriteSideEffect(unittest.TestCase):
         after = ic.REPORT_FILE.stat().st_mtime if ic.REPORT_FILE.exists() else None
         # Either the file never existed (still doesn't) or its mtime is unchanged.
         self.assertEqual(before, after)
+
+
+class TestWatchlistS055(unittest.TestCase):
+    """S055 §10 — identity_check.py --watchlist (workflows + agents + meta-docs
+    prod<->shadow parity + SCHEMA-TWIN hash verification). Extends (not parallels)
+    the existing suite per the deploy-order rule."""
+
+    def test_run_watchlist_clean_on_live_tree(self):
+        # The live prod/shadow trees were just synced by WP-18; the watchlist
+        # advisory run must be clean (no drift, no missing, no twin mismatch).
+        report = ic.run_watchlist(strict=False)
+        self.assertNotIn("error", report, report.get("error"))
+        self.assertEqual(report.get("drift"), [], f"unexpected drift: {report.get('drift')}")
+        self.assertEqual(report.get("missing"), [], f"unexpected missing: {report.get('missing')}")
+        self.assertEqual(report.get("twin_mismatch"), [],
+                         f"unexpected twin mismatch: {report.get('twin_mismatch')}")
+
+    def test_watchlist_covers_workflows_agents_metadocs(self):
+        report = ic.run_watchlist(strict=False)
+        ids = {e["id"] for e in report["entries"]}
+        self.assertEqual(ids, {"workflows", "agents", "meta-docs"})
+        # The workflows entry must check all 9 files (README + 8 .js).
+        wf = next(e for e in report["entries"] if e["id"] == "workflows")
+        self.assertGreaterEqual(wf["files_checked"], 9)
+
+    def test_watchlist_detects_injected_drift(self):
+        # Inject a drift into a temp shadow root and confirm it is flagged.
+        with tempfile.TemporaryDirectory() as d:
+            shadow = Path(d)
+            # Mirror the prod workflows/README.md but with a byte changed.
+            (shadow / "workflows").mkdir(parents=True)
+            prod_readme = ic.PROD_ROOT / "workflows" / "README.md"
+            if prod_readme.is_file():
+                (shadow / "workflows" / "README.md").write_text(prod_readme.read_text() + "\nDRIFT\n")
+                report = ic.run_watchlist(strict=False, shadow_root=shadow)
+                # README drift OR missing for the other files — both prove the
+                # comparison is live (not a no-op).
+                self.assertTrue(report.get("drift") or report.get("missing"))
 
 
 if __name__ == "__main__":

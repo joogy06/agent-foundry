@@ -34,10 +34,6 @@ Every design and implementation decision must account for real human behaviour �
 </HARD-RULE>
 
 <HARD-RULE>
-**Sandbox-Aware Routing**: For MEDIUM/COMPLEX tasks that call `agy` or Copilot (design exploration, challenger review, research analysis), compute `bridge-mode-detect.sh` output once at Step 4b and cache it for the session. In MODE=bridge, every downstream `agy`/Copilot call transparently routes through `bridge request`. Never mix modes within a single forge session — the caching is there precisely to prevent this. If the bridge is required but not initialized, halt Step 4b and tell the user to run `bridge init` first. See `git-cli-bridge` skill.
-</HARD-RULE>
-
-<HARD-RULE>
 **Multi-subsystem requests emit handoff docs, not inline decomposition** (S038 Batch G, 2026-05-25). When forge Step 1 detects that a request describes multiple independent subsystems (existing "Large Project Decomposition" pattern), instead of inline-spawning sub-forge cycles (depth+1), forge MUST invoke the `handoff` skill to emit one `/tmp/handoff-<sub>-<date>-<uuid>.md` per decomposed sub-project. Each handoff doc records the slice of context relevant to that sub-project and a "Suggested skills: forge (MEDIUM cycle on this sub)" directive. The user picks which sub-project to start first; forge does NOT recurse into all of them. Recursion limit (depth≥3 REFUSE per existing rule) remains in effect — handoff is the new exit, not a way around the limit.
 </HARD-RULE>
 
@@ -98,10 +94,9 @@ If `came_from_avengers` is absent or false, proceed with normal forge flow. Forg
 
    - **capabilities.codex_challenger = true**: Codex available, use `/codex:setup` or delegate directly.
    - **capabilities.agy_analyst = true**: `agy` available, use a direct `agy --sandbox -p "..." < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy blocks on stdin in non-TTY shells and hangs to timeout, #135).
-   - **capabilities.bridge_fallback = true**: bridge mode active — route `agy`/Copilot calls through `bridge request`. Verify `bridge init` has been run. Codex is unchanged (runs locally).
    - **capabilities.triple_model = true**: all three models available for maximum coverage.
 
-   The manifest is cached for the session — do not re-probe on every use. If Codex/agy unavailable, note the gap explicitly but continue with what's available. See `env-adoption` skill for full schema and `git-cli-bridge` skill for bridge protocol.
+   The manifest is cached for the session — do not re-probe on every use. If Codex/agy unavailable, note the gap explicitly but continue with what's available. See `env-adoption` skill for full schema.
 5. **Skill gap check** — identify skills needed, check if they exist (see Skill Gap Detection)
 5b. **Hard rules checkpoint** — read `~/.claude/skills/_meta/hard-rules-checklist.md` DESIGN PHASE + CROSS-MODEL sections. Verify: Codex parallel for MEDIUM/COMPLEX? Performance expectations asked? Gap detection done?
 6. **Phase 1: Design Exploration** — spawn design exploration team OR do single-agent exploration
@@ -348,8 +343,6 @@ Rank approaches with reasoning."
 
 Check Codex availability first (step 4b). If unavailable, skip Codex agents and note the gap.
 
-**Note on bridge mode**: Codex has no bridge fallback. Codex is the caller in this architecture, not a callee. If `bridge-mode-detect.sh` reports `bridge`, Codex still runs locally (it must be installed in the sandbox — it is the only CLI with that constraint). The bridge only affects `agy` and Copilot delegation.
-
 **Primary: Use Codex plugin commands** (structured output, job tracking, resume capability):
 
 ```
@@ -412,8 +405,7 @@ wait  # Wait for all Codex tasks to complete
 
 Check `agy` availability first: `command -v agy`. If unavailable, skip and note the gap.
 
-`agy -p` returns **plain text on stdout** (the old `mcp__gemini-cli__*` MCP tools returned
-structured fields — `agy` does not, so the lead parses the text reply, not JSON fields).
+`agy -p` returns **plain text on stdout** — the lead parses the text reply, not JSON fields.
 Raise `--print-timeout` above the 5m default for long analyses. Append a `served_by` probe
 line to the prompt and capture it — self-reported model identity is unreliable.
 
@@ -459,22 +451,6 @@ Green (alternatives), and Blue (process) in turn, then summarise." < /dev/null
 ```
 
 **When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.
-
-### Bridge-mode agy analyst
-
-When `bridge-mode-detect.sh` returned `bridge`, call `agy` via the bridge:
-
-```bash
-# Uses the already-initialized session from bridge init
-BRIDGE_CALLER=forge BRIDGE_CALLER_TASK_ID="forge-$(date +%s)-agy-analyst" \
-bridge request --tool agy --kind review \
-  --context "$PROJECT_SUMMARY_PATH" \
-  --wait --timeout 720 \
-  "Analyze this design for architecture trade-offs, scalability limits, security surface.
-  Cite real-world precedents."
-```
-
-Latency expectation: ~90s cold, ~40s warm. The parallel-model design pattern (Claude + Codex + agy in parallel) still holds — launch this alongside the Claude challenger and Codex adversarial review at the start of the design exploration team phase, not sequentially after.
 
 #### Converging Triple-Model Findings
 
@@ -670,11 +646,44 @@ python3 ~/.claude/skills/_meta/gates.py G1 "$(pwd)" --no-ledger-binding
 
 If G1 fails, re-run Step 8a.2 after fixing the underlying issue (most common: the skill re-wrote the YAML without updating the signature; re-sign).
 
+### Step 8a.3b: Re-pin the retro-scan baseline (MANDATORY after any map write)
+
+**Run this immediately after signing a NEW map, and again after every AMENDMENT.**
+
+```bash
+python3 ~/.claude/skills/retro-scan-s028/scripts/scan.py "$(pwd)"
+# rewrites progress/retro-scan-S028.yaml, re-pinned to the new contract_map_hash
+```
+
+**Why this is not optional.** `progress/retro-scan-S028.yaml` records
+`contract_map_hash`. `G_CONTRACT_SCOPE` compares that stored hash against the
+live map and, on a mismatch, **silently declines to consult the baseline at all**
+(warning to stderr only — see `gates.py` §7.5 safety notes). No baseline means no
+grandfathering, so every pre-existing path the baseline was holding down re-emits
+as a **fresh critical undeclared**, `critical_undecided` jumps from 0 to dozens,
+and the cycle freezes in `AWAITING_AMENDMENT` — pointing at paths that were
+already known and already accepted.
+
+The failure is doubly nasty because it is **delayed and misattributed**: signing
+succeeds, G1 passes, and the breakage only surfaces later at a WP boundary, where
+it reads as "the implementation introduced scope creep" rather than "the baseline
+went stale." **S033 and S069 each lost a full pause cycle to exactly this.**
+
+Verify the re-pin before handing off:
+
+```bash
+grep contract_map_hash progress/retro-scan-S028.yaml    # must equal the live map's hash
+```
+
+Keep the superseded baseline alongside the new one (`progress/retro-scan-S028.yaml.pre-<cycle>-amend`)
+so a bad re-pin can be diffed rather than guessed at.
+
 ### Step 8a.4: Stage for bob
 
 At this point the workspace contains:
 - `progress/contract-map.yaml` (frozen — never edited after this)
 - `progress/contract-map.yaml.sig` (full signed payload)
+- `progress/retro-scan-S028.yaml` (re-pinned to the map hash — Step 8a.3b)
 - `.forge/session-id` (UUID, inherited by bob)
 - `.forge/session.key` (0600, inherited by bob)
 
@@ -1000,7 +1009,6 @@ For UI-facing work, apply these when evaluating designs:
 - Starting to code before design is approved
 - Skipping the Claude challenger "to save tokens"
 - Skipping the Codex challenger "Codex is unavailable" (check first, then skip only if truly unavailable)
-- Skipping the agy analyst without checking `bridge-mode-detect.sh` first (even in sandboxed environments, agy should be available via the bridge)
 - Running Codex/agy sequentially after Claude instead of in parallel
 - Ignoring Codex or agy findings because they disagree with Claude
 - Staying stuck on a problem without escalating to Codex

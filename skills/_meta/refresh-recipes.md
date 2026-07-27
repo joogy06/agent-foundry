@@ -15,7 +15,7 @@ finding becomes a change, and they run ONLY under bob with explicit user approva
 
 **When:** a CLI/plugin version bump changed a documented surface (flags, commands,
 version anchors) in a CLI-reference skill (`claude-code-cli`, `codex-orchestration`,
-`gh-copilot-cli`, `antigravity-cli`, `gemini-cli`).
+`gh-copilot-cli`, `antigravity-cli`).
 
 **Steps:**
 1. Run the verify script for the tool:

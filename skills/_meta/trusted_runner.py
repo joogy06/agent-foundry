@@ -929,7 +929,26 @@ def _run_pytest(
                 except json.JSONDecodeError:
                     report = {}
         if not report:
-            # Fallback: run plain pytest, infer from returncode
+            # pytest-json-report is an OPTIONAL plugin and is often absent (an
+            # unrecognized --json-report aborts the run, which is why we re-run
+            # here). Before degrading to a bare exit code, try pytest's BUILT-IN
+            # JUnit XML, which needs no plugin and still carries per-test rows.
+            with tempfile.TemporaryDirectory() as _xml_dir:
+                xml_path = Path(_xml_dir) / "report.xml"
+                junit_cmd = cmd[:1] + [f"--junit-xml={xml_path}"] + cmd[1:]
+                try:
+                    junit_run = subprocess.run(
+                        junit_cmd, env=sanitized_env(), capture_output=True,
+                        text=True, timeout=timeout, check=False,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    junit_run = None
+                if junit_run is not None and xml_path.is_file():
+                    parsed = _parse_junit_xml(xml_path, test_path, junit_run.returncode)
+                    if parsed is not None:
+                        return parsed
+            # Last resort: run plain pytest and report ONLY the exit code,
+            # explicitly flagged as degraded (never a fabricated count).
             plain = subprocess.run(
                 cmd, env=sanitized_env(), capture_output=True, text=True,
                 timeout=timeout, check=False,
@@ -1006,19 +1025,123 @@ def _run_pytest(
 
 
 def _result_from_returncode(test_path: Path, rc: int) -> Dict[str, Any]:
-    """Coarse fallback when JSON report is unavailable."""
+    """Last-resort fallback: only the exit code is known.
+
+    This MUST NOT fabricate a test count. The previous implementation reported
+    ``total: 1, passed: 1`` for a file containing any number of tests, so a
+    3-test file that passed was recorded as a single passing test — and nothing
+    marked the record as degraded. An auditor scoring coverage against a test
+    plan read that invented granularity as real evidence.
+
+    Counts are therefore reported as 0 with ``granularity: "none"`` and an
+    explicit ``degraded`` flag. Consumers must treat a ``none`` granularity as
+    "pass/fail is known, per-test detail is NOT available", never as a count.
+    """
     return {
         "path": str(test_path),
         "returncode": rc,
+        "granularity": "none",
+        "degraded": True,
+        "degraded_reason": (
+            "neither pytest-json-report nor JUnit XML was available; only the "
+            "process exit code is known"
+        ),
         "summary": {
-            "total": 1 if rc == 0 else 1,
-            "passed": 1 if rc == 0 else 0,
-            "failed": 0 if rc == 0 else 1,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
             "skipped": 0,
             "error": 0,
             "duration_s": 0.0,
+            "counts_available": False,
+            "outcome": "passed" if rc == 0 else "failed",
         },
         "failed_tests": [] if rc == 0 else [{"nodeid": str(test_path), "outcome": "failed"}],
+    }
+
+
+def _parse_junit_xml(xml_path: Path, test_path: Path, rc: int) -> Optional[Dict[str, Any]]:
+    """Per-test granularity from pytest's BUILT-IN ``--junit-xml``.
+
+    pytest-json-report is an optional third-party plugin and is frequently
+    absent; JUnit XML ships with pytest itself, so this path works on any
+    stock install. Returns None if the file is missing or unparseable.
+
+    XML safety: the document is produced by pytest into a private temp file we
+    created, so it is not attacker-controlled. defusedxml is used when present;
+    stdlib ElementTree is the fallback and does not resolve external entities.
+    """
+    try:
+        from defusedxml import ElementTree as _ET  # type: ignore
+    except ImportError:
+        import xml.etree.ElementTree as _ET  # type: ignore
+
+    try:
+        root = _ET.parse(str(xml_path)).getroot()
+    except Exception:
+        return None
+
+    suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+    if not suites:
+        return None
+
+    per_test: List[Dict[str, Any]] = []
+    total_duration = 0.0
+    for suite in suites:
+        for case in suite.iter("testcase"):
+            outcome = "passed"
+            for child in case:
+                tag = child.tag.lower()
+                if tag == "failure":
+                    outcome = "failed"
+                elif tag == "error":
+                    outcome = "error"
+                elif tag == "skipped":
+                    outcome = "skipped"
+            try:
+                duration_s = float(case.get("time") or 0.0)
+            except (TypeError, ValueError):
+                duration_s = 0.0
+            total_duration += duration_s
+            name = case.get("name") or "?"
+            # Reconstruct a pytest-style nodeid. JUnit gives a dotted classname,
+            # not a path, so prefer the concrete file we were asked to run.
+            file_attr = case.get("file") or test_path.name
+            per_test.append({
+                "nodeid": f"{file_attr}::{name}",
+                "outcome": outcome,
+                "duration_s": round(duration_s, 6),
+                # JUnit XML carries no marker/keyword data — say so rather than
+                # emitting [] which would read as "this test has no markers".
+                "keywords": [],
+            })
+
+    if not per_test:
+        return None
+
+    counts = {"passed": 0, "failed": 0, "skipped": 0, "error": 0}
+    for t in per_test:
+        counts[t["outcome"]] = counts.get(t["outcome"], 0) + 1
+
+    return {
+        "path": str(test_path),
+        "returncode": rc,
+        "granularity": "junit",
+        "keywords_available": False,
+        "summary": {
+            "total": len(per_test),
+            "passed": counts["passed"],
+            "failed": counts["failed"],
+            "skipped": counts["skipped"],
+            "error": counts["error"],
+            "duration_s": round(total_duration, 6),
+            "counts_available": True,
+        },
+        "tests": per_test,
+        "failed_tests": [
+            {"nodeid": t["nodeid"], "outcome": t["outcome"]}
+            for t in per_test if t["outcome"] in ("failed", "error")
+        ],
     }
 
 

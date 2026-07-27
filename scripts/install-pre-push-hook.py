@@ -49,7 +49,7 @@ from pathlib import Path
 
 # Marker identifying a hook we manage. Re-installs match on this; only a hook
 # carrying this line is ever overwritten or removed by us.
-MARKER = "# managed-by: skill_factory/scripts/install-pre-push-hook.py"
+MARKER = "# managed-by: foundry-lab/scripts/install-pre-push-hook.py"
 
 # Seconds to bound every git subprocess. Generous, but guarantees we never hang
 # on a wedged git (e.g. a stuck credential helper / network filesystem stat).
@@ -222,26 +222,59 @@ def _build_hook(scanner_path: Path) -> str:
     """Render the pre-push hook body.
 
     A POSIX ``#!/bin/sh`` script (runs under Git-for-Windows' bundled shell on
-    Windows). It locates a Python interpreter the same way this installer does,
-    then execs the scanner against the repo root. Missing scanner or missing
-    Python => WARN and let the push through (a safety net must never wedge a
-    developer out of pushing; the authoritative gate is server-side).
+    Windows). It runs a CHAIN: the identity gate first (fail-closed on
+    repo<->live drift), then the secrets scanner (avengers P2). The identity
+    gate lives beside the scanner (``identity_gate.py``). Both degrade to
+    WARN-and-continue when their script or a Python interpreter is absent (a
+    safety net must never wedge a developer out of pushing; the authoritative
+    gate is server-side). The ONLY hard block from the identity gate is a real
+    unacknowledged drift (its exit 1).
     """
     scanner_fwd = str(scanner_path).replace("\\", "/")
+    identity_fwd = str(scanner_path.parent / "identity_gate.py").replace("\\", "/")
     # NOTE: this is the hook's shell source -- every $ that the shell must see is
     # written literally here (this is a normal Python string, not an f-string).
     return (
         "#!/bin/sh\n"
         + MARKER + "\n"
-        "# Runs secrets-scan.py before every git push (cross-platform Python).\n"
+        "# Pre-push chain: identity gate (fail-closed on drift) -> secrets-scan.py.\n"
         "# Override per-push with: git push --no-verify\n"
         "# Installed by scripts/install-pre-push-hook.py\n"
         "\n"
         "set -e\n"
         "\n"
+        'IDENTITY_GATE="' + identity_fwd + '"\n'
         'SCANNER="' + scanner_fwd + '"\n'
         'REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
         "\n"
+        "# --- 1. Identity gate: repo<->live _meta drift (fail CLOSED). Missing\n"
+        "#        gate / no python / environmental -> WARN and continue. ---\n"
+        'if [ -f "$IDENTITY_GATE" ]; then\n'
+        '    _IDPY=""\n'
+        "    for _p in python3 python py; do\n"
+        '        if command -v "$_p" >/dev/null 2>&1; then _IDPY="$_p"; break; fi\n'
+        "    done\n"
+        '    if [ -z "$_IDPY" ]; then\n'
+        '        echo "[pre-push] WARN: no python for identity gate -- skipping identity check" >&2\n'
+        "    else\n"
+        '        if [ "$_IDPY" = "py" ]; then _IDPY="py -3"; fi\n'
+        '        if $_IDPY "$IDENTITY_GATE" --repo-root "$REPO_ROOT"; then\n'
+        "            :\n"
+        "        else\n"
+        "            _IDRC=$?\n"
+        '            if [ "$_IDRC" -eq 1 ]; then\n'
+        '                echo "[pre-push] BLOCKED by identity gate: repo<->live drift in a safety-critical _meta file." >&2\n'
+        '                echo "[pre-push] Reconcile or acknowledge the drift; bypass one push with: git push --no-verify" >&2\n'
+        "                exit 1\n"
+        "            fi\n"
+        '            echo "[pre-push] WARN: identity gate could not verify (exit $_IDRC) -- continuing to secrets scan" >&2\n'
+        "        fi\n"
+        "    fi\n"
+        "else\n"
+        '    echo "[pre-push] WARN: identity gate not found at $IDENTITY_GATE -- skipping identity check" >&2\n'
+        "fi\n"
+        "\n"
+        "# --- 2. Secrets scan. ---\n"
         'if [ ! -f "$SCANNER" ]; then\n'
         '    echo "[pre-push] WARN: scanner not found at $SCANNER -- letting push through" >&2\n'
         "    exit 0\n"

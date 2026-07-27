@@ -264,3 +264,7 @@ CRYPTO_TIME_PATTERNS = {
 | Over-trading during midday chop (11:30-14:00 equities) | Low volume, tight ranges, mean-reversion dominates — directional strategies get whipsawed | Reduce position size or stop trading during low-liquidity windows; focus on open and close sessions |
 | Using market orders for entries | Slippage on entries compounds over hundreds of trades; destroys edge on scalping strategies | Use limit orders within the bid-ask for entries; reserve market orders for stop-loss exits only |
 | Fading a strong daily trend intraday | Counter-trend scalps have 30-40% win rates against strong trends; losses are larger than wins | Align intraday direction with the daily trend bias; only fade at major support/resistance with volume divergence |
+
+---
+
+**See also:** this skill works a symbol you already chose — for building the tradeable universe / pre-market watchlist, use `equity-scanning-and-watchlists`.

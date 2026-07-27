@@ -11,8 +11,6 @@ bash ~/.claude/skills/env-adoption/scripts/probe.sh get tools.codex.installed
 # Get current tier
 bash ~/.claude/skills/env-adoption/scripts/probe.sh get tier
 
-# Get bridge mode for current session
-bash ~/.claude/skills/env-adoption/scripts/probe.sh get session.bridge_mode
 
 # Check a capability
 bash ~/.claude/skills/env-adoption/scripts/probe.sh get capabilities.triple_model
@@ -34,7 +32,6 @@ Read $XDG_RUNTIME_DIR/env-adoption/session-<id>.json for capabilities.
 Branch on capabilities:
   if capabilities.codex_challenger -> use Codex
   if capabilities.agy_analyst -> use agy (Antigravity CLI)
-  if capabilities.bridge_fallback -> route through bridge
 ```
 
 ### codex-orchestration

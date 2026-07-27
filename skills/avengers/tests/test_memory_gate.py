@@ -43,7 +43,7 @@ def _valid_record(**over):
             "source_refs": ["t0003"],
             "sha256": "0" * 64,
         },
-        "approval": {"status": "approved", "by": "tadas", "at": "2026-07-11T20:30:00Z"},
+        "approval": {"status": "approved", "by": "operator", "at": "2026-07-11T20:30:00Z"},
         "sensitivity": {"pii": False},
         "status": "active",
         "expires_at": None,
@@ -223,7 +223,7 @@ def test_commit_only_approved_records(tier):
     ]
     mw.persist_proposals(project_root, "sess-1", cands)
     res = mw.commit_approved(project_root, "sess-1", {"mem-A": True},
-                             approved_by="tadas", traceable_turns={"t0003"})
+                             approved_by="operator", traceable_turns={"t0003"})
     assert [c["id"] for c in res["committed"]] == ["mem-A"]
     standing = json.loads(mw.standing_path(project_root, "skeptic").read_text())
     assert [r["id"] for r in standing] == ["mem-A"]
@@ -234,7 +234,7 @@ def test_commit_refuses_untraceable_source_turn(tier):
     project_root, _ = tier
     mw.persist_proposals(project_root, "sess-1", [_candidate(record=_valid_record(id="mem-A"))])
     res = mw.commit_approved(project_root, "sess-1", {"mem-A": True},
-                             approved_by="tadas", traceable_turns={"tXXXX"})
+                             approved_by="operator", traceable_turns={"tXXXX"})
     assert res["committed"] == []
     assert res["refused"] and "not traceable" in res["refused"][0]["reason"]
     assert not mw.standing_path(project_root, "skeptic").is_file()
@@ -245,11 +245,11 @@ def test_commit_snapshots_and_backs_up_existing(tier):
     # First commit creates standing.json.
     mw.persist_proposals(project_root, "sess-1", [_candidate(record=_valid_record(id="mem-A"))])
     mw.commit_approved(project_root, "sess-1", {"mem-A": True},
-                       approved_by="tadas", traceable_turns={"t0003"})
+                       approved_by="operator", traceable_turns={"t0003"})
     # Second commit into the existing file -> snapshot hash + .bak.
     mw.persist_proposals(project_root, "sess-2", [_candidate(record=_valid_record(id="mem-B"))])
     res = mw.commit_approved(project_root, "sess-2", {"mem-B": True},
-                             approved_by="tadas", traceable_turns={"t0003"})
+                             approved_by="operator", traceable_turns={"t0003"})
     assert "skeptic" in res["snapshots"]
     assert (Path(str(mw.standing_path(project_root, "skeptic")) + ".bak")).is_file()
     standing = json.loads(mw.standing_path(project_root, "skeptic").read_text())
@@ -259,11 +259,11 @@ def test_commit_snapshots_and_backs_up_existing(tier):
 def test_commit_default_reject_when_no_approvals(tier):
     project_root, _ = tier
     mw.persist_proposals(project_root, "sess-1", [_candidate(record=_valid_record(id="mem-A"))])
-    res = mw.commit_approved(project_root, "sess-1", {}, approved_by="tadas",
+    res = mw.commit_approved(project_root, "sess-1", {}, approved_by="operator",
                              traceable_turns={"t0003"})
     assert res["committed"] == []
     assert not mw.standing_path(project_root, "skeptic").is_file()
 
 
 def test_project_slug_convention():
-    assert mw.project_slug(Path("/mnt/data/dev04/agent-foundry")) == "-mnt-data-dev04-agent-foundry"
+    assert mw.project_slug(Path("/opt/demo/agent-foundry")) == "-opt-demo-agent-foundry"

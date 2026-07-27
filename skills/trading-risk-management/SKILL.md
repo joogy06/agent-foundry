@@ -1,6 +1,6 @@
 ---
 name: trading-risk-management
-description: Use when implementing kill switches, circuit breakers, position sizing, drawdown controls, VaR/CVaR calculations, Kelly criterion, or correlation-based portfolio risk management for automated trading systems
+description: Use when implementing kill switches, circuit breakers, position sizing, drawdown controls, VaR/CVaR calculations, Kelly criterion, or correlation-based portfolio risk management for automated trading systems. Also covers risk-constrained allocation overlays (applying constraints, risk budgets, and feasibility checks over externally-supplied point-in-time forecasts - never producing forecasts), benchmark and return conventions, factor/benchmark exposure analysis, cost-aware rebalance/turnover analysis, ex-ante vs realized risk attribution (risk contribution, not performance attribution), and serializing kill-switch state into the runtime's append-only persistent halt record. Trigger on - portfolio construction, risk budget, risk-constrained allocation, risk attribution, risk contribution, rebalance turnover, factor exposure, persistent halt state
 ---
 
 # Trading Risk Management
@@ -79,6 +79,71 @@ class KillSwitch:
         self.state = TradingState.EMERGENCY_EXIT
         self.halt_reasons.append(f"EMERGENCY: {reason}")
 ```
+
+## Registered Pre-Trade Guards
+
+The `KillSwitch` check chain runs registered pre-trade guards before EVERY
+order. For US equities, `equity-trading-compliance` registers its day-trade
+guard here — **for EXPOSURE-INCREASING orders only**:
+
+```python
+def check_pretrade_guards(order_intent, account_snapshot,
+                          broker_policy_snapshot, as_of):
+    # Registered by equity-trading-compliance for exposure-increasing orders.
+    # Canonical signature + full contract:
+    #   equity-trading-compliance/references/guard-contract.md
+    verdict = day_trade_permitted(order_intent, account_snapshot,
+                                  broker_policy_snapshot, as_of)
+    if verdict.verdict == "reject_fail_closed":
+        return False                     # block new exposure
+    if verdict.verdict == "liquidation_only":
+        return "cancel_and_reduce_only"  # exits only, no new exposure
+    return True                          # "permit" -> other checks decide
+```
+
+**Liquidation carve-out (binding):** kill-switch `HALTED` / `EMERGENCY_EXIT`
+states and guard `reject_fail_closed` verdicts block NEW exposure while
+authorizing cancel-and-reduce operations — **exits are never gated shut**.
+
+This registration point holds the CALL SITE and enforcement mapping ONLY. All
+regime/tax knowledge (PDT vs risk-based intraday margin, wash sale, §475(f),
+locate) lives in `equity-trading-compliance` — one gate, one knowledge owner.
+See the shared conformance checklist at
+`equity-trading-compliance/references/guard-contract.md`.
+
+### KillSwitch state serialization (persistent halt record)
+
+`trading-automation-runtime` persists halt state across restarts (a restart must never
+silently clear a halt). To make `KillSwitch` state durable, serialize it into the
+runtime's **append-only, versioned halt-record shape** — `(source, epoch, reason,
+asserted_at, cleared_at, cleared_by)` written with compare-and-swap semantics so a stale
+writer cannot erase a newer halt. **No threshold logic moves** — the thresholds,
+`RiskMetrics`, and the `check()` decision stay here; only a serializable projection of the
+current state crosses the seam.
+
+```python
+def to_halt_record(kill_switch, source: str, epoch: int, now):
+    """Project KillSwitch state into the runtime's append-only halt-record shape.
+
+    The runtime PERSISTS and RELOADS this; it never writes the risk halt cause itself.
+    """
+    if kill_switch.state.value == "active":
+        return None                               # no active halt to persist
+    return {
+        "source": source,                         # this skill owns the 'risk' cause
+        "epoch": epoch,                            # monotonic; CAS rejects stale writers
+        "reason": "; ".join(kill_switch.halt_reasons),
+        "asserted_at": now,
+        "cleared_at": None,
+        "cleared_by": None,                        # explicit, audited unhalt only
+    }
+```
+
+**Axis ownership (binding).** In the runtime's orthogonal state axes, the `risk_mode` axis
+(`NORMAL | HALTED | LIQUIDATION_ONLY`) is **risk-owned**: this skill is the only writer of
+the risk halt cause and the only clearer of it. The runtime orchestrates and persists the
+record but **never writes the `risk_mode` axis** — one halt cause, one owner (the same
+one-owner discipline as the pre-trade guard registration above).
 
 ## Position Sizing
 
@@ -193,6 +258,81 @@ def portfolio_concentration_check(
     return warnings
 ```
 
+## Risk-Constrained Allocation & Risk Attribution
+
+Portfolio construction **as a risk overlay** and **risk** attribution — for multi-day /
+positional books as well as intraday. It stays strictly inside the risk charter.
+
+**Boundary (binding — read before using anything below):**
+
+- **This skill NEVER produces forecasts, alphas, or expected returns.** Allocation here is
+  an OVERLAY that takes **externally-supplied, point-in-time** forecast / alpha /
+  expected-return inputs and applies **constraints, risk budgets, and feasibility checks**
+  on top of them. Where the forecasts come from is out of scope.
+- **Output is a constrained target weight vector / risk verdict — NEVER orders and NEVER
+  an executable trade list.** Turning a target into orders (sizing to lots, routing, TIF)
+  is `equity-broker-execution` / `crypto-exchange-integration`, orchestrated by
+  `trading-automation-runtime`.
+- **RISK attribution only, not performance attribution.** Realized-P&L attribution and
+  trade review live in `trade-journaling-and-review`; backtest statistical significance
+  lives in `trading-strategy-backtester`. This section attributes **risk** (ex-ante and
+  realized risk contribution), not returns.
+
+### Return & benchmark conventions (state them explicitly)
+
+Every allocation/attribution result must state its conventions or it is meaningless — sign,
+return period (and annualization basis), cash/financing treatment, FX base currency,
+fee/cost inclusion, and the leverage / gross-vs-net definition. Two "risk contributions"
+that disagree usually disagree only on conventions.
+
+### Risk-constrained allocation (overlay)
+
+```python
+import numpy as np
+
+def constrained_target(expected_returns, cov, constraints, prev_weights):
+    """Risk-overlay allocation. `expected_returns` is an EXTERNAL, point-in-time input;
+    this function never forecasts. Returns TARGET WEIGHTS, never orders.
+
+    constraints carries the risk budget (max portfolio vol), box/gross/net limits, and a
+    turnover cap — feasibility is checked, never silently relaxed.
+    """
+    mu = np.asarray(expected_returns, dtype=float)   # supplied by the caller
+    sigma = np.asarray(cov, dtype=float)
+    # Solve for weights maximising a risk-adjusted objective subject to constraints;
+    # FLAG infeasible rather than returning an unconstrained/relaxed solution.
+    w = _solve_or_flag_infeasible(mu, sigma, constraints, prev_weights)
+    return w                                          # a constrained target, not a trade list
+```
+
+### Factor / benchmark exposure & risk attribution
+
+- **Exposure analysis:** decompose the target (or current) portfolio onto factor /
+  benchmark exposures; report **active** exposure versus the stated benchmark.
+- **Ex-ante vs realized risk contribution:** attribute portfolio risk to positions/factors
+  (marginal and component contribution to variance/vol). Compare **ex-ante** (from `cov`)
+  against **realized** risk contribution; a large gap flags a model/regime break — a RISK
+  signal, not a performance number.
+
+```python
+def risk_contributions(weights, cov):
+    """Component contribution to portfolio variance (risk attribution, not P&L)."""
+    import numpy as np
+    w = np.asarray(weights, dtype=float)
+    c = np.asarray(cov, dtype=float)
+    port_var = float(w @ c @ w)
+    if port_var <= 0:
+        return np.zeros_like(w)
+    marginal = c @ w                       # d(variance)/dw
+    return (w * marginal) / port_var       # fractions summing to 1.0
+```
+
+### Rebalance / turnover (cost-aware)
+
+Rebalancing weighs expected risk reduction against **turnover cost**; a constrained target
+that ignores the cost of getting there is incomplete. The turnover cap is a constraint in
+`constrained_target`, and realized turnover is reported alongside the target.
+
 ## Circuit Breaker Thresholds (Recommended Defaults)
 
 | Trigger | Conservative | Moderate | Aggressive |
@@ -240,3 +380,6 @@ def portfolio_concentration_check(
 | VaR as the only risk metric | VaR says nothing about tail risk severity; "95% VaR is $10K" tells you nothing about the 5% scenarios | Supplement VaR with CVaR (Expected Shortfall) and stress testing against historical worst-case scenarios |
 | Position sizing based on conviction rather than volatility | "I feel confident" is not a risk management strategy; leads to concentrated bets that blow up | Size positions based on ATR or realized volatility; equal risk contribution across positions |
 | No correlation monitoring across positions | Seemingly diversified portfolio is actually 90% correlated in a crisis; all positions move against you simultaneously | Monitor rolling correlation matrix; reduce total exposure when average pairwise correlation exceeds threshold |
+| Producing return forecasts inside the risk layer | Conflates alpha generation with risk control; the risk overlay loses its independence | Take forecasts as an external, point-in-time input; this skill only constrains and attributes risk |
+| Emitting orders or an executable trade list from allocation | Crosses the risk/execution boundary; unpermitted trades bypass the pre-trade gate chain | Output constrained target weights / a risk verdict; execution skills turn targets into orders |
+| Reporting risk attribution as performance attribution | Risk contribution and P&L attribution answer different questions; mixing them misleads | Attribute RISK here; route realized-P&L attribution to trade-journaling-and-review and significance to trading-strategy-backtester |

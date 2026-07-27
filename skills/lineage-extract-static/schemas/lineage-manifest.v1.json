@@ -142,6 +142,46 @@
     "exit_status": {
       "enum": ["SUCCESS", "PARTIAL", "FAILED"],
       "description": "OPTIONAL final exit status. SUCCESS = all files processed cleanly. PARTIAL = some files skipped or some non-fatal errors. FAILED = fail-closed abort (redaction error, validation error)."
+    },
+    "business": {
+      "type": "object",
+      "description": "OPTIONAL project-level business block (S59 business-analysis pass, design §3.1). Assembled by merge_into_ol.assemble_manifest_business — sections omitted when the source gave nothing; domains partition only objects present in the bundle (single primary domain per member). Consumed by the DLP OL importer's report builder.",
+      "additionalProperties": false,
+      "required": ["generated_by", "tree_hash"],
+      "properties": {
+        "overview": { "type": "string", "minLength": 1 },
+        "narrative": { "type": "string", "minLength": 1 },
+        "flow_summary": { "type": "string", "minLength": 1 },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "members"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 },
+              "flow": { "type": "string", "minLength": 1 },
+              "members": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["namespace", "name"],
+                  "properties": {
+                    "namespace": { "type": "string", "minLength": 1 },
+                    "name": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "generated_by": { "const": "lineage-extract-static" },
+        "tree_hash": { "type": "string", "minLength": 1 }
+      }
     }
   }
 }

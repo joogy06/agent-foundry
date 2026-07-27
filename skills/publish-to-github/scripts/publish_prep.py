@@ -366,6 +366,37 @@ def copy_tree_with_exclusions(src_root, staging_root, source_root, exclusions):
     return copied, skipped
 
 
+def list_skill_names(skills_dir):
+    """Immediate subdirectory names under a skills/ dir — the skill set."""
+    if not skills_dir.is_dir():
+        return set()
+    return {p.name for p in skills_dir.iterdir() if p.is_dir()}
+
+
+def check_skill_completeness(source_root, staging_dir, exclusions):
+    """Compare the LIVE skill set against the STAGED skill set (avengers P3).
+
+    A live skill missing from staging is 'explained' iff should_exclude() marks
+    it (a config exclusion or an always-exclude pattern) — REUSING the same
+    exclusion logic that drove the copy, so excluded skills are accounted for
+    rather than flagged. Any OTHER missing skill is an 'unexplained' dropout:
+    the staging engine silently lost a skill, which is exactly the regression
+    this guard exists to catch.
+
+    Returns (unexplained: sorted list, explained: sorted list).
+    """
+    live = list_skill_names(source_root / 'skills')
+    staged = list_skill_names(staging_dir / 'skills')
+    missing = live - staged
+    unexplained = sorted(
+        n for n in missing
+        if not should_exclude(Path('skills') / n, exclusions)
+    )
+    unexplained_set = set(unexplained)
+    explained = sorted(n for n in missing if n not in unexplained_set)
+    return unexplained, explained
+
+
 # --- Scrub engine ---------------------------------------------------------
 
 def apply_scrubs(staging_root, scrubs):
@@ -793,6 +824,33 @@ def main():
             if len(excluded_files) > 5:
                 print(yellow(f'    - ...and {len(excluded_files) - 5} more'))
 
+    # --- Phase 1b: skill-set completeness (avengers P3) -------------------
+    # Guard against the staging engine silently dropping a skill. A live skill
+    # absent from staging is acceptable ONLY when a config/always exclusion
+    # explains it; any other missing skill is an unexplained dropout and fails
+    # the run below.
+    comp_unexplained, comp_explained = [], []
+    if 'skills' in source_subdirs:
+        header('Phase 1b: skill-set completeness')
+        comp_unexplained, comp_explained = check_skill_completeness(
+            source_root, staging_dir, exclusions
+        )
+        live_n = len(list_skill_names(source_root / 'skills'))
+        staged_n = len(list_skill_names(staging_dir / 'skills'))
+        print(f'  live skills: {live_n}   staged skills: {staged_n}')
+        if comp_explained:
+            print(f'  {len(comp_explained)} live skill(s) excluded by config (explained):')
+            for n in comp_explained[:10]:
+                print(yellow(f'    - {n}'))
+            if len(comp_explained) > 10:
+                print(yellow(f'    - ...and {len(comp_explained) - 10} more'))
+        if comp_unexplained:
+            print(red(f'  ✗ {len(comp_unexplained)} live skill(s) MISSING from staging with no exclusion:'))
+            for n in comp_unexplained:
+                print(red(f'    - {n}'))
+        else:
+            print(green('  ✓ every live skill is staged or explained by an exclusion'))
+
     # --- Phase 2: scrubs ---
     header('Phase 2: scrub embedded private content')
     scrub_results = apply_scrubs(staging_dir, config['scrubs'])
@@ -912,7 +970,15 @@ def main():
     print(f'  Files excluded:    {total_skipped}')
     print(f'  Scrubs applied:    {sum(1 for r in scrub_results if r["status"] == "modified")}')
     print(f'  Files bundled:     {len(copied_bundle)}')
+    print(f'  Skill completeness:{green(" ok") if not comp_unexplained else red(" " + str(len(comp_unexplained)) + " missing")}')
     print(f'  Verify:            {green(verify_status) if verify_status == "clean" else red(verify_status)}')
+
+    if comp_unexplained:
+        print()
+        print(red(f'  ⚠  {len(comp_unexplained)} live skill(s) dropped from staging with no exclusion '
+                  '— refusing to report success.'))
+        print(red('     Missing: ' + ', '.join(comp_unexplained)))
+        return 1
 
     if verify_status not in ('clean', 'skipped-unsafe'):
         print()

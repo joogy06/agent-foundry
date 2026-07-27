@@ -1,6 +1,6 @@
 # Cross-Tool Integration
 
-How Claude Code 2.1.96 talks to Codex CLI 0.137.0 and Antigravity CLI (`agy`) 1.0.5 in this environment, and what skills cover the bridges.
+How Claude Code talks to Codex CLI and Antigravity CLI (`agy`) 1.1.6 in this environment, and what skills cover the bridges. (Versions drift fast — `agy --version` / `codex --version` / `claude --version` are the truth; treat any number written here as last-verified-2026-07-24, not current.)
 
 ## Three-model orchestration
 
@@ -49,7 +49,7 @@ Always wrap with `timeout`. Long-running Codex tasks may exit non-zero before wr
 
 ## Calling Antigravity (agy) from Claude Code
 
-The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (the gemini CLI (v0.50.x) remains an available fallback — kept per user direction 2026-07-10). The `gemini-cli` MCP server has been REMOVED — call `agy` directly via Bash. `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), but the host convention remains to OMIT it — the Antigravity-account default model is used.
+The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (sole delegate — the gemini CLI was retired from this ecosystem 2026-07-25). `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), but the host convention remains to OMIT it — the Antigravity-account default model is used.
 
 ### Via the `agy` CLI directly
 For headless invocations or shell scripts:
@@ -71,7 +71,7 @@ agy --print-timeout 15m -p "deep analysis of this codebase" < /dev/null
 agy --sandbox --dangerously-skip-permissions -p "..." < /dev/null
 ```
 
-`agy -p` returns **plain text** on stdout — parse the text, not JSON fields (the removed `mcp__gemini-cli__*` tools returned structured fields; `agy` does not). Model self-identification is unreliable; if you need to confirm which model served a call, append a `served_by` probe line to the prompt rather than trusting any self-reported identity.
+`agy -p` returns **plain text** on stdout — parse the text, not JSON fields; there are no structured response fields. Model self-identification is unreliable; if you need to confirm which model served a call, append a `served_by` probe line to the prompt rather than trusting any self-reported identity.
 
 See the `antigravity-cli` skill for the full surface.
 
@@ -80,7 +80,7 @@ See the `antigravity-cli` skill for the full surface.
 | From | Pattern |
 |---|---|
 | Codex CLI | `codex` reads `~/.codex/skills/` (symlinked from `~/.claude/skills/`) and `~/.codex/AGENTS.md` |
-| Antigravity CLI (agy) | Scope context into a run with `agy --add-dir <path>` (repeatable). `# TODO(agy): verify equivalent` — no verified `agy` skills-directory or settings-migration mechanism (the old `gemini hooks migrate` / `~/.gemini/skills/` path does not carry over) |
+| Antigravity CLI (agy) | Scope context into a run with `agy --add-dir <path>` (repeatable). `# TODO(agy): verify equivalent` — no verified `agy` skills-directory or settings-migration mechanism |
 | GitHub Copilot CLI | No skills concept. Reference Claude skills via `AGENTS.md` or wrap as MCP servers in `~/.copilot/mcp-config.json`. See `gh-copilot-cli` skill |
 | Shell script | `claude -p --bare` for CI-safe invocation |
 | GitHub Actions | `references/github-actions.md` |

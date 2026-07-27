@@ -268,12 +268,10 @@ advise-only call or agy may write files/commit instead of answering, #157):
 timeout 600 agy --sandbox -p "You are the blue-ocean team. Question: ... Data: see $CONTEXT_FILE. Produce $N outputs per the format in $OUTPUT_SPEC. Advisory only — do not modify any files; answer on stdout." < /dev/null > "$WORK/team-blue-ocean-round1.md"
 ```
 
-(The old gemini MCP route is gone; the gemini CLI retired 2026-06-18.)
+
 
 ### Bridge Mode
 
-If `bridge-mode-detect.sh` reports `bridge`, agy calls route through `bridge request --tool agy`
-per the `git-cli-bridge` skill. The primitive does not hardcode bridge mode; it inherits the caller's
 session mode. Codex is unaffected (it always runs locally).
 
 ### Batching the Spawns

@@ -1,6 +1,6 @@
 ---
 name: market-data-engineering
-description: Use when building financial data pipelines, processing OHLCV data, cleaning market time-series, handling gaps and resampling, storing signals in TimescaleDB, or deduplicating tick and bar data
+description: Use when building financial data pipelines, processing OHLCV data, cleaning market time-series, handling gaps and resampling, storing signals in TimescaleDB, or deduplicating tick and bar data. Also owns the wire-layer ingestion path upstream of cleaning - provider/envelope decode boundary, immutable raw capture with append-before-ack, per-channel sequence-integrity and gap recovery, backpressure and checkpoints, the live/historical seam, the versioned per-stream feed-health measurement schema (integrity state, sequence epoch, event-age vs transport-age, session state), and deterministic replay through the same decode path with output-hash validation. Trigger on - market-data wire layer, ingestion integrity, sequence gap detection, order-book resync, feed health, replay a recorded session, backpressure
 ---
 
 # Market Data Engineering
@@ -16,6 +16,145 @@ Financial time-series data is fundamentally different from regular data: it has 
 - Implementing TimescaleDB hypertables for financial data
 - Resampling tick data to bars (1m, 5m, 1h)
 - Deduplicating duplicate ticks from exchange feeds
+- Building the wire-layer ingestion path (envelope decode, raw capture, sequence integrity, backpressure)
+- Measuring per-stream feed health (integrity state, sequence epoch, event-vs-transport age)
+- Deterministically replaying a recorded live session through the same decode path
+
+## Ingestion Integrity + Replay (the wire layer, upstream of cleaning)
+
+`clean_ohlcv` and everything below it assume a **trustworthy, ordered, replayable**
+stream of raw events. Producing that stream is a separate layer that sits UPSTREAM of
+cleaning. Capture, checkpointing, and replay are **one transactional story**, not three
+independent features: you cannot replay what you did not durably capture, and you cannot
+resume safely from a checkpoint that does not reference durable capture offsets.
+
+### 1. Wire / provider ingestion layer
+
+- **Decode boundary.** Isolate provider/envelope decoding (vendor JSON/binary framing,
+  compression, protocol version) at a single boundary. Downstream code sees a normalized
+  internal event, never raw vendor bytes.
+- **Schema / version evolution.** The decoder is versioned; record the decoder, config,
+  and provider schema version alongside every captured session so a later replay decodes
+  identically.
+- **Immutable raw capture with APPEND-BEFORE-ACK.** The raw envelope is durably appended
+  to the raw log **before** the message is acknowledged upstream or processed downstream.
+  Checkpoint advancement is atomic and references durable raw-log offsets.
+
+```python
+def ingest_one(envelope, raw_log, checkpoint, decode, process):
+    """Append-before-ack: durability precedes acknowledgement and processing."""
+    offset = raw_log.append(envelope)      # 1. durable capture FIRST
+    raw_log.fsync()                        # 2. survive a crash before we ack
+    event = decode(envelope)               # 3. decode at the single boundary
+    process(event)                         # 4. downstream sees normalized events
+    checkpoint.advance_atomic(offset)      # 5. checkpoint references the raw offset
+    return offset                          # ack only after capture is durable
+```
+
+### 2. Sequence integrity (distinct from timestamp gaps)
+
+Timestamp-gap handling (weekends, halts — see `fill_gaps`) is **not** sequence integrity.
+Sequence integrity uses the source's own sequence numbers / checksums:
+
+- **Verify per source CHANNEL, never the merged stream.** A multiplexed vendor connection
+  carries independent sequences per underlying channel (symbol, book, trades); a gap must
+  be detected on the **demuxed** channel.
+- **Channel epochs.** A resync or provider-side restart bumps a channel epoch; a sequence
+  reset within the same epoch is a gap, across epochs is expected.
+- **Gap recovery:** request-replay (bounded backfill of the missing range) vs
+  snapshot-resync (discard and re-baseline). Bounded reordering windows tolerate
+  out-of-order arrival; correction/cancel messages amend already-emitted events.
+- **Stateful delta feeds (order books):** an **unrepairable** drop means the book is
+  `corrupt` and requires a mandatory snapshot resync — **never** continue processing
+  deltas onto an invalid book.
+
+```python
+def check_channel_sequence(channel_state, msg):
+    """Gap detection on ONE demuxed channel. Returns 'ok' | 'gapped' | 'reset'."""
+    if msg.epoch != channel_state.epoch:
+        return "reset"                     # new epoch: re-baseline, not a gap
+    expected = channel_state.last_seq + 1
+    if msg.seq == expected:
+        channel_state.last_seq = msg.seq
+        return "ok"
+    if msg.seq > expected:
+        return "gapped"                    # missing [expected, msg.seq): recover
+    return "ok"                            # <= last_seq: duplicate/reorder, ignore
+```
+
+### 3. Backpressure + checkpoints
+
+- **Bounded-queue contract** between ingest and process stages. When the queue saturates,
+  the drop/degrade policy is **explicit and observable** — never a silent drop.
+- **Atomic checkpoint format tied to raw-log offsets.** Resume = replay from the
+  checkpointed offset through the **same decode path** as live.
+
+### 4. Live / historical seam
+
+On reconnect, backfill the missing range from the provider's historical endpoint and
+**reconcile the seam** so the resumed live stream and the backfilled range converge on
+**identical bars** (same dedup, same sequence checks) — a resumed feed must not produce a
+bar that disagrees with the backfill for the same interval.
+
+### Feed-Health Measurement Schema (SEAM 1 — defined HERE, referenced across the family)
+
+The wire layer emits **one** versioned, per-stream / per-channel measurement schema. These
+are **policy-free FACTS** with defined semantics; every consumer owns its own REACTION
+policy and **never re-derives the facts or pushes policy into the schema** (one
+definition, many policies — the guard-drift lesson):
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class FeedHealthMeasurement:
+    """Versioned per-stream/per-channel feed-health FACTS. Defined once, here.
+
+    Consumers: the runtime aggregates the streams a strategy requires and applies
+    fail-closed admission thresholds (see trading-automation-runtime); the dashboard
+    displays these per-stream/per-symbol facts while keeping emergency controls live
+    (see trading-dashboard-ux). No consumer redefines these fields or embeds policy.
+    """
+    schema_version: int          # bump on any field/semantics change
+    source: str                  # provider identity
+    channel: str                 # demuxed channel identity (symbol/book/trades)
+    integrity_state: str         # 'ok' | 'gapped' | 'resyncing' | 'corrupt'
+    sequence_epoch: int          # current channel epoch
+    last_verified_sequence: int  # last in-order sequence accepted
+    last_event_time_ns: int      # event age (source clock) — NOT the transport age
+    last_receive_time_ns: int    # receive/transport age (local clock)
+    heartbeat_age_ns: int        # since last heartbeat; quiet-but-healthy is tolerated
+    session_state: str           # expected-activity: a quiet healthy feed is not stale
+    completeness: str            # 'complete' | 'backfilling' | 'resyncing'
+    clock_domain: str            # which clock last_event_time_ns is measured in
+```
+
+The `integrity_state`, the split between **event age** and **transport age**, the
+sequence epoch, and the session/expected-activity state are the load-bearing facts: a
+quiet-but-healthy feed (no ticks because the session is closed) is **not** stale, and a
+feed that is silently reordering **is** unhealthy even if ticks keep arriving.
+
+### 5. Deterministic replay
+
+Record a live session as raw envelopes **plus** arrival order, timestamps, and the decoder
+/ config / schema versions. Replay re-feeds that log timestamp- or speed-controlled
+through the **SAME decode path** as live. Determinism requires:
+
+- **Injected / virtual clock everywhere the consumer reads time** — both wall clock and
+  event-loop time — so time-dependent logic is reproducible.
+- **RECORDED arrival ordering.** Seeding a PRNG alone cannot reproduce nondeterministic
+  concurrency; the arrival order must be replayed as recorded.
+- **Output-hash validation:** the same input log must produce the **same bar/book output
+  hashes**. A hash mismatch means the replay diverged from live.
+
+```python
+def replay_session(raw_log, decode, process, clock):
+    """Re-feed a recorded session through the SAME decode path, on a virtual clock."""
+    for envelope in raw_log.in_recorded_arrival_order():
+        clock.set(envelope.recorded_time_ns)   # virtual clock, not wall clock
+        process(decode(envelope))               # identical path to live ingest_one
+    return raw_log.output_hash()                # compare to the live-session hash
+```
 
 ## OHLCV Processing Pipeline
 
@@ -257,3 +396,12 @@ def deduplicate_ticks(ticks: pd.DataFrame,
 | Using adjusted prices for live trading signals | Adjusted prices are recalculated historically; live prices are unadjusted — mixing them creates ghost signals | Use raw prices for live trading; adjusted prices only for backtesting; store both and document which is which |
 | No deduplication on data ingestion | Duplicate ticks from multiple feeds corrupt volume calculations and OHLCV aggregation | Use ON CONFLICT (upsert) on insert; deduplicate by timestamp + source; validate row counts after ingestion |
 | Storing computed indicators in the database | Indicator parameters change frequently; stored indicators become stale; storage bloats | Store raw OHLCV only; compute indicators on-the-fly or cache in Redis; database is for source-of-truth data |
+| Acknowledging a message before durably appending it to the raw log | A crash between ack and append silently loses events; capture, checkpoint, and replay diverge | Append-before-ack: durable raw-log append + fsync BEFORE the upstream ack and any downstream processing |
+| Silent drops when the ingest→process queue saturates | Phantom gaps that look like market inactivity; signals computed on incomplete data | Bounded queue with an explicit, observable drop/degrade policy tied to feed-health facts |
+| Replaying through a different code path than live | The replay proves nothing about live behaviour; bugs hide in the divergence | One decode/process path for both; validate replay by output hashes against the recorded live session |
+| Treating timestamp continuity as sequence integrity | Reordered or dropped messages with plausible timestamps corrupt books undetected | Check the source sequence/checksum per demuxed channel; timestamp gaps are a separate concern |
+| Continuing to process order-book deltas after an unrepairable drop | Every subsequent book state is wrong; strategies trade on a corrupt book | Mark the book `corrupt` and force a snapshot resync; never apply deltas to an invalid book |
+
+---
+
+**See also:** this skill owns tick/bar cleaning, dedup, and resampling — for US equity realtime market-STRUCTURE semantics (NBBO/SIP, L2, LULD/halt acceptance criteria), use `equity-broker-execution` §7.

@@ -1,6 +1,6 @@
 ---
 name: vertex-banana
-description: Use when the user asks to create, generate, make, draw, design, or edit any image or visual content — blog featured images, YouTube thumbnails, icons, diagrams, patterns, illustrations, photos, visual assets, graphics, artwork, pictures. REQUIRED for all image generation requests — PRIMARY image skill (direct Google Vertex AI / Gemini image API via VERTEX_API_KEY, no gemini CLI dependency; SDK + models verified live 2026-06-10). Replaces nano-banana (legacy — gemini CLI retired 2026-06-18).
+description: Use when the user asks to create, generate, make, draw, design, or edit any image or visual content — blog featured images, YouTube thumbnails, icons, diagrams, patterns, illustrations, photos, visual assets, graphics, artwork, pictures. REQUIRED for all image generation requests — PRIMARY image skill (direct Google Vertex AI / Gemini image API via VERTEX_API_KEY, no gemini CLI dependency; SDK + models verified live 2026-06-10). Sole image skill — the legacy gemini-CLI-based nano-banana was deleted 2026-07-25.
 allowed-tools: Bash(python3 *vertex_banana.py*), Bash(pip install *google-genai*), Bash(curl *aiplatform.googleapis.com*), Bash([ -n "$VERTEX_API_KEY" ]), Bash(ls *vertex-banana*), Bash(identify *)
 ---
 
@@ -233,11 +233,11 @@ After generation completes:
 3. **Reference styles** — "editorial photography", "flat illustration", "3D render", "watercolor"
 4. **For editing** — describe exactly what to change: "make the background blue" not "change it"
 
-## Replaces nano-banana
+## Sole image-generation skill
 
-This skill replaces the older `nano-banana` skill (which used Gemini CLI + nanobanana extension). Key differences:
-- **vertex-banana**: Direct Vertex AI API via Python SDK or curl. Uses `VERTEX_API_KEY`.
-- **nano-banana** (legacy): Gemini CLI wrapper. Uses `GEMINI_API_KEY`. Still exists at `~/.claude/skills/nano-banana/`.
+This is the ONLY image-generation skill — there is no alternative and no fallback.
+It calls the Vertex AI / Gemini image API directly (Python SDK or curl) with
+`VERTEX_API_KEY`, and depends on no CLI.
 
 ## Troubleshooting
 
@@ -263,7 +263,7 @@ This skill replaces the older `nano-banana` skill (which used Gemini CLI + nanob
 |---|---|---|
 | Using Vertex AI image generation for text-heavy images | AI models render text poorly; misspellings and distorted characters are common | Generate the image without text; add text overlays using proper design tools or CSS afterward |
 | Not specifying aspect ratio for target platform | Default output may not match blog header (16:9), social media (1:1), or thumbnail (4:3) requirements | Always specify aspect ratio and dimensions matching the deployment target in the generation request |
-| Sending requests without error handling for quota limits | Vertex AI has per-minute and per-day quotas; unhandled 429 errors crash the workflow | Implement exponential backoff retry; catch 429 responses; fall back to nano-banana or queue for later |
+| Sending requests without error handling for quota limits | Vertex AI has per-minute and per-day quotas; unhandled 429 errors crash the workflow | Implement exponential backoff retry; catch 429 responses; fall back to vertex-banana or queue for later |
 | Using high-resolution output for web thumbnails | Unnecessarily large images waste bandwidth, slow page loads, and consume more API quota | Request appropriate resolution for the use case; downscale large outputs before serving on web |
 | Not validating prompt against content policy before submission | Policy violations return errors after consuming API quota; repeated violations may restrict account | Review prompts for policy compliance (no violent, explicit, or deceptive content); handle policy errors gracefully |
 

@@ -13,14 +13,28 @@ CONVENE → BLIND_DIVERGE → DOCKET → CROSS_EXAM (1..2 cycles) → CONVERGE �
 ## Roles
 
 - **Member seats** — the deliberators. Each carries a role card with an INCENTIVE
-  LOCK (`roster/<seat_id>.yaml`) and a provider affinity (Claude / Codex / agy).
+  LOCK (`roster/<seat_id>.yaml`) and a provider affinity (Claude / Codex / agy). A
+  card splits into a persona-free CORE incentive (always active) + an optional
+  **divergence overlay** (v2, design §3) injected ONLY in blind-diverge/ideation and
+  stripped for converge/verify/arbiter; the overlay lint rejects decorative/demographic
+  overlays at validate time.
+- **Steward** (v2, design §5) — a **principal-proxy** member seat
+  (`roster/steward.yaml`, `adversarial_role: false`). It represents the requester's
+  desired outcome, grounded in a durable-or-provisional **`intent.md`** artifact; it
+  pushes on drift and judges "is this what was asked / good enough?" It has skin in the
+  outcome, so it **NEVER decides and NEVER arbitrates**
+  ([`intent-artifact.md`](intent-artifact.md)).
 - **Chair** — the orchestrator. **Non-voting, stateless, receives NO member
   memory, never opines on the merits, never leaks a preferred outcome.** It
   dockets, judges obligation status, decides re-prompts, and handles malformed
   output (1 retry, then `no-show`).
-- **Arbiter** — one seat that synthesizes. Its provider **must differ from every
-  `adversarial_role: true` seat's provider** (resolver-enforced). It runs the
-  shared ATB arbiter policies via `arbiter_mode` (WP-4).
+- **Arbiter** (v2, design §4) — a **fresh, persona-free, deliberation-EXTERNAL
+  cold-context CALL**, NOT a promoted seat: it did not file a position, argue, or
+  ballot, so no seat both ballots and adjudicates. Its provider is **selected by
+  `convene.py`** (never inherited from a seat) and **differs from every deliberation
+  seat's provider** on the clean path (widened from adversarial-only). It runs the
+  shared ATB output-synthesis policies via `arbiter_mode`. Full rules in the ARBITER
+  section below and [`convene-contract.md`](convene-contract.md).
 
 ## CONVENE
 
@@ -46,6 +60,17 @@ The chair reads all blind positions and files **≤6 issues** — the material
 disagreements and unsupported claims. Each issue is a `challenger → named
 respondent` pair and **seeds the obligation ledger**. The docket issues ARE the
 initial obligations.
+
+**`evidence_run` request path (v2, design §6).** During DOCKET (and CROSS_EXAM), any
+seat may **REQUEST** execution of an EXISTING test suite / benchmark / read-only probe
+instead of speculating (the skeptic says "run the suite against the proposal's branch").
+`convene.py` phase-gates the request (`EVIDENCE_REQUEST_PHASES = {DOCKET, CROSS_EXAM}`)
+and delegates to the sandboxed `scripts/evidence_run.py` runner. Results enter the docket
+as **fenced, UNTRUSTED-class DATA** in seat prompts (like peer records / member memory) —
+they carry NO executable authority. `evidence_run` is **read-only, time-boxed, and
+NEVER writes / NEVER spawns bob** (the NON-MUTATING HARD-RULE holds verbatim; a run is
+admitted only with OS-sandbox prevention OR git-clean detection). A seat supplies only a
+`probe_id` from a TRUSTED registry — a raw command in the request is refused.
 
 ## CROSS_EXAM (1..2 cycles; budgeted by `max_cycles`)
 
@@ -76,10 +101,38 @@ chair**, not self-declared by seats (self-declaration is gameable).
   `unresolved_concerns[]` + `compromises_made[]`. Empty concerns are allowed
   ONLY with an explicit "genuine unanimity" declaration.
 
+**Steward intent-alignment assessment (v2, design §5).** In profiles that resolve a
+steward, the steward emits — alongside its ballot/position — an **intent-alignment
+assessment**: for each `intent.md` item, a status of `pass | fail | unknown`. A `fail`
+(drift from the stated outcome) becomes an actionable **trip-wire** on the decision; an
+`unknown` (no finding for that item) becomes a **confirm** flag (escalate, never invent).
+On a provisional intent (no `intent.md`), the steward carries the "operating on inferred
+intent — confirm" flag. The external arbiter weighs the steward's push like any seat; the
+assessment reaches the human as trip-wires / confirm-flags.
+
 ## ARBITER
 
-One seat, provider ≠ any adversarial seat's provider. Runs the shared ATB
-policies via `arbiter_mode` (WP-4):
+A **fresh, persona-free, deliberation-EXTERNAL cold-context CALL** (v2, design §4) —
+NOT a promoted seat. It did not file a position, argue, or ballot, so **no seat both
+ballots and adjudicates** (the participant-judge violation is gone). Its provider is
+**selected by `convene.py`, never inherited from a seat**:
+
+- **CLEAN path** — a provider used by **no** deliberation seat: genuinely external,
+  authorship linkage total-excluded, **no residual**.
+- **FALLBACK path** — all providers deliberated (`coding-ratification` pins all three
+  families, so it **always** lands here): the strongest-adjudication-prior
+  **non-adversarial** provider, cold-context. Authorship is anonymized, but
+  style-recognition self-preference is an **ACCEPTED, DOCUMENTED residual**, flagged
+  `fallback_arbiter_residual: true` in `run-record.json` (§6a).
+- **ALL-ADVERSARIAL** — every provider deliberated **and** every one is adversarial:
+  no non-adversarial arbiter exists → **fail CLOSED** (`ConveneError`). The only
+  unsatisfiable arbiter case; it never hangs.
+
+`can_arbitrate` on the seats is **inert** under v2. The adjudication prior comes from the
+editable `capability-priors.yaml` DATA (fail-open to built-ins). The arbiter runs the
+shared ATB output-synthesis policies via `arbiter_mode`:
+- **Synthesizes over ALL positions** — a position is never dropped from the synthesis
+  set; the docket it sees is **authorship-anonymized**.
 - **Survivor selection keyed on open/stalemate obligations** — the arbiter does
   not re-litigate settled points.
 - **No invention** of novel proposals not raised by a seat.
@@ -119,9 +172,10 @@ footer line, and the served-by log. Print the session directory.
 
 - **(a) Convene-time structural sub-quorum** — the resolved profile yields
   **<3 member seats**, OR **<2 provider families** with no declared fallback,
-  **OR no provider family satisfies the arbiter constraint** (every family is
-  consumed by `adversarial_role: true` seats — same error class, explicit
-  message). → `convene.py` **fail-closed validate error. No run, no spend.**
+  **OR the external arbiter is unsatisfiable** (v2: every provider deliberated
+  **and** every one is `adversarial_role: true`, so no non-adversarial external
+  arbiter exists — the all-adversarial case). → `convene.py` **fail-closed validate
+  error. No run, no spend.**
 - **(b) Runtime collapse** — seat no-show / failover during the session drops the
   live roster below the quorum floor. → the run **CONTINUES if ≥2 member seats
   remain**; the result carries `status: LOW_QUORUM`, confidence is capped `low`,

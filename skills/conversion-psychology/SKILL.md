@@ -7,7 +7,7 @@ description: Use when writing copy, designing CTAs, framing prices, adding trust
 
 ## Overview
 
-People buy on emotion and justify with logic. This skill covers **WHY** people buy — the psychological principles, cognitive biases, and emotional triggers that turn browsers into buyers. It does NOT cover what to build (see `ecommerce-growth`) or how AI finds you (see `ai-search-optimizer`).
+People buy on emotion and justify with logic. This skill covers **WHY** people buy — the psychological principles, cognitive biases, and emotional triggers that turn browsers into buyers. It does NOT cover what to build (see `ecommerce-growth`), how AI finds you (see `ai-search-optimizer`), or how to validate a tactic with a controlled experiment (see `ecommerce-cro-experimentation`).
 
 ## Cognitive Load Budget
 

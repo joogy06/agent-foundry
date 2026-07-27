@@ -48,6 +48,20 @@ REASON_CODES = frozenset({
     "sidecar_telemetry",
     "agent_text",
     "existing_component_extension",
+    # S069 (2026-07-25): the eight members above all describe an EXEMPT or
+    # EXTENSION cycle. There was no member meaning "this design introduces
+    # genuinely new components", yet validate_artifact() requires a member
+    # unconditionally — including on the introduces_components: "yes" branch.
+    # Every yes-branch cycle was therefore structurally unable to pass the
+    # G_CLASSIFY --verify-diff completion checkpoint (exit 3 ESCALATE), while
+    # pre-flight passed green, so it only bit at the very end of a cycle.
+    #
+    # NOTE the deliberate asymmetry: gates.py extends the scope-check whitelist
+    # (`ext_globs`) ONLY for `existing_component_extension`. `new_component`
+    # must NOT be added there — a yes-branch cycle is exactly where the scope
+    # check needs to stay fully armed, so the gate keeps checking every planned
+    # glob. Adding it to that branch would silently disarm the gate.
+    "new_component",
 })
 
 VALID_CLASSIFIED_BY = frozenset({
@@ -63,6 +77,14 @@ def _default_reason_code(verdict: str, file_profile: List[str]) -> str:
     really should be going through forge Step 8a (this helper still emits an
     artifact so the gate can BLOCK/ESCALATE rather than silently skip)."""
     profiles = file_profile or []
+    # S069: a `yes` verdict is NEW COMPONENTS by definition, so it must not fall
+    # through the exempt-category heuristics below. Before this guard, a design
+    # introducing four new components could be labelled `self_contained_meta_helper`
+    # purely because it touched a _meta .py file — observed live on this cycle.
+    # The exempt categories describe why a cycle needs no contract map; none of
+    # them can be true when the scan says components are being introduced.
+    if verdict == "yes":
+        return "new_component"
     has_meta_py = any(classify._path_is_exempt(p) and "/_meta/" in ("/" + p)
                       and p.endswith(".py") for p in profiles)
     has_skill_md = any(p.endswith("SKILL.md") for p in profiles)

@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-MARKER="# managed-by: skill_factory/scripts/install-pre-push-hook.sh"
+MARKER="# managed-by: foundry-lab/scripts/install-pre-push-hook.sh"
 
 ACTION=install
 TARGET=""
@@ -69,18 +69,52 @@ if [[ ! -x "$SCANNER" ]]; then
     chmod +x "$SCANNER" 2>/dev/null || true
 fi
 
+# Identity gate chained AHEAD of the secrets scan (avengers P2). Same dir as
+# this installer; the generated hook runs it first (fail-closed on repo<->live
+# drift), then the secrets scan.
+IDENTITY_GATE="$SCRIPT_DIR/identity_gate.py"
+
 if [[ $USE_PYTHON -eq 1 ]]; then
     cat > "$HOOK" <<EOF
 #!/usr/bin/env bash
 $MARKER
-# Runs secrets-scan.py before every git push (cross-platform Python).
+# Pre-push chain: identity gate (fail-closed on drift) -> secrets-scan.py.
 # Override with: git push --no-verify
 
 set -e
 
+IDENTITY_GATE="$IDENTITY_GATE"
 SCANNER="$SCANNER"
 REPO_ROOT="\$(git rev-parse --show-toplevel)"
 
+# --- 1. Identity gate: repo<->live _meta drift (fail CLOSED). Missing gate /
+#        no python / environmental -> WARN and continue (never wedge a push). ---
+if [ -f "\$IDENTITY_GATE" ]; then
+    _IDPY=""
+    for _p in python3 python py; do
+        if command -v "\$_p" >/dev/null 2>&1; then _IDPY="\$_p"; break; fi
+    done
+    if [ -z "\$_IDPY" ]; then
+        echo "[pre-push] WARN: no python for identity gate — skipping identity check" >&2
+    else
+        if [ "\$_IDPY" = "py" ]; then _IDPY="py -3"; fi
+        if \$_IDPY "\$IDENTITY_GATE" --repo-root "\$REPO_ROOT"; then
+            :
+        else
+            _IDRC=\$?
+            if [ "\$_IDRC" -eq 1 ]; then
+                echo "[pre-push] BLOCKED by identity gate: repo<->live drift in a safety-critical _meta file." >&2
+                echo "[pre-push] Reconcile or acknowledge the drift; bypass one push with: git push --no-verify" >&2
+                exit 1
+            fi
+            echo "[pre-push] WARN: identity gate could not verify (exit \$_IDRC) — continuing to secrets scan" >&2
+        fi
+    fi
+else
+    echo "[pre-push] WARN: identity gate not found at \$IDENTITY_GATE — skipping identity check" >&2
+fi
+
+# --- 2. Secrets scan (cross-platform Python). ---
 if [[ ! -f "\$SCANNER" ]]; then
     echo "[pre-push] WARN: scanner not found at \$SCANNER — letting push through" >&2
     exit 0
@@ -103,14 +137,43 @@ else
     cat > "$HOOK" <<EOF
 #!/usr/bin/env bash
 $MARKER
-# Runs secrets-scan.sh before every git push.
+# Pre-push chain: identity gate (fail-closed on drift) -> secrets-scan.sh.
 # Override with: git push --no-verify
 
 set -e
 
+IDENTITY_GATE="$IDENTITY_GATE"
 SCANNER="$SCANNER"
 REPO_ROOT="\$(git rev-parse --show-toplevel)"
 
+# --- 1. Identity gate: repo<->live _meta drift (fail CLOSED). Missing gate /
+#        no python / environmental -> WARN and continue (never wedge a push). ---
+if [ -f "\$IDENTITY_GATE" ]; then
+    _IDPY=""
+    for _p in python3 python py; do
+        if command -v "\$_p" >/dev/null 2>&1; then _IDPY="\$_p"; break; fi
+    done
+    if [ -z "\$_IDPY" ]; then
+        echo "[pre-push] WARN: no python for identity gate — skipping identity check" >&2
+    else
+        if [ "\$_IDPY" = "py" ]; then _IDPY="py -3"; fi
+        if \$_IDPY "\$IDENTITY_GATE" --repo-root "\$REPO_ROOT"; then
+            :
+        else
+            _IDRC=\$?
+            if [ "\$_IDRC" -eq 1 ]; then
+                echo "[pre-push] BLOCKED by identity gate: repo<->live drift in a safety-critical _meta file." >&2
+                echo "[pre-push] Reconcile or acknowledge the drift; bypass one push with: git push --no-verify" >&2
+                exit 1
+            fi
+            echo "[pre-push] WARN: identity gate could not verify (exit \$_IDRC) — continuing to secrets scan" >&2
+        fi
+    fi
+else
+    echo "[pre-push] WARN: identity gate not found at \$IDENTITY_GATE — skipping identity check" >&2
+fi
+
+# --- 2. Secrets scan. ---
 if [[ ! -x "\$SCANNER" ]]; then
     echo "[pre-push] WARN: scanner not found at \$SCANNER — letting push through" >&2
     exit 0

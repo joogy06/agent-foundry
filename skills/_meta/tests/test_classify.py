@@ -611,3 +611,68 @@ def test_live_doc_calibration(fname, expect):
         f"confirmed={res['decision_trace']['confirmed_positive_signals']}) "
         f"expected {expect}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 11. S069 — the `yes` branch must have a truthful, non-disarming reason_code.
+#
+# Regression guard for a pre-existing S042/#115 defect found on 2026-07-25:
+# REASON_CODES held only exempt/extension members, but validate_artifact()
+# requires a member unconditionally. Every introduces_components="yes" cycle
+# therefore failed `G_CLASSIFY --verify-diff` with exit 3 ESCALATE at the
+# COMPLETION checkpoint, while pre-flight passed green -- so it only bit at the
+# very end of a cycle, after all the work was done.
+# ---------------------------------------------------------------------------
+
+
+def test_new_component_is_in_the_closed_enum():
+    """A `yes` verdict needs a truthful member; without one, validate_artifact
+    rejects every yes-branch artifact."""
+    assert "new_component" in classify_emit.REASON_CODES
+
+
+def test_yes_verdict_defaults_to_new_component_not_an_exempt_category():
+    """A `yes` verdict must NOT fall through the exempt-category heuristics.
+
+    Observed live: a design introducing four new components was labelled
+    `self_contained_meta_helper` purely because the file profile contained a
+    _meta .py file. The exempt categories explain why a cycle needs NO contract
+    map, so none can be true when the scan says components are introduced.
+    """
+    meta_profile = ["skills/_meta/some_helper.py"]
+    assert classify_emit._default_reason_code("yes", meta_profile) == "new_component"
+    # Same profile on a `no` verdict still resolves to the exempt category.
+    assert classify_emit._default_reason_code("no", meta_profile) != "new_component"
+
+
+def test_yes_branch_artifact_passes_validation():
+    """End-to-end: a yes-branch artifact with reason_code=new_component must
+    validate cleanly -- this is what unblocks the --verify-diff checkpoint."""
+    artifact = {
+        "schema": classify_emit.ARTIFACT_SCHEMA,
+        "introduces_components": "yes",
+        "reason_code": "new_component",
+        "design_doc": "docs/plans/example-design.md",
+        "planned_globs": ["install.py"],
+        "evidence": {"confirmed_positives": [], "negatives": [], "prose_only": []},
+        "classified_by": "forge_design",
+    }
+    problems = classify_emit.validate_artifact(artifact)
+    assert problems == [], f"yes-branch artifact should validate, got: {problems}"
+
+
+def test_new_component_does_not_disarm_the_scope_check():
+    """HARD invariant: gates.py extends the scope-check whitelist (`ext_globs`)
+    ONLY for `existing_component_extension`. `new_component` must never be added
+    to that branch -- a yes-branch cycle is exactly where the scope check must
+    stay fully armed. Asserting the extension code to dodge validation would
+    silently disable the gate on the very paths being changed.
+    """
+    gates_src = (Path(__file__).resolve().parents[1] / "gates.py").read_text(encoding="utf-8")
+    # The whitelist-extension branch must not mention new_component anywhere.
+    for line in gates_src.splitlines():
+        if "ext_globs" in line and "new_component" in line:
+            raise AssertionError(
+                "new_component must not extend ext_globs -- that disarms the "
+                f"scope check on a yes-branch cycle. Offending line: {line!r}"
+            )

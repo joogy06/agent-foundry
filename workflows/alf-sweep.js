@@ -14,15 +14,17 @@
 // alf-finding-batch.v1 (ZERO .alf/ writes); the verify arm is a cold-context
 // cite-check; synthesize is a PURE JS reduce (NOT an LLM stage).
 //
-// SCHEMA-TWIN: alf-finding-batch.v1 sha256:0c3129d1242a6493
-// SCHEMA-TWIN: alf-verify.v1 sha256:1675f00e2fc94159
-// SCHEMA-TWIN: alf-sweep-summary.v1 sha256:25222ffd8a2806c7
+// SCHEMA-TWIN: alf-finding-batch.v1 sha256:537417fff5d07b43
+// SCHEMA-TWIN: alf-verify.v1 sha256:5c0cb09c32fde8f0
+// SCHEMA-TWIN: alf-sweep-summary.v1 sha256:b63c817dffd0fdc7
 
 export const meta = {
   name: "alf-sweep",
   version: "1.0.0",
   description:
-    "owner:alf — one parameterized read-only sweep (version/freshness/flow-pulse/full/flow-review); finders emit batches, ZERO .alf/ writes; synthesize is a pure JS reduce; the main loop is the single .alf/ writer.",
+    "owner:alf — one parameterized read-only sweep (version/freshness/" +
+    "flow-pulse/full/flow-review); finders emit batches, ZERO .alf/ writes; " +
+    "synthesize is a pure JS reduce; the main loop is the single .alf/ writer.",
 };
 
 const FINDING_BATCH_SCHEMA = {
@@ -59,27 +61,18 @@ function normTitle(t) {
   return (t || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 }
 
-// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
-// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
-// original `export default` wrapper, which the runtime REJECTS at load
-// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
-// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
-
-{
-  // Harness compatibility: `args` may arrive as a JSON string — normalize before
-  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
-  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
+export default async function alfSweep({ args, agent, pipeline, parallel, budget }) {
   // The launcher resolved tier->scope and wrote targets + feed excerpts + feed
   // sha256 hashes into the args file (via _meta/sweep_scope.py). The workflow
   // consumes them; it NEVER refreshes feeds or resolves scope itself.
-  const tier = ARGS.tier;
-  const targets = ARGS.targets || [];
-  const finderModel = ARGS.finder_model || "sonnet";
-  const verifyArm = ARGS.verify_arm || "external-only";
+  const tier = args.tier;
+  const targets = args.targets || [];
+  const finderModel = args.finder_model || "sonnet";
+  const verifyArm = args.verify_arm || "external-only";
 
   // ── plan (pure JS validate) ──
   if (targets.length === 0) {
-    return { sweep_id: ARGS.sweep_id, tier, findings: [], skipped: ["no targets in scope"] };
+    return { sweep_id: args.sweep_id, tier, findings: [], skipped: ["no targets in scope"] };
   }
 
   // ── find+verify (pipeline: finder -> verifier for critical/external) ──
@@ -92,8 +85,8 @@ function normTitle(t) {
     }
     return agent(
       `ALF_FORMAT: 5\ntier: ${tier}\ntarget: ${JSON.stringify(target)}\n` +
-        `feed_excerpts: ${JSON.stringify(ARGS.feed_excerpts ? ARGS.feed_excerpts[target.path] || {} : {})}\n` +
-        `feed_sha256: ${JSON.stringify(ARGS.feed_sha256 ? ARGS.feed_sha256[target.path] || {} : {})}\n` +
+        `feed_excerpts: ${JSON.stringify(args.feed_excerpts ? args.feed_excerpts[target.path] || {} : {})}\n` +
+        `feed_sha256: ${JSON.stringify(args.feed_sha256 ? args.feed_sha256[target.path] || {} : {})}\n` +
         "Apply the 7 lenses. Output is alf-finding-batch.v1 ONLY. Write NOTHING " +
         "under .alf/. Out-of-scope HIGH findings => handoff_requests[] data. " +
         "Cite feed_record or local evidence per finding (HR6). Budget honesty: " +
@@ -105,12 +98,7 @@ function normTitle(t) {
   async function verifier(batch) {
     // Cold-context cite-check for critical / external-evidence findings,
     // mechanizing the Stage-1.5 firewall. The arm is tier-controlled.
-    // CONTRACT: pipeline() makes THIS stage's return the item's final value,
-    // so it must return {output, verifications} — the shape synthesize reads.
-    // (Previously returned a bare verdict array: synthesize found no
-    // .findings on it and silently dropped every batch.)
-    if (!batch) return null;
-    if (verifyArm === "on-breach") return { output: batch, verifications: [] };
+    if (verifyArm === "on-breach") return [];
     const toVerify = (batch.findings || []).filter((f) =>
       f.severity === "CRITICAL" ||
       (f.evidence && f.evidence.feed_record) ||
@@ -119,22 +107,15 @@ function normTitle(t) {
     // S059 smart-config (NORMATIVE §7): the verify arm gains an optional model. The
     // launcher resolves verifier_model caller-side (alf_sweep_launcher.sh) and writes
     // it into args; undefined => model is undefined => inherit (byte-identical to today).
-    const stages = toVerify.map((f) => {
-      // Script-computed join key, passed in and echoed back verbatim — the
-      // verifier cannot reconstruct the normalized ref on its own (the old
-      // agent-invented finding_ref never matched, so every finding degraded
-      // to UNVERIFIED).
-      const ref = `${batch.target.path}|${batch.lens}|${normTitle(f.title)}`;
-      return agent(
+    const stages = toVerify.map((f) =>
+      agent(
         "Cold-context cite-check: confirm this finding's cited evidence is real. " +
-          `finding_ref=${JSON.stringify(ref)} — echo this EXACT string back as finding_ref. ` +
           `finding=${JSON.stringify({ target: batch.target.path, lens: batch.lens, title: f.title })} ` +
           `evidence=${JSON.stringify(f.evidence)}`,
-        { agentType: "alf", schema: VERIFY_SCHEMA, model: ARGS.verifier_model },
-      );
-    });
-    const verifications = await parallel(stages);
-    return { output: batch, verifications };
+        { agentType: "alf", schema: VERIFY_SCHEMA, model: args.verifier_model },
+      ),
+    );
+    return parallel(stages);
   }
 
   const batches = await pipeline(targets, finder, verifier);
@@ -144,12 +125,11 @@ function normTitle(t) {
   const flat = [];
   const skipped = [];
   for (const entry of batches) {
-    if (!entry) continue; // dropped item (finder null / stage threw)
     const batch = entry.output || entry; // pipeline shape: {output, verifications}
     const verifications = entry.verifications || [];
     const verdictByRef = {};
     for (const v of verifications) {
-      if (v && v.finding_ref) verdictByRef[v.finding_ref] = v.verdict;
+      if (v) verdictByRef[v.finding_ref] = v.verdict;
     }
     for (const s of batch.skipped || []) skipped.push(s);
     for (const f of batch.findings || []) {
@@ -187,10 +167,10 @@ function normTitle(t) {
   );
 
   return {
-    sweep_id: ARGS.sweep_id,
+    sweep_id: args.sweep_id,
     tier,
-    trigger_event: ARGS.trigger_event || null,
-    detection_feeds: ARGS.detection_feeds || [],
+    trigger_event: args.trigger_event || null,
+    detection_feeds: args.detection_feeds || [],
     findings,
     skipped,
     tokens_spent: null,
@@ -201,7 +181,7 @@ function normTitle(t) {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

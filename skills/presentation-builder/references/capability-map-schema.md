@@ -98,7 +98,7 @@ EOF
 3. **Raw HTML** (always available — single file, inline CSS)
 
 ### Diagrams
-1. **nano-banana / Gemini** (AI-generated, best for creative/illustrative visuals)
+1. **vertex-banana** (AI-generated, best for creative/illustrative visuals)
 2. **Mermaid CLI** (deterministic, best for flowcharts/sequence/ER/Gantt)
 3. **Graphviz / dot** (deterministic, best for architecture/network topology)
 4. **PlantUML** (deterministic, best for UML-specific diagrams)

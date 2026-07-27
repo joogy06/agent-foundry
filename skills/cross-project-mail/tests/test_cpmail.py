@@ -40,7 +40,7 @@ def _valid_env(cpmail):
         "schema_version": "1",
         "msg_id": cpmail.ulid(),
         "sent_at": "2026-05-17T12:00:00Z",
-        "sender": {"project": "foundry-lab", "agent": "claude_code", "host": "dev04"},
+        "sender": {"project": "foundry-lab", "agent": "claude_code", "host": "workstation"},
         "recipient": {"project": "vs-code-foundry", "agent": None},
         "subject": "hello",
         "source_type": "human",

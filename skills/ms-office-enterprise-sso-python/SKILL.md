@@ -291,7 +291,7 @@ What the broker gets you that the browser doesn't:
 
 Conditional Access policies evaluate these claims. A token without them is treated as a token from an unmanaged device — for sensitive resources, that's a block.
 
-Common CA error codes (Gemini-fact-checked):
+Common CA error codes :
 
 | Code | Meaning |
 |---|---|

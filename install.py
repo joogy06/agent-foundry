@@ -6,12 +6,16 @@ Scans the host, shows a findings report, and ADAPTS the install — placing
 skills + agents + commands from a cloned agent-foundry repo into the config
 tree(s) of whichever AI CLIs you actually have installed:
 
-    - Claude Code CLI    (~/.claude/{skills,agents,commands}/)
+    - Claude Code CLI    (~/.claude/{skills,agents,commands}/ AND the two files
+                          that ACTIVATE the ecosystem: ~/.claude/CLAUDE.md +
+                          ~/.claude/settings.json with the 6 SessionStart hooks —
+                          create-if-absent / inject-missing-hooks by default,
+                          --force-global-config to replace)
     - GitHub Copilot CLI (~/.claude/skills/ is auto-discovered by Copilot CLI
                           and VS Code 1.123+; plus ~/.copilot/ instructions and
                           an optional ~/.copilot/skills/ mirror)
     - Antigravity CLI    (`agy` — host directive at ~/.gemini/agy.md)
-    - Gemini CLI         (LEGACY — ~/.gemini/skills/ via `gemini skills link`;
+    - Gemini CLI         (RETIRED from this ecosystem 2026-07-25 — agy replaced it;
                           the gemini CLI retires 2026-06-18, agy is primary)
 
 The scan uses OR'd detection (PATH lookup OR known install locations OR config
@@ -37,7 +41,11 @@ Usage
 from __future__ import annotations
 
 import argparse
+import collections
+import copy
 import datetime
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -47,19 +55,28 @@ import time
 import traceback
 from pathlib import Path
 
+# Installer version (§11 A7). Read by the provenance manifest's
+# `installer_version` field, so a manifest can always be traced back to the
+# code that wrote it. Bump on any change to what the installer PLACES or to the
+# manifest schema; `source_rev` (the git sha) carries the finer-grained
+# provenance between bumps.
+__version__ = "1.0.0"
+
 # REPO_ROOT auto-detection:
-# - Bundled mode (public agent-foundry): install.py lives next to skills/agents/commands.
-# - Dev mode (foundry-lab/installer/): those siblings live in the parent directory.
+# - Root layout (this repo + public agent-foundry): install.py lives at the repo
+#   root, next to skills/agents/commands.
+# - Legacy dev layout (script in an installer/ subdir): those siblings live in
+#   the parent. Kept as a harmless fallback so an older checkout still works.
 _HERE = Path(__file__).resolve().parent
 if any((_HERE / d).exists() for d in ("skills", "agents", "commands")):
-    REPO_ROOT = _HERE                  # bundled mode
+    REPO_ROOT = _HERE                  # root layout (install.py at repo root)
 elif any((_HERE.parent / d).exists() for d in ("skills", "agents", "commands")):
-    REPO_ROOT = _HERE.parent           # dev mode (script lives in installer/)
+    REPO_ROOT = _HERE.parent           # legacy: script in an installer/ subdir
 else:
     REPO_ROOT = _HERE                  # fall back; the "nothing found" check below will warn cleanly
 
-# Bundled templates (agy.md host directive, etc.) live next to this script in
-# BOTH layouts (installer/templates/ in dev, <root>/templates/ when bundled).
+# Bundled templates (agy.md host directive, etc.) live in templates/ next to this
+# script at the repo root.
 _TEMPLATES_DIR = _HERE / "templates"
 
 TARGETS_HELP = """\
@@ -69,7 +86,7 @@ Targets:
                                note: ~/.claude/skills/ is already auto-discovered by Copilot CLI
                                and VS Code 1.123+ — no bridge needed)
   y = Antigravity CLI (agy)   (host directive at ~/.gemini/agy.md — primary delegate)
-  g = Gemini CLI              (LEGACY — ~/.gemini/skills/ via `gemini skills link`; retires 2026-06-18)
+  g = Gemini CLI              (RETIRED 2026-07-25 — agy replaced it; target kept only because ~/.gemini/skills/ may still be read)
   a = All of the above
   auto = install into every CLI the scan actually detected
 """
@@ -92,15 +109,38 @@ PROBE_TIMEOUT_SECONDS = 5
 # A persistent debug log so a misbehaving run on a varied machine leaves a
 # debuggable artifact. The RunLogger TEES sys.stdout + sys.stderr (it does NOT
 # replace them), so every existing print() reaches the user UNCHANGED and is
-# also mirrored to installer/logs/install-<UTC-ts>.log.
+# also mirrored to logs/install-<UTC-ts>.log (next to this script).
 #
 # HARD: logging MUST NEVER break the install. Log-dir/file creation is wrapped
 # in try/except; an unwritable logs/ falls back to the OS temp dir with a
 # one-line warning, never aborting. NO secrets: only the already-printed scan
 # and step output are captured — os.environ is NEVER dumped.
 
-# Where installer/logs/ lives (next to the scripts, both layouts).
+# Where logs/ lives (next to this script, at the repo root).
 DEFAULT_LOG_DIR = _HERE / "logs"
+
+
+def _force_utf8_streams() -> None:
+    """Make stdout/stderr tolerate the Unicode glyphs the installer prints
+    (→, ⚠, ✓, 📝, …) on hosts whose console defaults to a non-UTF-8 codec.
+
+    On Windows the console (and a piped/redirected stream) commonly resolves to
+    cp1252/cp437, which cannot encode those characters — an unguarded print()
+    then raises UnicodeEncodeError and aborts the whole install (a real crash on
+    Windows 11, Python 3.14). We reconfigure both streams to UTF-8 with
+    errors='replace', so worst case a glyph degrades to '?' instead of killing
+    the run. Called ONCE at the top of main(), before RunLogger captures the
+    stream references (reconfigure mutates the TextIOWrapper in place, so the
+    captured references stay valid). NEVER raises."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue  # already-wrapped / non-TextIOWrapper stream — leave it
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass  # never let stream setup break the install
 
 
 def _utc_stamp() -> str:
@@ -138,7 +178,15 @@ class _TeeStream:
 
     def write(self, data):
         # The real stream first — the user's experience is sacred.
-        n = self._real.write(data)
+        try:
+            n = self._real.write(data)
+        except UnicodeEncodeError:
+            # A console whose codec can't encode a glyph (cp1252/cp437 on
+            # Windows) must degrade, never crash — _force_utf8_streams() is the
+            # primary guard; this is the fallback if the stream refused it.
+            enc = getattr(self._real, "encoding", None) or "ascii"
+            safe = data.encode(enc, "replace").decode(enc, "replace")
+            n = self._real.write(safe)
         try:
             if self._logfile is not None:
                 self._logfile.write(data)
@@ -324,7 +372,7 @@ def add_log_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-log", action="store_true",
                         help="disable the run-log file (logging is on by default)")
     parser.add_argument("--log", default=None, metavar="PATH",
-                        help="write the run-log to PATH (default: installer/logs/install-<UTC-ts>.log)")
+                        help="write the run-log to PATH (default: logs/install-<UTC-ts>.log)")
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +688,7 @@ def scan_environment() -> dict:
         ("agy",    ["--version"], "Antigravity CLI delegate (host directive ~/.gemini/agy.md)", False),
         ("copilot", ["--version"], "Copilot CLI — auto-discovers ~/.claude/skills/; + ~/.copilot/", False),
         ("code",   ["--version"], "VS Code — auto-discovers ~/.claude/skills/ (1.123+)", False),
-        ("gemini", ["--version"], "Gemini CLI (LEGACY; retires 2026-06-18)", True),
+        ("gemini", ["--version"], "Gemini CLI (RETIRED 2026-07-25 — agy replaced it)", True),
         ("python3", ["--version"], "runs install.py / bootstrap-environment.py", False),
         ("gh",     ["--version"], "GitHub CLI (publish, auth)", False),
         ("docker", ["--version"], "containerized tooling", False),
@@ -693,6 +741,95 @@ def _os_release() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Install mode — user-facing vocabulary vs. internal split (§6.C2, §11 A10)
+# ---------------------------------------------------------------------------
+#
+# The CLI surface is `--mode {link, move, mc}` and STAYS that way. `move` is NOT
+# renamed to `copy` (§11 A10): it is the documented flag users already have in
+# scripts and muscle memory, and renaming it would break them for a purely
+# internal tidiness win.
+#
+# Internally the two orthogonal decisions are split apart, because conflating
+# them is what let cleanup leak:
+#
+#     placement_mode ∈ {link, copy}   — HOW files are placed
+#     clean_claude   : bool           — WHETHER provenance-owned orphans are pruned
+#
+# `--mode` is threaded into install_gemini() and mirror_copilot_skills() as well
+# as install_claude(). Before the split, an `mc` value would have arrived at
+# ~/.gemini and ~/.copilot carrying its cleanup meaning with it. Now only
+# placement_mode travels; clean_claude never leaves the Claude target.
+
+CLI_MODES = ("link", "move", "mc")
+
+
+def resolve_mode(cli_mode: str) -> "tuple[str, bool]":
+    """PURE. Map the user-facing --mode onto (placement_mode, clean_claude).
+
+        link → ('link', False)      symlinks, no cleanup
+        move → ('copy', False)      copies, no cleanup
+        mc   → ('copy', True)       copies, AND prunes provenance-owned orphans
+
+    clean_claude is meaningful for the CLAUDE TARGET ONLY. Callers hand
+    placement_mode — never the raw cli_mode — to any non-Claude installer, which
+    is what keeps `mc` from meaning anything at all under ~/.gemini or
+    ~/.copilot (see normalize_mode_for_other_targets)."""
+    if cli_mode == "link":
+        return "link", False
+    if cli_mode == "move":
+        return "copy", False
+    if cli_mode == "mc":
+        return "copy", True
+    raise ValueError(f"unknown mode {cli_mode!r}; expected one of {CLI_MODES}")
+
+
+def normalize_mode_for_other_targets(cli_mode: str, targets: "list[str]") -> "list[str]":
+    """Return the human-readable normalization notes for non-Claude targets.
+
+    `mc` is Claude-only. Every other target silently degrades to plain `copy`
+    placement — and 'silently' is the part worth fixing: a user who asked for
+    "copy and clean" and got a copy-and-clean of ~/.claude plus an unannounced
+    copy-only of ~/.gemini has been told nothing about the difference. So the
+    normalization is PRINTED rather than merely applied.
+
+    Pure: returns the lines, does not print them."""
+    others = [t for t in targets if t != "claude"]
+    if cli_mode != "mc" or not others:
+        return []
+    return [
+        f"note: --mode mc is Claude-only. {', '.join(others)} will use `copy` "
+        f"placement with NO cleanup.",
+        "      Cleanup requires the provenance manifest, which only the Claude "
+        "target maintains.",
+    ]
+
+
+def reject_incompatible_flags(cli_mode: "str | None", skip_existing: bool) -> "str | None":
+    """Return an error message if the flag combination is incoherent, else None.
+
+    `--mode mc --skip-existing` is REJECTED. The two make contradictory
+    promises: `--skip-existing` leaves existing destinations untouched, so the
+    run cannot say what it placed at those paths, so the manifest cannot record
+    ownership of them — and `mc`'s entire guarantee is "only ever remove what
+    the installer provably placed". Running both would either prune paths whose
+    ownership was never established, or defer forever and quietly do nothing.
+
+    Rejected rather than degraded, and rejected BEFORE any write: silently
+    dropping one of the two flags would leave the user believing a guarantee
+    they did not get."""
+    if cli_mode == "mc" and skip_existing:
+        return (
+            "--mode mc cannot be combined with --skip-existing.\n"
+            "  mc removes only what the installer provably placed, and --skip-existing\n"
+            "  leaves existing destinations untouched — so ownership of exactly the paths\n"
+            "  in question would be undefined. Choose one:\n"
+            "    --mode mc              copy + clean (replaces existing, archives first)\n"
+            "    --mode move --skip-existing   copy, keep whatever is already there"
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Filesystem ops
 # ---------------------------------------------------------------------------
 
@@ -728,8 +865,13 @@ def _is_symlink_privilege_error(exc: BaseException) -> bool:
     return False
 
 
-def link_or_copy(src: Path, dest: Path, mode: str) -> str:
-    """Place src at dest. Returns 'link' / 'copy' / 'fallback-copy'."""
+def link_or_copy(src: Path, dest: Path, mode: str, copy_ignore=None) -> str:
+    """Place src at dest. Returns 'link' / 'copy' / 'fallback-copy'.
+
+    copy_ignore: an optional shutil.copytree `ignore` callable, applied ONLY when
+    this ends up COPYING a directory (move mode, or a symlink-privilege fallback).
+    Ignored for symlinks and files. Used to drop runtime-state/cache subpaths when
+    copying skills/_meta as a unit."""
     global _SYMLINK_DISABLED_FOR_RUN
     is_dir = src.is_dir()
     if mode == "link" and not _SYMLINK_DISABLED_FOR_RUN:
@@ -752,10 +894,1273 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
                 print(f"    ⚠ symlink failed for {src.name}: {exc}; copying instead")
             # fall through to copy
     if is_dir:
-        shutil.copytree(src, dest)
+        shutil.copytree(src, dest, ignore=copy_ignore)
     else:
         shutil.copy2(src, dest)
     return "fallback-copy" if mode == "link" else "copy"
+
+
+# Runtime-state / cache subpaths inside skills/_meta that are NOT shipped —
+# logs, host inventory, caches — mirroring publish-config.json's `_meta`
+# exclusions. Since §11 A4 made _meta a per-file merge, this set applies in
+# EVERY mode: there is no longer a link-mode path where the whole directory is
+# symlinked and these "ride along harmlessly".
+_META_COPY_EXCLUDE_NAMES = frozenset({
+    "archive", "evals", "cache", "__pycache__", ".pytest_cache",
+    "creation-log.jsonl", "failure-deltas.jsonl", "gap-events.jsonl",
+    "perf-findings.jsonl", "inventory.json",
+})
+
+
+def _meta_copy_ignore(dirpath, names):
+    """shutil.copytree `ignore` fn: drop runtime-state / cache subpaths (logs,
+    host inventory, caches) so only the toolchain ships. Mirrors
+    publish-config.json's `_meta` exclusions (including the
+    `inventory.json.before-*` snapshots).
+
+    Since §11 A4, skills/_meta is placed per-file rather than copytree'd as a
+    unit, so install_claude() no longer routes through this. It is kept as the
+    top-level view of _META_COPY_EXCLUDE_NAMES and for any caller that does
+    copy a directory wholesale; _meta_manifest_excluded() is the per-path form
+    that the placement loop actually uses."""
+    ignored = set()
+    for n in names:
+        if n in _META_COPY_EXCLUDE_NAMES or n.startswith("inventory.json.before-"):
+            ignored.add(n)
+    return ignored
+
+
+# ---------------------------------------------------------------------------
+# Provenance manifest — <claude_home>/.install-manifest.json (§6.C1, §11 A2/A7/A9)
+# ---------------------------------------------------------------------------
+#
+# Records what this installer ACTUALLY placed, so a later cleanup run can PROVE
+# ownership before it removes anything.
+#
+# THE SAFETY INVARIANT, stated once and enforced by compute_prune_candidates():
+#
+#     An entry ABSENT from the manifest is NEVER a prune candidate.
+#
+# Nothing is ever removed merely for being absent from the source tree. That is
+# precisely what makes a hand-authored skill in ~/.claude/skills/ structurally
+# safe: the installer never placed it, so it never enters the manifest, so it
+# can never be proposed for removal — no heuristic, no percentage, no prompt is
+# involved. Percentage floors and max-prune caps (§11 A8) are circuit breakers
+# ONLY; they are never the ownership test.
+#
+# Both halves of the ownership test are required: an entry is a candidate only
+# if it appears in the PREVIOUS successful manifest AND is absent from the set
+# this run shipped.
+
+MANIFEST_FILENAME = ".install-manifest.json"
+MANIFEST_SCHEMA_VERSION = 1
+
+# The four placement categories carried under manifest["entries"].
+# skills/_meta is DELIBERATELY not one of them: §11 A4 requires it to be
+# manifested PER-FILE under manifest["meta_files"], never as a single directory
+# entry, so runtime-generated and foreign content inside it stays representable
+# (and therefore protectable).
+MANIFEST_CATEGORIES = ("skills", "agents", "commands", "workflows")
+
+# The key naming an entry within its category. meta_files records a repo-
+# relative path; everything else records a leaf name under its target dir.
+_MANIFEST_NAME_KEYS = {"meta_files": "path"}
+
+
+def manifest_path(claude_home: Path) -> Path:
+    """Where the provenance manifest lives for a given Claude home."""
+    return Path(claude_home) / MANIFEST_FILENAME
+
+
+def _iso_utc_now() -> str:
+    """ISO-8601 UTC instant, e.g. 2026-07-25T13:04:00Z (manifest timestamps)."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _new_run_id() -> str:
+    """Sortable UTC-microsecond stamp + random suffix, e.g.
+    20260724T210000123456Z-a1b2c3.
+
+    Sortable so runs order naturally; random-suffixed so two runs starting in
+    the same microsecond cannot collide. WP-2 reuses this id to name the
+    archive directory, which is why it is filename-safe on Windows too (no
+    colons)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return now.strftime("%Y%m%dT%H%M%S%fZ") + "-" + os.urandom(3).hex()
+
+
+def _sha256_file(path: Path) -> "str | None":
+    """sha256 hex digest of a regular file, or None if it cannot be hashed.
+
+    Never raises: provenance bookkeeping must not be able to break an install.
+    Read in chunks so a large file does not have to fit in memory."""
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return None
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def manifest_entry(name: str, kind: str, placement: str,
+                   sha256: "str | None" = None) -> dict:
+    """Build one ManifestEntry.
+
+    kind:      'file' or 'dir'
+    placement: whatever link_or_copy() returned — 'link', 'copy' or
+               'fallback-copy'
+    sha256:    see _entry_sha256 / §11 A9 — provenance metadata, NOT the
+               ownership key. Omitted entirely when it would be unstable."""
+    entry = {"name": name, "kind": kind, "placement": placement}
+    if sha256:
+        entry["sha256"] = sha256
+    return entry
+
+
+def _entry_sha256(src: Path, kind: str, placement: str) -> "str | None":
+    """Decide whether an entry gets a sha256, per §11 A9.
+
+    REQUIRED for kind='file'. OPTIONAL for kind='dir' and for any SYMLINKED
+    entry — hashing a symlinked skill hashes the live repo working tree, which
+    changes under you on the next repo edit and is therefore unstable
+    provenance rather than useful provenance. A directory has no single hash.
+
+    Prune ownership keys on `name` + manifest presence alone, so a missing
+    sha256 never weakens the safety invariant."""
+    if kind != "file":
+        return None
+    if placement == "link":
+        return None
+    return _sha256_file(src)
+
+
+def validate_manifest_entry(entry: dict) -> None:
+    """Raise ValueError if `entry` violates the §11 A9 sha256 contract.
+
+    Required for a copied regular file; optional for dirs and symlinked
+    entries. Exposed so the contract is directly assertable in tests rather
+    than only implied by the writer."""
+    if not isinstance(entry, dict):
+        raise ValueError(f"manifest entry must be a dict, got {type(entry).__name__}")
+    kind = entry.get("kind")
+    placement = entry.get("placement")
+    if kind == "file" and placement != "link" and not entry.get("sha256"):
+        raise ValueError(
+            f"sha256 is required for kind='file' entries that were copied "
+            f"(entry={entry.get('name')!r}, placement={placement!r})")
+
+
+def _category_entries(doc: dict, category: str) -> list:
+    """Entries of one category, accepting EITHER inventory shape.
+
+    Two shapes are legitimately in circulation and both are accepted here so no
+    caller has to wrap one in the other just to compare them:
+
+      * a full ManifestDocument — categories live under doc["entries"], with
+        meta_files alongside at the top level;
+      * the raw placed-shape install_claude() fills via placed_out —
+        {"skills": [...], "agents": [...], ..., "meta_files": [...]}.
+
+    Tolerant of a missing or malformed section, and that tolerance is
+    load-bearing: a section we cannot read is treated as carrying NO ownership,
+    which fails SAFE — unreadable provenance makes things LESS prunable, never
+    more."""
+    if category == "meta_files":
+        section = doc.get("meta_files")
+    else:
+        entries = doc.get("entries")
+        if isinstance(entries, dict) and category in entries:
+            section = entries.get(category)
+        else:
+            section = doc.get(category)
+    if not isinstance(section, list):
+        return []
+    return [e for e in section if isinstance(e, dict)]
+
+
+def _entry_key(category: str, entry: dict) -> "str | None":
+    """The identity of an entry within its category, or None if unusable."""
+    key = entry.get(_MANIFEST_NAME_KEYS.get(category, "name"))
+    return key if isinstance(key, str) and key else None
+
+
+def compute_prune_candidates(previous_manifest: "dict | None",
+                             shipped_inventory: "dict | None") -> list:
+    """PURE. Return what this run is ALLOWED to consider for removal.
+
+    BOTH conditions are REQUIRED for an entry to become a candidate:
+
+      1. it appears in the PREVIOUS successful manifest, AND
+      2. it is ABSENT from the set this run shipped.
+
+    SAFETY INVARIANT — an entry absent from the manifest is NEVER a candidate.
+    Condition 1 is what enforces it: the loop only ever iterates the previous
+    manifest, so something the installer did not place is not merely filtered
+    out, it is never considered. A hand-authored skill in ~/.claude/skills/ is
+    therefore structurally safe, not safe-by-policy.
+
+    `previous_manifest` of None (no prior successful run, or a manifest we
+    cannot parse) yields an EMPTY list — that is the first-run bootstrap
+    behavior and also the can't-read-it behavior, deliberately the same: no
+    provable ownership means nothing may be removed.
+
+    `shipped_inventory` of None yields an empty list for the same reason,
+    inverted: if we cannot prove what this run shipped, we cannot prove
+    condition 2 for ANY entry. Note the asymmetry is what keeps this safe — a
+    naive implementation that treated an unreadable inventory as "shipped
+    nothing" would propose pruning the entire manifest.
+
+    sha256 is never consulted here (§11 A9). A changed hash means the content
+    moved on, not that the installer stopped owning the path.
+
+    Pure: no filesystem access, no I/O, no mutation of either argument.
+
+    Returns a deterministically sorted list of
+        {"category": <str>, "name": <str>, "entry": <previous manifest entry>}
+    """
+    if not isinstance(previous_manifest, dict):
+        return []
+    if not isinstance(shipped_inventory, dict):
+        return []
+
+    candidates = []
+    for category in (*MANIFEST_CATEGORIES, "meta_files"):
+        shipped_names = set()
+        for entry in _category_entries(shipped_inventory, category):
+            key = _entry_key(category, entry)
+            if key:
+                shipped_names.add(key)
+        for entry in _category_entries(previous_manifest, category):
+            name = _entry_key(category, entry)
+            if name is None:
+                continue
+            if name in shipped_names:
+                continue  # condition 2 fails — this run still ships it
+            candidates.append({"category": category, "name": name, "entry": entry})
+
+    candidates.sort(key=lambda c: (c["category"], c["name"]))
+    return candidates
+
+
+def build_manifest(placed: dict, *, source_rev: "str | None" = None,
+                   run_id: "str | None" = None, mode: "str | None" = None,
+                   canonical: "dict | None" = None,
+                   updated_at: "str | None" = None) -> dict:
+    """Assemble a ManifestDocument from what a run actually placed.
+
+    `placed` is the structure install_claude() fills via its placed_out
+    parameter: one list per MANIFEST_CATEGORIES plus 'meta_files'.
+
+    `canonical` carries the per-file hash provenance for the two global config
+    files. WP-1 only ships the field; WP-5 populates it. Callers pass the
+    PREVIOUS manifest's canonical block through so a later default run does not
+    silently drop provenance an earlier run recorded."""
+    entries = {c: list(placed.get(c) or []) for c in MANIFEST_CATEGORIES}
+    return {
+        "version": MANIFEST_SCHEMA_VERSION,
+        "updated_at": updated_at or _iso_utc_now(),
+        "installer_version": __version__,
+        "source_rev": source_rev or "unknown",
+        "run_id": run_id or _new_run_id(),
+        "mode": mode,
+        "entries": entries,
+        "meta_files": list(placed.get("meta_files") or []),
+        "canonical": dict(canonical or {}),
+    }
+
+
+def read_manifest(claude_home: Path) -> "dict | None":
+    """Read the previous manifest, or None if there isn't a usable one.
+
+    None is the FIRST-RUN signal, and it is deliberately ALSO the
+    cannot-read-it signal (missing, unreadable, malformed JSON, wrong shape,
+    unknown schema version). Both mean the same thing to a cleanup run: no
+    ownership has been proven, so prune nothing. An installer that guessed here
+    would be guessing about deleting user files.
+
+    A manifest written by a FUTURE schema version is rejected for the same
+    reason — we cannot interpret its ownership claims, so we decline to act on
+    them rather than misread them."""
+    try:
+        raw = manifest_path(claude_home).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    if doc.get("version") != MANIFEST_SCHEMA_VERSION:
+        return None
+    return doc
+
+
+def write_manifest(claude_home: Path, manifest: dict) -> bool:
+    """Persist the manifest ATOMICALLY. Call ONLY after a fully successful run.
+
+    Returns True on success, False on failure, and never raises — a provenance
+    problem must not fail an otherwise-good install.
+
+    A failure leaves any previous manifest BYTE-IDENTICAL. The document is
+    serialized in full BEFORE anything touches the destination, then written to
+    a temp file in the same directory and renamed over the target
+    (_atomic_write_text), so neither a serialization error, nor a full disk,
+    nor a crash mid-write can leave a truncated manifest or destroy the
+    previous one. That matters more than it looks: the previous manifest is the
+    only record of what the installer owns, and losing it would strand every
+    previously-placed entry as unownable."""
+    try:
+        text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    except (TypeError, ValueError) as exc:
+        print(f"    ⚠ could not serialize the install manifest: {exc}")
+        return False
+    try:
+        _atomic_write_text(manifest_path(claude_home), text)
+    except OSError as exc:
+        print(f"    ⚠ could not write the install manifest: {exc}")
+        return False
+    return True
+
+
+def _record_placed(placed: dict, category: str, src: Path, dest: Path,
+                   placement: str) -> None:
+    """Append one ManifestEntry for a just-placed object.
+
+    Never raises — provenance bookkeeping must not be able to break a
+    placement that already succeeded."""
+    try:
+        kind = "dir" if Path(src).is_dir() else "file"
+        placed.setdefault(category, []).append(manifest_entry(
+            name=Path(dest).name,
+            kind=kind,
+            placement=placement,
+            sha256=_entry_sha256(Path(src), kind, placement),
+        ))
+    except OSError:
+        pass
+
+
+def _meta_manifest_excluded(rel_posix: str) -> bool:
+    """True for runtime-state / cache paths inside skills/_meta.
+
+    These are NEVER shipped, so the installer must NEVER claim to own them.
+    Claiming ownership of e.g. _meta/inventory.json would make host-generated
+    state a prune candidate on the next run — the exact opposite of what the
+    manifest exists to prevent. Mirrors _META_COPY_EXCLUDE_NAMES, applied to
+    every path component rather than just the top level."""
+    for part in rel_posix.split("/"):
+        if part in _META_COPY_EXCLUDE_NAMES or part.startswith("inventory.json.before-"):
+            return True
+    return False
+
+
+def _iter_meta_shipped_files(meta_src: Path):
+    """Yield (source_file, relative_posix_path) for every SHIPPED file under
+    skills/_meta — the per-file placement set required by §11 A4.
+
+    "Shipped" is the complement of _meta_manifest_excluded(): the toolchain, not
+    the runtime state. The two must agree, because a file we PLACE but do not
+    MANIFEST is unownable, and a file we MANIFEST but do not PLACE is a phantom
+    prune candidate. One predicate, both jobs."""
+    meta_src = Path(meta_src)
+    try:
+        candidates = sorted(meta_src.rglob("*"))
+    except OSError:
+        return
+    for path in candidates:
+        try:
+            if not path.is_file():
+                continue
+            rel = path.relative_to(meta_src).as_posix()
+        except (OSError, ValueError):
+            continue
+        if _meta_manifest_excluded(rel):
+            continue
+        yield path, rel
+
+
+# NOTE (WP-2): the post-hoc destination walk that used to build the meta_files
+# records lived here and has been REMOVED, not merely bypassed. It walked
+# skills/_meta at the DESTINATION after placement, which — once §11 A4 made
+# _meta a merged real directory rather than a replaced unit — would have swept
+# up foreign and runtime files the installer never placed and recorded them as
+# owned. Ownership is now recorded from what placement actually did, inline in
+# install_claude(). The dead walker is gone so nothing can call it back into
+# service and silently re-acquire that claim.
+
+
+# ---------------------------------------------------------------------------
+# What a run places — ONE enumeration, two consumers (§6.C2 CLI half)
+# ---------------------------------------------------------------------------
+#
+# `--dry-run` has to print the exact copy / overwrite / prune sets WITHOUT
+# mutating anything, which means something has to answer "what would this run
+# place?" without placing it. The obvious implementation — a second walk of the
+# repo inside the dry-run branch — is the one to avoid: two walks drift, and a
+# dry run that drifts from the real run is worse than no dry run at all,
+# because its whole value is that you can trust it before a destructive
+# operation.
+#
+# So the enumeration lives here, once. install_claude() consumes it to PLACE;
+# plan_install() consumes it to REPORT. Neither owns it.
+
+InstallItem = collections.namedtuple("InstallItem", "src dest category meta_rel")
+"""One object a run would place.
+
+category: a MANIFEST_CATEGORIES member, or None for a skills/_meta file
+          (which is manifested per-file under meta_files[] instead — §11 A4).
+meta_rel: the path relative to skills/_meta for _meta files, else None.
+"""
+
+
+def iter_install_items(repo_root: Path, claude_home: Path):
+    """Yield every InstallItem a Claude install would place, IN PLACEMENT ORDER.
+
+    Order is part of the contract, not an accident: install_claude() places in
+    this sequence and the archive journal records it, so a planner that
+    enumerated differently would print a plan whose ordering did not match the
+    run it describes.
+
+    Reads the SOURCE tree only. It does not stat the destination, does not care
+    whether anything already exists there, and never mutates — deciding
+    create-vs-overwrite is plan_install()'s job, and doing it here would make
+    this unusable as install_claude()'s loop."""
+    repo_root = Path(repo_root)
+    claude_home = Path(claude_home)
+    skills_target = claude_home / "skills"
+
+    skills_src = repo_root / "skills"
+    if skills_src.is_dir():
+        for skill in sorted(skills_src.iterdir()):
+            if not skill.is_dir() or not (skill / "SKILL.md").exists():
+                continue
+            yield InstallItem(skill, skills_target / skill.name, "skills", None)
+
+    meta_src = skills_src / "_meta"
+    if meta_src.is_dir():
+        meta_dest = skills_target / "_meta"
+        for meta_file, rel in _iter_meta_shipped_files(meta_src):
+            yield InstallItem(meta_file, meta_dest / Path(rel), None, rel)
+
+    agents_src = repo_root / "agents"
+    if agents_src.is_dir():
+        for agent in sorted(agents_src.glob("*.md")):
+            yield InstallItem(agent, claude_home / "agents" / agent.name, "agents", None)
+
+    commands_src = repo_root / "commands"
+    if commands_src.is_dir():
+        for command in sorted(commands_src.glob("*.md")):
+            yield InstallItem(command, claude_home / "commands" / command.name,
+                              "commands", None)
+
+    workflows_src = repo_root / "workflows"
+    if workflows_src.is_dir():
+        for workflow in sorted(workflows_src.glob("*.js")):
+            yield InstallItem(workflow, claude_home / "workflows" / workflow.name,
+                              "workflows", None)
+
+
+def plan_install(repo_root: Path, claude_home: Path, placement_mode: str,
+                 skip_existing: bool = False) -> dict:
+    """What a run WOULD do. Reads the filesystem; mutates NOTHING.
+
+    Returns:
+        {
+          "create":    [InstallItem, ...],   # destination does not exist yet
+          "overwrite": [InstallItem, ...],   # destination exists and is replaced
+          "skip":      [InstallItem, ...],   # exists and --skip-existing is on
+          "shipped":   {<placed-shape inventory>},
+        }
+
+    `shipped` is deliberately in the placed-shape that install_claude() reports
+    through placed_out, so it can be handed straight to
+    compute_prune_candidates() as "what this run ships". A dry run's prune set
+    is therefore computed by the SAME function that computes the real one — not
+    by a parallel implementation that might disagree with it at the moment it
+    matters most.
+
+    The sha256 field is omitted from `shipped` entries: it costs a full read of
+    every shipped file and prune ownership never consults it (§11 A9). A dry run
+    that hashed the tree to print a list would be paying for provenance it does
+    not use."""
+    plan = {"create": [], "overwrite": [], "skip": [],
+            "shipped": {c: [] for c in MANIFEST_CATEGORIES}}
+    plan["shipped"]["meta_files"] = []
+
+    for item in iter_install_items(repo_root, claude_home):
+        exists = item.dest.exists() or item.dest.is_symlink()
+        if skip_existing and exists:
+            plan["skip"].append(item)
+            continue
+        plan["overwrite" if exists else "create"].append(item)
+
+        # Only NON-skipped items are shipped. A skipped path was not placed by
+        # this run, so claiming it here would assert an ownership the run never
+        # earned — the same reason `mc` refuses --skip-existing outright.
+        if item.category is None:
+            plan["shipped"]["meta_files"].append({"path": "skills/_meta/" + item.meta_rel})
+        else:
+            placement = "link" if placement_mode == "link" else "copy"
+            plan["shipped"][item.category].append({
+                "name": item.dest.name,
+                "kind": "dir" if item.src.is_dir() else "file",
+                "placement": placement,
+            })
+    return plan
+
+
+# ---------------------------------------------------------------------------
+# Prune — remove provenance-owned orphans (mc only) (§6.C1, §11 A8)
+# ---------------------------------------------------------------------------
+#
+# THE OWNERSHIP TEST IS compute_prune_candidates() AND NOTHING ELSE. Everything
+# in this section runs strictly downstream of it: a path that is not already a
+# candidate cannot be made one by any threshold, prompt, or flag here. The
+# circuit breakers below can only ever REMOVE things from the list.
+
+PRUNE_MAX_PATHS = 20          # absolute cap  (§11 A8)
+PRUNE_MAX_FRACTION = 0.25     # 25% of manifest entries (§11 A8)
+
+
+def _manifest_entry_count(manifest: "dict | None") -> int:
+    """How many entries the previous manifest claims, across every category."""
+    if not isinstance(manifest, dict):
+        return 0
+    total = 0
+    for category in (*MANIFEST_CATEGORIES, "meta_files"):
+        total += len(_category_entries(manifest, category))
+    return total
+
+
+def prune_threshold(manifest_entry_count: int) -> int:
+    """PURE. The circuit-breaker threshold: 25% of the manifest, or 20 paths,
+    WHICHEVER IS SMALLER (§11 A8).
+
+    'Smaller' is the whole point. On a large install 25% is hundreds of paths,
+    so the absolute cap is what actually catches a runaway; on a small install
+    20 would never trip, so the percentage is what catches it. Taking the min
+    means a mass deletion has to get past both."""
+    return int(min(PRUNE_MAX_FRACTION * max(manifest_entry_count, 0), PRUNE_MAX_PATHS))
+
+
+def prune_breaker_tripped(candidate_count: int, manifest_entry_count: int) -> bool:
+    """PURE. True when the prune is large enough to demand explicit confirmation.
+
+    A CIRCUIT BREAKER, NEVER THE OWNERSHIP TEST. It answers "is this a
+    suspiciously large removal for this install?" — a question about volume. It
+    never answers "may this path be removed?", which is
+    compute_prune_candidates()' answer alone. Conflating the two would be the
+    classic mistake: a percentage that lets deletions through because they are
+    small enough looks like a safety feature and is the opposite of one."""
+    return candidate_count > prune_threshold(manifest_entry_count)
+
+
+def candidate_path(claude_home: Path, candidate: dict) -> "Path | None":
+    """Where a prune candidate lives on disk, or None if it cannot be resolved.
+
+    Refuses anything that would escape claude_home. The names come from a
+    manifest file, and a manifest is on-disk data that a previous run wrote —
+    so it is input, and input that resolves to `../../etc` gets rejected rather
+    than deleted. Belt and braces: these names were placed by the installer, so
+    a traversal here means something has already gone wrong upstream."""
+    category = candidate.get("category")
+    name = candidate.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    if category == "meta_files":
+        rel = name                      # already 'skills/_meta/<rel>'
+    elif category in MANIFEST_CATEGORIES:
+        if "/" in name or "\\" in name:
+            return None                 # a category entry is a bare basename
+        rel = f"{category}/{name}"
+    else:
+        return None
+
+    claude_home = Path(claude_home)
+    dest = (claude_home / Path(rel))
+    try:
+        dest.resolve().relative_to(claude_home.resolve())
+    except (ValueError, OSError):
+        # A SYMLINK inside claude_home pointing outside it resolves out of the
+        # tree. Removing the link itself would be fine, but we cannot tell that
+        # apart from a genuinely escaping path here, so decline both.
+        return None
+    return dest
+
+
+def prune_orphans(claude_home: Path, candidates: list,
+                  archive: "ArchiveSession | None") -> "tuple[int, list]":
+    """ARCHIVE each candidate, then remove it. Returns (removed, failures).
+
+    Archive-then-remove, in that order, for the same reason install_claude()
+    archives before replacing: an archive written afterwards preserves nothing.
+    A candidate whose archiving FAILS is left on disk and reported — refusing to
+    delete something we could not preserve is the entire contract, and a prune
+    is the one operation with no new content to fall back on.
+
+    ArchiveError is caught per candidate rather than propagated: by the time we
+    prune, the install itself has already succeeded, so aborting the whole run
+    over one un-archivable orphan would be a worse outcome than leaving that
+    orphan in place and saying so."""
+    removed = 0
+    failures: list = []
+    for candidate in candidates:
+        dest = candidate_path(claude_home, candidate)
+        if dest is None:
+            failures.append((candidate.get("name"), "unresolvable path"))
+            continue
+        if not (dest.exists() or dest.is_symlink()):
+            continue  # already gone — the desired end state, nothing to do
+        try:
+            if archive is not None:
+                # Moves the object INTO the archive, so it is already gone from
+                # the destination when this returns.
+                archive.before_replace(dest)
+            _replace_existing(dest)
+            removed += 1
+        except (ArchiveError, OSError) as exc:
+            failures.append((candidate.get("name"), str(exc)))
+    return removed, failures
+
+
+# ---------------------------------------------------------------------------
+# Archive + journal — <claude_home>/.agent-foundry-archive/<run_id>/ (§6.C2, §11 A3/A10)
+# ---------------------------------------------------------------------------
+#
+# THE BUG THIS EXISTS TO CLOSE (R10).
+#
+# install_claude()'s place() calls _replace_existing() — unlink/rmtree — on each
+# destination BEFORE copying the new content over it. A customized same-name
+# skill at the destination was therefore destroyed silently, with no copy kept
+# anywhere, on EVERY run. Not on cleanup runs; on every run.
+#
+# ARCHIVE SCOPE IS ALL MODES (§11 A3). Any destination that already exists and
+# is being REPLACED is archived first, in link / move / mc alike. Creating a new
+# path archives nothing — there is nothing to lose. R10 is mode-independent, so
+# scoping the archive to `mc` would leave the real data-loss vector wide open
+# while advertising "we archive everything the run replaces"; a half-guarantee
+# is worse than none precisely because it invites trust. PRUNING of
+# provenance-owned orphans stays mc-only — that is a different operation with a
+# different owner (WP-3).
+#
+# ZERO-DESTRUCTION, stated exactly:
+#
+#   * Archive-root creation happens BEFORE the first mutation. If it fails,
+#     literally nothing has been touched and the run refuses.
+#   * If an archive MOVE fails mid-run, the in-process handler rolls back what
+#     already moved, so no destructive operation survives.
+#
+# HONEST LIMIT: a hard-killed process cannot roll itself back. No in-process
+# handler runs when the kernel takes the process away. That is exactly why
+# next-invocation detection (find_incomplete_runs) exists as the second path —
+# the journal is on disk, so the NEXT run can offer what this run could not.
+
+ARCHIVE_DIRNAME = ".agent-foundry-archive"
+ARCHIVE_OBJECTS_DIRNAME = "objects"
+JOURNAL_FILENAME = "journal.json"
+ACTIONS_LOG_FILENAME = "actions.jsonl"
+JOURNAL_SCHEMA_VERSION = 1
+
+JOURNAL_IN_PROGRESS = "in_progress"
+JOURNAL_COMPLETE = "complete"
+JOURNAL_ROLLED_BACK = "rolled_back"
+
+
+class ArchiveError(RuntimeError):
+    """The archive cannot honor its contract, so the run must not proceed.
+
+    Raised — never swallowed — because every caller of the archive is about to
+    destroy something. Degrading to "carry on without an archive" would turn
+    the one guarantee this component makes into a maybe."""
+
+
+def archive_root_dir(claude_home: Path) -> Path:
+    """The parent holding every run's archive, `<claude_home>/.agent-foundry-archive`."""
+    return Path(claude_home) / ARCHIVE_DIRNAME
+
+
+def _object_kind(path: Path) -> str:
+    """'symlink' / 'dir' / 'file' / 'absent'.
+
+    The symlink test comes FIRST and is never relaxed: a symlink to a directory
+    answers True to is_dir(), and treating it as a directory is how an archive
+    ends up dereferencing a link into a copy of the live repo working tree."""
+    path = Path(path)
+    if path.is_symlink():
+        return "symlink"
+    if path.is_dir():
+        return "dir"
+    if path.exists():
+        return "file"
+    return "absent"
+
+
+def is_safe_run_id(run_id: str) -> bool:
+    """True if `run_id` may be used as a directory name under the archive root.
+
+    Validated rather than trusted because this value reaches code that MOVES
+    AND REMOVES FILES: '../../..' would resolve the "archive directory" to
+    somewhere else entirely. Accepts only the shape _new_run_id() produces —
+    alphanumerics, dash, underscore — which also keeps it Windows-safe."""
+    if not run_id or not isinstance(run_id, str):
+        return False
+    if run_id in (".", ".."):
+        return False
+    return all(ch.isalnum() or ch in "-_" for ch in run_id)
+
+
+class ArchiveSession:
+    """One run's archive: an exclusively-created root, a journal, and a log.
+
+    Lifecycle:  create() → before_replace()/record_created()* → finalize()
+                                                              ↘ rollback()
+
+    Two durable records, deliberately:
+
+      * `actions.jsonl` is the crash-durable one — a line is appended and
+        flushed per state change, which is O(1) no matter how many objects the
+        run touches. Rewriting a growing journal per action would be O(n²) I/O
+        across a few hundred skills.
+      * `journal.json` is the DOCUMENT the contract names (old manifest, new
+        manifest, planned actions, completed actions, object kinds, hashes,
+        installer + source revision, run id). It is written at creation as a
+        discoverable in-progress header and rewritten in full at finalize.
+
+    On a clean run the journal is complete and authoritative. On a crash it is
+    still the in-progress header, and rollback reconstructs the action list
+    from `actions.jsonl` — which is why the log exists at all.
+
+    A planned action is logged BEFORE the destructive step and completed only
+    AFTER the move has actually landed. A journal that claims more than
+    happened is unrollbackable, and an unrollbackable journal is the exact
+    failure this component exists to prevent."""
+
+    def __init__(self, claude_home: Path, run_id: str, root: Path, *,
+                 mode: "str | None" = None, source_rev: "str | None" = None,
+                 old_manifest: "dict | None" = None, dry_run: bool = False):
+        self.claude_home_raw = Path(claude_home)
+        self.claude_home = self.claude_home_raw.resolve()
+        self.run_id = run_id
+        self.root = Path(root)
+        self.mode = mode
+        self.source_rev = source_rev or "unknown"
+        self.old_manifest = old_manifest
+        self.new_manifest: "dict | None" = None
+        self.dry_run = bool(dry_run)
+        self.started_at = _iso_utc_now()
+        self.status = JOURNAL_IN_PROGRESS
+        self.planned_actions: list = []
+        self.completed_actions: list = []
+
+    # -- construction --------------------------------------------------------
+
+    @classmethod
+    def create(cls, claude_home: Path, run_id: str, *, mode: "str | None" = None,
+               source_rev: "str | None" = None, old_manifest: "dict | None" = None,
+               dry_run: bool = False) -> "ArchiveSession":
+        """Create the archive root EXCLUSIVELY, before the first mutation.
+
+        Exclusive create (mkdir, which raises FileExistsError) rather than
+        exist_ok=True: a directory that is already there may hold another run's
+        objects, and merging two runs' archives makes BOTH unrollbackable.
+
+        The root must be on the SAME FILESYSTEM as the targets, so archiving is
+        an atomic rename. A cross-device root is a hard failure and NOT a silent
+        copy fallback — a non-atomic archive move can be interrupted and leave
+        the object in neither place, which is worse than the bug we are fixing.
+
+        dry_run creates nothing at all: a dry run that left an empty directory
+        behind would have mutated the tree and broken its only guarantee."""
+        claude_home = Path(claude_home)
+        if not is_safe_run_id(run_id):
+            raise ArchiveError(f"unsafe run id for an archive directory: {run_id!r}")
+        root = archive_root_dir(claude_home) / run_id
+        if dry_run:
+            return cls(claude_home, run_id, root, mode=mode, source_rev=source_rev,
+                       old_manifest=old_manifest, dry_run=True)
+        try:
+            claude_home.mkdir(parents=True, exist_ok=True)
+            archive_root_dir(claude_home).mkdir(parents=True, exist_ok=True)
+            root.mkdir()  # EXCLUSIVE — FileExistsError if this run id is taken
+        except OSError as exc:
+            raise ArchiveError(f"could not create the archive root {root}: {exc}") from exc
+        try:
+            if os.stat(root).st_dev != os.stat(claude_home).st_dev:
+                raise ArchiveError(
+                    f"archive root {root} is on a different filesystem than {claude_home}; "
+                    f"atomic archiving is impossible and a copy fallback is not permitted")
+        except OSError as exc:
+            raise ArchiveError(f"could not stat the archive root {root}: {exc}") from exc
+        session = cls(claude_home, run_id, root, mode=mode, source_rev=source_rev,
+                      old_manifest=old_manifest)
+        session._write_journal()
+        return session
+
+    # -- paths ---------------------------------------------------------------
+
+    @property
+    def journal_path(self) -> Path:
+        return self.root / JOURNAL_FILENAME
+
+    @property
+    def actions_log_path(self) -> Path:
+        return self.root / ACTIONS_LOG_FILENAME
+
+    def _relative_target(self, dest: Path) -> str:
+        """`dest` as a POSIX path relative to claude_home.
+
+        The PARENT is resolved, the leaf is not. Resolving the leaf would
+        follow a symlinked destination and name the repo file it points at
+        instead of the destination we are about to archive — which is the whole
+        object of the exercise. Resolving the parent is what lets a symlinked
+        home (macOS /tmp → /private/tmp) still match.
+
+        Refuses anything outside the tree we are anchored to: restore writes
+        back to `claude_home / target`, so a target that escaped claude_home
+        would make rollback write outside it."""
+        dest = Path(dest)
+        if not dest.is_absolute():
+            dest = self.claude_home / dest
+        try:
+            candidate = Path(os.path.realpath(str(dest.parent))) / dest.name
+        except OSError:
+            candidate = dest
+        for base in (self.claude_home, self.claude_home_raw):
+            try:
+                return candidate.relative_to(base).as_posix()
+            except ValueError:
+                continue
+        raise ArchiveError(f"refusing to archive {dest} — it is outside {self.claude_home}")
+
+    # -- recording -----------------------------------------------------------
+
+    def _log(self, state: str, action: dict) -> None:
+        """Append one state change to the crash-durable log.
+
+        Flushed and fsynced: this line is the only thing standing between a
+        killed process and an object that cannot be found again."""
+        if self.dry_run:
+            return
+        try:
+            with open(self.actions_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"state": state, "action": action}, sort_keys=True) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as exc:
+            raise ArchiveError(f"could not write the archive action log: {exc}") from exc
+
+    def _plan(self, action: dict) -> None:
+        self.planned_actions.append(action)
+        self._log("planned", action)
+
+    def _complete(self, action: dict) -> None:
+        self.completed_actions.append(action)
+        self._log("completed", action)
+
+    def before_replace(self, dest: Path) -> bool:
+        """Archive `dest` if it exists. Call BEFORE anything touches it.
+
+        Returns True if an object was archived, False if `dest` was absent
+        (recorded as a `create`, which archives nothing but must still be
+        journalled so rollback can REMOVE it to reach the pre-run state).
+
+        Raises ArchiveError on any failure — the caller must abort rather than
+        replace an object it could not preserve."""
+        dest = Path(dest)
+        kind = _object_kind(dest)
+        if kind == "absent":
+            self.record_created(dest)
+            return False
+
+        rel = self._relative_target(dest)
+        action = {
+            "op": "replace",
+            "target": rel,
+            "object_kind": kind,
+            "sha256": _sha256_file(dest) if kind == "file" else None,
+            "symlink_target": self._readlink(dest) if kind == "symlink" else None,
+            "archived_to": ARCHIVE_OBJECTS_DIRNAME + "/" + rel,
+        }
+        if self.dry_run:
+            self.planned_actions.append(action)
+            return False
+
+        self._plan(action)  # durable BEFORE the destructive step, never after
+        archived = self.root / ARCHIVE_OBJECTS_DIRNAME / Path(rel)
+        try:
+            archived.parent.mkdir(parents=True, exist_ok=True)
+            # os.rename, never shutil.move: rename is atomic on the same
+            # filesystem, moves the SYMLINK rather than its target, and raises
+            # EXDEV across devices instead of silently degrading to a copy.
+            os.rename(dest, archived)
+        except OSError as exc:
+            raise ArchiveError(f"could not archive {dest} → {archived}: {exc}") from exc
+        self._complete(action)
+        return True
+
+    def ensure_dir(self, path: Path) -> None:
+        """mkdir -p, journalling every level this run actually creates.
+
+        Container directories (`agents/`, `commands/`, `skills/_meta/`) are
+        created by the install, not placed by it, so it is easy to forget they
+        are part of the diff — and then a rollback that restored every file
+        perfectly would still leave a tree that differs from the pre-run one by
+        a handful of empty directories. "Byte-for-byte" has to mean it.
+
+        Only strict descendants of claude_home are journalled. claude_home
+        itself is created before the session exists, and removing a user's
+        ~/.claude on a rollback would be a far bigger surprise than leaving an
+        empty directory behind."""
+        path = Path(path)
+        missing: list = []
+        cursor = path
+        while not (cursor.exists() or cursor.is_symlink()):
+            try:
+                cursor.relative_to(self.claude_home_raw)
+            except ValueError:
+                break  # at or above claude_home — not ours to undo
+            missing.append(cursor)
+            if cursor.parent == cursor:
+                break
+            cursor = cursor.parent
+        if self.dry_run:
+            return
+        for directory in reversed(missing):  # outermost first
+            action = {
+                "op": "mkdir",
+                "target": self._relative_target(directory),
+                "object_kind": "dir",
+                "sha256": None,
+                "symlink_target": None,
+                "archived_to": None,
+            }
+            self.planned_actions.append(action)
+            self.completed_actions.append(action)
+            self._log("completed", action)
+        path.mkdir(parents=True, exist_ok=True)
+
+    def record_created(self, dest: Path) -> None:
+        """Record that the run is about to CREATE a path that did not exist.
+
+        Nothing is archived — there is nothing to lose. It is journalled anyway
+        because "restore the pre-run state byte-for-byte" means removing what
+        the run added, not only putting back what it replaced."""
+        action = {
+            "op": "create",
+            "target": self._relative_target(dest),
+            "object_kind": "absent",
+            "sha256": None,
+            "symlink_target": None,
+            "archived_to": None,
+        }
+        if self.dry_run:
+            self.planned_actions.append(action)
+            return
+        self.planned_actions.append(action)
+        self.completed_actions.append(action)
+        self._log("completed", action)
+
+    @staticmethod
+    def _readlink(path: Path) -> "str | None":
+        try:
+            return os.readlink(str(path))
+        except OSError:
+            return None
+
+    # -- journal -------------------------------------------------------------
+
+    def journal_document(self) -> dict:
+        return {
+            "version": JOURNAL_SCHEMA_VERSION,
+            "run_id": self.run_id,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": _iso_utc_now() if self.status != JOURNAL_IN_PROGRESS else None,
+            "installer_version": __version__,
+            "source_rev": self.source_rev,
+            "mode": self.mode,
+            "claude_home": str(self.claude_home),
+            "archive_root": str(self.root),
+            "old_manifest": self.old_manifest,
+            "new_manifest": self.new_manifest,
+            "planned_actions": list(self.planned_actions),
+            "completed_actions": list(self.completed_actions),
+        }
+
+    def _write_journal(self) -> None:
+        if self.dry_run:
+            return
+        try:
+            _atomic_write_text(
+                self.journal_path,
+                json.dumps(self.journal_document(), indent=2, sort_keys=True) + "\n")
+        except (OSError, TypeError, ValueError) as exc:
+            raise ArchiveError(f"could not write the archive journal: {exc}") from exc
+
+    def set_new_manifest(self, manifest: "dict | None") -> None:
+        self.new_manifest = manifest
+
+    def finalize(self) -> None:
+        """Mark the run complete and write the full journal.
+
+        Never raises: by the time this runs the install has already succeeded,
+        and failing it would report a good install as a bad one. A journal that
+        stays `in_progress` is the safe direction anyway — the next run offers a
+        rollback that turns out to be unnecessary, rather than skipping one that
+        was."""
+        if self.dry_run:
+            return
+        self.status = JOURNAL_COMPLETE
+        try:
+            self._write_journal()
+        except ArchiveError as exc:
+            print(f"    ⚠ could not finalize the archive journal: {exc}")
+
+    def rollback(self, reason: str = "") -> bool:
+        """In-process auto-rollback (§11 A10, path 1). Undo this run.
+
+        Covers the failure paths this process can see. It CANNOT cover a hard
+        kill — nothing in-process can — which is why find_incomplete_runs()
+        exists as the second path."""
+        if self.dry_run:
+            return True
+        try:
+            self._write_journal()  # persist what we know before undoing it
+        except ArchiveError:
+            pass
+        if reason:
+            print(f"    ↩ rolling back this run: {reason}")
+        ok = _replay_journal_reverse(self.claude_home, self.root,
+                                     list(self.completed_actions), self.old_manifest)
+        self.status = JOURNAL_ROLLED_BACK
+        try:
+            self._write_journal()
+        except ArchiveError:
+            pass
+        return ok
+
+
+def read_journal(run_dir: Path) -> "dict | None":
+    """Read one run's journal, or None if there is no usable one.
+
+    None is deliberately BOTH "no journal" and "cannot parse it". Rollback is
+    itself destructive — it removes what the run created — so an unreadable
+    journal must refuse rather than restore on a guess."""
+    try:
+        raw = (Path(run_dir) / JOURNAL_FILENAME).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(doc, dict) or doc.get("version") != JOURNAL_SCHEMA_VERSION:
+        return None
+    return doc
+
+
+def _completed_actions_from_log(run_dir: Path) -> list:
+    """Reconstruct the completed-action list from `actions.jsonl`.
+
+    The crash path: the journal is still the in-progress header, but every
+    state change was appended and fsynced as it happened. A malformed trailing
+    line (the process died mid-write) is skipped rather than fatal — one
+    unparseable line must not cost us the hundreds of good ones above it."""
+    actions: list = []
+    try:
+        text = (Path(run_dir) / ACTIONS_LOG_FILENAME).read_text(encoding="utf-8")
+    except OSError:
+        return actions
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("state") == "completed":
+            action = record.get("action")
+            if isinstance(action, dict):
+                actions.append(action)
+    return actions
+
+
+def _replay_journal_reverse(claude_home: Path, run_dir: Path, actions: list,
+                            old_manifest: "dict | None") -> bool:
+    """Undo `actions` in reverse. Returns True if everything was restored.
+
+    Reverse order is what makes nesting safe: whatever was touched last is put
+    back first, so a parent is never restored over a child that still has to
+    move.
+
+    COMPLETED actions are the authority. A planned-but-not-completed action is
+    never replayed, because it never happened — replaying it would move an
+    object that is not where the journal says it is."""
+    claude_home = Path(claude_home)
+    run_dir = Path(run_dir)
+    ok = True
+    for action in reversed(actions):
+        if not isinstance(action, dict):
+            continue
+        target = action.get("target")
+        if not isinstance(target, str) or not target:
+            continue
+        dest = claude_home / Path(target)
+        op = action.get("op")
+        try:
+            if op == "create":
+                # The run added this path; the pre-run state did not have it.
+                _replace_existing(dest)
+                continue
+            if op == "mkdir":
+                # A container directory the run created. rmdir, never rmtree:
+                # if anything is in there now it is not ours — either a later
+                # run's or the user's — and removing it in the name of
+                # restoring would be the same data loss we are undoing.
+                try:
+                    dest.rmdir()
+                except OSError:
+                    pass
+                continue
+            if op != "replace":
+                continue
+            archived_rel = action.get("archived_to") or (ARCHIVE_OBJECTS_DIRNAME + "/" + target)
+            archived = run_dir / Path(archived_rel)
+            if not (archived.exists() or archived.is_symlink()):
+                print(f"    ⚠ archived object missing, cannot restore {target}")
+                ok = False
+                continue
+            _replace_existing(dest)  # drop whatever the run put here
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.rename(archived, dest)
+        except OSError as exc:
+            print(f"    ⚠ could not restore {target}: {exc}")
+            ok = False
+
+    # The provenance manifest is written outside the archive session, so
+    # restoring the tree without restoring it would leave the manifest
+    # describing a state that no longer exists.
+    try:
+        if old_manifest is None:
+            mp = manifest_path(claude_home)
+            if mp.exists():
+                mp.unlink()
+        else:
+            write_manifest(claude_home, old_manifest)
+    except OSError as exc:
+        print(f"    ⚠ could not restore the previous install manifest: {exc}")
+        ok = False
+    return ok
+
+
+def find_incomplete_runs(claude_home: Path) -> list:
+    """Run ids whose journal never reached `complete` (§11 A10, path 2).
+
+    The half of auto-rollback that survives a hard kill: the killed process
+    could not undo itself, but it left the journal on disk, so the NEXT
+    invocation can find it and offer what that run could not."""
+    root = archive_root_dir(claude_home)
+    found: list = []
+    try:
+        candidates = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return found
+    for run_dir in candidates:
+        journal = read_journal(run_dir)
+        if journal is None:
+            continue
+        if journal.get("status") == JOURNAL_IN_PROGRESS:
+            found.append(run_dir.name)
+    return found
+
+
+def rollback_run(claude_home: Path, run_id: str) -> int:
+    """`--rollback <run-id>`. Returns a process exit code (0 = restored).
+
+    Refuses — touching nothing — on anything it cannot prove out: an unsafe id,
+    an unknown run, an unreadable journal. This function MOVES AND REMOVES
+    FILES, so "do the best we can with what we have" is the wrong instinct
+    here; not knowing what to put back is not a licence to guess."""
+    claude_home = Path(claude_home)
+    if not is_safe_run_id(run_id):
+        print(f"✗ invalid run id {run_id!r} — expected the id of a directory under "
+              f"{archive_root_dir(claude_home)}")
+        return 2
+    run_dir = archive_root_dir(claude_home) / run_id
+    if not run_dir.is_dir():
+        print(f"✗ no archived run {run_id!r} under {archive_root_dir(claude_home)}")
+        return 2
+    journal = read_journal(run_dir)
+    if journal is None:
+        print(f"✗ run {run_id!r} has no readable journal.json — refusing to restore on a guess")
+        return 2
+    if journal.get("status") == JOURNAL_ROLLED_BACK:
+        print(f"✓ run {run_id!r} was already rolled back; nothing to do")
+        return 0
+
+    actions = journal.get("completed_actions")
+    if not isinstance(actions, list) or (
+            not actions and journal.get("status") == JOURNAL_IN_PROGRESS):
+        # Crashed run: the journal is still the in-progress header, so the
+        # append-only log carries the truth.
+        actions = _completed_actions_from_log(run_dir)
+
+    print(f"↩ rolling back run {run_id} — {len(actions)} action(s), "
+          f"archive at {run_dir}")
+    ok = _replay_journal_reverse(claude_home, run_dir, actions,
+                                 journal.get("old_manifest"))
+    journal["status"] = JOURNAL_ROLLED_BACK
+    journal["finished_at"] = _iso_utc_now()
+    try:
+        _atomic_write_text(run_dir / JOURNAL_FILENAME,
+                           json.dumps(journal, indent=2, sort_keys=True) + "\n")
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"    ⚠ restored, but could not update the journal status: {exc}")
+    if ok:
+        # The archive directory is deliberately LEFT IN PLACE. Archives are
+        # never silently expired (§6.C2) — retention is an explicit, separate
+        # operation, and deleting the evidence right after a restore is exactly
+        # when a user is most likely to want it back.
+        print(f"✓ restored the pre-run state. Archive kept at {run_dir}")
+        return 0
+    print(f"✗ rollback incomplete — see the warnings above. Archive kept at {run_dir}")
+    return 1
+
+
+def _offer_incomplete_rollback(claude_home: Path, noninteractive: bool) -> None:
+    """Surface incomplete runs before this run starts mutating anything.
+
+    Under --noninteractive we report and continue rather than rolling back
+    unasked: an automatic restore is itself destructive (it removes what the
+    previous run created), and doing that without consent in a scripted context
+    is the same class of surprise this whole component exists to prevent."""
+    try:
+        runs = find_incomplete_runs(claude_home)
+    except OSError:
+        return
+    if not runs:
+        return
+    print()
+    print(f"⚠ {len(runs)} previous install run(s) never completed — a run was")
+    print("  interrupted or killed before it could finish or roll itself back:")
+    for run_id in runs:
+        print(f"      {run_id}   ({archive_root_dir(claude_home) / run_id})")
+    if noninteractive:
+        print("  Restore any of them with:  python3 install.py --rollback <run-id>")
+        print("  Continuing with this install; nothing has been rolled back.")
+        print()
+        return
+    for run_id in runs:
+        if confirm(f"Roll back run {run_id} now?", default=False):
+            rollback_run(claude_home, run_id)
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -764,9 +2169,11 @@ def link_or_copy(src: Path, dest: Path, mode: str) -> str:
 
 
 def install_claude(
-    repo_root: Path, claude_home: Path, mode: str, skip_existing: bool
-) -> tuple[int, int, int, int, int, int]:
-    """Install skills + agents + commands + workflows into Claude's config tree.
+    repo_root: Path, claude_home: Path, mode: str, skip_existing: bool,
+    placed_out: "dict | None" = None, archive: "ArchiveSession | None" = None,
+) -> tuple[int, int, int, int, int, int, int]:
+    """Install skills + agents + commands + workflows into Claude's config tree,
+    PLUS the `skills/_meta/` support dir (no SKILL.md, so the skill loop skips it).
 
     Default behavior REPLACES existing entries at the destination (any kind:
     file, dir, or symlink — see _replace_existing). Pass skip_existing=True
@@ -775,64 +2182,184 @@ def install_claude(
     `workflows/` are flat `*.js` saved-workflow files placed into
     ~/.claude/workflows/ (Claude-only — agy/Copilot/Gemini do not consume them).
 
-    Returns (skill_n, agent_n, command_n, workflow_n, replaced_or_skipped, chmodded).
+    `skills/_meta/` carries the scripts the wired SessionStart hooks reference
+    (`scan_hard_rules.py`, `forge_reminder_hook.py`, `freshness_nudge.py`,
+    `scope_delta_compact_nudge.py`, `memory_primer.py`, …) and the helpers many
+    skills import (`gates.py`, `classify.py`, `claims.py`, …). Without it the
+    wired hooks point at missing scripts on a fresh box. It is ALWAYS a real
+    directory and is merged PER-FILE (§11 A4) — see the placement block below.
+
+    `archive`, when given, is the run's ArchiveSession. EVERY destination that
+    already exists is handed to it BEFORE _replace_existing() touches it, in
+    every mode (§11 A3) — that is the R10 fix. An ArchiveError propagates out
+    of this function on purpose: the caller must abort and roll back rather
+    than replace an object the archive could not preserve.
+
+    Returns (skill_n, agent_n, command_n, workflow_n, replaced_or_skipped,
+    chmodded, meta_placed).
+
+    `placed_out` is an optional OUT-parameter: when a dict is passed, it is
+    filled with the provenance record of everything this call actually placed —
+    one ManifestEntry list per MANIFEST_CATEGORIES plus per-file `meta_files`
+    (§11 A4). It is an out-parameter rather than an extra return value
+    precisely because the 7-tuple return shape is depended upon by callers and
+    tests; widening it would be a breaking change for no benefit.
+
+    An untouched `placed_out` (still empty after the call) therefore means "no
+    placement provenance was reported", which is what _run() checks before
+    writing a manifest — a mocked or stubbed install_claude leaves it empty and
+    correctly produces no manifest write.
     """
     skills_target = claude_home / "skills"
     agents_target = claude_home / "agents"
     commands_target = claude_home / "commands"
     workflows_target = claude_home / "workflows"
-    skills_target.mkdir(parents=True, exist_ok=True)
-    agents_target.mkdir(parents=True, exist_ok=True)
-    commands_target.mkdir(parents=True, exist_ok=True)
+
+    def ensure_dir(path: Path) -> None:
+        """mkdir -p, journalled when there is an archive session.
+
+        Container directories are created by the install rather than placed by
+        it, which makes them easy to leave out of the diff — and a rollback
+        that restored every file perfectly but left four empty directories
+        behind would not be the byte-for-byte restore it claims to be."""
+        if archive is not None:
+            archive.ensure_dir(path)
+        else:
+            Path(path).mkdir(parents=True, exist_ok=True)
+
+    ensure_dir(skills_target)
+    ensure_dir(agents_target)
+    ensure_dir(commands_target)
 
     skill_n = 0
     agent_n = 0
     command_n = 0
     workflow_n = 0
+    meta_placed = 0
     touched_existing = 0  # replaced (default) or skipped (skip_existing)
 
-    def place(src: Path, dest: Path) -> bool:
-        """Place src at dest. Returns True if installed, False if skipped."""
+    # Provenance record of what this call actually places (§6.C1). Populated by
+    # place() and handed back through placed_out; a run that places nothing
+    # still reports the empty categories, which is what distinguishes "ran and
+    # placed nothing" from "never ran".
+    placed: dict = {c: [] for c in MANIFEST_CATEGORIES}
+    placed["meta_files"] = []
+
+    def place(src: Path, dest: Path, copy_ignore=None,
+              category: "str | None" = None) -> "str | None":
+        """Place src at dest. Returns the placement kind, or None if skipped.
+
+        The return value is the string link_or_copy() produced ('link' /
+        'copy' / 'fallback-copy'), which is truthy, so `if place(...)` still
+        reads as "was it installed". Callers that need to record provenance
+        themselves (skills/_meta, per §11 A4) use the value.
+
+        `category`, when given, records the placement in the provenance
+        manifest. skills/_meta passes None and is recorded per-file instead.
+
+        THE R10 ORDERING, and the only ordering that fixes it: the destination
+        is archived BEFORE _replace_existing() runs. Anything else — archiving
+        after, or archiving only in cleanup mode — destroys the object first
+        and preserves it never."""
         nonlocal touched_existing
         existed = dest.exists() or dest.is_symlink()
         if skip_existing and existed:
             touched_existing += 1
-            return False
+            return None
         if existed:
             touched_existing += 1
+        if archive is not None:
+            # Raises ArchiveError if it cannot preserve the object; the caller
+            # aborts and rolls back rather than proceeding to destroy it.
+            archive.before_replace(dest)
         _replace_existing(dest)
-        link_or_copy(src, dest, mode)
-        return True
+        placement = link_or_copy(src, dest, mode, copy_ignore=copy_ignore)
+        if category is not None:
+            _record_placed(placed, category, src, dest, placement)
+        return placement
 
     for skill in sorted((repo_root / "skills").iterdir()):
         if not skill.is_dir() or not (skill / "SKILL.md").exists():
             continue
-        if place(skill, skills_target / skill.name):
+        if place(skill, skills_target / skill.name, category="skills"):
             skill_n += 1
 
+    # ---- skills/_meta — ALWAYS a real directory, merged PER-FILE (§11 A4) ----
+    #
+    # _meta is MIXED-OWNERSHIP: the shipped toolchain lives beside runtime state
+    # the host generates (inventory.json, the *.jsonl logs, caches) and beside
+    # whatever else a user has put there. Placing it as a UNIT — the old
+    # behavior, a symlink in link mode and a copytree in move mode — meant
+    # _replace_existing() rmtree'd or unlinked the whole directory first, taking
+    # every one of those target-side files with it. That is R10 at its worst,
+    # because unlike a skill directory this content exists ONLY at the target.
+    #
+    # So: never a unit symlink, never rmtree'd as a unit, in any mode. Shipped
+    # files are placed one by one (symlinked or copied per --mode); everything
+    # else at the destination is left exactly where it is. This deliberately
+    # changes link-mode behavior, and that change IS the point.
+    meta_src = repo_root / "skills" / "_meta"
+    if meta_src.is_dir():
+        meta_dest = skills_target / "_meta"
+        # Migrate off the old unit layout: a symlinked (or otherwise non-dir)
+        # _meta is archived and removed so a real directory can take its place.
+        # Archiving the SYMLINK is cheap and lossless — it is one link, and its
+        # target is the repo, which we are not touching.
+        if meta_dest.is_symlink() or (meta_dest.exists() and not meta_dest.is_dir()):
+            if archive is not None:
+                archive.before_replace(meta_dest)
+            _replace_existing(meta_dest)
+            touched_existing += 1
+        ensure_dir(meta_dest)
+        for meta_file, rel in _iter_meta_shipped_files(meta_src):
+            dest_file = meta_dest / Path(rel)
+            ensure_dir(dest_file.parent)
+            placement = place(meta_file, dest_file)
+            if not placement:
+                continue
+            meta_placed = 1
+            # Recorded from what we ACTUALLY placed, never from a post-hoc walk
+            # of the destination: a walk would sweep up foreign and runtime
+            # files too, and claiming ownership of those would make them prune
+            # candidates on the next run — the exact inversion of the
+            # manifest's purpose.
+            record = {"path": "skills/_meta/" + rel}
+            if placement != "link":
+                sha = _sha256_file(meta_file)
+                if sha:
+                    record["sha256"] = sha
+            placed["meta_files"].append(record)
+
     for agent in sorted((repo_root / "agents").glob("*.md")):
-        if place(agent, agents_target / agent.name):
+        if place(agent, agents_target / agent.name, category="agents"):
             agent_n += 1
 
     commands_dir = repo_root / "commands"
     if commands_dir.exists():
         for command in sorted(commands_dir.glob("*.md")):
-            if place(command, commands_target / command.name):
+            if place(command, commands_target / command.name, category="commands"):
                 command_n += 1
 
     # Saved workflows — flat *.js files placed into ~/.claude/workflows/ (S055).
     # Claude-only: agy/Copilot/Gemini do not consume saved workflows.
     workflows_dir = repo_root / "workflows"
     if workflows_dir.exists():
+        # Create the target lazily — only when there are workflows to place — so
+        # copy2/symlink don't fail with "path not found" on a fresh machine where
+        # ~/.claude/workflows/ doesn't exist yet (WinError 3 on Windows).
+        ensure_dir(workflows_target)
         for workflow in sorted(workflows_dir.glob("*.js")):
-            if place(workflow, workflows_target / workflow.name):
+            if place(workflow, workflows_target / workflow.name, category="workflows"):
                 workflow_n += 1
 
     chmodded = 0
     if sys.platform != "win32":
         chmodded = chmod_scripts(skills_target)
 
-    return skill_n, agent_n, command_n, workflow_n, touched_existing, chmodded
+    if placed_out is not None:
+        placed_out.update(placed)
+
+    return skill_n, agent_n, command_n, workflow_n, touched_existing, chmodded, meta_placed
 
 
 def chmod_scripts(skills_root: Path) -> int:
@@ -871,7 +2398,7 @@ def chmod_scripts(skills_root: Path) -> int:
     return changed
 
 
-# Fallback agy directive used ONLY if the bundled installer/templates/agy.md is
+# Fallback agy directive used ONLY if the bundled templates/agy.md is
 # somehow missing (e.g. a partial clone). Keeps install_agy() self-sufficient
 # and publish-clean — generic, no host-specific paths.
 _AGY_TEMPLATE_FALLBACK = """\
@@ -902,11 +2429,69 @@ def _agy_template_text() -> str:
 
 
 def _content_differs(target: Path, expected: str) -> bool:
-    """True if target exists with content != expected (the hash-skip signal)."""
+    """True if target exists with content != expected (the hash-skip signal).
+
+    Byte-compare (read_bytes), not text — a text compare mis-fires on Windows,
+    where a checked-out template can carry CRLF line endings while a freshly
+    written one is LF (or vice-versa), yielding a false "differs" that would
+    trip the customisation guard on an otherwise-identical file."""
     try:
-        return target.read_text(encoding="utf-8") != expected
-    except (OSError, UnicodeDecodeError):
+        return target.read_bytes() != expected.encode("utf-8")
+    except OSError:
         return True
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically (temp file in the same dir + fsync +
+    os.replace).
+
+    Atomicity matters for the two global-config files this installer wires:
+      - a mid-write interruption never leaves a half-written settings.json /
+        CLAUDE.md (the reader — Claude Code's own settings watcher — sees either
+        the old file or the whole new one, never a truncated one);
+      - os.replace on the same filesystem is atomic on POSIX and Windows.
+    The target's mode bits are preserved when it already existed. NEVER writes a
+    .bak — backup is the caller's job via _backup()."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prior_mode = None
+    try:
+        prior_mode = path.stat().st_mode
+    except OSError:
+        pass
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if prior_mode is not None:
+            try:
+                os.chmod(tmp, prior_mode & 0o777)
+            except OSError:
+                pass  # Windows / unusual fs — mode bits are best-effort
+        os.replace(tmp, path)
+    except BaseException:
+        # Never leave the temp file behind on failure.
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _backup(path: Path) -> "Path | None":
+    """copy2 `path` -> `path + '.bak'`. Returns the backup Path, or None on
+    failure — in which case the caller MUST refuse to modify the original (never
+    overwrite without a good backup; mirrors install_agy's data-loss guard)."""
+    path = Path(path)
+    backup = path.with_suffix(path.suffix + ".bak")
+    try:
+        shutil.copy2(path, backup)
+        return backup
+    except OSError:
+        return None
 
 
 def install_agy(gemini_home: Path, force: bool = False, dry_run: bool = False) -> bool:
@@ -956,6 +2541,546 @@ def install_agy(gemini_home: Path, force: bool = False, dry_run: bool = False) -
     target.write_text(expected, encoding="utf-8")
     print(f"    + overwrote {target} (--force; previous saved to {backup.name})")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Global environment wiring — CLAUDE.md + settings.json
+# ---------------------------------------------------------------------------
+#
+# The SINGLE advertised installer must leave a *working* environment. Placing
+# skills/agents/commands is not enough — the ecosystem only ACTIVATES when
+# ~/.claude/CLAUDE.md (forge routing, autonomy, session-start checks) and the 6
+# SessionStart hooks in ~/.claude/settings.json are present. This section wires
+# both, mirroring install_agy's create-if-absent / hash-skip / leave-on-differs
+# / .bak-on-force safety so a user's customised files are never clobbered.
+#
+# CANONICAL_SESSION_START_HOOKS is the SINGLE SOURCE OF TRUTH for the 6 hooks;
+# bootstrap-environment.py imports it (and merge_missing_session_start_hooks)
+# from here so the two entry points cannot drift.
+
+# The 6 canonical SessionStart hook entries the installer ensures are present.
+# A hook's IDENTITY for dedup is its inner hooks[0].command string (so a user's
+# custom `timeout` on a canonical hook is preserved, not treated as "missing"
+# and not duplicated). Injecting only MISSING hooks never removes user-added
+# hooks (mobile notifications, Stop hooks, etc.).
+CANONICAL_SESSION_START_HOOKS = [
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/scan_hard_rules.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/forge_reminder_hook.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "bash ~/.claude/skills/cross-project-mail/hooks/session-start.sh",
+            "timeout": 5,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/freshness_nudge.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/scope_delta_compact_nudge.py --hook",
+            "timeout": 10,
+        }],
+    },
+    {
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": "python3 ~/.claude/skills/_meta/memory_primer.py --hook",
+            "timeout": 10,
+        }],
+    },
+]
+
+def _settings_template_text() -> "str | None":
+    """Read the bundled templates/settings.global.json, or None if it cannot be
+    read.
+
+    None means FAIL LOUDLY (§6.C4.2, R4). There used to be an inline
+    `_SETTINGS_TEMPLATE_FALLBACK` here — a full second copy of the template that
+    silently took over whenever the bundled file was missing. Two copies of the
+    same content in one file is one copy too many: the inline one drifted (it
+    still carried `"model": "opus[1m]"` after the tracked template was meant to
+    be canonical), and because it engaged silently, the drift was invisible at
+    exactly the moment it mattered — a partial clone would install stale config
+    and report success.
+
+    A missing template is now a loud refusal instead. The caller writes nothing
+    and returns False, matching the malformed-file convention already used for a
+    corrupt settings.json."""
+    tpl = _TEMPLATES_DIR / "settings.global.json"
+    try:
+        return tpl.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def merge_missing_session_start_hooks(settings: dict) -> list:
+    """PURE merge core (shared with bootstrap): mutate `settings` IN PLACE,
+    appending each canonical SessionStart entry whose command is absent, and
+    return the list of added command strings.
+
+    Dedup identity = the inner hooks[0].command string, so a user's custom
+    timeout on an already-present canonical hook is preserved (not re-added).
+    User-added hooks are never removed.
+
+    Raises TypeError / ValueError on a wrong-shaped settings object (top-level
+    non-dict; hooks not a dict; hooks.SessionStart not a list; a SessionStart
+    entry not a dict) so the caller can leave a wrong-shape file untouched
+    rather than corrupt it."""
+    if not isinstance(settings, dict):
+        raise TypeError(f"settings root must be a JSON object, got {type(settings).__name__}")
+    hooks = settings.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise TypeError("settings['hooks'] must be a JSON object")
+    ss = hooks.setdefault("SessionStart", [])
+    if not isinstance(ss, list):
+        raise TypeError("settings['hooks']['SessionStart'] must be a list")
+
+    existing_cmds = set()
+    for entry in ss:
+        if not isinstance(entry, dict):
+            raise ValueError("each settings['hooks']['SessionStart'] entry must be a JSON object")
+        for h in entry.get("hooks", []) or []:
+            if isinstance(h, dict):
+                cmd = h.get("command")
+                if cmd:
+                    existing_cmds.add(cmd)
+
+    added = []
+    for new_entry in CANONICAL_SESSION_START_HOOKS:
+        new_cmd = new_entry["hooks"][0]["command"]
+        if new_cmd in existing_cmds:
+            continue
+        added.append(new_cmd)
+        ss.append(copy.deepcopy(new_entry))  # deepcopy: never alias the module constant
+    return added
+
+
+# ---------------------------------------------------------------------------
+# canonical-config-provenance (WP-005, §6.C4.6 + §11 A1)
+#
+# The two global config files are the only things the installer writes
+# WHOLE-FILE into a directory the user also owns and edits. Everything else
+# under ~/.claude routes through place() and is covered by install-archive.
+# That makes them the one place where "is this file mine to refresh, or the
+# user's to leave alone?" cannot be answered from the filesystem — hence
+# recorded provenance.
+# ---------------------------------------------------------------------------
+
+# Destination filename -> manifest key. The manifest is keyed by FILENAME so
+# the accessor reads literally as `canonical.<file>.sha256` (§6.C4.6).
+CANONICAL_CONFIG_FILES = ("CLAUDE.md", "settings.json")
+
+# Verdicts. `absent` is separated from `customized` because it authorizes a
+# write while carrying no risk (there is nothing to destroy), whereas
+# `customized` forbids one.
+PROVENANCE_ABSENT = "absent"
+PROVENANCE_UNMODIFIED = "unmodified"
+PROVENANCE_CUSTOMIZED = "customized"
+
+
+def read_canonical_hash(canonical_block: "dict | None", filename: str) -> "str | None":
+    """Extract `<filename>.sha256` from a manifest's `canonical` BLOCK, or None.
+
+    Takes the block itself rather than the whole manifest, because that is what
+    both production call sites hold and it keeps the function's job narrow:
+    safely read one hash, decide nothing else.
+
+    None is the NO-PROVENANCE signal, and — exactly as with read_manifest() —
+    it is deliberately also the cannot-interpret-it signal. A missing block, a
+    manifest predating this feature, a block of the wrong shape, and a hash that
+    is not 64 lowercase hex characters all collapse to the same answer, because
+    they all mean the same thing: nothing here proves the installer wrote that
+    file.
+
+    Near-miss forms (uppercase hex, a 'sha256:' prefix) are rejected rather than
+    normalized. Normalizing them would turn an equality check into a heuristic,
+    and this particular equality check is what authorizes overwriting a user's
+    config file. Never raises."""
+    try:
+        block = canonical_block
+        if not isinstance(block, dict):
+            return None
+        rec = block.get(filename)
+        if not isinstance(rec, dict):
+            return None
+        digest = rec.get("sha256")
+        if not isinstance(digest, str) or len(digest) != 64:
+            return None
+        if any(c not in "0123456789abcdef" for c in digest):
+            return None
+        return digest
+    except (AttributeError, TypeError):
+        return None
+
+
+def classify_canonical_provenance(destination: Path,
+                                  recorded_hash: "str | None") -> str:
+    """Classify a global config destination: absent / unmodified / customized.
+
+    `unmodified` requires BOTH a recorded hash AND a computable destination hash
+    AND equality between them. Every other combination is `customized`, which is
+    the fail-safe answer:
+
+      - no recorded hash            -> customized. Content that merely HAPPENS to
+                                       equal what the installer would write is not
+                                       proof the installer wrote it. This is the
+                                       case that protects a hand-copied config.
+      - destination unreadable      -> customized. Cannot classify means must not
+                                       overwrite.
+      - both hashes absent          -> customized. Two Nones must not compare
+                                       equal; this is the one input pair where a
+                                       naive `==` returns exactly the wrong answer.
+
+    Note this reads content, never mtime or size — the edit being detected is
+    precisely the kind the filesystem metadata may not advertise."""
+    destination = Path(destination)
+    if not destination.exists() and not destination.is_symlink():
+        return PROVENANCE_ABSENT
+    if not recorded_hash:
+        return PROVENANCE_CUSTOMIZED
+    candidate = _sha256_file(destination)
+    if not candidate:
+        return PROVENANCE_CUSTOMIZED
+    return (PROVENANCE_UNMODIFIED if candidate == recorded_hash
+            else PROVENANCE_CUSTOMIZED)
+
+
+def _record_canonical(canonical_out: "dict | None", filename: str,
+                      text: str, write_kind: str) -> None:
+    """Record the hash of content just written WHOLE-FILE (§11 A1).
+
+    Callers must invoke this ONLY on the two sanctioned whole-file writes —
+    create-if-absent, or an overwrite (--force-global-config / a provenance-
+    authorized auto-update) — and NEVER on the merge path.
+
+    That prohibition is the entire safety argument. The merge path writes the
+    USER's parsed settings plus injected hooks; recording a hash there would
+    make the NEXT run see a hash match, conclude "pure installer output", and
+    whole-file overwrite a file that is largely the user's — on a default,
+    non-mc run where the archive contract does not apply.
+
+    Hashes the TEXT that was written rather than re-reading the destination, so
+    the record describes what the installer produced, not whatever a concurrent
+    writer may have left behind. Never raises."""
+    if canonical_out is None:
+        return
+    try:
+        canonical_out[filename] = {
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "recorded_at": _iso_utc_now(),
+            "write_kind": write_kind,
+        }
+    except (TypeError, ValueError, UnicodeEncodeError):
+        pass
+
+
+def install_settings(claude_home: Path, force_global: bool = False,
+                     dry_run: bool = False,
+                     canonical_prev: "dict | None" = None,
+                     canonical_out: "dict | None" = None) -> bool:
+    """Wire ~/.claude/settings.json (the 6 SessionStart hooks + defaultMode).
+
+    Behavior matrix (mirrors install_agy's safety; §3 of the design):
+      - absent                         → write the full template (atomic).
+      - present, byte-identical        → skip.
+      - present, valid, differs        → inject ONLY the missing canonical hooks
+                                         (.bak first, atomic); every other user
+                                         value (model, defaultMode, …) untouched.
+                                         --force_global → .bak + overwrite whole.
+      - present, malformed / wrong-shape → leave UNTOUCHED, loud warning, return
+                                         False (never crash, never false-"done").
+                                         --force_global → .bak (raw bytes) + overwrite.
+
+    NEW in WP-005 (§6.C4.6 / D6): a destination that differs from the template
+    but whose hash equals the RECORDED canonical hash is provably byte-for-byte
+    what the installer last wrote, so it is refreshed automatically (.bak first).
+    That is what lets the removal of the installer-supplied `model` key reach
+    boxes where the installer put it, without touching boxes where the user did.
+
+    `canonical_prev` is the previous manifest's canonical block (read-only);
+    `canonical_out` is a dict this function POPULATES on whole-file writes only
+    (§11 A1 — never on the merge path).
+
+    Byte-compare (read_bytes), not text — CRLF-safe. Returns False ONLY when it
+    deliberately leaves a malformed/wrong-shape file untouched, when a backup
+    could not be written, or when the bundled template is missing; True on
+    success / legitimate no-op."""
+    target = claude_home / "settings.json"
+    template_text = _settings_template_text()
+
+    # --- template missing → FAIL LOUDLY (§6.C4.2, R4) ---
+    # There is no inline fallback any more, and that is the point: silently
+    # installing a second, drifting copy of the template is worse than not
+    # installing at all, because it reports success.
+    if template_text is None:
+        print(f"    ⚠ bundled template {_TEMPLATES_DIR / 'settings.global.json'} is missing "
+              f"or unreadable — refusing to write {target}.")
+        print(f"      Re-clone or repair the repository; the installer will not "
+              f"substitute an embedded copy.")
+        return False
+
+    recorded = read_canonical_hash(canonical_prev, "settings.json")
+
+    # --- absent → write full template (A1-sanctioned whole-file write) ---
+    if not target.exists():
+        if dry_run:
+            print(f"    would write {target} (create-if-absent; 6 hooks + defaultMode)")
+            return True
+        _atomic_write_text(target, template_text)
+        _record_canonical(canonical_out, "settings.json", template_text, "create")
+        print(f"    + wrote {target} (settings.json — 6 SessionStart hooks + defaultMode)")
+        return True
+
+    # --- present: byte-compare against the template ---
+    try:
+        current_bytes = target.read_bytes()
+    except OSError as exc:
+        print(f"    ⚠ could not read {target} ({exc}) — leaving as-is")
+        return False
+    if current_bytes == template_text.encode("utf-8"):
+        print(f"    = {target} already at template content — skipping")
+        return True
+
+    # --- present + differs + provenance says WE wrote it → auto-update (D6) ---
+    # Deliberately ahead of the force_global branch: both end in a whole-file
+    # write, and letting this one run first keeps the outcome identical whether
+    # or not the flag is present (no double .bak, no double write).
+    if (not force_global
+            and classify_canonical_provenance(target, recorded) == PROVENANCE_UNMODIFIED):
+        if dry_run:
+            print(f"    would refresh {target} (hash matches recorded installer output; .bak first)")
+            return True
+        backup = _backup(target)
+        if backup is None:
+            # A1 item 4: the auto-update path gets the same refusal as every
+            # other overwrite. "Provably installer output" is a claim about
+            # bytes, not a guarantee the user has no use for them.
+            print(f"    ⚠ could not write backup of {target}; refusing to refresh")
+            return False
+        print(f"    backup -> {backup}")
+        _atomic_write_text(target, template_text)
+        _record_canonical(canonical_out, "settings.json", template_text, "auto-update")
+        print(f"    + refreshed {target} (was unmodified installer output; "
+              f"previous saved to {backup.name})")
+        return True
+
+    # --- present + differs: parse to decide merge vs. malformed ---
+    try:
+        current = json.loads(current_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # Malformed JSON.
+        if not force_global:
+            print(f"    ⚠ {target} is not valid JSON ({exc}) — leaving it UNTOUCHED.")
+            print(f"      Fix it, or re-run with --force-global-config to replace it (a .bak is written first).")
+            return False
+        if dry_run:
+            print(f"    would back up {target} -> {target.name}.bak (raw bytes) and overwrite (--force-global-config)")
+            return True
+        backup = _backup(target)
+        if backup is None:
+            print(f"    ⚠ could not write backup of {target}; refusing to overwrite")
+            return False
+        print(f"    backup -> {backup}")
+        _atomic_write_text(target, template_text)
+        _record_canonical(canonical_out, "settings.json", template_text, "force")
+        print(f"    + overwrote {target} (--force-global-config; previous saved to {backup.name})")
+        return True
+
+    # --- present + valid JSON + differs ---
+    if force_global:
+        # Whole-file overwrite (.bak first) — A1-sanctioned, so it records
+        # provenance. This is also how a customized box re-enters the
+        # auto-update track: the user asserted the installer's copy is the one
+        # they want, and from here the installer can prove it wrote it.
+        if dry_run:
+            print(f"    would back up {target} -> {target.name}.bak and overwrite whole file (--force-global-config)")
+            return True
+        backup = _backup(target)
+        if backup is None:
+            print(f"    ⚠ could not write backup of {target}; refusing to overwrite")
+            return False
+        print(f"    backup -> {backup}")
+        _atomic_write_text(target, template_text)
+        _record_canonical(canonical_out, "settings.json", template_text, "force")
+        print(f"    + overwrote {target} (--force-global-config; previous saved to {backup.name})")
+        return True
+
+    # Default run: inject ONLY the missing canonical hooks; leave every other key.
+    #
+    # §11 A1 CRITICAL — everything below this line is the MERGE path, and it
+    # must NEVER call _record_canonical(). What it writes is the user's parsed
+    # settings plus injected hooks, not installer content. Recording a hash for
+    # it would make the next run see a match, conclude "pure installer output",
+    # and whole-file overwrite a file that is largely the user's.
+    try:
+        added = merge_missing_session_start_hooks(current)
+    except (TypeError, ValueError) as exc:
+        # Valid JSON but wrong shape (top-level array, hooks not a dict, …).
+        print(f"    ⚠ {target} is valid JSON but the wrong shape ({exc}) — leaving it UNTOUCHED.")
+        print(f"      Fix it, or re-run with --force-global-config to replace it (a .bak is written first).")
+        return False
+
+    if not added:
+        # Differs in some non-hook key, but all 6 hooks already present — leave it.
+        print(f"    = {target} has all 6 SessionStart hooks already — leaving your other settings as-is")
+        return True
+
+    if dry_run:
+        for cmd in added:
+            print(f"    would add SessionStart hook: {cmd}")
+        return True
+    backup = _backup(target)
+    if backup is None:
+        print(f"    ⚠ could not write backup of {target}; refusing to modify")
+        return False
+    print(f"    backup -> {backup}")
+    _atomic_write_text(target, json.dumps(current, indent=2) + "\n")
+    print(f"    + injected {len(added)} missing SessionStart hook(s) into {target} "
+          f"(other settings preserved; previous saved to {backup.name})")
+    for cmd in added:
+        print(f"        + {cmd}")
+    return True
+
+
+def install_claude_md(repo_root: Path, claude_home: Path, force_global: bool = False,
+                     dry_run: bool = False,
+                     canonical_prev: "dict | None" = None,
+                     canonical_out: "dict | None" = None) -> bool:
+    """Wire ~/.claude/CLAUDE.md (forge routing, autonomy, session-start checks).
+
+    Monolithic doc — no partial merge (§3):
+      - absent                    → write (copy the repo CLAUDE.md, atomic).
+      - present, byte-identical   → skip.
+      - present, differs, hash matches recorded provenance
+                                  → auto-update (.bak first). NEW in WP-005.
+      - present, differs          → leave untouched (note: customised — use
+                                    --force-global-config). --force_global → .bak
+                                    + overwrite.
+
+    Having no merge path makes provenance matter MORE here than for
+    settings.json, not less: without it the only options for a differing file
+    are "never update" or "overwrite the user's edits", and this cycle refuses
+    both as defaults.
+
+    `canonical_prev` is the previous manifest's canonical block (read-only);
+    `canonical_out` is populated on whole-file writes only (§11 A1).
+
+    Byte-compare (read_bytes), not text — CRLF-safe. Returns False only on a
+    genuine failure (repo CLAUDE.md missing, or a backup could not be written)."""
+    src = repo_root / "CLAUDE.md"
+    target = claude_home / "CLAUDE.md"
+
+    if not src.exists():
+        print(f"    ⚠ repo CLAUDE.md missing ({src}) — cannot wire global instructions")
+        return False
+    try:
+        expected_text = src.read_text(encoding="utf-8")
+        expected_bytes = src.read_bytes()
+    except OSError as exc:
+        print(f"    ⚠ could not read {src} ({exc}) — skipping CLAUDE.md wiring")
+        return False
+
+    recorded = read_canonical_hash(canonical_prev, "CLAUDE.md")
+
+    if not target.exists():
+        if dry_run:
+            print(f"    would write {target} (create-if-absent)")
+            return True
+        _atomic_write_text(target, expected_text)
+        _record_canonical(canonical_out, "CLAUDE.md", expected_text, "create")
+        print(f"    + wrote {target} (global instructions)")
+        return True
+
+    try:
+        if target.read_bytes() == expected_bytes:
+            print(f"    = {target} already at repo content — skipping")
+            return True
+    except OSError:
+        pass  # fall through and treat as differing
+
+    # --- present + differs + provenance says WE wrote it → auto-update (D6) ---
+    if (not force_global
+            and classify_canonical_provenance(target, recorded) == PROVENANCE_UNMODIFIED):
+        if dry_run:
+            print(f"    would refresh {target} (hash matches recorded installer output; .bak first)")
+            return True
+        backup = _backup(target)
+        if backup is None:
+            print(f"    ⚠ could not write backup of {target}; refusing to refresh")
+            return False
+        print(f"    backup -> {backup}")
+        _atomic_write_text(target, expected_text)
+        _record_canonical(canonical_out, "CLAUDE.md", expected_text, "auto-update")
+        print(f"    + refreshed {target} (was unmodified installer output; "
+              f"previous saved to {backup.name})")
+        return True
+
+    # Present and different — user-customised.
+    if not force_global:
+        print(f"    ⚠ {target} exists and differs (customised) — leaving as-is")
+        print(f"      (use --force-global-config to overwrite; a .bak is written first)")
+        return True
+
+    if dry_run:
+        print(f"    would back up {target} -> {target.name}.bak and overwrite (--force-global-config)")
+        return True
+    backup = _backup(target)
+    if backup is None:
+        print(f"    ⚠ could not write backup of {target}; refusing to overwrite")
+        return False
+    print(f"    backup -> {backup}")
+    _atomic_write_text(target, expected_text)
+    _record_canonical(canonical_out, "CLAUDE.md", expected_text, "force")
+    print(f"    + overwrote {target} (--force-global-config; previous saved to {backup.name})")
+    return True
+
+
+def _hook_script_path(command: str, claude_home: Path) -> "Path | None":
+    """Extract the `~/.claude/skills/...` script referenced by a hook command
+    and remap it under `claude_home`. Returns the Path, or None if the command
+    references no such script."""
+    for tok in command.split():
+        if tok.startswith("~/.claude/skills/"):
+            rel = tok[len("~/.claude/"):]
+            return claude_home / rel
+    return None
+
+
+def _missing_hook_scripts(claude_home: Path) -> list:
+    """Post-install readiness check: return the canonical hook commands whose
+    referenced script is missing under claude_home/skills (configured ≠ active —
+    a hook is inert until its script exists). Read-only."""
+    missing = []
+    for entry in CANONICAL_SESSION_START_HOOKS:
+        cmd = entry["hooks"][0]["command"]
+        p = _hook_script_path(cmd, claude_home)
+        if p is not None and not p.exists():
+            missing.append(cmd)
+    return missing
 
 
 def install_gemini(
@@ -1198,6 +3323,114 @@ _TARGET_FOR_TOOL = {
 }
 
 
+def _describe_item(item: InstallItem, claude_home: Path) -> str:
+    """One plan line: the destination, relative to claude_home when possible."""
+    try:
+        return str(Path(item.dest).relative_to(claude_home))
+    except ValueError:
+        return str(item.dest)
+
+
+def print_install_plan(plan: dict, claude_home: Path, placement_mode: str,
+                       limit: int = 12) -> None:
+    """Print the create / overwrite / skip sets a run would produce.
+
+    Truncated to `limit` per set with an explicit "... and N more": a full
+    install is ~200 skills, and a wall of 600 lines is a dry run nobody reads.
+    The PRUNE set is never truncated (see print_prune_set) — that one is the
+    destructive half, and 'and 40 more' is not an acceptable summary of what is
+    about to be deleted."""
+    verb = "symlink" if placement_mode == "link" else "copy"
+    for label, key in (("create", "create"), ("overwrite", "overwrite"),
+                       ("keep (--skip-existing)", "skip")):
+        items = plan.get(key) or []
+        if not items:
+            continue
+        print(f"    {label}: {len(items)}"
+              + (f"  ({verb})" if key != "skip" else ""))
+        for item in items[:limit]:
+            print(f"      {_describe_item(item, claude_home)}")
+        if len(items) > limit:
+            print(f"      ... and {len(items) - limit} more")
+
+
+def print_prune_set(candidates: list, claude_home: Path) -> None:
+    """Print EVERY prune candidate, in full, never truncated.
+
+    This is the list the user is being asked to authorize the deletion of. A
+    truncated version of it would make the confirmation meaningless."""
+    print(f"    REMOVE: {len(candidates)} entr{'y' if len(candidates) == 1 else 'ies'} "
+          f"previously installed here and no longer shipped:")
+    for candidate in candidates:
+        dest = candidate_path(claude_home, candidate)
+        shown = candidate.get("name")
+        if dest is not None:
+            try:
+                shown = str(dest.relative_to(claude_home))
+            except ValueError:
+                shown = str(dest)
+        print(f"      - {shown}")
+
+
+def authorize_prune(candidates: list, previous_manifest: "dict | None",
+                    claude_home: Path, *, noninteractive: bool,
+                    yes_prune: bool) -> "tuple[bool, str]":
+    """Decide whether the prune may proceed. Returns (authorized, reason).
+
+    Called BEFORE the run writes anything, which is the point: a
+    `--noninteractive` run that is going to be refused must be refused while the
+    tree is still untouched, not half-installed. That is why the candidate set
+    is computed from plan_install() rather than from a completed install.
+
+    Authorization is NEVER an ownership decision — every candidate reaching
+    here already passed compute_prune_candidates(). This only decides whether
+    the user has said yes."""
+    n = len(candidates)
+    entry_count = _manifest_entry_count(previous_manifest)
+    tripped = prune_breaker_tripped(n, entry_count)
+
+    if tripped:
+        # §11 A8 — print the full list and demand an explicit answer, regardless
+        # of how the run was invoked.
+        print()
+        print("  ⚠ CIRCUIT BREAKER: this cleanup is unusually large.")
+        print(f"    {n} candidate(s) vs a threshold of "
+              f"{prune_threshold(entry_count)} "
+              f"(the smaller of 25% of {entry_count} manifest entries, or "
+              f"{PRUNE_MAX_PATHS} paths).")
+        print("    That is the shape of a mis-detected source tree, not a normal cleanup.")
+        print_prune_set(candidates, claude_home)
+
+    if noninteractive:
+        if not yes_prune:
+            return False, (
+                "a destructive cleanup needs explicit authorization: re-run with "
+                "--yes-prune,\n  or drop --mode mc. Under --noninteractive there is "
+                "nobody to ask.")
+        if tripped:
+            # --yes-prune is the explicit confirmation the breaker demands; a
+            # non-interactive run has no second channel to ask on.
+            print("    --yes-prune supplied — proceeding despite the circuit breaker.")
+        else:
+            # Nobody is watching a --noninteractive run, which is exactly why it
+            # has to say what it deleted: the run-log is the only record anyone
+            # will have afterwards. (When the breaker tripped, the list is
+            # already above.)
+            print_prune_set(candidates, claude_home)
+        return True, "authorized by --yes-prune"
+
+    if yes_prune:
+        print_prune_set(candidates, claude_home)
+        return True, "authorized by --yes-prune"
+
+    if not tripped:
+        print_prune_set(candidates, claude_home)
+    print("    Everything removed is archived first and can be restored with --rollback.")
+    if not confirm("  Remove these?", default=False):
+        return False, "declined at the prompt"
+    return True, "confirmed interactively"
+
+
 def _fmt_cell(s: str | None, width: int) -> str:
     s = s if s is not None else "-"
     if len(s) > width:
@@ -1296,6 +3529,9 @@ def render_adapted_plan(report: dict, preselected: list[str]) -> None:
 
 
 def main() -> int:
+    # Must run before ANY print() and before RunLogger captures the streams:
+    # keeps the installer's Unicode glyphs from crashing a non-UTF-8 console.
+    _force_utf8_streams()
     parser = argparse.ArgumentParser(
         description="agent-foundry installer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1308,15 +3544,25 @@ def main() -> int:
              "'auto' = every CLI the scan detected",
         default=None,
     )
-    parser.add_argument("--mode", choices=["link", "move"], default=None,
-                        help="link = symlinks (recommended); move = copy")
+    parser.add_argument("--mode", choices=list(CLI_MODES), default=None,
+                        help="link = symlinks (recommended); move = copy; "
+                             "mc = copy + CLEAN (removes ~/.claude entries this "
+                             "installer previously placed and no longer ships; "
+                             "Claude target only; everything removed is archived "
+                             "first and is restorable with --rollback)")
     parser.add_argument("--claude-home", default=None,
                         help=f"override Claude config dir (default {DEFAULT_CLAUDE_HOME})")
     parser.add_argument("--gemini-home", default=None,
                         help=f"override Gemini config dir (default {DEFAULT_GEMINI_HOME})")
     parser.add_argument("--force", action="store_true",
                         help="(no-op for skills/agents — replace-existing is the default; "
-                             "DOES force agy.md + copilot-instructions.md overwrite, with .bak)")
+                             "DOES force agy.md + copilot-instructions.md overwrite, with .bak; "
+                             "does NOT touch ~/.claude/settings.json or CLAUDE.md — use "
+                             "--force-global-config for those)")
+    parser.add_argument("--force-global-config", action="store_true",
+                        help="overwrite the whole ~/.claude/settings.json + CLAUDE.md from the "
+                             "bundled template/repo (writes a .bak first). Without it, the default "
+                             "run only creates them if absent and injects missing SessionStart hooks.")
     parser.add_argument("--skip-existing", action="store_true",
                         help="leave existing skills/agents/commands at the target untouched (old --force=False behavior)")
     parser.add_argument("--noninteractive", action="store_true",
@@ -1327,8 +3573,32 @@ def main() -> int:
                         help="run the environment scan, print the findings report, and exit")
     parser.add_argument("--mirror-copilot-skills", action="store_true",
                         help="also mirror skills into ~/.copilot/skills/ (opt-in; additive)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print the exact create / overwrite / prune sets and "
+                             "exit WITHOUT touching anything. Recommended before "
+                             "any --mode mc run.")
+    parser.add_argument("--yes-prune", action="store_true",
+                        help="pre-authorize the --mode mc cleanup. REQUIRED for a "
+                             "destructive prune under --noninteractive; without it "
+                             "such a run fails before writing anything.")
+    parser.add_argument("--rollback", metavar="RUN_ID", default=None,
+                        help="undo a previous run: replays that run's archive journal in "
+                             "reverse, restoring the tree byte-for-byte. Archives live under "
+                             f"~/.claude/{ARCHIVE_DIRNAME}/<run-id>/ and are never expired "
+                             "automatically. Run ids are printed at the end of each install.")
     add_log_args(parser)
     args = parser.parse_args()
+
+    # Incoherent flag combinations are rejected here, BEFORE the run-log opens,
+    # so a rejected invocation leaves nothing behind at all — not even a log
+    # file. `--mode mc --skip-existing` is the case that matters (see
+    # reject_incompatible_flags); the interactive mode prompt is re-checked in
+    # _run() because it can select `mc` too.
+    err = reject_incompatible_flags(args.mode, bool(args.skip_existing))
+    if err:
+        _force_utf8_streams()
+        print(f"✗ {err}")
+        return 2
 
     # §8b: tee all output to a run-log (on by default; --no-log opts out;
     # --log overrides the path). The logger NEVER aborts the install.
@@ -1340,6 +3610,14 @@ def main() -> int:
 def _run(args) -> int:
     banner()
     print()
+
+    # ---- --rollback <run-id>: restore and exit, before anything else ----
+    # Handled first so a user recovering from a bad run does not have to sit
+    # through an environment scan, and so no other code path can mutate the
+    # tree we are about to restore.
+    if getattr(args, "rollback", None):
+        rb_home = Path(args.claude_home).expanduser() if args.claude_home else DEFAULT_CLAUDE_HOME
+        return rollback_run(rb_home, args.rollback)
 
     skill_n, agent_n, command_n, workflow_n = detect(REPO_ROOT)
     print(f"Repo root:      {REPO_ROOT}")
@@ -1423,10 +3701,33 @@ def _run(args) -> int:
             print("Install mode:")
             print("  l = link  (symlinks; edits in agent-foundry propagate; recommended for dev)")
             print("  m = move  (copy; independent; agent-foundry edits don't propagate)")
-            mode_choice = ask("Choose", choices=["l", "m"], default="l")
-            mode = "link" if mode_choice == "l" else "move"
+            print("  c = mc    (copy + CLEAN: also REMOVES entries this installer")
+            print("             previously placed here and no longer ships. Claude only.")
+            print("             Hand-authored files are never touched; everything")
+            print("             removed is archived first and restorable.)")
+            mode_choice = ask("Choose", choices=["l", "m", "c"], default="l")
+            mode = {"l": "link", "m": "move", "c": "mc"}[mode_choice]
     elif mode is None:
         mode = "link"
+
+    # The interactive prompt above can select `mc`, so the rejection main()
+    # applied to the FLAG has to be re-applied to the RESOLVED mode. Still
+    # before any write.
+    err = reject_incompatible_flags(mode, bool(args.skip_existing))
+    if err:
+        print(f"✗ {err}")
+        return 2
+
+    # ---- The internal split (§6.C2, §11 A10) ----
+    # From here down, `mode` is only ever used for DISPLAY and for provenance
+    # records. Every function that places files receives `placement_mode`, and
+    # `clean_claude` is never passed to anything but the Claude target — which
+    # is what stops `mc` from meaning anything under ~/.gemini or ~/.copilot.
+    placement_mode, clean_claude = resolve_mode(mode)
+    clean_claude = clean_claude and "claude" in targets
+    for line in normalize_mode_for_other_targets(mode, targets):
+        print(line)
+    dry_run = bool(getattr(args, "dry_run", False))
 
     # ---- Paths ----
     claude_home = Path(args.claude_home).expanduser() if args.claude_home else DEFAULT_CLAUDE_HOME
@@ -1438,6 +3739,74 @@ def _run(args) -> int:
         if "gemini" in targets or "agy" in targets:
             gemini_home = _ask_path_override("Gemini/agy", gemini_home)
 
+    # ---- Cleanup pre-flight (§6.C2, §11 A8) — decided BEFORE any write ----
+    #
+    # The authorization question has to be answered while the tree is still
+    # untouched. A `--noninteractive --mode mc` run with no `--yes-prune` must
+    # fail having written NOTHING — discovering the refusal after 200 skills
+    # have been placed would leave the user with a half-applied run they never
+    # authorized. plan_install() exists precisely so this is answerable without
+    # mutating: it reports what the run WOULD ship, which is the second half of
+    # the ownership test.
+    #
+    # `mc_baseline_only` is the first-run case: no previous manifest means no
+    # proven ownership, so this run installs, records a baseline, and prunes
+    # NOTHING. It is not an error — it is the only safe first move.
+    prune_authorized: list = []
+    mc_baseline_only = False
+    previous_manifest = read_manifest(claude_home) if "claude" in targets else None
+    # Populated by the global-config writers below (WP-005). None means the
+    # claude target never ran, in which case the manifest carries the previous
+    # block forward untouched rather than claiming this run wrote anything.
+    canonical_new: "dict | None" = None
+    if clean_claude:
+        preflight = plan_install(REPO_ROOT, claude_home, placement_mode, skip_existing=False)
+        if previous_manifest is None:
+            mc_baseline_only = True
+        else:
+            planned_candidates = compute_prune_candidates(previous_manifest,
+                                                          preflight["shipped"])
+            if planned_candidates and dry_run:
+                # A dry run REPORTS the destructive set; it never asks to
+                # perform it. Prompting here would be the one thing a dry run
+                # must not do — offer the user a way to mutate the tree from
+                # inside the command they ran to avoid mutating it.
+                print()
+                print("[cleanup — --mode mc]")
+                print_prune_set(planned_candidates, claude_home)
+                if prune_breaker_tripped(len(planned_candidates),
+                                         _manifest_entry_count(previous_manifest)):
+                    print("    ⚠ this exceeds the circuit-breaker threshold "
+                          f"({prune_threshold(_manifest_entry_count(previous_manifest))}) "
+                          "and a real run would demand explicit confirmation.")
+            elif planned_candidates:
+                print()
+                print("[cleanup — --mode mc]")
+                ok_to_prune, why = authorize_prune(
+                    planned_candidates, previous_manifest, claude_home,
+                    noninteractive=bool(args.noninteractive),
+                    yes_prune=bool(getattr(args, "yes_prune", False)))
+                if not ok_to_prune:
+                    print(f"  ✗ cleanup not authorized — {why}")
+                    print("    NOTHING has been installed, replaced, or removed.")
+                    return 1
+                prune_authorized = planned_candidates
+            else:
+                print()
+                print("[cleanup — --mode mc] nothing to remove: everything this "
+                      "installer owns here is still shipped.")
+
+    # ---- Auto-rollback, second path (§11 A10) ----
+    # A run that was hard-killed could not roll itself back — no in-process
+    # handler runs when the kernel takes the process away. It did leave its
+    # journal on disk, though, so THIS run can offer what that one could not.
+    # Surfaced before the confirmation prompt: a user may well want to restore
+    # first and install after.
+    # Skipped under --dry-run: accepting the offer performs a rollback, and a
+    # dry run must not be able to mutate the tree by any path at all.
+    if "claude" in targets and not dry_run:
+        _offer_incomplete_rollback(claude_home, noninteractive=bool(args.noninteractive))
+
     # ---- Confirm ----
     print()
     print("=" * 60)
@@ -1447,6 +3816,10 @@ def _run(args) -> int:
         print(f"                    {REPO_ROOT/'agents'}    → {claude_home/'agents'}")
         print(f"                    {REPO_ROOT/'commands'}  → {claude_home/'commands'}")
         print(f"                    {REPO_ROOT/'workflows'} → {claude_home/'workflows'}")
+        gc = "overwrite (.bak first)" if args.force_global_config else "create-if-absent"
+        print(f"  Claude  (env):   {claude_home/'CLAUDE.md'} — {gc}")
+        print(f"                    {claude_home/'settings.json'} — "
+              f"{'overwrite whole file (.bak first)' if args.force_global_config else 'create-if-absent, else inject only missing SessionStart hooks'}")
     if "copilot" in targets:
         extra = " + ~/.copilot/skills mirror" if args.mirror_copilot_skills else ""
         print(f"  Copilot: write {DEFAULT_COPILOT_HOME/'copilot-instructions.md'}{extra}")
@@ -1465,7 +3838,59 @@ def _run(args) -> int:
         print("  Existing skills/agents/commands at the targets will be KEPT (--skip-existing).")
     else:
         print("  Existing skills/agents/commands at the targets will be REPLACED. Pass --skip-existing to keep them.")
+    if clean_claude:
+        if mc_baseline_only:
+            print("  Cleanup: DEFERRED — no ownership provenance exists yet (first mc run here).")
+        elif prune_authorized:
+            print(f"  Cleanup: {len(prune_authorized)} previously-installed entr"
+                  f"{'y' if len(prune_authorized) == 1 else 'ies'} will be REMOVED "
+                  "(archived first).")
     print("=" * 60)
+
+    # ---- --dry-run (§6.C2 CLI table, R6) ----
+    #
+    # Prints the exact sets and returns. Everything below this point mutates,
+    # and everything above it either reads or asks — so this is the last line at
+    # which "nothing has been touched" is still true, which is the only place a
+    # dry run can honestly stop.
+    #
+    # install_claude() is NOT called with a dry_run flag; it is not called at
+    # all. plan_install() answers the same question from the same enumeration
+    # without a placement path that could mutate by accident. The three
+    # functions that DO carry a dry_run parameter (install_claude_md,
+    # install_settings, install_agy) are invoked with it, which is what finally
+    # makes that parameter reachable — before this flag existed it was
+    # unreachable dead code (R6).
+    if dry_run:
+        print()
+        print("DRY RUN — nothing will be created, replaced, or removed.")
+        if "claude" in targets:
+            print("[Claude]")
+            plan = plan_install(REPO_ROOT, claude_home, placement_mode,
+                                skip_existing=bool(args.skip_existing))
+            print_install_plan(plan, claude_home, placement_mode)
+            print("  [environment]")
+            # canonical_prev is passed so the dry run REPORTS an auto-update it
+            # would perform; canonical_out is deliberately NOT passed, because a
+            # dry run that recorded provenance would make the next real run
+            # believe it had written a file it never wrote.
+            dry_canonical_prev = (read_manifest(claude_home) or {}).get("canonical")
+            install_claude_md(REPO_ROOT, claude_home,
+                              force_global=bool(args.force_global_config), dry_run=True,
+                              canonical_prev=dry_canonical_prev)
+            install_settings(claude_home,
+                             force_global=bool(args.force_global_config), dry_run=True,
+                             canonical_prev=dry_canonical_prev)
+        if "agy" in targets:
+            print("[agy]")
+            install_agy(gemini_home, force=bool(args.force), dry_run=True)
+        for target in ("copilot", "gemini"):
+            if target in targets:
+                print(f"[{target}] — dry run not modelled for this target; it would "
+                      "be installed as described in the plan above.")
+        print()
+        print("dry run complete — nothing was changed.")
+        return 0
 
     if not args.noninteractive:
         if not confirm("Proceed?", default=False):
@@ -1477,30 +3902,221 @@ def _run(args) -> int:
     # `--force` forces agy.md / copilot-instructions.md overwrite (with .bak).
     skip_existing = bool(args.skip_existing)
     force = bool(args.force)
+    force_global = bool(args.force_global_config)
     print()
+    placed_claude: dict = {}
+    run_id = _new_run_id()
+    archive: "ArchiveSession | None" = None
     if "claude" in targets:
         print("[Claude]")
-        sc, ac, cc, wf, te, chm = install_claude(REPO_ROOT, claude_home, mode, skip_existing)
+        # ---- Archive root: created BEFORE the first mutation (§6.C2, §11 A3) ----
+        #
+        # This is the whole zero-destruction guarantee in one place. Creation
+        # precedes every destructive operation, so a failure here means the run
+        # refuses having touched precisely nothing — no partial install, no
+        # half-archived tree, no "we got most of it".
+        try:
+            archive = ArchiveSession.create(
+                claude_home, run_id, mode=mode,
+                source_rev=_git_sha(REPO_ROOT) or "unknown",
+                old_manifest=previous_manifest)
+        except ArchiveError as exc:
+            print(f"  ✗ could not prepare the archive: {exc}")
+            print("    REFUSING to install: this run replaces existing files, and without")
+            print("    an archive a replaced file could not be recovered. Nothing was changed.")
+            return 1
+        print(f"  ✓ archive ready: {archive.root}")
+        try:
+            sc, ac, cc, wf, te, chm, mp = install_claude(
+                REPO_ROOT, claude_home, placement_mode, skip_existing,
+                placed_out=placed_claude, archive=archive)
+        except ArchiveError as exc:
+            # Auto-rollback, first path (§11 A10): an archive move failed
+            # part-way, so undo what already moved and leave the tree as we
+            # found it. No destructive operation survives.
+            print(f"  ✗ archive failure during install: {exc}")
+            archive.rollback("an object could not be archived")
+            print("    The tree has been restored. Nothing was installed.")
+            return 1
         verb = "kept" if skip_existing else "replaced"
-        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands, {wf} workflows installed ({te} {verb} existing)")
+        meta_note = " + _meta support dir" if mp else ""
+        print(f"  ✓ {sc} skills, {ac} agents, {cc} commands, {wf} workflows{meta_note} installed ({te} {verb} existing)")
         if chm:
             print(f"    + chmod +x on {chm} skill scripts")
+        # Wire the global environment so the single advertised installer leaves a
+        # WORKING setup (the fix for the "settings.json present but 0 hooks" box).
+        print("  [environment]")
+        # The two global config files belong to a different component
+        # (canonical-config-provenance) with its own .bak convention, so they
+        # do not route through place(). What can be journalled here without
+        # reaching into that path is the ones this run CREATED — otherwise
+        # --rollback would leave a CLAUDE.md and a settings.json behind on a
+        # box that had neither, which is not the pre-run state.
+        #
+        # SEAM, deliberately not closed here: a config file that already
+        # existed and was MODIFIED is not archived. Archiving it would mean
+        # moving it away before install_settings could read and merge it, and
+        # the merge path is exactly what §11 A1 restructures. That case belongs
+        # with the component that owns the write.
+        env_files = [claude_home / "CLAUDE.md", claude_home / "settings.json"]
+        env_existed = {p: (p.exists() or p.is_symlink()) for p in env_files}
+        # canonical-config-provenance (WP-005): the PREVIOUS manifest's block is
+        # read-only input (it says what the installer last wrote whole-file);
+        # canonical_new collects what THIS run wrote whole-file. Starting from a
+        # copy of the previous block means a run that touches neither file
+        # carries provenance forward instead of dropping it.
+        canonical_prev = (previous_manifest or {}).get("canonical")
+        canonical_new = dict(canonical_prev) if isinstance(canonical_prev, dict) else {}
+        install_claude_md(REPO_ROOT, claude_home, force_global=force_global,
+                          canonical_prev=canonical_prev, canonical_out=canonical_new)
+        ok = install_settings(claude_home, force_global=force_global,
+                              canonical_prev=canonical_prev, canonical_out=canonical_new)
+        if archive is not None:
+            for env_file in env_files:
+                if not env_existed[env_file] and (env_file.exists() or env_file.is_symlink()):
+                    archive.record_created(env_file)
+        if not ok:
+            print("  ⚠ settings.json was left untouched (malformed / wrong shape).")
+            print("    Fix it, or re-run with --force-global-config to replace it (a .bak is written).")
+        # Readiness note: configured ≠ active — warn if any referenced hook script
+        # is missing under claude_home/skills (inert until the skills are installed).
+        missing = _missing_hook_scripts(claude_home)
+        if missing:
+            print(f"    ⚠ {len(missing)} SessionStart hook script(s) referenced by settings.json "
+                  f"are missing under {claude_home/'skills'} — inert until installed:")
+            for cmd in missing:
+                print(f"        {cmd}")
+    # Non-Claude targets receive placement_mode, NEVER the raw `mode`. That one
+    # substitution is what keeps `mc` from carrying its cleanup meaning into
+    # ~/.copilot and ~/.gemini, where there is no provenance manifest and so no
+    # way to prove ownership of anything.
     if "copilot" in targets:
         print("[Copilot / VS Code]")
         install_copilot(REPO_ROOT, force=force, mirror_skills=args.mirror_copilot_skills,
-                        mode=mode)
+                        mode=placement_mode)
     if "agy" in targets:
         print("[agy]")
         install_agy(gemini_home, force=force)
     if "gemini" in targets:
         print("[Gemini — LEGACY]")
         # install_gemini uses `force`-style semantics; pass not-skip to mean replace.
-        n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, mode, not skip_existing)
+        n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, placement_mode, not skip_existing)
         if not used_cli:
             print(f"  ⚠ `gemini` CLI not found on PATH; used direct {mode} fallback")
         print(f"  ✓ {n} skills (skipped {sk}) — note: gemini CLI retires 2026-06-18; agy is primary")
 
+    # ---- Provenance manifest (§11 A2) ----
+    #
+    # EVERY successful run writes/updates it — not only `mc` runs. `mc`
+    # ADDITIONALLY consumes it for prune ownership, but if only `mc` wrote it
+    # then a first `mc` on a box that had been installed a dozen times would
+    # find no provenance at all, and would have to either prune blind or defer
+    # forever.
+    #
+    # Written HERE, at the end, so it is written only after the run has
+    # completed without aborting. Every failure path above returns early, and
+    # an exception propagates out of _run() — so in both cases this line is
+    # never reached and any previous manifest is left byte-identical.
+    #
+    # The `placed_claude` guard is load-bearing beyond tidiness: an empty dict
+    # means install_claude never reported placements (it was stubbed, or the
+    # claude target was not selected), and writing a manifest claiming the
+    # installer placed nothing would mark every previously-owned entry as an
+    # orphan on the next run.
+    # ---- Cleanup, executed (§6.C1 ownership, §11 A8 breakers) ----
+    #
+    # Runs AFTER placement and BEFORE the manifest write, in that order for two
+    # reasons: the authoritative "what this run shipped" set is what
+    # install_claude() actually placed (not what the pre-flight predicted), and
+    # the manifest must describe the tree as it ends up, not as it was
+    # mid-cleanup.
+    #
+    # The candidate set is RECOMPUTED here from the real placement record. The
+    # pre-flight set authorized the removal; this set proves it. Anything in the
+    # recomputed set that the user did not authorize is skipped — the two agree
+    # in every normal run, and if they ever disagree the safe reading of the
+    # disagreement is the smaller set.
+    pruned_n = 0
+    if clean_claude and placed_claude and not mc_baseline_only:
+        actual_candidates = compute_prune_candidates(previous_manifest, placed_claude)
+        authorized_keys = {(c["category"], c["name"]) for c in prune_authorized}
+        to_prune = [c for c in actual_candidates
+                    if (c["category"], c["name"]) in authorized_keys]
+        unauthorized = len(actual_candidates) - len(to_prune)
+        if unauthorized:
+            print(f"  ⚠ {unauthorized} additional orphan(s) appeared since the "
+                  "cleanup was authorized — left in place.")
+        if to_prune:
+            pruned_n, failures = prune_orphans(claude_home, to_prune, archive)
+            print(f"  ✓ cleanup: removed {pruned_n} entr"
+                  f"{'y' if pruned_n == 1 else 'ies'} (archived, restorable "
+                  f"with --rollback {run_id})")
+            for name, why in failures:
+                print(f"    ⚠ could not remove {name}: {why} — left in place")
+
+    manifest = None
+    if placed_claude:
+        previous = previous_manifest
+        manifest = build_manifest(
+            placed_claude,
+            source_rev=_git_sha(REPO_ROOT) or "unknown",
+            run_id=run_id,
+            mode=mode,
+            # WP-005 populates this from the global-config writers, which
+            # record ONLY on whole-file writes (§11 A1). `canonical_new` was
+            # seeded from the previous block, so a run that wrote neither file
+            # carries provenance forward rather than dropping it; if the claude
+            # target never ran at all, fall back to the previous block directly.
+            canonical=(canonical_new if canonical_new is not None
+                       else (previous or {}).get("canonical")),
+        )
+        if write_manifest(claude_home, manifest):
+            n_entries = sum(len(v) for v in manifest["entries"].values())
+            print(f"  ✓ provenance manifest: {n_entries} entries + "
+                  f"{len(manifest['meta_files'])} _meta files → {manifest_path(claude_home)}")
+
+    # ---- Seal the journal ----
+    # Reached only on the success path; every failure above returns early or
+    # raises, leaving the journal `in_progress` so the NEXT run offers the
+    # rollback this one could not perform. Archives are never expired here —
+    # retention is an explicit, separate operation (§6.C2).
+    if archive is not None:
+        archive.set_new_manifest(manifest)
+        archive.finalize()
+        n_replaced = sum(1 for a in archive.completed_actions if a.get("op") == "replace")
+        if n_replaced:
+            print(f"  ✓ archived {n_replaced} replaced object(s) → {archive.root}")
+            print(f"    undo this run with:  python3 install.py --rollback {run_id}")
+
     print()
+
+    # ---- First `mc` run with no provenance: baseline written, cleanup deferred ----
+    #
+    # Exit 2, not 0 and not 1. The install succeeded, so 1 would be a lie; the
+    # cleanup the user asked for did not happen, so 0 would be a different lie.
+    # A distinct code lets a script tell "installed and cleaned" from "installed,
+    # cleanup deferred" without parsing prose.
+    #
+    # This is the honest first move: with no previous manifest there is no proof
+    # that this installer placed ANY of what is already at the destination, and
+    # deleting on the assumption that it did is exactly the failure the manifest
+    # exists to prevent. The baseline written by this run makes the NEXT one able
+    # to clean.
+    if mc_baseline_only:
+        print("=" * 60)
+        print("⚠  CLEANUP DEFERRED — no ownership provenance existed for this target.")
+        print()
+        print("   --mode mc removes only entries this installer can PROVE it placed,")
+        print("   and proof comes from " + MANIFEST_FILENAME + ", which did not exist here")
+        print("   before this run. Nothing was removed.")
+        print()
+        print(f"   A baseline manifest has been written to {manifest_path(claude_home)}.")
+        print("   Re-run with --mode mc once the source tree changes and the cleanup")
+        print("   will have the ownership record it needs.")
+        print("=" * 60)
+        print("done (cleanup deferred).")
+        return 2
+
     print("done.")
     return 0
 

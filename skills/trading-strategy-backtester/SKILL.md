@@ -17,7 +17,7 @@ Backtesting evaluates a trading strategy on historical data. The core pitfall is
 - Generating walk-forward validation reports
 - Diagnosing why a live strategy underperforms its backtest
 
-**When NOT to use:** For live execution logic — use `crypto-exchange-integration` skill instead.
+**When NOT to use:** For live execution logic — use `equity-broker-execution` for equities (or `crypto-exchange-integration` for crypto) instead.
 
 ## Core Pitfalls
 

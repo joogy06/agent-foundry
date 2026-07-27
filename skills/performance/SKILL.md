@@ -72,8 +72,8 @@ After confirmation, surface the relevant domain skill for the synthesis phase:
 |---|---|
 | python-flask / python-fastapi | python-flask-developer |
 | python-django | python-flask-developer + python-data-engineer |
-| nodejs (Express / Fastify) | nodejs-backend-patterns |
-| nextjs / SSR React | frontend-design + nodejs-backend-patterns |
+| nodejs (Express / Fastify) | (no dedicated skill — use profiling.md + database.md) |
+| nextjs / SSR React | modern-frontend |
 | java-spring | java-backend |
 | php-woocommerce | woocommerce-developer |
 | php-wordpress | wordpress-developer |

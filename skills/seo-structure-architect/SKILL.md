@@ -15,6 +15,15 @@ Structure is how search engines and AI systems parse your content. Clear hierarc
 
 ### Priority Schema Types (2026)
 
+> **CANONICAL OWNER.** This table and the Deprecated table below are the **single
+> source of truth for schema status** across the SEO/ecommerce family.
+> `ai-search-optimizer` and `seo-serp-optimizer` rank schema for *their* purpose but
+> **must not restate status here** — they point at this file.
+> Rationale: three partial copies of these tables previously existed; `FAQPage`
+> drifted into three different verdicts, and the copies still disagree by omission
+> (one lacked `WebSite` and `MerchantReturnPolicy` entirely). Verify with
+> `python3 ~/.claude/skills/_meta/gates.py G_CLAIM_FRESHNESS --claim-mode strict`.
+
 | Schema | Where | Impact | Notes |
 |--------|-------|--------|-------|
 | `Product` + `Offer` | Every product page | CRITICAL | Include: name, image, description, brand, SKU, price, availability, reviews. Products with complete schema are preferentially cited by AI shopping |
@@ -23,7 +32,7 @@ Structure is how search engines and AI systems parse your content. Clear hierarc
 | `BreadcrumbList` | All pages | HIGH | Up to 30% CTR boost on desktop (removed from mobile SERPs Jan 2025) |
 | `WebSite` | Site-wide (once) | HIGH | Controls site name display in SERPs |
 | `AggregateRating` | Product pages | HIGH | Star ratings boost CTR 20-35% |
-| `FAQPage` | Product/category/guide pages | MEDIUM | Rich results restricted to gov/health only, BUT still valuable for AI parsing |
+| `FAQPage` | Product/category/guide pages | LOW | Rich result **fully removed May 2026** (no site qualifies). Still valid schema, still valuable for AI parsing |
 | `MerchantReturnPolicy` | Site-wide | MEDIUM | Requires returnPolicyCountry. Trust signal |
 
 ### Deprecated — Do NOT Implement for Rich Results
@@ -31,7 +40,7 @@ Structure is how search engines and AI systems parse your content. Clear hierarc
 | Schema | Status |
 |--------|--------|
 | `HowTo` | Fully deprecated (all sites) |
-| `FAQPage` | Rich results: gov/health only. Still implement for AI parsing |
+| `FAQPage` | **Fully deprecated 7 May 2026** — no rich result for any site (was gov/health-only from Aug 2023). Search Console reporting removed Jun 2026, API Aug 2026. Still valid schema — keep for AI parsing, expect zero SERP real estate |
 | `Q&A` | Deprecated Jan 2026 |
 | `SitelinksSearchBox` | Deprecated Jan 2026 |
 | `Dataset` (for search) | Deprecated Jan 2026 |
@@ -79,6 +88,7 @@ Structure is how search engines and AI systems parse your content. Clear hierarc
 - Homepage → Category → Subcategory → Product
 - Click depth directly correlates with crawl efficiency — pages beyond 3 clicks see reduced crawl rates
 - Flat URLs (`/product-name`) are flexible; moderate hierarchy (`/category/product-name`) is practical for e-commerce
+- Faceted/filter URLs need explicit crawl control — parameter combinations can explode crawl paths and create thin duplicates. See `woocommerce-faceted-navigation` for the index-worthy-vs-thin allowlist and the canonical/noindex/robots decision matrix.
 
 ## Core Web Vitals
 
@@ -107,7 +117,7 @@ Structure is how search engines and AI systems parse your content. Clear hierarc
 |-------|-----|
 | Use Microdata/RDFa for new implementations | JSON-LD is simpler, lower error rate |
 | Implement HowTo schema expecting rich results | Fully deprecated |
-| Implement FAQ schema expecting rich results | Restricted to gov/health only |
+| Implement FAQ schema expecting rich results | Fully deprecated May 2026 — no rich result for any site |
 | Build deep architecture (4+ clicks) | Kills crawlability |
 | Set `<priority>`/`<changefreq>` in sitemaps | Google ignores them completely |
 | Use strict silos with zero cross-linking | Outdated; contextual cross-links between related topics are beneficial |

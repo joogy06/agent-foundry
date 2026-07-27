@@ -55,6 +55,7 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 - Product cards: image, name, GPU+CPU, price, monthly price, rating
 - 100-200 words descriptive content for SEO
 - Mobile: filters in drawer, two-column grid, "Load More" not pagination
+- Filter/facet mechanics (AJAX vs reload, applied-filter chips, and which filter URLs to index vs noindex) → see `woocommerce-faceted-navigation` for the HOW and crawl-control layer
 
 ### Product Pages
 **Goal**: Convince this specific PC is worth buying. Highest-leverage page.
@@ -74,6 +75,12 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 - Customer reviews
 - Cross-sell: "Complete Your Setup" (monitor, peripherals)
 - FAQ section
+
+**Variation & comparison patterns**:
+- **Variation swatches**: image/colour swatches beat dropdowns for visual attributes (colour, finish); keep dropdowns for non-visual ones (size). Show disabled/out-of-stock combinations rather than hiding them, and sync the selected swatch to the gallery image.
+- **Tabs vs long-form**: few complex products → long-form single column (easier mobile scroll, better AI parsing); large catalogue or comparison shoppers → tabbed/accordion specs to keep the page scannable.
+- **PDP trust badges**: put payment icons and returns/warranty near the price and Add-to-Cart, not only in the footer (see `conversion-psychology` trust architecture).
+- **Product comparison**: offer a compare table for 2-4 similar SKUs (spec-by-spec rows) so shoppers self-serve differentiation instead of bouncing to search.
 
 **Benchmarks**: Electronics CVR 1.4-1.8% normal, 2.5%+ excellent. Add-to-cart target: 8-12%.
 
@@ -162,10 +169,12 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 | LCP | < 2.5s | < 2.0s |
 | Pages/session | 3-5 | > 4 |
 
+*To confirm a change actually moves these metrics (rather than random noise), run a controlled experiment with proper sample-size and validity guards — see `ecommerce-cro-experimentation`.*
+
 ### Speed Quick Wins
 - Lazy load images below fold
 - Optimise LCP element (hero image)
-- Disable cart fragments AJAX on non-cart pages (test first)
+- Disable cart fragments AJAX on non-cart pages (test first) — see `woocommerce-developer` for the `get_refreshed_fragments` dequeue recipe
 - Limit related products to 4
 - Use CDN for static assets
 

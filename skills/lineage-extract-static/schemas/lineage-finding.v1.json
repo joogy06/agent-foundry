@@ -220,6 +220,129 @@
       "type": "integer",
       "minimum": 0,
       "description": "OPTIONAL count of edges with boundary_issue=true. Surfaced by accumulate.py at file-level rollup; absent at chunk-level."
+    },
+    "dataset_schemas": {
+      "type": "array",
+      "description": "OPTIONAL (2026-07-01 schema-facet uplift). Column/field structure for datasets whose columns are NAMED IN SOURCE (dbt schema.yml models, SQL DDL column lists, CSV header rows, COBOL copybook fields, staged-model SELECT column lists). NEVER invented or guessed columns — speculative columns are OMITTED, not banded. Flows through accumulate.py + merge-across-files into the project aggregate; merge_into_ol.py attaches each entry as an OpenLineage SchemaDatasetFacet (facets.schema.fields) on the matching DatasetEvent.",
+      "items": {
+        "type": "object",
+        "required": ["namespace", "name", "fields"],
+        "additionalProperties": false,
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Same namespace vocabulary as edges[].source_dataset.namespace — MUST match the dataset it describes so OL emission can join them."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Same in-namespace identifier as edges[].source_dataset.name."
+          },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Ordered column/field list AS NAMED IN SOURCE (source order preserved).",
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "type": {
+                  "type": "string",
+                  "description": "Optional — only when the type is stated in source (DDL type, schema.yml data_type, copybook PIC). Omit when not stated; never guess."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional (2026-07-02 column-level uplift) — only when the source states a column/field description (dbt schema.yml column description, copybook comment). Never invented."
+                }
+              }
+            }
+          },
+          "evidence_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional 1-indexed file-relative line where the column list is declared."
+          }
+        }
+      }
+    },
+    "column_lineage": {
+      "type": "array",
+      "description": "OPTIONAL (2026-07-02 column-level uplift). Per-column derivations for OUTPUT datasets whose column mapping is NAMED IN SOURCE (SQL rename lists, explicit passthrough columns, expressions naming their source columns). STRICT: a mapping exists only when the source names both ends; SELECT * and unresolved macros yield NOTHING for that field — EXCEPT the single-parent identity-passthrough marker (passthrough_from), which merge_into_ol.py expands deterministically against the parent's named dataset_schemas entry iff the producing job has exactly ONE input dataset. Flows through accumulate.py + merge-across-files into the project aggregate; merge_into_ol.py attaches each resolved entry as an OpenLineage columnLineage 1-2-0 facet on the matching OUTPUT DatasetEvent.",
+      "items": {
+        "type": "object",
+        "required": ["namespace", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OUTPUT dataset namespace — same vocabulary as edges[].source_dataset.namespace."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OUTPUT dataset in-namespace identifier."
+          },
+          "fields": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "columnLineage 1-2-0 field map: {<output_field>: {inputFields: [{namespace, name, field}]}}. Mutually exclusive with passthrough_from.",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["inputFields"],
+              "additionalProperties": false,
+              "properties": {
+                "inputFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["namespace", "name", "field"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "namespace": { "type": "string", "minLength": 1 },
+                      "name": { "type": "string", "minLength": 1 },
+                      "field": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "passthrough_from": {
+            "type": "object",
+            "required": ["namespace", "name"],
+            "additionalProperties": false,
+            "description": "SELECT-* single-parent identity-passthrough marker (§9 amendment): the output is a plain `select * from <single upstream>`. merge_into_ol.py expands it to a 1:1 identity field map from the parent's named dataset_schemas entry; unknown parent schema or a multi-input producing job yields NOTHING.",
+            "properties": {
+              "namespace": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 }
+            }
+          },
+          "evidence_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional 1-indexed file-relative line of the defining statement."
+          }
+        }
+      }
+    },
+    "dataset_descriptions": {
+      "type": "array",
+      "description": "OPTIONAL (2026-07-02 column-level uplift). Dataset-level descriptions stated in source (dbt model/source description:, table comment DDL). merge_into_ol.py attaches each as an OpenLineage documentation facet on the matching DatasetEvent. Never invented.",
+      "items": {
+        "type": "object",
+        "required": ["namespace", "name", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "namespace": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "evidence_line": { "type": "integer", "minimum": 1 }
+        }
+      }
     }
   }
 }

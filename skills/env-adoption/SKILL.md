@@ -1,26 +1,24 @@
 ---
 name: env-adoption
-description: Use when checking tool availability (Codex, Antigravity CLI (agy), Copilot, gh, Docker, bridge), determining environment tier, reading cached inventory or session state, setting up missing tools, or when any skill needs to know what capabilities are available in the current environment.
+description: Use when checking tool availability (Codex, Antigravity CLI (agy), Copilot, gh, Docker), determining environment tier, reading cached inventory or session state, setting up missing tools, or when any skill needs to know what capabilities are available in the current environment.
 ---
 
 # Environment Adoption — Centralized Capability Registry
 
 ## Overview
 
-Single source of truth for tool detection, version tracking, and capability routing. Two-tier state model: persistent inventory (what is installed) and volatile session state (runtime connectivity, bridge mode, auth). Replaces scattered inline probing across forge, codex-orchestration, and other skills.
+Single source of truth for tool detection, version tracking, and capability routing. Two-tier state model: persistent inventory (what is installed) and volatile session state (runtime connectivity, auth). Replaces scattered inline probing across forge, codex-orchestration, and other skills.
 
 ## When to Use
 
 - Session start — probe environment, report tier
 - Before delegating to Codex/agy — check `tools.codex.installed` / `capabilities.agy_analyst`
-- Before bridge routing — read `session.bridge_mode`
 - When a skill needs to branch on tool availability — use `get` subcommand
 - After installing a new tool — run `probe.sh check --force` to update inventory
 
 ## When NOT to Use
 
 - Do not re-probe on every skill invocation (read the manifest instead)
-- Do not use for bridge-mode hysteresis logic (that lives in `bridge-mode-detect.sh` — this skill *composes* with it)
 - Do not use for Codex session management (use `codex-orchestration`)
 
 ## Operations
@@ -36,7 +34,7 @@ Single source of truth for tool detection, version tracking, and capability rout
 
 | Flag | Effect |
 |------|--------|
-| `--inventory-only` | Skip session state (connectivity checks, bridge mode) |
+| `--inventory-only` | Skip session state (connectivity checks) |
 | `--force` | Re-probe even if inventory is fresh (<24h) |
 | `--silent` | No stdout, just write state files |
 | `--json` | Output combined inventory + session state as JSON |
@@ -51,7 +49,6 @@ probe.sh get tier                     # 0, 1, or 2
 probe.sh get tier_label               # minimal, standard, full
 
 # Session state (volatile)
-probe.sh get session.bridge_mode           # local/bridge/unknown
 probe.sh get capabilities.triple_model     # true/false
 probe.sh get capabilities.codex_challenger # true/false
 probe.sh get capabilities.agy_analyst      # true/false
@@ -77,14 +74,14 @@ probe.sh get harness.workflow_tool         # true/false  (Q1 host capability, in
 |------|-------|-------------|------------|
 | 0 | **minimal** | git + python3 | All skills as reference, wiki agent |
 | 1 | **standard** | + gh + codex + agy | forge/bob/alf with multi-model reviews |
-| 2 | **full** | + copilot + docker + bridge | Everything incl. bridge fallback, containers |
+| 2 | **full** | + copilot + docker | Everything incl. containers |
 
 ## State Files
 
 | File | Lifecycle | Content |
 |------|-----------|---------|
 | `~/.claude/state/inventory.json` | Persistent, re-probed if >24h old | Tools, versions, tier |
-| `$XDG_RUNTIME_DIR/env-adoption/session-<id>.json` | Volatile, per-session | Bridge mode, auth, MCP, capabilities |
+| `$XDG_RUNTIME_DIR/env-adoption/session-<id>.json` | Volatile, per-session | Auth, MCP, capabilities |
 
 ## Integration
 
@@ -107,7 +104,6 @@ See `references/integration.md` for full patterns.
 
 | Don't | Why | Do Instead |
 |-------|-----|------------|
-| Reimplement bridge-mode-detect.sh | Two sources of truth, regression risk | Call it and record output |
 | Make state bash-sourceable | Shell-specific, security risk | JSON canonical, `get` helper for shell |
 | Single file for inventory + session | Different lifecycles, session interference | Two-tier: persistent + volatile |
 | Probe on every skill invocation | Performance death by 1000 probes | Probe once, read many |

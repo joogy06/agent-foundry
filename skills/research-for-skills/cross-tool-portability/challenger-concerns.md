@@ -8,7 +8,7 @@ Issues raised by the Wave 1 challenger review of the cross-tool design that the 
 
 **Current state**:
 
-- **Strict-loader built-in skills** (verified locally on the retired gemini-cli, indicative of the convention): `skill-creator`, plus extension-bundled skills like `nanobanana`. None of the four new skills (`claude-code-cli`, `antigravity-cli`, `gh-copilot-cli`, `gcp-workstations`) collide.
+- **Strict-loader built-in skills** (indicative of the convention): `skill-creator`, plus extension-bundled skills like `nanobanana`. None of the four new skills (`claude-code-cli`, `antigravity-cli`, `gh-copilot-cli`, `gcp-workstations`) collide.
 - **Copilot built-in agents** (UNVERIFIED): unknown set. Default agent uses no specific name.
 - **Codex built-in skills**: 7 native + 112 mirrored from Claude. Includes `codex-claude-bridge`, `brainstorming-ideas`, `challenger-review`. None collide with the new four.
 

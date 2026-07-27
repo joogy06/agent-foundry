@@ -20,7 +20,7 @@ Note: Copilot REQUIRES `--allow-all-tools` for `-p` mode (otherwise it blocks on
 | Antigravity CLI (`agy`) | plain text on stdout (default; only verified mode) | TODO(agy): verify equivalent — no verified JSON output mode | TODO(agy): verify equivalent — no verified streaming mode |
 | Copilot CLI | `--output-format text` (default) | `--output-format json` (JSONL — one object per line) | (no separate streaming flag — `--stream on/off` controls it) |
 
-JSON output schemas differ. Don't try to parse Claude's JSON with another tool's parser. `agy -p` returns **plain text** — parse text, not JSON fields (the retired `mcp__gemini-cli__*` tools returned structured fields; agy does not).
+JSON output schemas differ. Don't try to parse Claude's JSON with another tool's parser. `agy -p` returns **plain text** — parse text, not JSON fields.
 
 ## Permission / approval mode
 

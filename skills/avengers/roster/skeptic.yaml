@@ -20,6 +20,19 @@ incentive:
 
 voice: "terse, evidence-first, cites the specific line/claim it is attacking; never hand-waves"
 
+# D2 divergence overlay (design §3). The `incentive` block above is the persona-free
+# CORE — always active (the adversarial-critic framing is evidence-reasonable, not
+# evidence-clean). This overlay is injected ONLY in blind-diverge / ideation and
+# STRIPPED for converge / verify / arbiter (phase-gated in seat_prompt.py). MUST declare
+# type expertise-cue | divergence-direction; a decorative/demographic overlay is REJECTED
+# at validate (convene.lint_overlay).
+divergence_overlay:
+  type: divergence-direction
+  direction: >-
+    Attack from the least-likely failure surface first — supply-chain, clock skew,
+    partial failure, ordering, the case everyone assumes cannot happen — before the
+    obvious ones, so the docket surfaces failure modes a consensus reading would miss.
+
 provider:
   affinity: codex             # gpt-5.6-sol; challenger seat
   fallback_ok: true
