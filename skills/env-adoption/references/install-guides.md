@@ -64,9 +64,3 @@ Post-install: Add user to docker group (`sudo usermod -aG docker $USER`) to avoi
 | Ubuntu/Debian | `sudo apt install git` |
 | macOS | `xcode-select --install` (or `brew install git`) |
 
-## git-cli-bridge
-
-Not a standalone install. Part of the skill ecosystem:
-1. Ensure `~/.claude/skills/git-cli-bridge/` exists with `scripts/bridge-mode-detect.sh`
-2. If missing, the skill needs to be restored from the skill library
-3. Bridge mode requires a bridge repo: `bridge init <bridge-repo-url>`

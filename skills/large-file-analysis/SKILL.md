@@ -640,7 +640,7 @@ Use it to:
 - Summarize entire large files when sequential chunking loses cross-section patterns
 - Cross-validate findings from Claude's chunked analysis against a single-pass second-model view
 
-This is optional and complements (not replaces) the chunked strategies above. See `codex-orchestration` for the full delegation patterns. (The old `mcp__gemini-cli__ask-gemini` route is gone; gemini CLI retired 2026-06-18.)
+This is optional and complements (not replaces) the chunked strategies above. See `codex-orchestration` for the full delegation patterns.
 
 ## Anti-Patterns
 

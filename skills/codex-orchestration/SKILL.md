@@ -1,6 +1,6 @@
 ---
 name: codex-orchestration
-description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.6) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec (incl. per-call reasoning-effort tiers), and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy). Sandbox-aware: routes agy/Copilot calls through git-cli-bridge when local CLIs are unreachable."
+description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.6) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec (incl. per-call reasoning-effort tiers), and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy)."
 ---
 
 # Cross-Model Orchestration — Claude + Codex + Antigravity (agy)
@@ -24,7 +24,6 @@ Always use `--ephemeral` for orchestration tasks to avoid polluting Codex sessio
 </HARD-RULE>
 
 <HARD-RULE>
-When delegating to agy or Copilot, check `bridge-mode-detect.sh` first. If it reports "bridge", route the call through `bridge request` instead of calling the local CLI. Explicit `AI_BRIDGE_MODE=1` forces bridge; explicit `AI_BRIDGE_DISABLE=1` forces local; otherwise auto-detection with 3-failure hysteresis. See `git-cli-bridge` skill.
 </HARD-RULE>
 
 ---
@@ -61,7 +60,7 @@ The **Codex plugin** (`codex@openai-codex`) provides first-class slash commands 
 
 The **Antigravity CLI** (`agy`) is this host's second-opinion / challenger / research delegate. It authenticates itself via the Antigravity account — no API key or env prefix needed. There is no MCP server: call `agy` directly via Bash. See the `antigravity-cli` skill for the full reference.
 
-**Headless single-prompt mode** is the direct analogue of the old `gemini -p`:
+**Headless single-prompt mode**:
 
 ```bash
 timeout 600 agy --sandbox -p "<prompt>" < /dev/null
@@ -85,8 +84,8 @@ timeout 600 agy --sandbox -p "<prompt>" < /dev/null
   instead), open the prompt with "Advisory only — do not modify any files; answer on stdout",
   and run `git status --short` afterwards if a repo was exposed. Omit `--sandbox`
   only when the task explicitly requires writes, and say so in the prompt.
-- Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON. (The gemini-mcp tools `ask-gemini` / `brainstorm` returned structured fields; agy `-p` does not. The gemini CLI itself (v0.50.x) remains an available fallback (kept per user direction 2026-07-10), but route new delegation through agy.)
-- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current 1.0.15) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. There are no documented model tiers / downgrade fallbacks to manage.
+- Output is **plain text on stdout** — there are no structured response fields. Callers must parse text, not JSON.
+- `agy` uses the Antigravity-account default model by **convention** — as of 1.0.5+ (current **1.1.6**) a `--model` flag and an `agy models` subcommand DO exist (there is no short `-m` alias), but omit `--model` unless a call explicitly needs a specific model. The account default is **`gemini-3.6-flash`** (verified 2026-07-24), so omitting the flag rides the current line automatically. **FLASH-ONLY HARD-RULE (user directive 2026-07-24): agy runs gemini flash models ONLY.** ✅ `gemini-3.6-flash-{high,medium,low}` (current) / `gemini-3.5-flash-*` (legacy). ❌ FORBIDDEN with no carve-out: `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`, **and `gemini-3.1-pro-{high,low}`**. Reasons: (1) provider diversity — agy holds the third-model slot because it is neither Anthropic nor OpenAI; repointing it at `claude-sonnet-4-6` (the tempting "fix" for an agy no-show) collapses the cross-check into an echo, and `gpt-oss-*` collapses into the Codex arm; (2) flash-tier discipline — agy is advisory-tier, so don't reach for pro. On a no-show: retry under the STDIN/FLAG-ORDER/Pattern-2 rules, then record the provider gap honestly — there is no gemini fallback (retired 2026-07-25). Escalate to another arm rather than repointing agy.
 - For long-running prompts raise the wait timeout: `agy --print-timeout 15m -p "<prompt>" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).
 - Append a `served_by` probe line to the prompt if you need provenance — self-reported model identity is unreliable, so capture it at the call layer.
 
@@ -127,56 +126,6 @@ AGY_AVAILABLE=$(agy --version 2>/dev/null && echo "yes" || echo "no")
 ```
 
 Cache for the session like the Codex check. Both can be checked in parallel at session start.
-
----
-
-## Sandbox-Aware Routing via git-cli-bridge
-
-In sandboxed environments where `agy` or `copilot` CLIs are unreachable locally, route delegation through the `git-cli-bridge` skill. It pushes requests via git to a dedicated `ai-bridge-<user>` repo and executes the CLI on GitHub Actions runners.
-
-### Routing matrix
-
-| AI_BRIDGE_MODE | AI_BRIDGE_DISABLE | Local agy --version | Local copilot --version | Effective mode |
-|---|---|---|---|---|
-| unset | unset | ok | ok | local |
-| unset | unset | fail | ok | local (1-2 fails) -> bridge (3+ fails) |
-| unset | unset | fail | fail | local (1-2 fails) -> bridge (3+ fails) |
-| 1 | unset | any | any | bridge |
-| unset | 1 | any | any | local |
-| 1 | 1 | any | any | local (DISABLE wins) |
-
-### Bridge call template
-
-```bash
-MODE=$("$HOME/.claude/skills/git-cli-bridge/scripts/bridge-mode-detect.sh")
-if [ "$MODE" = "bridge" ]; then
-  # Submit via bridge. Requires `bridge init` to have been run already in this session.
-  # TODO(agy): verify the bridge exposes an `agy` tool target — the git-cli-bridge tool
-  # registry / workflow that ran the gemini CLI on the runner must be updated to run `agy`.
-  BRIDGE_CALLER=codex-orchestration \
-  bridge request \
-    --tool agy --kind review \
-    --context "$CONTEXT_FILE" \
-    --wait --timeout 720 \
-    "$PROMPT_BODY"
-else
-  # Local path — agy returns plain text on stdout
-  agy --sandbox -p "$PROMPT_BODY" < /dev/null
-fi
-```
-
-### Latency expectations
-
-- Local agy call: ~2-5 seconds.
-- Bridge agy call: ~90 seconds cold (workflow install + run), ~40 seconds warm (runner cache). This is the price of sandboxed operation. If latency is unacceptable, the user can switch back with `AI_BRIDGE_DISABLE=1`.
-
-### When bridge mode is wrong
-
-- Bridge mode activates but the user's local CLI is actually fine: run `AI_BRIDGE_DISABLE=1 bridge-mode-detect.sh --reset` then re-probe.
-- Local CLI activates but the user's local CLI is blocked by a transient network issue: wait 1 minute, retry; hysteresis will catch it on the third failure.
-- Bridge mode activates but `bridge init` was never run: the next `bridge request` will fail; either `bridge init` or set `AI_BRIDGE_DISABLE=1` for the rest of the session.
-
-See `git-cli-bridge` skill for full protocol, security model, and client script reference.
 
 ---
 
@@ -423,7 +372,6 @@ Never use `--dangerously-bypass-approvals-and-sandbox` or `danger-full-access` u
 | Parallel background research | Interactive user dialogue |
 | Stress-testing with different model perspective | Tasks needing Claude's agent spawning |
 | Domain-specific review (with skill injection) | Multi-step orchestration (forge, agent-teams) |
-| agy delegation in sandboxed env | Via git-cli-bridge (see Sandbox-Aware Routing) |
 
 ---
 
@@ -433,7 +381,7 @@ Claude skills are symlinked into Codex's skill directory (`~/.codex/skills/`). C
 
 **Symlink structure:** `~/.codex/skills/<name>` -> `~/.claude/skills/<name>`
 
-**Skills NOT shared (Claude-specific):** `agent-teams`, `codex-orchestration`, `forge`, `nano-banana`, `vertex-banana`, `research-for-skills`, `challenger` (Codex has native `challenger-review`).
+**Skills NOT shared (Claude-specific):** `agent-teams`, `codex-orchestration`, `forge`, `vertex-banana`, `vertex-banana`, `research-for-skills`, `challenger` (Codex has native `challenger-review`).
 
 **Naming note:** Claude's `challenger` skill = Codex's `challenger-review` skill. Both provide the same framework from different model perspectives.
 
@@ -481,7 +429,6 @@ For advanced patterns, templates, and examples, see:
 | GitHub Copilot CLI reference | `gh-copilot-cli` |
 | Cross-tool skill authoring rules | `research-for-skills/cross-tool-portability/cross-tool-portability.md` |
 | GCP Workstations deployment | `gcp-workstations` |
-| Git-based CLI bridge for sandboxed environments | `git-cli-bridge` |
 
 ---
 

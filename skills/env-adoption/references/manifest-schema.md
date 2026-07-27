@@ -28,7 +28,6 @@ Persistent across sessions. Re-probed when older than 24 hours or on `--force`.
     "jq":          { "installed": true,  "version": null },
     "yq":          { "installed": true,  "version": "4.47.1" },
     "openssl":     { "installed": true,  "version": "3.5.1" },
-    "bridge":      { "installed": true },
 
     "bandit":      { "installed": false, "version": null },
     "semgrep":     { "installed": false, "version": null },
@@ -58,7 +57,6 @@ The `bandit` / `semgrep` / `gitleaks` / `trufflehog` / `trivy` / `pip-audit` / `
 | `harness.agent_spawn` | boolean | claude installed AND version parseable |
 | `tools.<name>.installed` | boolean | Whether the tool binary is found via `command -v` |
 | `tools.<name>.version` | string or null | Extracted semver, null if not parseable or not installed |
-| `tools.bridge.installed` | boolean | Whether `bridge-mode-detect.sh` is executable at expected path |
 | `tier` | integer (0-2) | Computed capability tier |
 | `tier_label` | string | Human-readable tier name: minimal, standard, full |
 
@@ -68,7 +66,7 @@ The `bandit` / `semgrep` / `gitleaks` / `trufflehog` / `trivy` / `pip-audit` / `
 |------|-----------|
 | 0 (minimal) | git OR python3 missing |
 | 1 (standard) | git + python3 + gh + codex + agy all installed |
-| 2 (full) | tier 1 + copilot + docker + bridge all installed |
+| 2 (full) | tier 1 + copilot + docker all installed |
 
 If git + python3 present but gh/codex/agy incomplete, tier is 0.
 
@@ -78,10 +76,9 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "session_id": "abc-123",
   "created": "2026-04-12T21:00:00Z",
-  "bridge_mode": "local",
   "agy_responding": true,
   "gh_authenticated": true,
   "gh_user": "your-gh-user",
@@ -91,7 +88,6 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
     "triple_model": true,
     "codex_challenger": true,
     "agy_analyst": true,
-    "bridge_fallback": false,
     "container_workflows": true,
     "workflow_tool": true,
     "native_teams": false,
@@ -107,7 +103,6 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
 | `schema_version` | integer | Session schema version (currently **2** — S055) |
 | `session_id` | string | From `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID`, `FORGE_SESSION_ID`, or derived from PID |
 | `created` | string (ISO 8601) | When this session state was created |
-| `bridge_mode` | string | Output of `bridge-mode-detect.sh`: "local", "bridge", or "unknown" |
 | `agy_responding` | boolean | Whether the Antigravity CLI (`agy`) responds to `--version` |
 | `gh_authenticated` | boolean | Whether `gh auth status` reports logged in |
 | `gh_user` | string or null | GitHub username from `gh auth status` |
@@ -116,7 +111,6 @@ Volatile, per-session. Destroyed on reboot (tmpfs). Created fresh for each sessi
 | `capabilities.triple_model` | boolean | Codex installed AND agy responding |
 | `capabilities.codex_challenger` | boolean | Codex installed |
 | `capabilities.agy_analyst` | boolean | agy responding |
-| `capabilities.bridge_fallback` | boolean | Bridge mode is active |
 | `capabilities.container_workflows` | boolean | Docker installed |
 | `capabilities.workflow_tool` | boolean | `version_ge(claude_version_live, "2.1.154")` AND `current_cli == "claude-code"` (Q2 — host session only) |
 | `capabilities.native_teams` | boolean | workflow-gate AND `version_ge(.., "2.1.32")` AND live env gate AND `current_cli == "claude-code"` |

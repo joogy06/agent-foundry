@@ -71,7 +71,14 @@ Also: `file_path`, `file_sha256`, `extractor_version`.
     "schedules": <count>,
     "depends_on": <count>
   },
-  "boundary_issues_count": <count of edges with boundary_issue: true (initially 0 at this stage)>
+  "boundary_issues_count": <count of edges with boundary_issue: true (initially 0 at this stage)>,
+  "dataset_schemas": [
+    /* OPTIONAL — union of chunk-level dataset_schemas entries keyed on
+       (namespace, name); field lists union by field name preserving source
+       order (a later duplicate may only fill a missing "type"). Omit the key
+       when no chunk carried one. accumulate.py applies the same deterministic
+       union (merge_dataset_schemas). */
+  ]
 }
 ```
 

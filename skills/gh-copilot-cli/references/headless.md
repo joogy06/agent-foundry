@@ -186,14 +186,18 @@ The exact schema of the JSONL events is **`[UNVERIFIED]`** — capture sample ou
 
 ## Equivalent to other CLIs
 
-| Claude Code | Gemini CLI | Copilot CLI |
+> The **gemini CLI column was removed 2026-07-26** — that CLI was retired from this ecosystem on
+> 2026-07-25 and has no fallback path. `agy` (Antigravity CLI) is the third CLI on this host.
+> See `antigravity-cli`.
+
+| Claude Code | Antigravity CLI (`agy`) | Copilot CLI |
 |---|---|---|
-| `claude -p` | `gemini -p` | `copilot -p` |
-| `--output-format json` | `--output-format json` | `--output-format json` (JSONL) |
-| `--permission-mode bypassPermissions` | `-y, --yolo` | `--yolo` / `--allow-all` |
-| `--permission-mode plan` | `--approval-mode plan` | (no direct equivalent — use `--available-tools` to limit to read-only set) |
-| `--allowedTools` | `--policy <file>` | `--allow-tool[=...]` |
-| `--add-dir` | `--include-directories` | `--add-dir` |
-| `--bare` (CI-safe minimal) | (none) | `--allow-all-tools --no-custom-instructions` (closest) |
+| `claude -p` | `agy -p` — **all flags BEFORE `-p`**, prompt LAST, and `< /dev/null` is mandatory | `copilot -p` |
+| `--output-format json` | (none — plain text on stdout only; callers must parse text) | `--output-format json` (JSONL) |
+| `--permission-mode bypassPermissions` | `--dangerously-skip-permissions` — still runs inside `--sandbox` | `--yolo` / `--allow-all` |
+| `--permission-mode plan` | (none) | (no direct equivalent — use `--available-tools` to limit to read-only set) |
+| `--allowedTools` | (not verified — do not assume; see `antigravity-cli` §Not verified) | `--allow-tool[=...]` |
+| `--add-dir` | `--add-dir` | `--add-dir` |
+| `--bare` (CI-safe minimal) | `--sandbox` (advisory/read-only default) | `--allow-all-tools --no-custom-instructions` (closest) |
 | `--from-pr` | (none) | (none — use `gh pr view` and pipe) |
 | `--max-budget-usd` | (none) | (none — use `--max-autopilot-continues` for cap on continuations) |

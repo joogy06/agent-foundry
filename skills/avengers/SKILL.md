@@ -31,6 +31,31 @@ convened per task from declarative profiles. **Deliberation, not delegation.**
 > cards, the outcome router, this UX surface, the adversarial-fixture suite, the
 > visual-companion adapter note, and `reuse-map.md`.
 
+> **v2 team-composition redesign:** COMPLETE (2026-07-13, design
+> `docs/plans/2026-07-13-avengers-v2-team-composition-design.md`). A NON-mutating
+> redesign of the team-composition internals. The v2 surface:
+> - **Constraint-based diversified staffing** — `capability-priors.yaml` (owned DATA,
+>   fail-open) + seat affinity + an ordered-constraint resolver; per-seat provider pins
+>   become **opt-in DATA** (a profile with no pins resolves a valid ≥2-family staffing).
+> - **Seat-class effort semantics** — effort pins resolve per `(provider, seat-class)`;
+>   a challenger provider-swap off codex no longer crashes the resolver (it records a
+>   "no anti-sycophancy floor for this provider" note). The retired tier `high` stays
+>   rejected.
+> - **External, SEATLESS, cold-context arbiter** — the provider is SELECTED (never a
+>   promoted seat); no seat both ballots and adjudicates. Clean/fallback paths;
+>   `fallback_arbiter_residual` flagged; all-adversarial fails CLOSED.
+> - **The steward** — a principal-proxy member seat grounded in a durable/provisional
+>   `intent.md`; pushes on drift, emits a converge intent-alignment assessment, and
+>   **never decides / never arbitrates**.
+> - **`evidence_run`** — a sandboxed, read-only, time-boxed runner any seat may REQUEST;
+>   results enter the docket as fenced UNTRUSTED DATA. NEVER writes, NEVER spawns bob.
+> - **Divergence overlays + lint**, **memory provider-stamping**, and **`run-record.json`**
+>   (§6a instrumentation, non-optional).
+> - **ONE rebuilt profile** — `coding-ratification` (4 deliberation seats + external
+>   arbiter, `max_seat_calls: 13`). The other four profiles + everything else v2 chose
+>   not to build are recorded in [`references/v2-deferred-backlog.md`](references/v2-deferred-backlog.md)
+>   (nothing deferred silently).
+
 ## What it is (and is not)
 
 - **Sibling of forge**, not a subcomponent. Callers: the user directly (primary),
@@ -41,8 +66,9 @@ convened per task from declarative profiles. **Deliberation, not delegation.**
 - **Sibling of `adversarial-team-brainstorm` (ATB)**: seats not teams; sustained
   addressed dialogue not fixed tournament rounds; ONE decision/deliverable not a
   ranked idea list; persistent members not ephemeral lenses. The arbiter
-  machinery is SHARED with ATB via the upstream `arbiter_mode` switch (WP-4),
-  never forked.
+  **output-synthesis** machinery is SHARED with ATB via the upstream `arbiter_mode`
+  switch, never forked. (v2: the arbiter *provider* is selected internally — external
+  and seatless — which is orthogonal to that output-synthesis switch.)
 
 <HARD-RULE>
 EXECUTION BOUNDARY. avengers is a deliberation surface, NOT an executor.
@@ -68,6 +94,22 @@ have sufficed.
 </HARD-RULE>
 
 <HARD-RULE>
+EXTERNAL SEATLESS ARBITER (v2, design §4 — the highest-value fix). The arbiter is a
+FRESH, persona-free, deliberation-EXTERNAL cold-context CALL — it did NOT file a
+position, argue, or ballot, and is NOT a promoted seat. NO seat both ballots and
+adjudicates (the participant-judge violation is gone). Its provider is SELECTED by
+`convene.py` (never inherited from a seat): a provider used by no deliberation seat
+(CLEAN path, no residual), else the strongest-adjudication-prior NON-adversarial
+provider cold-context (FALLBACK path — authorship anonymized, style-recognition
+self-preference an ACCEPTED residual flagged `fallback_arbiter_residual: true` in
+`run-record.json`). Every provider deliberating AND every one being adversarial is the
+ONLY unsatisfiable case → fail CLOSED (`ConveneError`, no run, no spend). `can_arbitrate`
+on seats is INERT under v2. The adjudication prior is editable `capability-priors.yaml`
+DATA (fail-open to built-ins). The arbiter synthesizes over ALL positions (never drops
+one) on an authorship-anonymized docket.
+</HARD-RULE>
+
+<HARD-RULE>
 GUARD STACKS ARE RESOLVER-INJECTED INVARIANTS, not per-prompt discipline. Every
 external seat call uses its pinned stack verbatim:
 - codex: `timeout <T> codex exec --ephemeral -s read-only -c model_reasoning_effort=<tier> "…" < /dev/null`
@@ -90,15 +132,22 @@ branch in v1. Standing memory is admitted ONLY from the four admissible source
 classes (user_confirmed_constraint / verified_project_artifact /
 user_selected_decision / observed_outcome); seat opinions, refuted positions, and
 single-session conclusions are NOT admissible. Write-back is gated: default-reject,
-per-item, proposals persist home-tier for later approval. (Subsystem: WP-3.)
+per-item, proposals persist home-tier for later approval. **v2 provider-stamping:**
+every standing-memory entry is stamped with its writing provider; an INHERITED entry
+(writing provider ≠ the reading seat's provider) renders THIRD-PERSON at prompt
+assembly ("the previous skeptic (codex) recorded …"), converting the cross-provider
+first-person confabulation hazard into calibration metadata.
 </HARD-RULE>
 
 ## The dialogue protocol
 
 `CONVENE → BLIND_DIVERGE → DOCKET → CROSS_EXAM (1..2 cycles) → CONVERGE →
 ARBITER → ROUTE → WRITEBACK_PROPOSE → CLOSED`, with the `ABORTED` and
-`LOW_QUORUM` side exits (never silently converted to success). Full semantics:
-**`references/dialogue-protocol.md`**.
+`LOW_QUORUM` side exits (never silently converted to success). v2 adds, WITHIN
+DOCKET/CROSS_EXAM, the **`evidence_run` request path** (any seat may REQUEST a
+sandboxed read-only probe; results enter as fenced UNTRUSTED DATA), and, at
+CONVERGE, the **steward's intent-alignment assessment** (per-item pass/fail/unknown →
+trip-wires / confirm-flags). Full semantics: **`references/dialogue-protocol.md`**.
 
 ## UX contract (design §9)
 
@@ -190,12 +239,13 @@ semantics live.
 
 | Piece | Kind | Charter |
 |---|---|---|
-| `scripts/kernel.py` (WP-2) | code | phase legality/transitions, budgets, quorum, atomic transcript append, JSON event log — no LLM, no network |
+| `scripts/kernel.py` | code | phase legality/transitions, budgets, quorum, atomic transcript append, JSON event log — no LLM, no network |
 | LLM chair | prose | non-voting orchestrator; dockets, judges obligation status, never opines |
-| `scripts/seat_prompt.py` | code | THE single trust-envelope assembler (WP-1 minimal → WP-3 complete 7-section) |
-| `scripts/convene.py` (WP-2) | code | fail-closed resolver → frozen flat-JSON session-plan + injected guard stacks |
-| `roster/*.yaml`, `profiles/*.yaml` | DATA | identity cards and composition profiles |
-| memory subsystem (WP-3) | code+DATA | admissibility + gated write-back |
+| `scripts/seat_prompt.py` | code | THE single trust-envelope assembler (7-section; v2: overlay inject/strip, memory provider-stamp, fenced evidence-run DATA, `intent.md` reader) |
+| `scripts/convene.py` | code | fail-closed resolver → frozen flat-JSON session-plan (v2) + injected guard stacks + external seatless arbiter + `run-record.json` + evidence-request path |
+| `scripts/evidence_run.py` (v2) | code | sandboxed, read-only, time-boxed probe runner; NEVER writes, NEVER spawns bob |
+| `roster/*.yaml`, `profiles/*.yaml`, `capability-priors.yaml` | DATA | identity cards (core + overlay), composition profiles, adjudication/affinity priors (fail-open) |
+| memory subsystem | code+DATA | admissibility + gated write-back + provider-stamping |
 
 **Security posture (honest):** fences, JSON-escaping, and schema extraction are
 parser-integrity controls. Semantic injection (persuasive instructions inside
@@ -203,19 +253,27 @@ valid data) has a REAL residual, mitigated by the trust envelope + memory
 admissibility + shipped adversarial fixtures + chair adjudication — never claimed
 "structurally secure".
 
-## Files (complete v1)
+## Files (v1 + v2 surface)
 
 - `SKILL.md` — this file (slim parent + the §9 UX surface).
 - `references/` — `dialogue-protocol.md` (§4 phase machine), `convene-contract.md`
-  (§8 input contract), `outcome-routing.md` (§8 output router + `avengers_brief`
-  schema), `memory-policy.md` + `trust-boundary.md` (§5/§6), `reuse-map.md` (alf
-  blast-radius map).
+  (§8 input contract + external arbiter + run-record), `outcome-routing.md` (§8 output
+  router + `avengers_brief` schema), `intent-artifact.md` (v2 §5 steward `intent.md`
+  contract), `memory-policy.md` + `trust-boundary.md` (§5/§6), `reuse-map.md` (alf
+  blast-radius map), `v2-deferred-backlog.md` (v2 deferred items — nothing silent).
 - `scripts/` — `kernel.py` (phases/budgets/quorum/atomic append), `convene.py`
-  (fail-closed resolver → frozen session-plan), `seat_prompt.py` (complete
-  7-section trust envelope), `memory_writeback.py` (admissibility + gated write-back).
-- `schemas/` — `session-plan.v1.schema.json`, `memory-record.v1.schema.json`.
-- `profiles/` — `coding-ratification`, `business-ideation`, `website-ux`,
-  `writing-cv` (PII-hardened), `research-synthesis` (5 shipped families).
-- `roster/` — `skeptic`, `architect`, `operator`, `economist`, `user-advocate`,
-  `wordsmith` (6 identity cards).
-- `tests/` — kernel / convene / memory-gate / prompt-boundaries / adversarial-suite.
+  (fail-closed resolver → frozen session-plan v2, external seatless arbiter,
+  `run-record.json`, evidence-request path), `seat_prompt.py` (7-section trust envelope;
+  overlay inject/strip, memory provider-stamp, fenced evidence DATA, `intent.md` reader),
+  `memory_writeback.py` (admissibility + gated write-back), `evidence_run.py` (v2 —
+  sandboxed read-only probe runner).
+- `schemas/` — `session-plan.v1.schema.json` (unmutated), `session-plan.v2.schema.json`
+  (v2), `run-record.v1.schema.json` (v2 §6a), `memory-record.v1.schema.json`.
+- `capability-priors.yaml` — v2 owned DATA (adjudication + affinity priors; fail-open).
+- `profiles/` — `coding-ratification` (rebuilt to v2), `business-ideation`, `website-ux`,
+  `writing-cv` (PII-hardened), `research-synthesis` (5 families; the latter 4 rebuild to
+  v2 the week each is next convened — see `v2-deferred-backlog.md`).
+- `roster/` — `skeptic`, `architect`, `operator` (core+overlay split), `steward` (v2
+  principal-proxy), `economist`, `user-advocate`, `wordsmith`.
+- `tests/` — kernel / convene / arbiter-external / steward / evidence-run / memory-gate /
+  prompt-boundaries / adversarial-suite.

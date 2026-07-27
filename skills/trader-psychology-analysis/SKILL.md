@@ -221,3 +221,7 @@ def herd_intensity(long_short_ratio: pd.Series, window: int = 14) -> pd.Series:
 | Treating all retail traders as a monolithic group | Reddit retail, institutional retail (wealth management), and day traders have very different behaviours | Segment retail by platform and behaviour: Reddit/social traders vs systematic retail vs passive retail |
 | Going contrarian against every extreme sentiment reading | Sometimes the crowd is right; strong trends persist through extreme sentiment for weeks or months | Use contrarian signals only at structural levels (support/resistance); combine with technical confirmation |
 | Ignoring institutional positioning data (COT reports) | Retail sentiment without institutional context misses the dominant market force | Overlay CFTC Commitment of Traders data; institutional positioning often leads retail sentiment shifts by days |
+
+---
+
+**See also:** this skill models the market CROWD — for logging and reviewing YOUR OWN executed trades and personal tilt/mistake tagging, use `trade-journaling-and-review`.

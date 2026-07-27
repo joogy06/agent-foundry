@@ -95,7 +95,7 @@ The installers + skills carry code paths for these environments but they have **
 | **WSL / WSL2** | POSIX path expected; should work via `~/.claude/...` mapping into the user's Windows home. | Path translation when Claude Code runs from the Linux side but the user opens VS Code from Windows. Symlink visibility across the `/mnt/c/` boundary. |
 | **macOS (Intel + ARM)** | All POSIX shell + Python stdlib; no Linux-specific syscalls assumed. | BSD `find` / `sed` / `grep` flag differences vs GNU. macOS gatekeeper blocking unsigned scripts. Apple Silicon arch-specific Python wheel issues. |
 | **Ubuntu 22.04 / 24.04 LTS** | Same POSIX path as RHEL; closest cousin of the development host. | apt vs dnf wrt prerequisite packages; older bash; Python 3.10 vs 3.12. |
-| **Air-gapped / corporate-policy hosts** | `offline-cold-cache` grounding mode in `dep-currency-check`; vendored cytoscape.min.js for `visual-companion`; `git-cli-bridge` skill for Gemini/Copilot fallback when local CLIs are unreachable; `bootstrap-environment.py` `--dry-run` flag. | First-boot setup with no internet (would need to seed `~/.codex/skills/`, `~/.claude/state/inventory.json` manually). Strict-airgap end-to-end. Real corporate cert chain on Python TLS calls. |
+| **Air-gapped / corporate-policy hosts** | `offline-cold-cache` grounding mode in `dep-currency-check`; vendored cytoscape.min.js for `visual-companion`; `bootstrap-environment.py` `--dry-run` flag. | First-boot setup with no internet (would need to seed `~/.codex/skills/`, `~/.claude/state/inventory.json` manually). Strict-airgap end-to-end. Real corporate cert chain on Python TLS calls. |
 | **Containers** (Docker / Podman / Codespaces / GCP Workstations) | `gcp-workstations` skill documents tier-2 environment adoption; everything else is filesystem-portable. | Codespaces dev-container post-create script wiring. Podman rootless symlink permissions. GCP Workstations persistent-home semantics for `~/.cache/`. |
 | **Older Python (3.10, 3.11)** | Code targets 3.10+ minimum per `pyproject.toml` declarations. | New stdlib features assumed (e.g. `match` statement, `Self` type) — may break on 3.9 if anyone tries. |
 
@@ -161,4 +161,3 @@ When an issue is resolved, update its **Status** line and (if substantial) refer
 - `docs/dependencies/README.md` — install-tier matrix
 - `~/.claude/skills/env-adoption/` — runtime capability detection (cache at `~/.claude/state/inventory.json`)
 - `~/.claude/skills/knowledge-grounding/` — internet reachability + air-gap detection
-- `~/.claude/skills/git-cli-bridge/` — sandbox-aware Gemini/Copilot fallback when local CLIs unreachable

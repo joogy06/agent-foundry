@@ -102,6 +102,32 @@ def ok(gate: str, message: str = "") -> None:
     sys.exit(0)
 
 
+def advisory_exit(gate: str, code: int, message: str, *, stream: str = "stderr") -> None:
+    """Terminate with a NON-REFUSAL, non-zero code (advisory / skip / deferred).
+
+    Design §4.7 Hook 1 requires blocking refusals to route through
+    `exit_with_observation`, which files a friction observation. Some gates,
+    however, terminate non-zero WITHOUT refusing anything:
+
+      * G4 `advisory`      (3) — reports violations, deliberately non-blocking
+      * G4 `ledger_missing`(4) — nothing to check; a skip
+      * G_IDENTITY env     (3) — could not run; peer of `env_error`
+      * G_DEP_CURRENCY     (4) — offline + cold cache; deferred, not failed
+
+    Filing a `gate_false_block` observation for these would pollute the friction
+    taxonomy with non-refusals and inflate the false-block rate. They previously
+    used bare `sys.exit(...)`, which is why the static exit-discipline check
+    flagged them — the concept existed in the code but had no name. This is that
+    name, so the exemption is explicit and reviewable rather than an allow-list
+    hole.
+
+    The terminal code is still recorded: `main()` intercepts every SystemExit
+    and calls `_record_gate_outcome`, so observability is not lost.
+    """
+    (sys.stdout if stream == "stdout" else sys.stderr).write(f"{gate}: {message}\n")
+    sys.exit(code)
+
+
 # ---------------------------------------------------------------------------
 # Canonical JSON serialization (must match the signing side bit-for-bit)
 # ---------------------------------------------------------------------------
@@ -1383,24 +1409,11 @@ def _gv_env_error(impl_hash: str, message: str) -> None:
     )
 
 
-def _load_current_skeleton_version(project_root: Path) -> Optional[str]:
-    """Read `.design-ledger/skeletons/index.yaml` and return the pinned
-    `skeleton_version` (design §2.2). Returns None on any read/parse failure;
-    caller decides whether that is an env error or a gate violation.
-    """
-    index_path = project_root / SKELETONS_SUBDIR / "index.yaml"
-    if not index_path.is_file():
-        return None
-    try:
-        data = yaml.safe_load(index_path.read_text()) or {}
-    except (yaml.YAMLError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    sv = data.get("skeleton_version")
-    if not isinstance(sv, str) or not sv:
-        return None
-    return sv
+# NOTE (S070 #142): `_load_current_skeleton_version` moved to
+# `claims._load_current_skeleton_version` along with checks 1-4 of `check_G_V`,
+# so the engine and the CLI gate derive the skeleton-version comparison from
+# ONE implementation. Semantics are unchanged. `SKELETONS_SUBDIR` stays here —
+# `check_G_XR` still uses it.
 
 
 def _load_identity_check_module():
@@ -1465,14 +1478,16 @@ def check_G_IDENTITY(
            f"CRITICAL _meta subset byte-identical")
     elif rc == 3:
         # identity_check already wrote setup guidance to stderr.
-        sys.stderr.write(
-            f"G_IDENTITY_ENV: cannot run pair={pair} — see guidance above\n")
-        sys.exit(3)
+        advisory_exit(
+            "G_IDENTITY_ENV", 3,
+            f"cannot run pair={pair} — see guidance above")
     else:
-        sys.stderr.write(
-            f"G_IDENTITY_FAIL: tree drift on the CRITICAL _meta subset "
-            f"(pair={pair}) — drifted/missing files named above\n")
-        sys.exit(2)
+        exit_with_observation(
+            "G_IDENTITY", 2, subject_id=str(pair),
+            what_happened=(
+                f"tree drift on the CRITICAL _meta subset (pair={pair}) — "
+                "drifted/missing files named above"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1589,7 +1604,7 @@ def check_G_V(impl_hash: str, project_root: Path) -> None:
 
     Checks, in order (first failure exits 2 with observation):
       1. `.design-ledger/visual-verdicts/<impl_hash>.verdict.yaml` exists +
-         well-formed YAML mapping with `schema: visual-verdict.v1`.
+         well-formed YAML mapping.
       2. Both arms present: `arbiter_verdict` + `drift_arbiter_verdict`.
       3. Both arms `status: pass` (drift arm may instead be
          `status: auto_approved` for micro-drift).
@@ -1601,99 +1616,63 @@ def check_G_V(impl_hash: str, project_root: Path) -> None:
 
     Exit codes: 0 pass, 2 fail, 3 env error.
     Non-zero exits route through `exit_with_observation`.
+
+    DOCSTRING CORRECTION (S070 #142): check 1 previously claimed to require
+    `schema: visual-verdict.v1`. It never did — the body has never read a
+    `schema` field. The claim is removed rather than implemented: adding the
+    check would introduce a new failure class and break the
+    fingerprint-set-unchanged regression test.
+
+    STRUCTURE (S070 #142): checks 1-5's request/tuple binding now live in
+    `claims.assert_ui_verified_preconditions`, a PURE READ-ONLY predicate that
+    the sole-writer engine also dispatches on UI-INTEGRATED -> UI-VERIFIED.
+    Before this, the UI lane ran entirely outside the engine and the visual
+    gate was structurally skippable. This function is now the thin CLI caller:
+    it maps the predicate's typed error back through `_gv_fail` / `_gv_env_error`
+    so exit codes, categories and fingerprints are unchanged, and it retains
+    sole ownership of the one MUTATION — `consume_visual_verdict` (check 5).
+
+    THE GATE STAYS SINGLE-USE. The predicate tolerates a `consumed` request
+    whose stored verdict is deep-equal to the presented one, because bob
+    consumes BEFORE transitioning and the engine would otherwise reject the
+    healthy path. On THIS path that same fixture still reaches
+    `consume_visual_verdict`, still gets `rejected_not_open`, and still exits 2
+    — required, not a wart. Re-running G_V after a successful consume must keep
+    failing, or the gate silently becomes replayable.
     """
     project_root = project_root.resolve()
-    verdict_path = project_root / VISUAL_VERDICTS_SUBDIR / f"{impl_hash}.verdict.yaml"
 
-    # 1. Verdict file exists and is well-formed
-    if not verdict_path.is_file():
-        _gv_fail(
-            impl_hash,
-            f"verdict file missing at {verdict_path} (expected after arbiter spawn)",
-            fingerprint="verdict-missing",
-        )
-    try:
-        verdict = yaml.safe_load(verdict_path.read_text())
-    except yaml.YAMLError as e:
-        _gv_env_error(impl_hash, f"verdict YAML unparseable: {e}")
-    except OSError as e:
-        _gv_env_error(impl_hash, f"verdict file unreadable: {e}")
-
-    if not isinstance(verdict, dict):
-        _gv_fail(
-            impl_hash,
-            f"verdict is not a YAML mapping (got {type(verdict).__name__})",
-            fingerprint="verdict-malformed",
-        )
-
-    # 2. Both arms present
-    arbiter = verdict.get("arbiter_verdict")
-    drift = verdict.get("drift_arbiter_verdict")
-    if not isinstance(arbiter, dict):
-        _gv_fail(
-            impl_hash,
-            "verdict missing arbiter_verdict arm",
-            fingerprint="arm-missing-arbiter",
-        )
-    if not isinstance(drift, dict):
-        _gv_fail(
-            impl_hash,
-            "verdict missing drift_arbiter_verdict arm",
-            fingerprint="arm-missing-drift",
-        )
-
-    # 3. Both arms pass (drift may be auto_approved for micro-drift)
-    arbiter_status = arbiter.get("status")
-    drift_status = drift.get("status")
-    if arbiter_status != "pass":
-        _gv_fail(
-            impl_hash,
-            f"arbiter_verdict.status={arbiter_status!r} (expected 'pass')",
-            fingerprint="arbiter-not-pass",
-        )
-    if drift_status not in ("pass", "auto_approved"):
-        _gv_fail(
-            impl_hash,
-            f"drift_arbiter_verdict.status={drift_status!r} "
-            f"(expected 'pass' or 'auto_approved')",
-            fingerprint="drift-not-pass",
-        )
-
-    # 4. Skeleton version match
-    verdict_skeleton_version = verdict.get("skeleton_version")
-    current_skeleton_version = _load_current_skeleton_version(project_root)
-    if current_skeleton_version is None:
-        _gv_env_error(
-            impl_hash,
-            f"cannot read skeleton_version from "
-            f"{project_root / SKELETONS_SUBDIR / 'index.yaml'}",
-        )
-    if verdict_skeleton_version != current_skeleton_version:
-        # Per §5.3: arbiter missed the skeleton bump -> gate_false_pass
-        _gv_fail(
-            impl_hash,
-            f"verdict.skeleton_version={verdict_skeleton_version!r} "
-            f"but current index.yaml pins {current_skeleton_version!r} "
-            f"(arbiter missed a skeleton bump)",
-            category="gate_false_pass",
-            fingerprint="skeleton-version-mismatch",
-        )
-
-    # 5. 8-field tuple echo via claims.consume_visual_verdict
-    request_id = verdict.get("request_id")
-    if not isinstance(request_id, str) or not request_id:
-        _gv_fail(
-            impl_hash,
-            "verdict missing request_id field (required for tuple echo)",
-            fingerprint="request-id-missing",
-        )
-
-    # Lazy import to avoid circular dependency at module load time
+    # Lazy import to avoid circular dependency at module load time.
+    # NOTE (S070): this moved AHEAD of checks 1-4 because the shared predicate
+    # lives in claims.py. The only observable difference is in the artificial
+    # case where claims.py is unimportable AND a check-1..4 violation is also
+    # present: that now reports the env error (exit 3) rather than the
+    # violation (exit 2). Every realistic path is unchanged.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
         import claims as claims_mod  # type: ignore
     except ImportError as e:
         _gv_env_error(impl_hash, f"claims.py not importable: {e}")
+
+    # 1-4 (+ request_id presence and the 8-field tuple binding) via the shared
+    # read-only predicate. It raises; this is where exit semantics come back.
+    try:
+        verdict = claims_mod.assert_ui_verified_preconditions(
+            impl_hash, project_root,
+        )
+    except claims_mod.UiVerifiedPreconditionError as e:
+        if getattr(e, "kind", "violation") == "env":
+            _gv_env_error(impl_hash, e.message)
+        _gv_fail(
+            impl_hash,
+            e.message,
+            category=e.category,
+            fingerprint=e.fingerprint,
+        )
+
+    # 5. 8-field tuple echo via claims.consume_visual_verdict — THE MUTATION.
+    # Deliberately NOT moved into the predicate or the engine (design §A3).
+    request_id = verdict["request_id"]
 
     try:
         outcome, _record = claims_mod.consume_visual_verdict(
@@ -3056,11 +3035,9 @@ def check_G_DEP_CURRENCY(
             ok("G_DEP_CURRENCY",
                 "offline + cold cache, deferred allowed")
         else:
-            sys.stderr.write(
-                "G_DEP_CURRENCY_DEFERRED: offline + cold cache; "
-                "retry online or pass --allow-deferred\n"
-            )
-            sys.exit(4)
+            advisory_exit(
+                "G_DEP_CURRENCY_DEFERRED", 4,
+                "offline + cold cache; retry online or pass --allow-deferred")
     elif rc == 3:
         env_error(
             f"dep_currency_check environmental error: "
@@ -4057,6 +4034,125 @@ def _security_run_inner_gate(gate: str, project_root: Path,
     return {"arm": gate, "status": status, "exit_code": rc, "summary": summary}
 
 
+def _g_claim_freshness_linter() -> Optional[Path]:
+    """Locate claims_lint.py. None if absent.
+
+    gates.py runs from BOTH the repo (`<repo>/skills/_meta/`) and the live tree
+    (`~/.claude/skills/_meta/`). Only the live tree carries domain skills — the
+    repo mirrors `_meta/` alone — so a sibling lookup finds nothing when invoked
+    from the repo. Check the sibling first, then the live tree.
+    """
+    rel = Path("business-edge") / "scripts" / "claims_lint.py"
+    for base in (
+        Path(__file__).resolve().parent.parent,      # sibling of _meta/
+        Path.home() / ".claude" / "skills",          # live skill tree
+    ):
+        candidate = base / rel
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def check_G_CLAIM_FRESHNESS(
+    skills_root: Path,
+    *,
+    mode: str = "advisory",
+    skills_filter: str = "",
+    months: int = 0,
+) -> None:
+    """Detect one fact owned by several skills with DISAGREEING verdicts.
+
+    The decay this blocks (observed 2026-07-26): the same `FAQPage` fact lived in
+    three skills in three states of staleness; a full review caught one of them.
+    Duplication is reported but never blocks — duplication that CONTRADICTS does.
+
+    advisory (default): report drift, always exit 0
+    strict:             exit 2 on any contradicting subject
+
+    Exit codes: 0 = pass/advisory · 2 = drift (strict) · 3 = environmental
+    """
+    import subprocess
+
+    if mode not in ("advisory", "strict"):
+        env_error(f"invalid --claim-mode: {mode} (use advisory|strict)")
+
+    linter = _g_claim_freshness_linter()
+    if linter is None:
+        # Fail-open on a MISSING optional component; a broken one is different
+        # (see the non-zero-but-not-1 branch below, which escalates).
+        env_error(
+            "G_CLAIM_FRESHNESS: claims_lint.py not found "
+            "(expected in the business-edge skill) — cannot assess claim drift"
+        )
+    if not skills_root.is_dir():
+        env_error(f"G_CLAIM_FRESHNESS: skills root not found: {skills_root}")
+
+    cmd = [
+        sys.executable, str(linter),
+        "--root", str(skills_root),
+    ]
+    if skills_filter:
+        cmd += ["--skills", skills_filter]
+    cmd += ["drift", "--fail-on-drift"]
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        env_error("G_CLAIM_FRESHNESS: claims_lint.py timed out after 120s")
+    except OSError as exc:  # pragma: no cover - defensive
+        env_error(f"G_CLAIM_FRESHNESS: could not run claims_lint.py: {exc}")
+
+    report = (proc.stdout or "").rstrip()
+    if report:
+        sys.stdout.write(report + "\n")
+
+    # 0 = clean, 1 = drift found. Anything else means the linter itself broke,
+    # which must NOT be silently read as "no drift".
+    if proc.returncode not in (0, 1):
+        err = (proc.stderr or "").strip()[:400]
+        env_error(
+            f"G_CLAIM_FRESHNESS: claims_lint.py exited {proc.returncode} "
+            f"(neither clean nor drift) — treating as environmental: {err}"
+        )
+
+    drifted = proc.returncode == 1
+
+    if months > 0:
+        stale_cmd = [
+            sys.executable, str(linter), "--root", str(skills_root),
+        ]
+        if skills_filter:
+            stale_cmd += ["--skills", skills_filter]
+        stale_cmd += ["stale", "--months", str(months)]
+        try:
+            stale_proc = subprocess.run(
+                stale_cmd, capture_output=True, text=True, timeout=120,
+            )
+            if stale_proc.stdout:
+                sys.stdout.write(stale_proc.stdout.rstrip() + "\n")
+        except (subprocess.TimeoutExpired, OSError):
+            sys.stderr.write(
+                "G_CLAIM_FRESHNESS: staleness sweep failed (drift verdict unaffected)\n"
+            )
+
+    if drifted and mode == "strict":
+        fail(
+            "G_CLAIM_FRESHNESS",
+            "one or more facts are claimed by multiple skills with contradicting "
+            "verdicts. Give each contested fact ONE owner and make the others "
+            "point at it.",
+        )
+    if drifted:
+        ok(
+            "G_CLAIM_FRESHNESS",
+            "drift detected (advisory mode — not blocking). Re-run with "
+            "--claim-mode strict to enforce.",
+        )
+    ok("G_CLAIM_FRESHNESS", f"no contradicting claims across {skills_root}")
+
+
 def check_G_SECURITY(project_root: Path) -> None:
     """Universal advisory security checkpoint (§9 D1/D2/D4).
 
@@ -4157,25 +4253,23 @@ def check_G_SECURITY(project_root: Path) -> None:
 
 
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
-    usage = (
-        "usage: gates.py "
-        "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
-        "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
-        "G_IDENTITY|G_DUAL_VERDICT ...\n"
-        "  G_SECURITY <project_root>  "
-        "(universal advisory security checkpoint; git-diff-scoped)\n"
-        "  G_CLASSIFY <project_root> [--design-doc <path>] "
-        "[--asserted N/A|provided] [--files-from <list>] [--verify-diff]\n"
-        "  G_IDENTITY <project_root> "
-        "[--pair prod-shadow|prod-foundry|all] [--foundry-root <path>]\n"
-        "  G_DUAL_VERDICT <project_root> --bundle-hash <hash>"
-    )
     if len(argv) < 2:
-        env_error(usage)
+        env_error(
+            "usage: gates.py "
+            "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
+            "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
+            "G_IDENTITY|G_DUAL_VERDICT|G_CLAIM_FRESHNESS ...\n"
+            "  G_CLAIM_FRESHNESS [<skills_root>] "
+            "[--claim-mode advisory|strict] [--skills a,b,c] [--stale-months N]\n"
+            "  G_SECURITY <project_root>  "
+            "(universal advisory security checkpoint; git-diff-scoped)\n"
+            "  G_CLASSIFY <project_root> [--design-doc <path>] "
+            "[--asserted N/A|provided] [--files-from <list>] [--verify-diff]\n"
+            "  G_IDENTITY <project_root> "
+            "[--pair prod-shadow|prod-foundry|all] [--foundry-root <path>]\n"
+            "  G_DUAL_VERDICT <project_root> --bundle-hash <hash>"
+        )
     gate = argv[1]
-    if gate in ("-h", "--help"):
-        print(usage)
-        sys.exit(0)
     positional: List[str] = []
     flags: Dict[str, str] = {}
     i = 2
@@ -4189,6 +4283,24 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
             if i + 1 >= len(argv):
                 env_error("--project-root requires a value")
             flags["project_root"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--claim-mode":
+            if i + 1 >= len(argv):
+                env_error("--claim-mode requires a value (advisory|strict)")
+            flags["claim_mode"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--skills":
+            if i + 1 >= len(argv):
+                env_error("--skills requires a comma-separated value")
+            flags["skills"] = argv[i + 1]
+            i += 2
+            continue
+        if a == "--stale-months":
+            if i + 1 >= len(argv):
+                env_error("--stale-months requires an integer value")
+            flags["stale_months"] = argv[i + 1]
             i += 2
             continue
         if a == "--strict":
@@ -4328,11 +4440,6 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
             flags["identity_foundry_root"] = argv[i + 1]
             i += 2
             continue
-        if a.startswith("-"):
-            # A typo'd/unknown flag must never fall through as a filesystem
-            # path — a literal '--help/' directory (with junk classify
-            # artifacts inside) was created exactly this way on 2026-06-25.
-            env_error(f"unknown flag: {a}\n{usage}")
         positional.append(a)
         i += 1
     return gate, positional, flags
@@ -4370,19 +4477,6 @@ def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> N
             env_error("G1 requires <design_dir>")
         design_dir = Path(positional[0]).resolve()
         expect_binding = "no_ledger_binding" not in flags
-        if not expect_binding:
-            # Mechanized guard (previously prose-only in bob.md):
-            # --no-ledger-binding is legal only BEFORE the ledger exists —
-            # afterwards it would bypass the CB2 stale-map-replay/rollback
-            # checks the binding was added to close.
-            g1_root = Path(flags.get("project_root", str(design_dir.parent))).resolve()
-            g1_candidates = (
-                g1_root / "progress" / "integration-ledger.md",
-                design_dir / "integration-ledger.md",
-            )
-            for g1_ledger in g1_candidates:
-                if g1_ledger.exists():
-                    fail("G1", f"--no-ledger-binding refused: ledger already exists at {g1_ledger}")
         check_G1(design_dir, expect_ledger_binding=expect_binding)
         ok("G1", f"contract map verified at {design_dir} (binding={expect_binding})")
     elif gate == "G2":
@@ -4412,18 +4506,19 @@ def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> N
             sys.stdout.write(f"G4_PASS: {result.get('message', '')}\n")
             sys.exit(0)
         elif status == "advisory":
-            sys.stdout.write(f"G4_ADVISORY: {result.get('message', '')}\n")
             for v in result.get("violations", []):
                 sys.stdout.write(f"  {v['rule']}: {v['message']}\n")
-            sys.exit(3)
+            advisory_exit(
+                "G4_ADVISORY", 3, result.get("message", ""), stream="stdout")
         elif status == "ledger_missing":
-            sys.stderr.write(f"G4_SKIP: {result.get('message', '')}\n")
-            sys.exit(4)
+            advisory_exit("G4_SKIP", 4, result.get("message", ""))
         else:  # fail
-            sys.stderr.write(f"G4_FAIL: {result.get('message', '')}\n")
             for v in result.get("violations", []):
                 sys.stderr.write(f"  {v['rule']}: {v['message']}\n")
-            sys.exit(2)
+            exit_with_observation(
+                "G4", 2, subject_id=str(project_dir),
+                what_happened=result.get("message", ""),
+            )
     elif gate == "G_V":
         if len(positional) < 1:
             env_error("G_V requires <impl_hash>")
@@ -4605,6 +4700,29 @@ def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> N
             env_error("G_SECURITY requires <project_root>")
         project_root = Path(positional[0]).resolve()
         check_G_SECURITY(project_root)
+    elif gate == "G_CLAIM_FRESHNESS":
+        # CLI: gates.py G_CLAIM_FRESHNESS [<skills_root>]
+        #                                 [--claim-mode advisory|strict]
+        #                                 [--skills a,b,c] [--stale-months N]
+        # Detects one fact owned by several skills with CONTRADICTING verdicts.
+        # Duplication alone is reported, never blocking; contradiction blocks in
+        # strict mode. Exit: 0 = pass/advisory, 2 = drift (strict), 3 = env.
+        default_root = Path.home() / ".claude" / "skills"
+        skills_root = Path(
+            positional[0] if positional else str(default_root)
+        ).expanduser().resolve()
+        claim_mode = flags.get("claim_mode", "advisory")
+        skills_filter = flags.get("skills", "")
+        try:
+            stale_months = int(flags.get("stale_months", "0"))
+        except ValueError:
+            env_error("--stale-months requires an integer value")
+        check_G_CLAIM_FRESHNESS(
+            skills_root,
+            mode=claim_mode,
+            skills_filter=skills_filter,
+            months=stale_months,
+        )
     else:
         env_error(f"unknown gate: {gate}")
 

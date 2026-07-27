@@ -207,17 +207,47 @@ def _event_rows(ledger: Path) -> List[str]:
 
 class TestLegalTransitionTable(unittest.TestCase):
     def test_locked_table_shape(self) -> None:
-        # The exact table from design §10 B1.
+        # The exact table from design §10 B1, AMENDED by S070 #142 (design
+        # `docs/plans/2026-07-25-ui-lane-enforcement-and-visual-feedback-design.md`
+        # §A1) to admit the UI lane.
+        #
+        # Amending the "locked" table is the sanctioned process, not a
+        # workaround: "locked" means a git-reviewable CONSTANT rather than
+        # mutable config, so every change is justified in a design doc and
+        # reviewable in history (claims.py:1005-1008). #142's own remedy in
+        # tasks.md prescribes this edit verbatim, and the table's prior comment
+        # scoped the exclusion temporally ("OUT *this cycle*").
+        #
+        # Deliberately still an EXACT-shape assertion — it must keep failing on
+        # any unjustified edit.
         self.assertEqual(
             set(claims.LEGAL_TRANSITIONS.keys()),
             {"PLANNED", "SCAFFOLDED", "UNIT_TESTED", "INTEGRATED",
-             "VERIFIED", "DOCUMENTED", "BLOCKED"},
+             "VERIFIED", "DOCUMENTED", "BLOCKED",
+             "UI-INTEGRATED", "UI-VERIFIED"},
         )
         self.assertEqual(claims.LEGAL_TRANSITIONS["PLANNED"], frozenset({"SCAFFOLDED", "BLOCKED"}))
         self.assertEqual(claims.LEGAL_TRANSITIONS["SCAFFOLDED"], frozenset({"UNIT_TESTED", "BLOCKED", "PLANNED"}))
         self.assertEqual(claims.LEGAL_TRANSITIONS["UNIT_TESTED"], frozenset({"INTEGRATED", "BLOCKED", "PLANNED"}))
         self.assertEqual(claims.LEGAL_TRANSITIONS["INTEGRATED"], frozenset({"VERIFIED", "BLOCKED", "PLANNED"}))
-        self.assertEqual(claims.LEGAL_TRANSITIONS["VERIFIED"], frozenset({"DOCUMENTED", "BLOCKED", "PLANNED"}))
+        # VERIFIED gained exactly one member: the UI hop. `VERIFIED ->
+        # DOCUMENTED` is RETAINED so non-UI components are unaffected.
+        self.assertEqual(
+            claims.LEGAL_TRANSITIONS["VERIFIED"],
+            frozenset({"DOCUMENTED", "BLOCKED", "PLANNED", "UI-INTEGRATED"}),
+        )
+        # The UI lane is an ADDITIONAL HOP. Entry is from VERIFIED and NOT from
+        # INTEGRATED — the latter would let a component reach DOCUMENTED
+        # without ever passing R6.
+        self.assertEqual(
+            claims.LEGAL_TRANSITIONS["UI-INTEGRATED"],
+            frozenset({"UI-VERIFIED", "BLOCKED", "PLANNED"}),
+        )
+        self.assertEqual(
+            claims.LEGAL_TRANSITIONS["UI-VERIFIED"],
+            frozenset({"DOCUMENTED", "BLOCKED", "PLANNED"}),
+        )
+        self.assertNotIn("UI-INTEGRATED", claims.LEGAL_TRANSITIONS["INTEGRATED"])
         self.assertEqual(claims.LEGAL_TRANSITIONS["DOCUMENTED"], frozenset())  # terminal
         self.assertEqual(claims.LEGAL_TRANSITIONS["BLOCKED"], frozenset({"PLANNED"}))
 

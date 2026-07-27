@@ -14,13 +14,15 @@
 // invalidates the cache — a resumed evo-apply with changed decisions re-runs bob
 // instead of replaying a stale cached report.
 //
-// SCHEMA-TWIN: execution-report.v1 sha256:90dda7579ac3f564
+// SCHEMA-TWIN: execution-report.v1 sha256:10b6a2240c98ba61
 
 export const meta = {
   name: "evo-apply",
   version: "1.0.0",
   description:
-    "owner:evo — single bob stage applying the approved evo plan; full resume bindings (plan_hash/consult_log_hash/ledger_state_version/map_sig_sha256); NO worktree, NO parallel-over-bob.",
+    "owner:evo — single bob stage applying the approved evo plan; full resume " +
+    "bindings (plan_hash/consult_log_hash/ledger_state_version/map_sig_sha256); " +
+    "NO worktree, NO parallel-over-bob.",
 };
 
 const EXECUTION_REPORT_SCHEMA = {
@@ -38,33 +40,24 @@ const EXECUTION_REPORT_SCHEMA = {
   },
 };
 
-// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
-// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
-// original `export default` wrapper, which the runtime REJECTS at load
-// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
-// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
-
-{
-  // Harness compatibility: `args` may arrive as a JSON string — normalize before
-  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
-  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
+export default async function evoApply({ args, agent }) {
   // Full resume bindings are interpolated into the stage prompt and recomputed
   // by the CALLER at every invocation (incl. resumes): a changed decision tape
   // or moved ledger => changed args => surgical cache miss.
   const prompt = [
     "BOB_MODE: execute-work-package (evo APPLY — single package)",
-    `project_root: ${ARGS.project_root}`,
-    `plan_path: ${ARGS.plan_path}`,
-    `plan_hash: ${ARGS.plan_sha256 || ARGS.plan_hash}`,
-    `branch: ${ARGS.branch}`,
-    `request_path: ${ARGS.request_path}`,
-    `request_sha256: ${ARGS.request_sha256}`,
-    `consult_log_path: ${ARGS.consult_log_path}`,
-    `consult_log_hash: ${ARGS.consult_log_hash}`,
-    `ledger_state_version: ${ARGS.ledger_state_version}`,
-    `map_sig_sha256: ${ARGS.map_sig_sha256}`,
-    `run_label: ${ARGS.run_label}`,
-    `run_started_at: ${ARGS.run_started_at}`,
+    `project_root: ${args.project_root}`,
+    `plan_path: ${args.plan_path}`,
+    `plan_hash: ${args.plan_sha256 || args.plan_hash}`,
+    `branch: ${args.branch}`,
+    `request_path: ${args.request_path}`,
+    `request_sha256: ${args.request_sha256}`,
+    `consult_log_path: ${args.consult_log_path}`,
+    `consult_log_hash: ${args.consult_log_hash}`,
+    `ledger_state_version: ${args.ledger_state_version}`,
+    `map_sig_sha256: ${args.map_sig_sha256}`,
+    `run_label: ${args.run_label}`,
+    `run_started_at: ${args.run_started_at}`,
     "",
     "Apply the approved evo plan as a TERMINAL bob stage. Validate the run lease " +
       "on every mutation. Emit execution-report.v1. The consult-log is the sole " +
@@ -80,7 +73,7 @@ const EXECUTION_REPORT_SCHEMA = {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

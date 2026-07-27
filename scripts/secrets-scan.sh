@@ -170,13 +170,17 @@ report CRITICAL "JWT shapes" "$hits"
 # method calls (.getAccessToken(), authService.*, token_resp.json(), .access_token),
 # placeholder/tutorial values (changeme*, Welcome1!, keystorePass, secret_value_here,
 # password-here, app-password-here, kwargs/type-annotation patterns), design tokens
-# (token://...), shell var interpolation ($VAR, ${VAR}).
+# (token://...), shell var interpolation ($VAR, ${VAR}), and references to a named
+# UPPER_SNAKE constant (`token = RATIFICATION_ARBITER` is a pointer, not a literal —
+# the constant's own DEFINITION line is what the checks must catch). Parity with the
+# same arm in secrets-scan.py; the two implementations MUST stay in lockstep.
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "(password|passwd|pwd|secret|token|api_key)\s*[:=]\s*[\"']?[a-zA-Z0-9._/-]{12,}[\"']?" . \
     | filter_detector_docs \
     | qgrep -vE "(example|test|fake|REDACTED|<.*>|placeholder|your-|YOUR_|MY_|TODO|XXX|\.\.\.|=\s*\"\"|=\s*''|=\s*\\\$\{|=\s*\\\$[A-Z]|os\.environ|os\.getenv|getenv\(|environ\[|process\.env|EXAMPLE|PLACEHOLDER|description:|^\s*#|^\s*//|FOO|BAR|BAZ|password=password|password=passwd|password=user|password=pass$|kwargs|: str$|: str =|: Optional|password_field|password_hash|token_env|token_name|token_field|password_policy|password_minimum|secret_name|secret_key:|secret_id:|hashed_password|password_required|password_required_actions|change_password|reset_password|require_password|password_expiry|password_strength|encrypt_password|password_validator|secret_word|secret_phrase|FIXME|REPLACE-WITH)" \
     | qgrep -vE "(token://|changeme|Welcome1|keystorePass|secret_value_here|password-here|app-password-here|=\s*os\.environ|=\s*os\.getenv|getAccessToken\(|authService\.|token_resp\.|\.access_token|\.getToken\(|tokens?\s+(are|will be|should|must|stored|read|comes|never)|password\s+(is|will|should|must|requires|stored|read|never)|^\s*\#\s|secret:\s*foundry|secret:\s*test|secret_key:\s*'?(test|example|<|YOUR)|access_token\s*=\s*[a-zA-Z_].*\.json|access_token\s*=\s*token_|hash:\s*['\"]\$2[aby]\$|argon2id|bcrypt|scrypt)" \
     | qgrep -vE "([:=]\s*passwordPrompt\(|[:=]\s*secrets\.token_(urlsafe|hex|bytes)\(|[:=]\s*secrets\.choice|[:=]\s*[a-zA-Z_][a-zA-Z0-9_.]*\([^)]*\)\s*[,;]?\s*$|[:=]\s*[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z0-9_]+\(|[:=]\s*_[a-z_]+\.|[:=]\s*request\.|[:=]\s*self\.|--secret=[a-z][a-z0-9_-]+|--password=[a-z][a-z0-9_-]+|StrongAdm1n|P@ss|Pa55|admin123|test123|password123|qwerty|hunter2|letmein|client_id|client_secret\s*=\s*\\\$|access_key\s*=\s*\\\$|[:=]\s*input\(|[:=]\s*getpass\(|password_prompt|prompt_password|encrypt\(|hash_password|verify_password|check_password)" \
+    | qgrep -vE "([:=]\s*[A-Z][A-Z0-9_]{2,}\b(\s*(if|else)\b|\s*$|\s*[,)\]]))" \
     | qgrep -vE "(token:\s*vscode\.|token:\s*CancellationToken|:\s*CancellationToken|:\s*[A-Z][a-zA-Z0-9_]*Token\b|:\s*Token\s*[,;)]|:\s*Promise<|:\s*string\b|:\s*number\b|:\s*boolean\b|:\s*any\b|:\s*[A-Z][a-zA-Z0-9_]*\s*\||:\s*Optional\[|:\s*Awaitable\[|param\s+token\b|@param\s+\{|^\s*\*\s*@param)" )
 report HIGH "inline password/token assignments" "$hits"
 

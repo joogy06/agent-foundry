@@ -15,15 +15,17 @@
 // EXTRACTS from the supplied transcript. Command custody is args-supplied
 // (consultant_cmds) — no command line is embedded here.
 //
-// SCHEMA-TWIN: ballot.v1 sha256:b1f6b8432ec897a0
-// SCHEMA-TWIN: evidence.v1 sha256:8d0ff408dd198b7e
-// SCHEMA-TWIN: deliberation-record.v1 sha256:091bf4bb2d848463
+// SCHEMA-TWIN: ballot.v1 sha256:f2ea59bf05eab2a5
+// SCHEMA-TWIN: evidence.v1 sha256:779a58ae041e1db1
+// SCHEMA-TWIN: deliberation-record.v1 sha256:03b2112fd38817c3
 
 export const meta = {
   name: "cross-cli-deliberation",
   version: "1.0.0",
   description:
-    "owner:cross-cli-deliberation — two-gate (null-hypothesis ballot + burden of falsification) deliberation; ballots are transcription-wrapped; tests are NEVER executed in a stage (needs_inline_verification).",
+    "owner:cross-cli-deliberation — two-gate (null-hypothesis ballot + burden " +
+    "of falsification) deliberation; ballots are transcription-wrapped; tests " +
+    "are NEVER executed in a stage (needs_inline_verification).",
 };
 
 const BALLOT_SCHEMA = {
@@ -61,19 +63,10 @@ const EVIDENCE_SCHEMA = {
 
 const THRESHOLD = 60; // CHANGE_NEEDED confidence threshold to enter Gate 2.
 
-// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
-// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
-// original `export default` wrapper, which the runtime REJECTS at load
-// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
-// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
-
-{
-  // Harness compatibility: `args` may arrive as a JSON string — normalize before
-  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
-  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
+export default async function crossCliDeliberation({ args, agent, parallel, budget }) {
   // ── gate1_ballots (parallel transcription wrappers, one per consultant) ──
-  const consultants = ARGS.consultants || [];
-  const transcripts = ARGS.consultant_transcripts || {}; // pre-launched inline
+  const consultants = args.consultants || [];
+  const transcripts = args.consultant_transcripts || {}; // pre-launched inline
   const ballotStages = consultants.map((c) =>
     agent(
       "You are a TRANSCRIPTION WRAPPER, not a reviewer. From this PRE-LAUNCHED " +
@@ -146,17 +139,17 @@ const THRESHOLD = 60; // CHANGE_NEEDED confidence threshold to enter Gate 2.
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
   - kind: tool_version
     subject: codex-cli
-    verified_against: "0.144.1 (ballots pre-launched inline; codex-from-stage UNTESTED, WP-2)"
-    verified_on: "2026-07-10"
+    verified_against: "0.139.0 (ballots pre-launched inline; codex-from-stage UNTESTED, WP-2)"
+    verified_on: "2026-06-11"
     volatility: high
   - kind: tool_version
     subject: antigravity-cli
-    verified_against: "1.1.0 (stage reachability UNVERIFIED under corrected flag order — the WP-2 probe used the buggy `agy -p --sandbox` order; pre-launch inline until re-probed)"
-    verified_on: "2026-07-10"
+    verified_against: "1.0.7 (UNREACHABLE from stages — pre-launched inline, WP-2 finding 6)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

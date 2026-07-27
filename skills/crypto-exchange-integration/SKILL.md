@@ -192,18 +192,28 @@ symbol = exchange.market_id('BTC/USD')  # -> 'XXBTZUSD'
 # Verified accounts: 15 calls/s for private endpoints
 ```
 
-### IBKR (Interactive Brokers via ib_insync)
-```python
-from ib_insync import IB, Stock, MarketOrder, LimitOrder
+### IBKR (Interactive Brokers via ib_async)
 
-async def ibkr_place_order(contract, qty: float, order_type: str = 'MKT'):
+> Minimal IBKR connectivity example only — full equity order procedures (equity
+> order types, partial-fill reconciliation, SSR/LULD handling, flatten-all)
+> live in the `equity-broker-execution` skill. `ib_async` is the ACTIVE
+> third-party successor to the archived `ib_insync`, wrapping the socket-based
+> TWS API (it is not an official IBKR SDK).
+
+```python
+from ib_async import IB, MarketOrder, LimitOrder
+
+async def ibkr_place_order(contract, side: str, qty: float,
+                           order_type: str = 'MKT', price: float = None):
     ib = IB()
     await ib.connectAsync('127.0.0.1', 7497, clientId=1)
 
     if order_type == 'MKT':
-        order = MarketOrder('BUY', qty)
+        order = MarketOrder(side, qty)
     else:
-        order = LimitOrder('BUY', qty, price)
+        if price is None:
+            raise ValueError("limit order requires a price")
+        order = LimitOrder(side, qty, price)
 
     trade = ib.placeOrder(contract, order)
     await ib.waitOnUpdateAsync()
@@ -239,6 +249,45 @@ async def track_order(exchange, order_id: str, symbol: str,
 
         await asyncio.sleep(0.5)
 ```
+
+## Boot Reconciliation — the crypto implementation of the runtime protocol
+
+`trading-automation-runtime` defines ONE asset-neutral `ReconciliationRequest →
+ReconciliationResult` protocol (open orders, executions/fills, positions, balances; scope;
+snapshot watermark; pagination completeness; discrepancy list; explicit `complete |
+incomplete | unknown`). Crypto has **no single boot-reconciliation surface** — CCXT
+capabilities vary by exchange, so this adapter must **check capabilities, never assume
+them**, and translate the gaps into an honest `incomplete` / `unknown` status.
+
+### Per-exchange capability checks (read `exchange.has`, do not assume)
+
+```python
+def reconciliation_capabilities(exchange):
+    """CCXT capability flags vary by venue — inspect them; never assume parity."""
+    has = exchange.has
+    return {
+        "open_orders":     bool(has.get("fetchOpenOrders")),
+        "closed_orders":   bool(has.get("fetchClosedOrders") or has.get("fetchOrders")),
+        "my_trades":       bool(has.get("fetchMyTrades")),      # fills / executions
+        "positions":       bool(has.get("fetchPositions")),     # derivatives only on many
+        "balance":         bool(has.get("fetchBalance")),
+        "since_pagination": bool(has.get("fetchMyTrades")),     # time-window paginate
+    }
+```
+
+- **Composite execution keys.** A crypto fill is keyed by `(exchange, symbol, trade_id)`
+  and linked to its order by `order` id + `client_order_id` where the venue supports it —
+  never by price/qty heuristics. Some venues recycle or omit ids; record what you actually
+  received rather than what you expected.
+- **Pagination / completeness semantics.** `fetchMyTrades` / `fetchClosedOrders` paginate
+  by `since` + `limit` (a cursor on some venues). A reconciliation is **`complete` only when
+  the pages drain to the snapshot watermark**; a truncated page, a rate-limit abort
+  mid-pagination, or a venue that caps history is **`incomplete`**.
+- **What `incomplete` means per venue (capability variance).** If an exchange cannot
+  enumerate open orders, lacks a positions endpoint (spot-only), or caps trade history
+  below the lookback the runtime needs, the result is `incomplete` (or `unknown` when even
+  the capability is unclear) — which **blocks new exposure** at the runtime admission gate.
+  Never paper over a missing capability as an empty-but-complete result.
 
 ## Common Mistakes
 

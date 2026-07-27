@@ -73,8 +73,12 @@ _BOLD_BULLET_PATTERNS = (
 # Second-stage filter: a bold-led bullet is only a hard-rule candidate if
 # the line also contains mandate language.
 MANDATE_LANGUAGE_RE = re.compile(
-    r"\b(MUST(?: NOT)?|NEVER|ALWAYS|HARD-RULE|required|do not|don't|shall|"
-    r"forbidden|mandatory)\b",
+    # `require` is matched in all its inflections: the original pattern had only
+    # the bare word "required", so a real directive phrased "X requires explicit
+    # user approval" was silently dropped as a non-mandate bullet.
+    r"\b(MUST(?: NOT)?|NEVER|ALWAYS|HARD-RULE|require(?:s|d|ment|ments)?|"
+    r"do not|don't|shall|forbidden|prohibited|mandatory|may not|"
+    r"only ever|under no circumstances)\b",
     re.IGNORECASE,
 )
 

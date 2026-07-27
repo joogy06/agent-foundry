@@ -8,9 +8,9 @@
 #
 # State files:
 #   ~/.claude/state/inventory.json                  (persistent: tools, versions, tier)
-#   $XDG_RUNTIME_DIR/env-adoption/session-<id>.json (volatile: bridge mode, auth, MCP)
+#   $XDG_RUNTIME_DIR/env-adoption/session-<id>.json (volatile: auth, MCP)
 #
-# Designed to complete in under 3 seconds. Composes with bridge-mode-detect.sh
+# Designed to complete in under 3 seconds.
 # (does NOT reimplement its hysteresis logic).
 
 set -euo pipefail
@@ -20,10 +20,9 @@ set -euo pipefail
 INVENTORY_FILE="$HOME/.claude/state/inventory.json"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SESSION_DIR="$RUNTIME_DIR/env-adoption"
-BRIDGE_DETECT="$HOME/.claude/skills/git-cli-bridge/scripts/bridge-mode-detect.sh"
 STALENESS_HOURS=24
-INVENTORY_SCHEMA_VERSION=2
-SESSION_SCHEMA_VERSION=2
+INVENTORY_SCHEMA_VERSION=3
+SESSION_SCHEMA_VERSION=3
 
 # Harness version gates (orchestration surfaces — S055 workflow-adoption keystone).
 # These are the ONLY numbers gating Q1 (host capability); every consumer reads
@@ -116,14 +115,6 @@ detect_tool() {
   printf '{"installed": %s, "version": %s}' "$installed" "$version"
 }
 
-detect_bridge() {
-  if [ -x "$BRIDGE_DETECT" ]; then
-    printf '{"installed": true}'
-  else
-    printf '{"installed": false}'
-  fi
-}
-
 # native_teams experimental gate: env var OR a settings.json experimental flag.
 # Fail-closed — any malformed/missing settings yields "false" (never a guess).
 # The LIVE env var name is CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS (confirmed in the
@@ -173,7 +164,7 @@ compute_tier() {
   # $1 = inventory JSON string
   local inv="$1"
 
-  local git_ok python3_ok gh_ok codex_ok agy_ok copilot_ok docker_ok bridge_ok
+  local git_ok python3_ok gh_ok codex_ok agy_ok copilot_ok docker_ok
   git_ok=$(printf '%s' "$inv" | jq -r '.tools.git.installed')
   python3_ok=$(printf '%s' "$inv" | jq -r '.tools.python3.installed')
   gh_ok=$(printf '%s' "$inv" | jq -r '.tools.gh.installed')
@@ -181,7 +172,6 @@ compute_tier() {
   agy_ok=$(printf '%s' "$inv" | jq -r '.tools.agy.installed')
   copilot_ok=$(printf '%s' "$inv" | jq -r '.tools.copilot.installed')
   docker_ok=$(printf '%s' "$inv" | jq -r '.tools.docker.installed')
-  bridge_ok=$(printf '%s' "$inv" | jq -r '.tools.bridge.installed')
 
   # Tier 0: minimal — git + python3
   if [ "$git_ok" != "true" ] || [ "$python3_ok" != "true" ]; then
@@ -189,9 +179,9 @@ compute_tier() {
     return
   fi
 
-  # Tier 2: full — all of tier 1 + copilot + docker + bridge
+  # Tier 2: full — all of tier 1 + copilot + docker
   if [ "$gh_ok" = "true" ] && [ "$codex_ok" = "true" ] && [ "$agy_ok" = "true" ] \
-     && [ "$copilot_ok" = "true" ] && [ "$docker_ok" = "true" ] && [ "$bridge_ok" = "true" ]; then
+     && [ "$copilot_ok" = "true" ] && [ "$docker_ok" = "true" ]; then
     printf '2\nfull'
     return
   fi
@@ -240,7 +230,7 @@ do_check() {
     inv=$(cat "$INVENTORY_FILE")
   else
     # Probe all tools
-    local claude_j codex_j agy_j copilot_j gh_j git_j docker_j python3_j bridge_j
+    local claude_j codex_j agy_j copilot_j gh_j git_j docker_j python3_j
     local jq_j yq_j openssl_j
     claude_j=$(detect_tool claude)
     codex_j=$(detect_tool codex)
@@ -253,7 +243,6 @@ do_check() {
     jq_j=$(detect_tool jq)
     yq_j=$(detect_tool yq)
     openssl_j=$(detect_tool openssl "version")
-    bridge_j=$(detect_bridge)
 
     # Security tools (S038 Batch A — alf finding F-C8). Downstream security
     # skills (sast-tooling, secret-scanning, dep-currency-check, future
@@ -290,7 +279,6 @@ do_check() {
       --argjson jq_tool "$jq_j" \
       --argjson yq "$yq_j" \
       --argjson openssl "$openssl_j" \
-      --argjson bridge "$bridge_j" \
       --argjson bandit "$bandit_j" \
       --argjson semgrep "$semgrep_j" \
       --argjson gitleaks "$gitleaks_j" \
@@ -316,7 +304,6 @@ do_check() {
           jq: $jq_tool,
           yq: $yq,
           openssl: $openssl,
-          bridge: $bridge,
           bandit: $bandit,
           semgrep: $semgrep,
           gitleaks: $gitleaks,
@@ -355,10 +342,7 @@ do_check() {
     if [ -f "$INVENTORY_FILE" ]; then
       cp -f "$INVENTORY_FILE" "$(dirname "$INVENTORY_FILE")/inventory-prev.json" 2>/dev/null || true
     fi
-    # Atomic write-rename (#126 re-scope): a reader must never see a torn/
-    # empty manifest mid-write.
-    tmp_inv="${INVENTORY_FILE}.tmp.$$"
-    printf '%s\n' "$inv" > "$tmp_inv" && mv -f "$tmp_inv" "$INVENTORY_FILE"
+    printf '%s\n' "$inv" > "$INVENTORY_FILE"
     # History writer: merges plugins/mcp into inventory.json + appends change-records.
     if command -v python3 >/dev/null 2>&1; then
       timeout 5 python3 "$HOME/.claude/skills/env-adoption/scripts/inventory_history.py" >/dev/null 2>&1 || true
@@ -373,12 +357,6 @@ do_check() {
     # S055: prune stale session files (>7 days). The old ppid-$$ keying left
     # 17 stale tmpfs files observed in the field; pruning keeps the dir small.
     find "$SESSION_DIR" -name 'session-*.json' -mtime +7 -delete 2>/dev/null || true
-
-    # Bridge mode — compose with bridge-mode-detect.sh
-    local bridge_mode="unknown"
-    if [ -x "$BRIDGE_DETECT" ]; then
-      bridge_mode=$(timeout 3 "$BRIDGE_DETECT" 2>/dev/null) || bridge_mode="unknown"
-    fi
 
     # gh auth status
     local gh_auth=false
@@ -417,25 +395,23 @@ do_check() {
     # Compute capabilities from inventory + session
     local inv_data
     inv_data=$(cat "$INVENTORY_FILE")
-    local codex_installed agy_installed copilot_installed docker_installed bridge_installed
+    local codex_installed agy_installed copilot_installed docker_installed
     codex_installed=$(printf '%s' "$inv_data" | jq -r '.tools.codex.installed')
     agy_installed=$(printf '%s' "$inv_data" | jq -r '.tools.agy.installed')
     copilot_installed=$(printf '%s' "$inv_data" | jq -r '.tools.copilot.installed')
     docker_installed=$(printf '%s' "$inv_data" | jq -r '.tools.docker.installed')
-    bridge_installed=$(printf '%s' "$inv_data" | jq -r '.tools.bridge.installed')
 
     local jq_installed yq_installed openssl_installed
     jq_installed=$(printf '%s' "$inv_data" | jq -r '.tools.jq.installed')
     yq_installed=$(printf '%s' "$inv_data" | jq -r '.tools.yq.installed')
     openssl_installed=$(printf '%s' "$inv_data" | jq -r '.tools.openssl.installed')
 
-    local triple_model=false codex_challenger=false agy_analyst=false bridge_fallback=false container_workflows=false contract_pipeline=false
+    local triple_model=false codex_challenger=false agy_analyst=false container_workflows=false contract_pipeline=false
     if [ "$codex_installed" = "true" ] && [ "$agy_responding" = "true" ]; then
       triple_model=true
     fi
     [ "$codex_installed" = "true" ] && codex_challenger=true
     [ "$agy_responding" = "true" ] && agy_analyst=true
-    [ "$bridge_mode" = "bridge" ] && bridge_fallback=true
     [ "$docker_installed" = "true" ] && container_workflows=true
     # Contract pipeline needs: jq + yq + openssl + python3 (for gates.py/claims.py/audit_spawn.py)
     if [ "$jq_installed" = "true" ] && [ "$yq_installed" = "true" ] && [ "$openssl_installed" = "true" ]; then
@@ -480,7 +456,6 @@ do_check() {
     sess=$(jq -n \
       --arg session_id "$(session_id)" \
       --arg created "$(now_iso)" \
-      --arg bridge_mode "$bridge_mode" \
       --argjson agy_responding "$agy_responding" \
       --argjson gh_authenticated "$gh_auth" \
       --argjson gh_user "$gh_user" \
@@ -489,17 +464,15 @@ do_check() {
       --argjson triple_model "$triple_model" \
       --argjson codex_challenger "$codex_challenger" \
       --argjson agy_analyst "$agy_analyst" \
-      --argjson bridge_fallback "$bridge_fallback" \
       --argjson container_workflows "$container_workflows" \
       --argjson contract_pipeline "$contract_pipeline" \
       --argjson workflow_tool "$cap_workflow_tool" \
       --argjson native_teams "$cap_native_teams" \
       --argjson agent_spawn "$cap_agent_spawn" \
       '{
-        schema_version: 2,
+        schema_version: 3,
         session_id: $session_id,
         created: $created,
-        bridge_mode: $bridge_mode,
         agy_responding: $agy_responding,
         gh_authenticated: $gh_authenticated,
         gh_user: $gh_user,
@@ -509,7 +482,6 @@ do_check() {
           triple_model: $triple_model,
           codex_challenger: $codex_challenger,
           agy_analyst: $agy_analyst,
-          bridge_fallback: $bridge_fallback,
           container_workflows: $container_workflows,
           contract_pipeline: $contract_pipeline,
           workflow_tool: $workflow_tool,
@@ -547,7 +519,7 @@ do_check() {
 
     # List installed tools
     local tools_line=""
-    for tool in claude codex agy copilot gh git docker python3 jq yq openssl bridge; do
+    for tool in claude codex agy copilot gh git docker python3 jq yq openssl; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       local version
@@ -564,7 +536,7 @@ do_check() {
 
     # List missing tools
     local missing=""
-    for tool in claude codex agy copilot gh git docker python3 jq yq openssl bridge; do
+    for tool in claude codex agy copilot gh git docker python3 jq yq openssl; do
       local installed
       installed=$(printf '%s' "$inv_data" | jq -r ".tools.${tool}.installed")
       if [ "$installed" != "true" ]; then
@@ -576,10 +548,6 @@ do_check() {
     fi
 
     if [ "$inventory_only" -eq 0 ] && [ -n "$sess" ]; then
-      local bm
-      bm=$(printf '%s' "$sess" | jq -r '.bridge_mode')
-      printf 'Bridge mode: %s\n' "$bm"
-
       local caps
       caps=$(printf '%s' "$sess" | jq -r '.capabilities | to_entries[] | select(.value == true) | .key' | tr '\n' ', ' | sed 's/,$//')
       if [ -n "$caps" ]; then
@@ -738,17 +706,6 @@ do_setup() {
       printf '\n'
     fi
   done
-
-  # Bridge setup
-  local bridge_installed
-  bridge_installed=$(printf '%s' "$inv" | jq -r '.tools.bridge.installed')
-  if [ "$bridge_installed" != "true" ]; then
-    any_missing=1
-    printf '[ MISSING ] bridge (git-cli-bridge)\n'
-    printf '  The bridge-mode-detect.sh script is not installed at:\n'
-    printf '  %s\n' "$BRIDGE_DETECT"
-    printf '  This is part of the git-cli-bridge skill. Install the skill first.\n\n'
-  fi
 
   if [ "$any_missing" -eq 0 ]; then
     printf 'All tools installed. Current tier: %s (%s)\n' "$tier" "$tier_label"

@@ -9,7 +9,7 @@
   deprecation status, breaking changes since target's version
 - Invoke web-research skill for claims that need triangulation
 - Use `agy -p "..."` (Antigravity CLI; plain-text stdout) for real-time freshness
-  # TODO(agy): verify equivalent for the old gemini-cli "Google Search grounding" — agy
+  # TODO(agy): verify whether agy exposes a web-grounding equivalent — agy
   # has no verified web-search-grounding flag; route grounding through the web-research skill instead.
 - Check official docs first, then community consensus
 ```

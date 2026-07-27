@@ -15,15 +15,17 @@
 // design-tournament does NOT wrap this (B's ruling); standalone callers are the
 // skill's own inline invocations.
 //
-// SCHEMA-TWIN: team-output.v1 sha256:f4a3ad4c9099cedb
-// SCHEMA-TWIN: attack-set.v1 sha256:694b023fd4d0b913
-// SCHEMA-TWIN: tournament-result.v1 sha256:dedf4eca8e1aa336
+// SCHEMA-TWIN: team-output.v1 sha256:cd3eb0a8aab70c7d
+// SCHEMA-TWIN: attack-set.v1 sha256:3cb8e93a858c949f
+// SCHEMA-TWIN: tournament-result.v1 sha256:eeb24f79634e43ca
 
 export const meta = {
   name: "adversarial-tournament",
   version: "1.0.0",
   description:
-    "owner:adversarial-team-brainstorm — diverge/crossfire/refine/arbiter; kill-criteria minItems 2 (role-collapse guard); attack minItems 1 per target; script downgrades-never-upgrades confidence.",
+    "owner:adversarial-team-brainstorm — diverge/crossfire/refine/arbiter; " +
+    "kill-criteria minItems 2 (role-collapse guard); attack minItems 1 per " +
+    "target; script downgrades-never-upgrades confidence.",
 };
 
 const TEAM_OUTPUT_SCHEMA = {
@@ -67,17 +69,8 @@ const TOURNAMENT_RESULT_SCHEMA = {
   },
 };
 
-// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
-// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
-// original `export default` wrapper, which the runtime REJECTS at load
-// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
-// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
-
-{
-  // Harness compatibility: `args` may arrive as a JSON string — normalize before
-  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
-  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
-  const angles = ARGS.angles || [];
+export default async function adversarialTournament({ args, agent, parallel, budget }) {
+  const angles = args.angles || [];
   if (angles.length < 2) {
     return { ranked_outputs: [], meta: { degraded_to: "insufficient_angles" } };
   }
@@ -87,16 +80,11 @@ const TOURNAMENT_RESULT_SCHEMA = {
     agent(
       `You are TEAM ${i + 1}, angle '${angle}'. Produce a team-output.v1. You MUST ` +
         "state >=2 initial_kill_criteria (concrete conditions that would kill your " +
-        "idea). Grounding feeds: " + JSON.stringify(ARGS.context_paths || []),
+        "idea). Grounding feeds: " + JSON.stringify(args.context_paths || []),
       { agentType: "claude", schema: TEAM_OUTPUT_SCHEMA },
     ),
   );
-  // Null-guard: a diverge stage can return null (schema failure / user skip);
-  // filter at source so crossfire never dereferences t.team_id on null.
-  const teams = (await parallel(divergeStages)).filter(Boolean);
-  if (teams.length < 2) {
-    return { ranked_outputs: [], meta: { degraded_to: "insufficient_teams" } };
-  }
+  const teams = await parallel(divergeStages);
 
   // ── crossfire (parallel attackers; each sees ONLY other teams' outputs) ──
   async function runCrossfire() {
@@ -122,21 +110,15 @@ const TOURNAMENT_RESULT_SCHEMA = {
   // ── refine (parallel; budget floor: below floor before refine => skip) ──
   const budgetOk = !budget || !budget.total ? true : budget.total > 0;
   let degraded = null;
-  let refined = teams; // quick_tournament degrades to pre-refine outputs
   if (budgetOk) {
     const refineStages = teams.map((t) =>
       agent(
         `Refine team-output.v1 for ${t.team_id} addressing the attacks. Include ` +
-          "before/after and rejected_attacks[]. Your original output: " +
-          JSON.stringify(t) +
-          " All attack sets: " + JSON.stringify(attacks),
+          "before/after and rejected_attacks[].",
         { agentType: "claude", schema: TEAM_OUTPUT_SCHEMA },
       ),
     );
-    // Capture the refine round (previously discarded — the arbiter was asked to
-    // rank outputs it never received); a null refine falls back per-team.
-    const refinedRaw = await parallel(refineStages);
-    refined = refinedRaw.map((r, i) => r || teams[i]);
+    await parallel(refineStages);
   } else {
     degraded = "quick_tournament"; // documented mode, not silent loss
   }
@@ -144,8 +126,7 @@ const TOURNAMENT_RESULT_SCHEMA = {
   // ── arbiter (single stage) ──
   const result = await agent(
     "Emit a tournament-result.v1 ranking the refined outputs. Each ranked output " +
-      "MUST carry >=2 kill_criteria. Refined outputs: " + JSON.stringify(refined) +
-      " Attacks: " + JSON.stringify(attacks),
+      "MUST carry >=2 kill_criteria. Attacks: " + JSON.stringify(attacks),
     { agentType: "claude", schema: TOURNAMENT_RESULT_SCHEMA },
   );
 
@@ -172,7 +153,7 @@ const TOURNAMENT_RESULT_SCHEMA = {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

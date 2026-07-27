@@ -23,7 +23,7 @@ Child of `presentation-builder`. Generates architecture diagrams, flowcharts, se
 
 | Request | Use Instead |
 |---|---|
-| Standalone image generation (not for slides) | `nano-banana` or `vertex-banana` |
+| Standalone image generation (not for slides) | `vertex-banana` |
 | Data charts, bar graphs, pie charts, line charts | `presentation-datavis` |
 | General diagram not destined for a presentation | Use Mermaid, Graphviz, or PlantUML directly |
 | Styling, branding, or layout changes | `presentation-styling` |
@@ -38,13 +38,13 @@ Select the rendering tool based on the diagram's purpose. Priority order:
 1. **mermaid-cli (mmdc)** — Deterministic flowcharts, sequence diagrams, ER diagrams, state diagrams, class diagrams, Gantt charts
 2. **graphviz (dot)** — Architecture/topology diagrams, network diagrams, complex directed/undirected graphs
 3. **plantuml** — UML-specific diagrams (activity, component, deployment) when Mermaid lacks coverage
-4. **nano-banana / Gemini (AI image gen)** — Cover art, illustrative visuals, icons, conceptual images ONLY
+4. **vertex-banana (AI image gen)** — Cover art, illustrative visuals, icons, conceptual images ONLY
 5. **ASCII art** — Always works, zero dependencies; use as last resort or for quick inline previews
 
 ### Critical Rules
 
 - **Deterministic renderers (mermaid, graphviz, plantuml)** for: architecture diagrams, flowcharts, sequence diagrams, ER diagrams, class diagrams, state diagrams, network diagrams — anything with precise labels and connections.
-- **AI image generation (nano-banana / vertex-banana)** ONLY for: cover art, illustrative visuals, icons, conceptual images that do not require precise text labels.
+- **AI image generation (vertex-banana)** ONLY for: cover art, illustrative visuals, icons, conceptual images that do not require precise text labels.
 - **NEVER** use AI image generation for architecture diagrams, flowcharts, sequence diagrams, or anything requiring precise text labels. Deterministic renderers only.
 
 ---
@@ -63,7 +63,7 @@ Select the rendering tool based on the diagram's purpose. Priority order:
 | Network diagram | graphviz | `graph { }` |
 | C4 model | mermaid (C4 plugin) or graphviz | `C4Context` / `C4Container` |
 | UML specific | plantuml | `@startuml` |
-| Creative / illustrative | nano-banana | prompt-based |
+| Creative / illustrative | vertex-banana | prompt-based |
 
 When the capability map (from `presentation-builder`) shows a tool is unavailable, fall back to the next available tool in the priority list. If no renderer is available, generate ASCII art.
 
@@ -155,7 +155,7 @@ plantuml -tsvg .presentations/output/assets/diagram-name.puml
 
 ### AI Image Generation (Creative Visuals Only)
 
-Invoke the `nano-banana` skill for illustrative visuals, cover art, or conceptual images. Never for architecture or labeled diagrams.
+Invoke the `vertex-banana` skill for illustrative visuals, cover art, or conceptual images. Never for architecture or labeled diagrams.
 
 ### Output Location
 

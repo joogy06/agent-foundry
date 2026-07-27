@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "avengers/session-plan.v2",
+  "title": "avengers session-plan (v2)",
+  "description": "The frozen, fully-resolved flat plan a convene run materializes (design §4/§5/§8). v2 (WP-2): the arbiter is a fresh, persona-free, deliberation-EXTERNAL cold-context CALL (not a promoted seat). The arbiter object DROPS `seat`, ADDS {is_external, cold_context, path: clean|fallback}, and KEEPS the runtime-load-bearing {provider, effort, guard_stack} (`constraint` optional). Seats no longer REQUIRE `can_arbitrate` (it is inert under v2 — no seat ever adjudicates). v1 is NOT mutated so a resumed mid-flight v1 plan can't silently misvalidate. Written by scripts/convene.py; validated by the bundled stdlib mini-validator (subset of JSON Schema: type/required/properties/items/enum/const/additionalProperties/minItems/minimum). This is DATA/machine state (stdlib JSON), never executed.",
+  "type": "object",
+  "required": [
+    "schema", "session_id", "created_at", "profile", "profile_sha256",
+    "family", "task_family", "outcome_type", "depth", "budgets", "chair",
+    "seats", "arbiter", "quorum", "phases_planned"
+  ],
+  "properties": {
+    "schema": { "type": "string", "enum": ["session-plan.v2"] },
+    "session_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "profile": { "type": "string" },
+    "profile_path": { "type": "string" },
+    "profile_sha256": { "type": "string" },
+    "capability_priors_sha256": { "type": "string" },
+    "family": { "type": "string" },
+    "task_family": { "type": "string" },
+    "task": { "type": "string" },
+    "outcome_type": { "type": "string", "enum": ["decision", "deliverable", "forge_brief"] },
+    "depth": { "type": "string", "enum": ["default", "full", "quick"] },
+    "caller": { "type": "string" },
+    "interactive": { "type": "boolean" },
+    "memory": { "type": "string", "enum": ["project", "off"] },
+    "budgets": {
+      "type": "object",
+      "required": ["max_seat_calls", "wall_clock_s", "max_cycles"],
+      "properties": {
+        "max_seat_calls": { "type": "integer", "minimum": 1 },
+        "wall_clock_s": { "type": "integer", "minimum": 1 },
+        "max_cycles": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "chair": {
+      "type": "object",
+      "required": ["role", "provider", "non_voting", "receives_member_memory"],
+      "properties": {
+        "role": { "type": "string" },
+        "provider": { "type": "string" },
+        "non_voting": { "type": "boolean" },
+        "receives_member_memory": { "type": "boolean" }
+      }
+    },
+    "seats": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["seat_id", "provider", "effort", "adversarial_role", "guard_stack"],
+        "properties": {
+          "seat_id": { "type": "string" },
+          "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
+          "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+          "seat_class": { "type": "string" },
+          "effort_note": { "type": ["string", "null"] },
+          "adversarial_role": { "type": "boolean" },
+          "can_arbitrate": { "type": "boolean" },
+          "fallback_ok": { "type": "boolean" },
+          "guard_stack": { "type": "string" }
+        }
+      }
+    },
+    "arbiter": {
+      "type": "object",
+      "description": "The EXTERNAL cold-context arbiter (design §4). Seatless: it did not file a position, argue, or ballot. `path` = clean (arbiter provider used by no deliberation seat — total exclusion) | fallback (all providers deliberated — anonymized + ACCEPTED style-recognition residual, flagged fallback_arbiter_residual in run-record.json).",
+      "required": ["provider", "effort", "guard_stack", "is_external", "cold_context", "path"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
+        "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+        "seat_class": { "type": "string" },
+        "guard_stack": { "type": "string" },
+        "is_external": { "type": "boolean" },
+        "cold_context": { "type": "boolean" },
+        "path": { "type": "string", "enum": ["clean", "fallback"] },
+        "fallback_arbiter_residual": { "type": "boolean" },
+        "excluded_authorship": { "type": "string" },
+        "constraint": { "type": "string" }
+      }
+    },
+    "quorum": {
+      "type": "object",
+      "required": ["member_seats", "provider_families", "families_count", "floor", "floor_met", "adversarial_seats"],
+      "properties": {
+        "member_seats": { "type": "integer", "minimum": 3 },
+        "provider_families": { "type": "array", "items": { "type": "string" } },
+        "families_count": { "type": "integer", "minimum": 1 },
+        "floor": { "type": "integer", "minimum": 1 },
+        "floor_met": { "type": "boolean" },
+        "adversarial_seats": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "fallback_relaxed": { "type": "boolean" }
+      }
+    },
+    "phases_planned": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "merge_provenance": { "type": "object" },
+    "guard_policy": { "type": "object" },
+    "served_by_policy": { "type": "string" }
+  }
+}

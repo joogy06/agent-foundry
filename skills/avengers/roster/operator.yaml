@@ -15,6 +15,17 @@ incentive:
 
 voice: "concrete, quantifies cost/latency/toil, speaks from the runbook and the bill"
 
+# D2 divergence overlay (design §3). The `incentive` block above is the persona-free
+# CORE — always active. Injected ONLY in blind-diverge / ideation, STRIPPED for converge
+# / verify / arbiter (phase-gated in seat_prompt.py). MUST declare type expertise-cue |
+# divergence-direction; decorative/demographic overlays are REJECTED at validate.
+divergence_overlay:
+  type: expertise-cue
+  cue: >-
+    Reach into deep on-call / incident-response pattern memory: surface the 3am failure
+    this class of design historically produces, the toil it accretes, and the per-invocation
+    cost the happy-path demo hides.
+
 provider:
   affinity: agy              # user-advocate/operator seat; design intent per §7
   fallback_ok: true

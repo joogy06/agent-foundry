@@ -17,17 +17,18 @@
 // transcripts are PRE-LAUNCHED inline by forge and passed via args; a stage that
 // must call an external CLI uses the args-supplied transcript, not a live call.
 //
-// SCHEMA-TWIN: approach-output.v1 sha256:fa8e5055c201b1bc
-// SCHEMA-TWIN: ux-review.v1 sha256:881da62ec03b390c
-// SCHEMA-TWIN: challenger-verdict.v1 sha256:8bbd9ef70365d7e7
-// SCHEMA-TWIN: external-challenger-verdict.v1 sha256:579521782a412e75
-// SCHEMA-TWIN: design-synthesis.v1 sha256:823643ef2d3ee0f1
+// SCHEMA-TWIN: approach-output.v1 sha256:2c673f58b5ef7559
+// SCHEMA-TWIN: ux-review.v1 sha256:4afff4b632ed9f3b
+// SCHEMA-TWIN: challenger-verdict.v1 sha256:9450a8a037dafd44
+// SCHEMA-TWIN: external-challenger-verdict.v1 sha256:4a2d38f7480b2fd1
+// SCHEMA-TWIN: design-synthesis.v1 sha256:b41ee485ceb2be06
 
 export const meta = {
   name: "design-tournament",
   version: "1.0.0",
   description:
-    "owner:forge — parallel approach/challenge/converge design exploration; script computes the disagreement matrix; converge DECISION stays inline in forge.",
+    "owner:forge — parallel approach/challenge/converge design exploration; " +
+    "script computes the disagreement matrix; converge DECISION stays inline in forge.",
 };
 
 const APPROACH_SCHEMA = {
@@ -85,18 +86,9 @@ function computeDisagreementMatrix(challengerVerdicts) {
   return rows;
 }
 
-// ── Script body (top-level — current Workflow surface: `args`/`agent`/`parallel`/
-// `pipeline`/`budget`/`log`/`phase` are runtime globals. Converted 2026-07-10 from the
-// original `export default` wrapper, which the runtime REJECTS at load
-// (SyntaxError: Unexpected keyword 'export' — verified live 2026-07-10, zero-agent probe;
-// same adaptation as bob-serial-exec.js, 2026-06-11). Body logic unchanged. ──
-
-{
-  // Harness compatibility: `args` may arrive as a JSON string — normalize before
-  // any binding is read (bob-serial-exec.js precedent, run wf_64b5c70e-75a).
-  const ARGS = typeof args === "string" ? JSON.parse(args) : (args || {});
+export default async function designTournament({ args, agent, parallel, budget }) {
   // ── prepare (pure JS) ──
-  const approaches = Array.isArray(ARGS.approaches) ? ARGS.approaches : [];
+  const approaches = Array.isArray(args.approaches) ? args.approaches : [];
   if (approaches.length < 2 || approaches.length > 5) {
     return { status: "INCOMPLETE", reason: "approaches must be 2..5", unresolved: [] };
   }
@@ -107,16 +99,16 @@ function computeDisagreementMatrix(challengerVerdicts) {
   // ── diverge (ONE parallel() barrier) ──
   const approachStages = approaches.map((a) =>
     agent(
-      `Produce an approach-output.v1 for approach '${a.id || a}'. Brief at ${ARGS.brief_path} ` +
-        `(sha256 ${ARGS.brief_sha256}). Shared context at ${ARGS.shared_context_path} ` +
-        `(sha256 ${ARGS.shared_context_sha256}).`,
+      `Produce an approach-output.v1 for approach '${a.id || a}'. Brief at ${args.brief_path} ` +
+        `(sha256 ${args.brief_sha256}). Shared context at ${args.shared_context_path} ` +
+        `(sha256 ${args.shared_context_sha256}).`,
       { agentType: "claude", schema: APPROACH_SCHEMA },
     ),
   );
-  if (ARGS.ui_facing) {
+  if (args.ui_facing) {
     approachStages.push(
       agent(
-        `Produce a ux-review.v1 for the UI-facing aspects of the brief at ${ARGS.brief_path}.`,
+        `Produce a ux-review.v1 for the UI-facing aspects of the brief at ${args.brief_path}.`,
         { agentType: "multi-platform-apps:ui-ux-designer" },
       ),
     );
@@ -126,15 +118,15 @@ function computeDisagreementMatrix(challengerVerdicts) {
   // ── challenge (parallel: Claude challenger + external W-EXT wrappers) ──
   const challengeStages = [
     agent(
-      `Challenge the approaches. Emit a challenger-verdict.v1. Brief sha256 ${ARGS.brief_sha256}.`,
+      `Challenge the approaches. Emit a challenger-verdict.v1. Brief sha256 ${args.brief_sha256}.`,
       { agentType: "claude", schema: CHALLENGER_SCHEMA },
     ),
   ];
   // External challengers: forge PRE-LAUNCHED these (agy unreachable from stages,
-  // WP-2 finding 6). The transcripts arrive via ARGS.external_transcripts; the
+  // WP-2 finding 6). The transcripts arrive via args.external_transcripts; the
   // stage only EXTRACTS the verdict from the supplied transcript and wraps it in
   // the W-EXT envelope — it never makes a live external call.
-  for (const ext of ARGS.external_transcripts || []) {
+  for (const ext of args.external_transcripts || []) {
     challengeStages.push(
       agent(
         "You are a TRANSCRIPTION WRAPPER, not a reviewer. Extract the verdict from " +
@@ -184,17 +176,17 @@ function computeDisagreementMatrix(challengerVerdicts) {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
   - kind: tool_version
     subject: codex-cli
-    verified_against: "0.144.1 (external-challenger transcripts pre-launched by forge)"
-    verified_on: "2026-07-10"
+    verified_against: "0.139.0 (external-challenger transcripts pre-launched by forge)"
+    verified_on: "2026-06-11"
     volatility: high
   - kind: tool_version
     subject: antigravity-cli
-    verified_against: "1.1.0 (stage reachability UNVERIFIED under corrected flag order — the WP-2 probe used the buggy `agy -p --sandbox` order; pre-launch inline until re-probed)"
-    verified_on: "2026-07-10"
+    verified_against: "1.0.7 (UNREACHABLE from workflow stages — pre-launched inline, WP-2 finding 6)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

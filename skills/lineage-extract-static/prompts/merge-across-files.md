@@ -8,7 +8,10 @@ You are combining per-file lineage rollups (from `prompts/merge-chunks-within-fi
 2. Concatenate `gaps[]`.
 3. Compute project-level aggregate counters (`by_confidence`, `by_kind`, `boundary_issues_count`).
 4. Surface a per-file index so downstream rendering can attribute edges to their source files.
-5. Emit one JSON object conforming to a project-aggregate shape (NOT lineage-finding.v1 — see the structure below).
+5. Union `dataset_schemas[]` from all per-file rollups (2026-07-01 schema-facet uplift) — keyed on `(namespace, name)`, field lists unioned by field name preserving source order (a later duplicate may only fill a missing `type` or `description`), output sorted by `(namespace, name)`.
+6. Union `column_lineage[]` from all per-file rollups (2026-07-02 column-level uplift) — keyed on the OUTPUT `(namespace, name)`; explicit `fields` entries merge field-map-wise (a later duplicate may only add new output fields or fill empty `inputFields`, never overwrite); a `passthrough_from` marker survives only when no explicit-fields entry exists for the same output; output sorted by `(namespace, name)`.
+7. Union `dataset_descriptions[]` (2026-07-02 uplift) — keyed on `(namespace, name)`, first-seen description wins, output sorted by `(namespace, name)`.
+8. Emit one JSON object conforming to a project-aggregate shape (NOT lineage-finding.v1 — see the structure below).
 
 ## Input you will receive
 
@@ -75,7 +78,38 @@ Also: `run_id`, `extractor_version`, `workspace_tree_hash`.
   },
   "boundary_issues_count": <project total>,
   "total_edges": <len(edges)>,
-  "total_gaps": <len(gaps)>
+  "total_gaps": <len(gaps)>,
+  "dataset_schemas": [
+    /* OPTIONAL — project-level union of per-file dataset_schemas entries
+       (task step 5). merge_into_ol.py joins each entry to its DatasetEvent on
+       (namespace, name) — AFTER identity resolution these must use the SAME
+       canonical namespace/name as the edges — and attaches facets.schema. Omit
+       the key when no file carried one. */
+    {"namespace": "postgres://dwh:5432/analytics", "name": "public.users",
+     "fields": [{"name": "id", "type": "bigint"},
+                {"name": "email", "description": "Customer email"}]}
+  ],
+  "column_lineage": [
+    /* OPTIONAL — project-level union of per-file column_lineage entries
+       (task step 6). merge_into_ol.py attaches each resolved entry as a
+       columnLineage 1-2-0 facet on the matching OUTPUT DatasetEvent; the
+       passthrough_from marker form expands against the parent's
+       dataset_schemas entry. Omit the key when no file carried one. */
+    {"namespace": "postgres://dwh:5432/analytics", "name": "public.stg_orders",
+     "fields": {"order_id": {"inputFields": [
+       {"namespace": "postgres://dwh:5432/analytics",
+        "name": "public.raw_orders", "field": "id"}]}}},
+    {"namespace": "postgres://dwh:5432/analytics", "name": "public.orders_copy",
+     "passthrough_from": {"namespace": "postgres://dwh:5432/analytics",
+                          "name": "public.stg_orders"}}
+  ],
+  "dataset_descriptions": [
+    /* OPTIONAL — project-level union of per-file dataset_descriptions entries
+       (task step 7). merge_into_ol.py attaches each as a documentation facet
+       on the matching DatasetEvent. Omit the key when no file carried one. */
+    {"namespace": "postgres://dwh:5432/analytics", "name": "public.users",
+     "description": "One row per registered customer."}
+  ]
 }
 ```
 

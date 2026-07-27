@@ -15,7 +15,7 @@ description: <single-line, max 1024 chars, leads with "Use when ...">
 
 ## Hard rule (from the skill-creator convention)
 
-The skill-creator convention (originally surfaced verbatim by the local `gemini-cli` 0.36.0 built-in skill-creator, and the prevailing cross-tool standard) is unambiguous:
+The skill-creator convention (the prevailing cross-tool standard) is unambiguous:
 
 > *"Do not include any other fields in YAML frontmatter."*
 

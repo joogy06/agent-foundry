@@ -98,12 +98,14 @@ featuring an RTX 5060, Ryzen 5 9600X, and 32GB DDR5. It delivers
 
 ### Deprecated/Restricted — Do NOT Expect Rich Results
 
-| Schema | Status | Still Useful For |
-|--------|--------|-----------------|
-| `FAQPage` | Rich results: gov/health only | AI parsing (still implement) |
-| `HowTo` | Fully deprecated | Nothing — skip |
-| `Q&A` | Deprecated Jan 2026 | Nothing — skip |
-| `SitelinksSearchBox` | Deprecated Jan 2026 | Nothing — skip |
+> **Canonical list: `seo-structure-architect` → "Deprecated — Do NOT Implement for Rich
+> Results".** It is the single owner of schema status; this file previously carried a
+> partial copy (4 of 7 entries) that **went stale and contradicted the others** — it still
+> described `FAQPage` as "gov/health only" nine months after Google removed the rich result
+> entirely. Do not restate schema status here; **link, and the fact stays true by construction.**
+
+**What this skill owns instead:** which SERP *feature* each schema can still win, and how
+to present for it. For whether a schema is alive at all, follow the link above.
 
 Rich results capture 58% of clicks when present (vs 41% for standard listings).
 

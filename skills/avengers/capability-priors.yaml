@@ -1,0 +1,47 @@
+# avengers — capability-priors.yaml (DATA, editable, seed-only). Design §2 / §2a.
+#
+# ⚠️  THESE ARE DESIGNER BELIEFS, NOT MEASURED CAPABILITY.  ⚠️
+# Every weight below is a PRIOR — a hand-seeded hypothesis about which provider
+# tends to be strong at which seat-class. There is NO benchmark harness behind
+# these numbers yet (that is v3's measured-routing work). They are INPUTS TO A
+# SOLVER, never evidence, and MUST NOT be reported anywhere as measured capability.
+# `agy` research-breadth in particular is flagged HYPOTHESIS / untested.
+#
+# The resolver reads this file to (a) break affinity ties and (b) pick the
+# strongest adjudication prior for the EXTERNAL arbiter (design §4). It fails OPEN:
+# if this file is missing or unparseable, convene.py falls back to built-in
+# defaults (BUILTIN_ADJUDICATION_PRIOR / BUILTIN_SEAT_AFFINITY in convene.py) so a
+# DATA edit can never crash the fail-closed gate. This file is DATA; nothing here
+# is executed.
+schema: avengers-capability-priors.v1
+revision: 1
+note: >-
+  Designer beliefs (seed). Not measured. Edit freely; convene.py re-derives on
+  every run. Enabling rotation (deferred, off-by-default) is what turns these
+  priors + the §6a run-record instrumentation into a v3 data-collection strategy.
+
+# Per-provider seat-affinity priors (designer belief, 0..3). Higher = a stronger
+# hand-seeded belief that this provider suits this class of seat. Tie-break input
+# to the resolver's precedence step (4); never the sole assignment mechanism.
+seat_affinity:
+  claude:
+    integration: 3      # long-run coherence / synthesis (the architect lens)
+    calibration: 3      # honest uncertainty, dissent-recording
+    coding_depth: 2
+  codex:
+    edge_catching: 3    # the adversarial critic / skeptic lens (gpt-5.6-sol)
+    evidence_discipline: 3
+    unsticking: 2
+  agy:
+    research_breadth: 2 # ⚠ HYPOTHESIS, untested — do not treat as measured
+    operations: 2       # the operator / SRE lens
+
+# Adjudication prior (designer belief): how strong a NEUTRAL synthesizer each
+# provider is for the EXTERNAL cold-context arbiter (design §4/§5). claude carries
+# the strongest adjudication prior (why the coding-ratification fallback arbiter
+# lands on claude, and why the steward's affinity is agy — §5, WP-3). Higher wins;
+# alphabetical tie-break for determinism.
+adjudication_prior:
+  claude: 3
+  agy: 2
+  codex: 1

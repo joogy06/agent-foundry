@@ -1,6 +1,6 @@
 ---
 name: secret-scanning
-description: Use when scanning a codebase for hardcoded secrets (API keys, tokens, passwords, PEM keys, AWS creds, JWTs) — wraps gitleaks (fast regex pre-commit), trufflehog (slower CI-time live-credential verification with --only-verified), and the in-house regex catalog at scripts/secrets-scan.sh as defense-in-depth. Use for pre-push hooks, CI gates, alf sweeps, the G_SECRETS_SCAN gate in _meta/gates.py, and ad-hoc audits. Trigger on - secret scanning, hardcoded credentials, leaked tokens, PEM keys in repo, AWS keys in code, secret detection, gitleaks, trufflehog, secret-in-code, .env in git, credential audit, pre-push secrets.
+description: Use when scanning a codebase for hardcoded secrets (API keys, tokens, passwords, PEM keys, AWS creds, JWTs) — wraps gitleaks (fast regex pre-commit), trufflehog (slower CI-time live-credential verification with --only-verified), and the in-house regex catalog at scripts/secrets-scan.sh as defense-in-depth. Use for pre-push hooks, CI gates, alf sweeps, the G_SECRETS_SCAN gate in _meta/gates.py, and ad-hoc audits. ALSO owns the host-wide secrets STORAGE standard (~/.secrets/<project>.env + loader + blocking pre-commit hook) — see references/storage-standard.md. Trigger on - secret scanning, secrets storage, where do I put credentials, .env handling, secrets management, hardcoded credentials, leaked tokens, PEM keys in repo, AWS keys in code, secret detection, gitleaks, trufflehog, secret-in-code, .env in git, credential audit, pre-push secrets.
 ---
 
 # Secret Scanning
@@ -37,6 +37,63 @@ Companion skills:
 - `llm-security` — secrets in LLM prompts (don't put secrets in prompts; LLM07 / LLM06)
 
 ---
+
+## 0. Secrets storage standard (host-wide, adopted 2026-07-25)
+
+Detection is half the job. Where secrets LIVE is the other half — and the reason
+detection keeps having work to do. The standard:
+
+```
+~/.secrets/<project>.env   ->   loader   ->   process environment   ->   your code
+   storage (0600)                              delivery (ephemeral)
+```
+
+**Storage and delivery are different questions.** An environment variable is how a
+process *receives* a secret, not where one is *kept*. Full spec, rationale, honest
+caveats and the migration recipe: **`references/storage-standard.md`**.
+
+| Layer | Rule |
+|---|---|
+| Storage | `~/.secrets/<project>.env` (0600), dir 0700; shared values in `common.env` |
+| Delivery | `scripts/load-secrets.sh` (bash) or `scripts/load_secrets.py` (python) |
+| Precedence | real env **>** `<project>.env` **>** `common.env` |
+| In repo | `.env.example` (names only), `.gitignore` rule, loader call — nothing else |
+| Enforcement | **pre-commit** hook, blocking |
+
+### Enforcement — one pattern set, three call sites
+
+The commit hook, the push hook and the gate all invoke the SAME scanner, so their
+rules cannot drift apart:
+
+| When | Mechanism |
+|---|---|
+| `git commit` | `hooks/pre-commit` → `secrets-scan.py --staged` (reads the **git index**) |
+| `git push` | `.git/hooks/pre-push` → `secrets-scan.py` (worktree) |
+| Agent cycles | `G_SECRETS_SCAN` in `_meta/gates.py` |
+
+```bash
+bash ~/.claude/skills/secret-scanning/hooks/install.sh   # per repo, commit-time
+```
+
+Two deliberate design choices, both learned the hard way:
+
+- **`install.sh` REFUSES to install if no scanner resolves.** An inert hook is worse
+  than no hook — it advertises protection that does not exist.
+- **The hook fails CLOSED if the scanner disappears after install.** Same reasoning.
+  `git commit --no-verify` remains the explicit, visible escape hatch.
+
+Commit-time is the one that matters most: push-time stops a secret leaving the
+machine, commit-time stops it entering history at all.
+
+### Honest limits — do not oversell
+
+- `~/.secrets/` is **plaintext on disk**. Fewer copies and one audit point, but it is
+  NOT encryption and NOT a secret manager. Upgrade path: `age`+`sops` or `pass`
+  (none installed on this host today).
+- **Env vars are not a security boundary** — readable via `/proc/<pid>/environ` by the
+  same user, inherited by every subprocess, visible in `ps`. Fine for delivery.
+- **Scrubbing is not rotation.** A credential that was ever committed must be rotated
+  at the provider; removing it from files does nothing for the exposure.
 
 ## 1. Tool selection — when to use which
 

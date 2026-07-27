@@ -13,7 +13,7 @@ Per Codex challenger Rev 2 pivot: shell out to community scanners as PRIMARY; HT
 
 ## No `npm audit` wrapper
 
-Per Gemini research, npm audit's FP rate is too high. Use OSV-direct for npm.
+Per research, npm audit's FP rate is too high. Use OSV-direct for npm.
 
 ## Dispatch priority
 

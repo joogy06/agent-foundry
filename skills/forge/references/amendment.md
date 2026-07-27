@@ -245,6 +245,28 @@ forbid `pause_state.*` references, forbid `.ledger/` string literals).
 
 ---
 
+## 6b. Post-amendment obligation: re-pin the retro-scan baseline
+
+An amendment changes the contract map, which changes its hash — and
+`progress/retro-scan-S028.yaml` pins the OLD hash. `G_CONTRACT_SCOPE` compares
+the two and, on a mismatch, **silently declines to consult the baseline at all**.
+Every grandfathered path then re-emits as a fresh critical undeclared, and the
+cycle re-enters the pause it just came out of, now pointing at paths that were
+already accepted. **S033 and S069 each lost a full pause cycle to this.**
+
+It is a rule-6 consequence: forge does not write the map, so forge cannot do the
+re-pin. **Bob owns it, at Step 8.7 between signing and the delta event:**
+
+```bash
+python3 ~/.claude/skills/retro-scan-s028/scripts/scan.py "<project_root>"
+grep contract_map_hash progress/retro-scan-S028.yaml   # must equal the amended map's hash
+```
+
+Forge's part is to not treat the amendment as finished at `deltas_resolved`.
+The cycle is unblocked only once the baseline is re-pinned.
+
+---
+
 ## 7. Cross-references
 
 - Helper: `~/.claude/skills/_meta/forge_amendment_helper.py` (CONTRACT-C1).

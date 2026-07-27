@@ -11,7 +11,7 @@
       "source_refs": ["t0003"],
       "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
     },
-    "approval": {"status": "approved", "by": "tadas", "at": "2026-07-11T20:30:00Z"},
+    "approval": {"status": "approved", "by": "operator", "at": "2026-07-11T20:30:00Z"},
     "sensitivity": {"pii": false},
     "status": "active",
     "expires_at": null,
@@ -29,7 +29,7 @@
       "source_refs": ["t0011"],
       "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
     },
-    "approval": {"status": "approved", "by": "tadas", "at": "2026-07-11T20:31:00Z"},
+    "approval": {"status": "approved", "by": "operator", "at": "2026-07-11T20:31:00Z"},
     "sensitivity": {"pii": false},
     "status": "active",
     "expires_at": null,

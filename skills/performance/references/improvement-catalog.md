@@ -2,7 +2,7 @@
 
 Reference file for `performance` skill. Catalogue of common improvement patterns, with applicability, impact / effort estimates, and stack-specific owner skills. Consumed from the "Synthesis & Improvements" stubs in each measurement sub-skill — NOT a routing target.
 
-The measurement sub-skills identify the problem; this catalogue names the pattern; the owning domain skill (python-flask-developer, frontend-design, etc.) owns the implementation detail.
+The measurement sub-skills identify the problem; this catalogue names the pattern; the owning domain skill (python-flask-developer, modern-frontend, etc.) owns the implementation detail.
 
 ---
 
@@ -24,10 +24,10 @@ Ranking is heuristic; actual impact is always measured after the change.
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Application-level memoisation (hot, deterministic pure functions) | CPU hotspot in a function called repeatedly with same args | Medium | Low | python-flask-developer, nodejs-backend-patterns, java-backend |
-| Query-result cache (Redis / Memcached) | Read-heavy endpoint, p95 dominated by DB time | High | Medium | python-flask-developer, nodejs-backend-patterns, database.md |
-| HTTP response cache (`Cache-Control`, ETag) | Public idempotent GETs | High | Low | nodejs-backend-patterns, python-flask-developer, ubuntu-web-servers |
-| CDN edge cache | Static + cacheable dynamic; global audience | Very High | Low–Medium | frontend-design, ubuntu-web-servers |
+| Application-level memoisation (hot, deterministic pure functions) | CPU hotspot in a function called repeatedly with same args | Medium | Low | python-flask-developer, java-backend |
+| Query-result cache (Redis / Memcached) | Read-heavy endpoint, p95 dominated by DB time | High | Medium | python-flask-developer, database.md |
+| HTTP response cache (`Cache-Control`, ETag) | Public idempotent GETs | High | Low | python-flask-developer, ubuntu-web-servers, modern-frontend (Next Route Handlers only) |
+| CDN edge cache | Static + cacheable dynamic; global audience | Very High | Low–Medium | modern-frontend, ubuntu-web-servers |
 | Database query cache | Same query, same result, for short TTL | Medium | Low | database.md, mongodb, ubuntu-databases |
 
 ### 2. Query Optimisation
@@ -45,8 +45,8 @@ Ranking is heuristic; actual impact is always measured after the change.
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Eager load via ORM helpers (`joinedload`, `select_related`, `with`, `include`) | Query count scales with result size | Very High | Low | python-flask-developer (SQLAlchemy), java-backend (Hibernate), nodejs-backend-patterns (Prisma/TypeORM), woocommerce-developer (Eloquent) |
-| DataLoader / batching layer | Graph / resolver-driven N+1 | High | Medium | nodejs-backend-patterns |
+| Eager load via ORM helpers (`joinedload`, `select_related`, `with`, `include`) | Query count scales with result size | Very High | Low | python-flask-developer (SQLAlchemy), java-backend (Hibernate), woocommerce-developer (Eloquent); Prisma/TypeORM — no dedicated skill, use database.md |
+| DataLoader / batching layer | Graph / resolver-driven N+1 | High | Medium | (no dedicated skill — use profiling.md + database.md) |
 | Explicit JOIN in a custom repository method | ORM-driven eager load is too broad | Medium | Medium | database.md, python-flask-developer |
 
 ### 4. Connection Pooling
@@ -55,51 +55,51 @@ Ranking is heuristic; actual impact is always measured after the change.
 |---|---|---|---|---|
 | Right-size DB pool (2 × cores + 1) | Pool saturation under load | High | Low | `database.md`, ubuntu-databases |
 | Add pgbouncer / ProxySQL | Multi-process/multi-host app exceeds DB `max_connections` | Very High | Medium | ubuntu-databases, rhel-databases |
-| HTTP client keep-alive + pool | Outbound HTTP latency dominated by TLS handshake | High | Low | python-flask-developer, nodejs-backend-patterns |
+| HTTP client keep-alive + pool | Outbound HTTP latency dominated by TLS handshake | High | Low | python-flask-developer (Node — no dedicated skill, use profiling.md) |
 | Connection leak fix | Connection count grows monotonically | Very High | Medium | `database.md`, domain skill |
 
 ### 5. Async Processing / Queueing
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Defer non-essential work to a queue | Endpoint does non-user-visible work inline | High | Medium | python-parallelism, nodejs-backend-patterns |
-| Bulk / batch external API calls | Loop-of-requests to the same upstream | High | Medium | python-parallelism, nodejs-backend-patterns |
-| Concurrent I/O via asyncio / Promise.all | Sequential independent I/O | High | Low–Medium | python-parallelism, modern-javascript-patterns |
+| Defer non-essential work to a queue | Endpoint does non-user-visible work inline | High | Medium | python-parallelism |
+| Bulk / batch external API calls | Loop-of-requests to the same upstream | High | Medium | python-parallelism |
+| Concurrent I/O via asyncio / Promise.all | Sequential independent I/O | High | Low–Medium | python-parallelism, modern-frontend (client-side) |
 | Move CPU-bound work out of the request | Handler blocks on CPU-heavy work | High | Medium | python-parallelism (multiprocessing) |
 
 ### 6. Compression
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| gzip / brotli on responses | Large JSON / HTML / JS payloads | Medium–High | Low | ubuntu-web-servers, rhel-web-servers, nodejs-backend-patterns |
-| Image format optimisation (WebP / AVIF) | Image-heavy pages | High | Low | frontend-design |
-| Font subsetting | Custom fonts dominate LCP | Medium | Low | frontend-design |
-| Payload trimming (drop unused fields) | Over-fetching APIs (REST or GraphQL) | Medium | Low | frontend-design, domain API skill |
+| gzip / brotli on responses | Large JSON / HTML / JS payloads | Medium–High | Low | ubuntu-web-servers, rhel-web-servers, modern-frontend (Next-managed responses only) |
+| Image format optimisation (WebP / AVIF) | Image-heavy pages | High | Low | modern-frontend |
+| Font subsetting | Custom fonts dominate LCP | Medium | Low | modern-frontend |
+| Payload trimming (drop unused fields) | Over-fetching APIs (REST or GraphQL) | Medium | Low | modern-frontend, domain API skill |
 
 ### 7. CDN / Edge Caching
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Push static assets to a CDN | Any non-CDN site with meaningful static bytes | High | Low | frontend-design, ubuntu-web-servers |
+| Push static assets to a CDN | Any non-CDN site with meaningful static bytes | High | Low | modern-frontend, ubuntu-web-servers |
 | Edge caching of cacheable APIs | Geo-distributed users, cacheable GETs | High | Medium | ubuntu-web-servers |
-| Image CDN (auto-format, resize) | Image-heavy sites | High | Low | frontend-design |
+| Image CDN (auto-format, resize) | Image-heavy sites | High | Low | modern-frontend |
 
 ### 8. Lazy Loading / Code Splitting
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Route-based code splitting | SPA bundle dominates first-load time | High | Medium | frontend-design, modern-javascript-patterns |
-| Component-level lazy (`React.lazy`, dynamic import) | Rarely-visited UI sections | Medium | Low | frontend-design, modern-javascript-patterns |
-| Lazy image loading (`loading="lazy"`) | Long pages with many images | Medium | Low | frontend-design |
-| Defer non-critical `<script>` | Render-blocking third-party scripts | High | Low | frontend-design |
+| Route-based code splitting | SPA bundle dominates first-load time | High | Medium | modern-frontend |
+| Component-level lazy (`React.lazy`, dynamic import) | Rarely-visited UI sections | Medium | Low | modern-frontend |
+| Lazy image loading (`loading="lazy"`) | Long pages with many images | Medium | Low | modern-frontend |
+| Defer non-critical `<script>` | Render-blocking third-party scripts | High | Low | modern-frontend |
 
 ### 9. Resource Preloading
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| `<link rel="preload">` critical CSS/fonts | LCP dominated by late font / CSS discovery | High | Low | frontend-design |
-| `<link rel="preconnect">` to CDN / API | TLS handshake dominates sub-request latency | Medium | Low | frontend-design |
-| HTTP/2 server push | (Deprecated in most browsers — prefer preload) | n/a | n/a | frontend-design |
+| `<link rel="preload">` critical CSS/fonts | LCP dominated by late font / CSS discovery | High | Low | modern-frontend |
+| `<link rel="preconnect">` to CDN / API | TLS handshake dominates sub-request latency | Medium | Low | modern-frontend |
+| HTTP/2 server push | (Deprecated in most browsers — prefer preload) | n/a | n/a | modern-frontend |
 
 ### 10. Read Replicas / Read-Write Split
 
@@ -112,11 +112,11 @@ Ranking is heuristic; actual impact is always measured after the change.
 
 | Pattern | When applicable | Impact | Effort | Owner skill |
 |---|---|---|---|---|
-| Skeleton screens / optimistic UI | Perceived-perf issue, not latency issue | Medium–High | Medium | frontend-design |
-| Progressive hydration / island architecture | SPA ships too much JS for first paint | High | High | frontend-design |
-| Virtualised lists / grids | Long lists cause jank on scroll | High | Medium | frontend-design |
-| Avoid layout thrash (`requestAnimationFrame`, CSS `contain`) | High CLS, frame-budget overruns | Medium | Medium | frontend-design |
-| GPU-backed animations (`transform`, `opacity`, `will-change`) | Frame-rate drops during animation | Medium | Low | frontend-design |
+| Skeleton screens / optimistic UI | Perceived-perf issue, not latency issue | Medium–High | Medium | modern-frontend |
+| Progressive hydration / island architecture | SPA ships too much JS for first paint | High | High | modern-frontend |
+| Virtualised lists / grids | Long lists cause jank on scroll | High | Medium | modern-frontend |
+| Avoid layout thrash (`requestAnimationFrame`, CSS `contain`) | High CLS, frame-budget overruns | Medium | Medium | modern-frontend |
+| GPU-backed animations (`transform`, `opacity`, `will-change`) | Frame-rate drops during animation | Medium | Low | modern-frontend |
 
 ### 12. Infrastructure & Resource Right-sizing
 
@@ -124,7 +124,7 @@ Ranking is heuristic; actual impact is always measured after the change.
 |---|---|---|---|---|
 | Vertical scale (more CPU/memory) | Single-instance ceiling, short-term fix | Medium | Low | ubuntu-server-admin, rhel-server-admin |
 | Horizontal scale (more replicas) | Stateless service, load > single-node capacity | High | Medium | docker-admin, domain infra skill |
-| Worker count tuning (uWSGI/Gunicorn/PM2) | Request queuing within an instance | High | Low | python-flask-developer, nodejs-backend-patterns |
+| Worker count tuning (uWSGI/Gunicorn/PM2) | Request queuing within an instance | High | Low | python-flask-developer (PM2 — no dedicated skill, use load-testing + capacity-planning) |
 | GC tuning | Long GC pauses visible in p99 | Medium | Medium | java-backend, profiling.md |
 
 ---
@@ -155,11 +155,13 @@ Before applying a pattern, confirm the detected stack and route to the right ski
 |---|---|
 | Python / Flask | python-flask-developer, python-parallelism, database.md |
 | Python / Django | python-flask-developer (patterns), python-data-engineer, database.md |
-| Node.js / Express, Fastify | nodejs-backend-patterns, modern-javascript-patterns |
+| Node.js / Express, Fastify (standalone service) | (no dedicated skill — use profiling.md + database.md) |
+| Next.js server-side (route handlers, server actions, middleware) | modern-frontend |
+| Node/TypeScript MCP server | mcp-server-creator |
 | Java / Spring | java-backend, profiling.md (async-profiler) |
 | PHP / WooCommerce | woocommerce-developer, wordpress-developer |
 | Go | profiling.md (pprof), database.md |
-| Frontend (React / Next / Angular) | frontend-design, java-frontend |
+| Frontend (React / Next / Angular) | modern-frontend |
 
 When the stack is uncertain, delegate to `research-for-skills/gap-detection.md` before applying stack-specific patterns.
 

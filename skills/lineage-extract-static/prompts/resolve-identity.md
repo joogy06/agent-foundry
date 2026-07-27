@@ -80,6 +80,7 @@ ONLY when the run was invoked with `--merge-by-basename` flag (you will be told 
 Same structure as the input project-aggregate JSON, but with:
 - Every `source_dataset` resolved through the waterfall.
 - Every `target_job.namespace` normalized when applicable (e.g. for jobs declared in a Spark deploy URI).
+- Every dataset rename applied CONSISTENTLY to the sidecar keys (2026-07-02 uplift): `dataset_schemas[].{namespace,name}`, `dataset_descriptions[].{namespace,name}`, and `column_lineage[]` — the OUTPUT `{namespace,name}`, every `fields.*.inputFields[].{namespace,name}`, AND `passthrough_from.{namespace,name}`. A rename applied to edges but not sidecars silently breaks the OL emission join.
 - A new `identity_resolution_log` array recording every change made:
 
 ```json

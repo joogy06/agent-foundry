@@ -122,7 +122,7 @@ Real performance (what the clock measures) and perceived performance (what the u
 | Image CDN with auto-format (WebP / AVIF) + `srcset` | Image-heavy pages |
 | Font `font-display: swap` + subsetting | Text invisibility during font load |
 
-Delegate implementation to `frontend-design` (React / Next / Angular / generic SPA) and `woocommerce-developer` / `wordpress-developer` for CMS stacks.
+Delegate implementation to `modern-frontend` (React / Next / Angular / generic SPA) and `woocommerce-developer` / `wordpress-developer` for CMS stacks.
 
 ---
 

@@ -332,6 +332,140 @@ def sort_gaps_deterministic(gaps: list[dict]) -> list[dict]:
     return sorted(gaps, key=key)
 
 
+def merge_dataset_schemas(schema_lists: list[list[dict]]) -> list[dict]:
+    """Union chunk-level ``dataset_schemas`` entries (2026-07-01 schema-facet uplift).
+
+    Keyed on (namespace, name); field lists union by field NAME preserving
+    first-seen order (source order); a later duplicate field may only FILL a
+    missing ``type`` or ``description`` (never overwrite a stated one — the
+    2026-07-02 description rule mirrors the type rule). Output sorted by
+    (namespace, name) for deterministic byte-identical rollups.
+    """
+    merged: dict[tuple, dict] = {}
+    for entries in schema_lists:
+        for entry in entries or []:
+            ns = entry.get("namespace", "")
+            name = entry.get("name", "")
+            fields = entry.get("fields") or []
+            if not ns or not name or not fields:
+                continue
+            key = (ns, name)
+            if key not in merged:
+                merged[key] = {"namespace": ns, "name": name, "fields": [], "_seen": {}}
+                if entry.get("evidence_line"):
+                    merged[key]["evidence_line"] = entry["evidence_line"]
+            slot = merged[key]
+            for f in fields:
+                fname = f.get("name")
+                if not fname:
+                    continue
+                if fname in slot["_seen"]:
+                    prev = slot["_seen"][fname]
+                    if not prev.get("type") and f.get("type"):
+                        prev["type"] = str(f["type"])
+                    if not prev.get("description") and f.get("description"):
+                        prev["description"] = str(f["description"])
+                    continue
+                fld = {"name": str(fname)}
+                if f.get("type"):
+                    fld["type"] = str(f["type"])
+                if f.get("description"):
+                    fld["description"] = str(f["description"])
+                slot["fields"].append(fld)
+                slot["_seen"][fname] = fld
+    out = []
+    for key in sorted(merged):
+        entry = merged[key]
+        entry.pop("_seen", None)
+        out.append(entry)
+    return out
+
+
+def merge_column_lineage(cl_lists: list[list[dict]]) -> list[dict]:
+    """Union chunk-level ``column_lineage`` entries (2026-07-02 column-level uplift).
+
+    Keyed on the OUTPUT (namespace, name). Two entry shapes exist:
+
+    * explicit ``fields`` map — merged field-map-wise: a NEW output_field key is
+      added; an EXISTING output_field keeps its first-seen inputFields, a later
+      duplicate may only FILL missing (empty) inputFields — never overwrite.
+    * ``passthrough_from`` marker — kept only when NO explicit-fields entry
+      exists for the same output (explicit evidence beats the identity marker);
+      first-seen marker wins among markers.
+
+    Output sorted by (namespace, name) for deterministic byte-identical rollups.
+    """
+    merged: dict[tuple, dict] = {}
+    for entries in cl_lists:
+        for entry in entries or []:
+            ns = entry.get("namespace", "")
+            name = entry.get("name", "")
+            if not ns or not name:
+                continue
+            fields = entry.get("fields")
+            passthrough = entry.get("passthrough_from")
+            if not fields and not passthrough:
+                continue
+            key = (ns, name)
+            slot = merged.get(key)
+            if slot is None:
+                slot = {"namespace": ns, "name": name}
+                if entry.get("evidence_line"):
+                    slot["evidence_line"] = entry["evidence_line"]
+                if isinstance(fields, dict) and fields:
+                    slot["fields"] = {
+                        str(k): {"inputFields": list((v or {}).get("inputFields") or [])}
+                        for k, v in fields.items()
+                    }
+                else:
+                    slot["passthrough_from"] = {
+                        "namespace": passthrough.get("namespace", ""),
+                        "name": passthrough.get("name", ""),
+                    }
+                merged[key] = slot
+                continue
+            # Existing slot: explicit fields beat / extend; markers never displace fields.
+            if isinstance(fields, dict) and fields:
+                if "fields" not in slot:
+                    slot.pop("passthrough_from", None)
+                    slot["fields"] = {}
+                    if entry.get("evidence_line") and not slot.get("evidence_line"):
+                        slot["evidence_line"] = entry["evidence_line"]
+                for out_field, spec in fields.items():
+                    inputs = list((spec or {}).get("inputFields") or [])
+                    prev = slot["fields"].get(str(out_field))
+                    if prev is None:
+                        slot["fields"][str(out_field)] = {"inputFields": inputs}
+                    elif not prev.get("inputFields") and inputs:
+                        prev["inputFields"] = inputs
+            # else: a later passthrough marker never overwrites anything.
+    return [merged[key] for key in sorted(merged)]
+
+
+def merge_dataset_descriptions(desc_lists: list[list[dict]]) -> list[dict]:
+    """Union chunk-level ``dataset_descriptions`` entries (2026-07-02 uplift).
+
+    Keyed on (namespace, name); first-seen description wins (a later duplicate
+    never overwrites). Output sorted by (namespace, name).
+    """
+    merged: dict[tuple, dict] = {}
+    for entries in desc_lists:
+        for entry in entries or []:
+            ns = entry.get("namespace", "")
+            name = entry.get("name", "")
+            desc = entry.get("description", "")
+            if not ns or not name or not desc:
+                continue
+            key = (ns, name)
+            if key in merged:
+                continue
+            slot = {"namespace": ns, "name": name, "description": str(desc)}
+            if entry.get("evidence_line"):
+                slot["evidence_line"] = entry["evidence_line"]
+            merged[key] = slot
+    return [merged[key] for key in sorted(merged)]
+
+
 def accumulate(
     chunk_dir: Path,
     run_id: str,
@@ -432,6 +566,22 @@ def accumulate(
     line_count = manifest.get("line_count", 1)
     size_bytes = manifest.get("size_bytes", 0)
 
+    # Schema-facet uplift (2026-07-01): union chunk-level dataset_schemas into
+    # the file rollup. Key absent when no chunk carried one (byte-compat with
+    # pre-uplift rollups).
+    dataset_schemas = merge_dataset_schemas(
+        [chunk.get("dataset_schemas") or [] for chunk in chunks]
+    )
+
+    # Column-level uplift (2026-07-02): union chunk-level column_lineage +
+    # dataset_descriptions the same way. Keys absent when no chunk carried one.
+    column_lineage = merge_column_lineage(
+        [chunk.get("column_lineage") or [] for chunk in chunks]
+    )
+    dataset_descriptions = merge_dataset_descriptions(
+        [chunk.get("dataset_descriptions") or [] for chunk in chunks]
+    )
+
     summary = {
         "schema_version": "1.0.0",
         "extractor_id": "lineage-extract-static",
@@ -450,6 +600,12 @@ def accumulate(
         "by_kind": by_kind,
         "boundary_issues_count": boundary_issues,
     }
+    if dataset_schemas:
+        summary["dataset_schemas"] = dataset_schemas
+    if column_lineage:
+        summary["column_lineage"] = column_lineage
+    if dataset_descriptions:
+        summary["dataset_descriptions"] = dataset_descriptions
 
     summary_path = chunk_dir / "summary.json"
     atomic_write_json(summary_path, summary)

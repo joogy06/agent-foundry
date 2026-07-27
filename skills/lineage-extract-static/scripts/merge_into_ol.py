@@ -75,6 +75,20 @@ SCHEMA_DATASET_FACET_URI = (
 SOURCE_CODE_LOCATION_FACET_URI = (
     "https://openlineage.io/spec/facets/1-0-0/SourceCodeLocationJobFacet.json"
 )
+# columnLineage 1-2-0 DATASET facet (2026-07-02 column-level uplift). The pin
+# matches project_views.COLUMN_LINEAGE_SCHEMA_URL — build_graph reads
+# facets.columnLineage.fields off output DatasetEvents; the DLP importer's
+# PASS 2.5 consumes the same byte-shape. The facet carries NO confidence key
+# (spec-review note: confidence lives in the skill's edge/report layer only).
+COLUMN_LINEAGE_FACET_URI = (
+    "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json"
+)
+# documentation DATASET facet (2026-07-02 uplift): dataset_descriptions ->
+# facets.documentation.description (the shape the DLP importer's
+# _facet_description already reads).
+DOCUMENTATION_FACET_URI = (
+    "https://openlineage.io/spec/facets/1-0-1/DocumentationDatasetFacet.json"
+)
 EXTRACTOR_ID = "lineage-extract-static"
 EXTRACTOR_VERSION = "1.0.0"
 
@@ -193,17 +207,421 @@ def attach_schema_facet_fail_closed(
     output). The caller records the gap and emits the structure-only / facet-less
     event.
     """
+    return _attach_dataset_facet_fail_open(event, "schema", schema_facet, schema_path)
+
+
+def _attach_dataset_facet_fail_open(
+    event: dict,
+    facet_key: str,
+    facet: dict,
+    schema_path: Optional[Path] = None,
+) -> tuple[dict, Optional[str]]:
+    """Generalized fail-open dataset-facet attach (2026-07-02 uplift).
+
+    Same contract as ``attach_schema_facet_fail_closed`` for any facet key
+    (schema / columnLineage / documentation): validate the ENRICHED event; on
+    rejection return the original event untouched plus a gap reason.
+    """
     import copy as _copy
 
     if event.get("eventType") != "DATASET_EVENT":
-        return (event, "schema facet only applies to DATASET_EVENT")
+        return (event, f"{facet_key} facet only applies to DATASET_EVENT")
     enriched = _copy.deepcopy(event)
-    enriched.setdefault("dataset", {}).setdefault("facets", {})["schema"] = schema_facet
+    enriched.setdefault("dataset", {}).setdefault("facets", {})[facet_key] = facet
     is_valid, errors = validate_event(enriched, schema_path)
     if is_valid:
         return (enriched, None)
-    reason = "schema facet rejected by vendored OL schema: " + "; ".join(errors)
+    reason = f"{facet_key} facet rejected by vendored OL schema: " + "; ".join(errors)
     return (event, reason)
+
+
+def make_lineage_schema_facet(fields: list[dict]) -> dict:
+    """Build a SchemaDatasetFacet from rollup ``dataset_schemas`` fields
+    (2026-07-01 schema-facet uplift, lineage path).
+
+    Unlike ``make_schema_dataset_facet`` (structure-recovery path, which
+    normalizes a missing type to ``"unknown"``), the lineage path emits ``type``
+    ONLY when it was stated in source — columns are never invented and neither
+    are their types (confidence rule: named-in-source only). Same rule for
+    ``description`` (2026-07-02 uplift): emitted only when stated in source
+    (dbt schema.yml column description, copybook comment).
+    """
+    norm_fields: list[dict] = []
+    for f in fields:
+        name = f.get("name")
+        if not name:
+            continue
+        fld: dict = {"name": str(name)}
+        if f.get("type"):
+            fld["type"] = str(f["type"])
+        if f.get("description"):
+            fld["description"] = str(f["description"])
+        norm_fields.append(fld)
+    return {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": SCHEMA_DATASET_FACET_URI,
+        "fields": norm_fields,
+    }
+
+
+def make_column_lineage_facet(fields_map: dict) -> dict:
+    """Build a columnLineage 1-2-0 facet (2026-07-02 column-level uplift).
+
+    ``fields_map`` is ``{<output_field>: {"inputFields": [{namespace, name,
+    field}]}}`` — the exact byte-shape ``project_views.build_graph`` reads and
+    the DLP importer consumes. Input entries missing any of the three keys are
+    dropped; output fields left with no inputFields are dropped (a mapping
+    exists only when the source names both ends). NO confidence key ever rides
+    on this facet (spec-review note).
+    """
+    norm: dict = {}
+    for out_field, spec in (fields_map or {}).items():
+        inputs = []
+        for inf in (spec or {}).get("inputFields") or []:
+            ns = inf.get("namespace", "")
+            name = inf.get("name", "")
+            field = inf.get("field", "")
+            if ns and name and field:
+                inputs.append({"namespace": str(ns), "name": str(name), "field": str(field)})
+        if inputs:
+            norm[str(out_field)] = {"inputFields": inputs}
+    return {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": COLUMN_LINEAGE_FACET_URI,
+        "fields": norm,
+    }
+
+
+def make_documentation_facet(description: str) -> dict:
+    """Build a documentation DATASET facet (2026-07-02 uplift).
+
+    Byte-shape matches what the DLP importer's ``_facet_description`` reads:
+    ``facets.documentation.description``.
+    """
+    return {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": DOCUMENTATION_FACET_URI,
+        "description": str(description),
+    }
+
+
+def expand_column_lineage(rollup: dict) -> tuple[dict, list[str], dict]:
+    """Resolve rollup ``column_lineage`` entries to per-output field maps.
+
+    Returns ``(cl_by_ds, gaps, propagated_schemas)`` where ``cl_by_ds`` maps
+    ``(ns, name)`` of the OUTPUT dataset to a columnLineage 1-2-0 ``fields``
+    map, ``gaps`` lists human-readable reasons for entries that were dropped
+    (fail-open — a bad entry never aborts the emit), and
+    ``propagated_schemas`` maps ``(ns, name)`` to a propagated field list per
+    the corollary below.
+
+    Explicit ``fields`` entries pass through (normalization happens in
+    ``make_column_lineage_facet``). ``passthrough_from`` markers (§9 SELECT-*
+    single-parent identity rule) expand deterministically iff BOTH hold:
+
+    * the parent's column set is NAMED in ``rollup.dataset_schemas`` — the
+      identity map propagates exactly that named set, 1:1;
+    * some job in ``rollup.edges`` writes the output AND reads EXACTLY ONE
+      distinct input dataset, which is the marked parent (the "exactly ONE
+      input dataset" requirement, enforced deterministically here).
+
+    Multi-input or unknown-parent SELECT-* yields NOTHING for that output
+    (dual rule) — recorded as a gap, never guessed.
+
+    **§9 corollary (a) — SELECT-* column-set propagation (user-approved
+    2026-07-02):** a model that is exactly ``select * from <one parent>``
+    whose parent has a NAMED-in-source column set gets that column set
+    propagated as its OWN ``dataset_schemas`` entry — fields carry ``name``,
+    plus ``type`` ONLY when the parent states it (never invented; the same
+    deterministic-SQL argument as the identity mapping — the select-*
+    statement itself is the evidence). Same constraints as the mapping rule:
+    exactly one input, plain projection (the marker), known parent set —
+    otherwise nothing. A dataset that already HAS its own dataset_schemas
+    entry is never overwritten by propagation.
+    """
+    schemas_by_ds: dict[tuple[str, str], list[dict]] = {}
+    for entry in rollup.get("dataset_schemas", []) or []:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        fields = entry.get("fields") or []
+        if ns and name and fields:
+            schemas_by_ds.setdefault((ns, name), fields)
+
+    # (out_ns, out_name) -> set of distinct input (ns, name) per writing job.
+    writers: dict[tuple[str, str], list[set]] = {}
+    jobs_io: dict[tuple[str, str], dict[str, set]] = {}
+    for edge in rollup.get("edges", []) or []:
+        tgt = edge.get("target_job", {}) or {}
+        job_key = (tgt.get("namespace", ""), tgt.get("name", ""))
+        io = jobs_io.setdefault(job_key, {"inputs": set(), "outputs": set()})
+        src = edge.get("source_dataset", {}) or {}
+        ds_key = (src.get("namespace", ""), src.get("name", ""))
+        kind = edge.get("edge_kind", "")
+        if kind == "reads_from":
+            io["inputs"].add(ds_key)
+        elif kind == "writes_to":
+            io["outputs"].add(ds_key)
+    for io in jobs_io.values():
+        for out_key in io["outputs"]:
+            writers.setdefault(out_key, []).append(io["inputs"])
+
+    entries = rollup.get("column_lineage", []) or []
+    cl_by_ds: dict[tuple[str, str], dict] = {}
+    gaps: list[str] = []
+    propagated_schemas: dict[tuple[str, str], list[dict]] = {}
+    # Phase 1 — explicit fields entries win unconditionally (order-independent).
+    for entry in entries:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        fields = entry.get("fields")
+        if ns and name and isinstance(fields, dict) and fields:
+            cl_by_ds.setdefault((ns, name), fields)
+    # Phase 2 — passthrough markers fill only outputs with no explicit entry.
+    for entry in entries:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        if not ns or not name:
+            continue
+        key = (ns, name)
+        label = f"{ns}/{name}"
+        if isinstance(entry.get("fields"), dict) and entry.get("fields"):
+            continue
+        passthrough = entry.get("passthrough_from") or {}
+        p_key = (passthrough.get("namespace", ""), passthrough.get("name", ""))
+        if not p_key[0] or not p_key[1]:
+            continue
+        if key in cl_by_ds:
+            continue  # explicit fields already won for this output
+        parent_fields = schemas_by_ds.get(p_key)
+        if not parent_fields:
+            gaps.append(
+                f"{label}: passthrough parent {p_key[0]}/{p_key[1]} has no "
+                "named column set (dataset_schemas) — nothing emitted"
+            )
+            continue
+        input_sets = writers.get(key, [])
+        if not any(inputs == {p_key} for inputs in input_sets):
+            gaps.append(
+                f"{label}: no producing job reads EXACTLY the passthrough "
+                f"parent {p_key[0]}/{p_key[1]} as its single input — nothing emitted"
+            )
+            continue
+        identity: dict = {}
+        for f in parent_fields:
+            col = f.get("name")
+            if col:
+                identity[str(col)] = {
+                    "inputFields": [
+                        {"namespace": p_key[0], "name": p_key[1], "field": str(col)}
+                    ]
+                }
+        if identity:
+            cl_by_ds[key] = identity
+            # §9 corollary (a) — propagate the parent's NAMED column set as
+            # the passthrough output's own schema (name + parent-stated type
+            # only; a dataset with its own dataset_schemas entry is never
+            # overwritten — the caller checks before applying).
+            if key not in schemas_by_ds:
+                prop_fields: list[dict] = []
+                for f in parent_fields:
+                    col = f.get("name")
+                    if not col:
+                        continue
+                    fld: dict = {"name": str(col)}
+                    if f.get("type"):
+                        fld["type"] = str(f["type"])
+                    prop_fields.append(fld)
+                if prop_fields:
+                    propagated_schemas[key] = prop_fields
+    return cl_by_ds, gaps, propagated_schemas
+
+
+def make_business_static_analysis_facet(
+    business: Optional[dict],
+    dead_code: Optional[dict],
+) -> dict:
+    """Build the minimal dataset-side ``staticAnalysis`` facet (S59 business pass).
+
+    Datasets carry no staticAnalysis facet on the pre-S59 path; when the
+    business-analysis pass supplies ``business`` (``{purpose, domain}``) and/or
+    ``dead_code`` (``{flag, evidence_file, evidence_line, reason}``) for a
+    dataset, this facet carries them — same key shape as the job-side
+    ``staticAnalysis.business`` / ``staticAnalysis.dead_code`` (design §3.1).
+    Only emitted when at least one sub-object exists; datasets without business
+    info stay byte-identical to the pre-S59 emission.
+    """
+    facet: dict = {
+        "_producer": STATIC_PRODUCER_URI,
+        "_schemaURL": STATIC_ANALYSIS_FACET_URI,
+    }
+    if business:
+        facet["business"] = business
+    if dead_code:
+        facet["dead_code"] = dead_code
+    return facet
+
+
+def index_object_business(rollup: dict) -> tuple[dict, dict, list[str]]:
+    """Index rollup ``object_business`` + ``dead_code`` entries (S59 WP-1).
+
+    Returns ``(business_by_key, dead_by_key, gaps)`` where keys are
+    ``(entity, namespace, name)`` with entity in {"dataset", "job"}.
+    Business values are ``{purpose?, domain?}`` (at least one present);
+    dead values are ``{flag: True, evidence_file, evidence_line, reason}``.
+
+    Fail-open: entries with missing identity, neither purpose nor domain, or
+    dead flags lacking ANY of the named-evidence fields (file + line + reason —
+    the §3.1 "never inferred from absence alone" rule) are dropped with a gap
+    note, never aborting the emit and never padded.
+    """
+    business_by_key: dict[tuple[str, str, str], dict] = {}
+    dead_by_key: dict[tuple[str, str, str], dict] = {}
+    gaps: list[str] = []
+    for entry in rollup.get("object_business", []) or []:
+        entity = entry.get("entity", "")
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        if entity not in ("dataset", "job") or not ns or not name:
+            gaps.append(f"object_business entry missing entity/namespace/name: {entry!r:.200}")
+            continue
+        biz: dict = {}
+        if str(entry.get("purpose") or "").strip():
+            biz["purpose"] = str(entry["purpose"]).strip()
+        if str(entry.get("domain") or "").strip():
+            biz["domain"] = str(entry["domain"]).strip()
+        if not biz:
+            gaps.append(f"object_business {ns}/{name}: neither purpose nor domain — dropped")
+            continue
+        business_by_key.setdefault((entity, ns, name), biz)
+    for entry in rollup.get("dead_code", []) or []:
+        entity = entry.get("entity", "")
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        label = f"dead_code {ns}/{name}"
+        if entity not in ("dataset", "job") or not ns or not name:
+            gaps.append(f"dead_code entry missing entity/namespace/name: {entry!r:.200}")
+            continue
+        evidence_file = str(entry.get("evidence_file") or "").strip()
+        evidence_line = entry.get("evidence_line")
+        reason = str(entry.get("reason") or "").strip()
+        if not evidence_file or not isinstance(evidence_line, int) or not reason:
+            gaps.append(
+                f"{label}: dead flag without NAMED evidence "
+                "(evidence_file + evidence_line + reason all required) — dropped"
+            )
+            continue
+        dead_by_key.setdefault(
+            (entity, ns, name),
+            {
+                "flag": True,
+                "evidence_file": evidence_file,
+                "evidence_line": evidence_line,
+                "reason": reason,
+            },
+        )
+    return business_by_key, dead_by_key, gaps
+
+
+REFERENCE_DATASET_KINDS = ("seed", "lookup")
+
+
+def index_dataset_kinds(rollup: dict) -> tuple[dict, list[str]]:
+    """Index rollup ``dataset_kinds`` reference-data tags (S59 §3.3 pin).
+
+    Returns ``({(ns, name): kind}, gaps)`` with kind restricted to
+    ``seed``/``lookup`` — the values the DLP importer lands in
+    ``elements.subtype`` and the report builder's no-consumer exemption reads.
+    Other kinds are dropped with a gap note (fail-open).
+    """
+    kinds: dict[tuple[str, str], str] = {}
+    gaps: list[str] = []
+    for entry in rollup.get("dataset_kinds", []) or []:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        kind = str(entry.get("kind") or "").strip()
+        if not ns or not name:
+            gaps.append(f"dataset_kinds entry missing namespace/name: {entry!r:.200}")
+            continue
+        if kind not in REFERENCE_DATASET_KINDS:
+            gaps.append(
+                f"dataset_kinds {ns}/{name}: kind {kind!r} not in "
+                f"{REFERENCE_DATASET_KINDS} — dropped"
+            )
+            continue
+        kinds.setdefault((ns, name), kind)
+    return kinds, gaps
+
+
+def assemble_manifest_business(
+    rollup: dict,
+    workspace_tree_hash: str,
+    known_object_keys: set,
+) -> tuple[Optional[dict], list[str]]:
+    """Assemble the ``manifest.business`` block (design §3.1, S59 WP-1).
+
+    Pure + fail-open: reads the rollup's project-level ``business`` block and
+    returns ``(block_or_None, gaps)``. The caller (SKILL.md orchestration)
+    drops the block into ``manifest.json`` verbatim.
+
+    Rules enforced here:
+    - sections OMITTED when the source gave nothing (empty string / list —
+      never padded);
+    - domains partition ONLY objects present in the bundle: members not in
+      ``known_object_keys`` (the union of dataset and job ``(ns, name)`` keys)
+      are dropped with a gap note;
+    - single primary domain per member: a member already claimed by an earlier
+      domain is dropped from later ones with a gap note;
+    - a domain left with zero members is dropped with a gap note;
+    - ``generated_by`` + ``tree_hash`` always stamped when a block is emitted.
+    """
+    raw = rollup.get("business")
+    if not isinstance(raw, dict) or not raw:
+        return None, []
+    gaps: list[str] = []
+    block: dict = {}
+    for key in ("overview", "narrative", "flow_summary"):
+        val = str(raw.get(key) or "").strip()
+        if val:
+            block[key] = val
+    domains_out: list[dict] = []
+    claimed: dict[tuple[str, str], str] = {}
+    for dom in raw.get("domains", []) or []:
+        dname = str(dom.get("name") or "").strip()
+        if not dname:
+            gaps.append("business domain without a name — dropped")
+            continue
+        members_out: list[dict] = []
+        for m in dom.get("members", []) or []:
+            ns, name = m.get("namespace", ""), m.get("name", "")
+            if not ns or not name:
+                gaps.append(f"domain {dname!r}: member missing namespace/name — dropped")
+                continue
+            if (ns, name) not in known_object_keys:
+                gaps.append(
+                    f"domain {dname!r}: member {ns}/{name} not present in the "
+                    "bundle — dropped"
+                )
+                continue
+            prior = claimed.get((ns, name))
+            if prior is not None:
+                if prior != dname:
+                    gaps.append(
+                        f"domain {dname!r}: member {ns}/{name} already claimed by "
+                        f"domain {prior!r} (single primary domain per member) — dropped"
+                    )
+                continue
+            claimed[(ns, name)] = dname
+            members_out.append({"namespace": ns, "name": name})
+        if not members_out:
+            gaps.append(f"domain {dname!r}: no surviving members — dropped")
+            continue
+        dout: dict = {"name": dname, "members": members_out}
+        for key in ("description", "flow"):
+            val = str(dom.get(key) or "").strip()
+            if val:
+                dout[key] = val
+        domains_out.append(dout)
+    if domains_out:
+        block["domains"] = domains_out
+    if not block:
+        return None, gaps
+    block["generated_by"] = EXTRACTOR_ID
+    block["tree_hash"] = workspace_tree_hash
+    return block, gaps
 
 
 def make_source_code_location_facet(
@@ -236,6 +654,8 @@ def make_job_event(
     scan_started_at: str,
     workspace_tree_hash: str,
     source_code_location: Optional[dict] = None,
+    business: Optional[dict] = None,
+    dead_code: Optional[dict] = None,
 ) -> dict:
     """Emit a JobEvent for (namespace, name, kind) tuple. The custom
     staticAnalysis facet is attached per HARD-RULE 1.
@@ -244,6 +664,11 @@ def make_job_event(
     ``job.facets.sourceCodeLocation`` carrying the contentSha256 join key.
     ``source_code_location=None`` (the default) yields a byte-identical event to
     the pre-WP-9 emission — the existing path is unchanged.
+
+    ``business`` / ``dead_code`` (S59 business pass, design §3.1) ride INSIDE
+    the existing staticAnalysis facet as ``staticAnalysis.business`` /
+    ``staticAnalysis.dead_code``; ``None`` (the default) keeps the pre-S59
+    byte-identical emission.
     """
     job_ns, job_name, job_kind = job_id
     facets: dict = {
@@ -264,6 +689,10 @@ def make_job_event(
     }
     if source_code_location is not None:
         facets["sourceCodeLocation"] = source_code_location
+    if business:
+        facets["staticAnalysis"]["business"] = business
+    if dead_code:
+        facets["staticAnalysis"]["dead_code"] = dead_code
     return {
         "$schema": PINNED_OL_SCHEMA_URL,
         "eventType": "JOB_EVENT",
@@ -585,6 +1014,79 @@ def merge_into_ol(
     # carries no source_file_sha256 (pre-WP-9 byte-identical path).
     job_sources = collect_job_sources(edges)
 
+    # Schema-facet uplift (2026-07-01): rollup dataset_schemas -> facets.schema
+    # on the matching DatasetEvent. Keyed on the SAME (namespace, name) the edges
+    # use; entries with no usable fields are skipped. Attachment is fail-open per
+    # attach_schema_facet_fail_closed — a facet the vendored OL schema rejects is
+    # dropped (event emitted facet-less) rather than aborting the run.
+    schemas_by_ds: dict[tuple[str, str], list[dict]] = {}
+    for entry in rollup.get("dataset_schemas", []) or []:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        fields = entry.get("fields") or []
+        if ns and name and fields:
+            schemas_by_ds.setdefault((ns, name), fields)
+    schema_facets_attached = 0
+    schema_facet_gaps: list[str] = []
+
+    # Column-level uplift (2026-07-02): resolve column_lineage entries (explicit
+    # fields + §9 passthrough markers) to per-OUTPUT field maps, and index
+    # dataset_descriptions. Both attach fail-open like the schema facet.
+    # §9 corollary (a) (user-approved 2026-07-02): passthrough outputs with no
+    # own schema entry inherit the parent's NAMED column set so their columns
+    # materialize downstream; never overwrites an explicit entry.
+    cl_by_ds, column_lineage_gaps, propagated_schemas = expand_column_lineage(rollup)
+    schemas_propagated = 0
+    for _pkey, _pfields in propagated_schemas.items():
+        if _pkey not in schemas_by_ds:
+            schemas_by_ds[_pkey] = _pfields
+            schemas_propagated += 1
+    output_ds_keys: set[tuple[str, str]] = set()
+    for io in jobs_grouped.values():
+        for d in io["outputs"]:
+            output_ds_keys.add((d.get("namespace", ""), d.get("name", "")))
+    descriptions_by_ds: dict[tuple[str, str], str] = {}
+    for entry in rollup.get("dataset_descriptions", []) or []:
+        ns, name = entry.get("namespace", ""), entry.get("name", "")
+        desc = entry.get("description", "")
+        if ns and name and desc:
+            descriptions_by_ds.setdefault((ns, name), str(desc))
+    column_lineage_facets_attached = 0
+    documentation_facets_attached = 0
+
+    # Business pass (S59 WP-1): per-object business/dead_code facets, seed/
+    # lookup datasetKind overrides, and the manifest.business assembly. All
+    # fail-open — malformed entries become business_gaps, never an abort; a
+    # rollup without the business keys stays byte-identical to pre-S59 output.
+    business_by_key, dead_by_key, business_gaps = index_object_business(rollup)
+    kind_overrides, kind_gaps = index_dataset_kinds(rollup)
+    business_gaps.extend(kind_gaps)
+    dataset_keys = {(d["namespace"], d["name"]) for d in datasets}
+    job_ns_names = {(ns, name) for (ns, name, _kind) in jobs_grouped}
+    known_object_keys = dataset_keys | job_ns_names
+    for (entity, ns, name) in sorted(set(business_by_key) | set(dead_by_key)):
+        present = (ns, name) in (dataset_keys if entity == "dataset" else job_ns_names)
+        if not present:
+            business_gaps.append(
+                f"business/dead_code entry for unknown {entity} {ns}/{name} — not attached"
+            )
+    dataset_kinds_applied = 0
+    for ds in datasets:
+        override = kind_overrides.get((ds["namespace"], ds["name"]))
+        if override:
+            ds["kind"] = override
+            dataset_kinds_applied += 1
+    for key, kind in sorted(kind_overrides.items()):
+        if key not in dataset_keys:
+            business_gaps.append(
+                f"dataset_kinds {key[0]}/{key[1]}: dataset not in bundle — not applied"
+            )
+    manifest_business, mb_gaps = assemble_manifest_business(
+        rollup, workspace_tree_hash, known_object_keys
+    )
+    business_gaps.extend(mb_gaps)
+    business_facets_attached = 0
+    dead_code_facets_attached = 0
+
     # Build events
     events: list[dict] = []
 
@@ -592,6 +1094,63 @@ def merge_into_ol(
     for ds in datasets:
         evt = make_dataset_event(ds, scan_started_at)
         validate_event_or_abort(evt, schema_path)  # fail-closed
+        ds_key = (ds["namespace"], ds["name"])
+        fields = schemas_by_ds.get(ds_key)
+        if fields:
+            facet = make_lineage_schema_facet(fields)
+            if facet["fields"]:
+                evt, gap_reason = attach_schema_facet_fail_closed(
+                    evt, facet, schema_path
+                )
+                if gap_reason is None:
+                    schema_facets_attached += 1
+                else:
+                    schema_facet_gaps.append(
+                        f"{ds['namespace']}/{ds['name']}: {gap_reason}"
+                    )
+        cl_fields = cl_by_ds.get(ds_key)
+        if cl_fields and ds_key in output_ds_keys:
+            facet = make_column_lineage_facet(cl_fields)
+            if facet["fields"]:
+                evt, gap_reason = _attach_dataset_facet_fail_open(
+                    evt, "columnLineage", facet, schema_path
+                )
+                if gap_reason is None:
+                    column_lineage_facets_attached += 1
+                else:
+                    column_lineage_gaps.append(
+                        f"{ds['namespace']}/{ds['name']}: {gap_reason}"
+                    )
+        elif cl_fields:
+            column_lineage_gaps.append(
+                f"{ds['namespace']}/{ds['name']}: column_lineage entry for a "
+                "dataset no job writes — facet not attached"
+            )
+        desc = descriptions_by_ds.get(ds_key)
+        if desc:
+            evt, gap_reason = _attach_dataset_facet_fail_open(
+                evt, "documentation", make_documentation_facet(desc), schema_path
+            )
+            if gap_reason is None:
+                documentation_facets_attached += 1
+            else:
+                column_lineage_gaps.append(
+                    f"{ds['namespace']}/{ds['name']}: {gap_reason}"
+                )
+        ds_business = business_by_key.get(("dataset",) + ds_key)
+        ds_dead = dead_by_key.get(("dataset",) + ds_key)
+        if ds_business or ds_dead:
+            facet = make_business_static_analysis_facet(ds_business, ds_dead)
+            evt, gap_reason = _attach_dataset_facet_fail_open(
+                evt, "staticAnalysis", facet, schema_path
+            )
+            if gap_reason is None:
+                if ds_business:
+                    business_facets_attached += 1
+                if ds_dead:
+                    dead_code_facets_attached += 1
+            else:
+                business_gaps.append(f"{ds['namespace']}/{ds['name']}: {gap_reason}")
         events.append(evt)
 
     # JobEvents (one per unique job)
@@ -603,6 +1162,8 @@ def merge_into_ol(
                 src_info.get("source_file", ""),
                 src_info["content_sha256"],
             )
+        job_business = business_by_key.get(("job", job_id[0], job_id[1]))
+        job_dead = dead_by_key.get(("job", job_id[0], job_id[1]))
         evt = make_job_event(
             job_id,
             inputs=io["inputs"],
@@ -610,8 +1171,14 @@ def merge_into_ol(
             scan_started_at=scan_started_at,
             workspace_tree_hash=workspace_tree_hash,
             source_code_location=scl,
+            business=job_business,
+            dead_code=job_dead,
         )
         validate_event_or_abort(evt, schema_path)
+        if job_business:
+            business_facets_attached += 1
+        if job_dead:
+            dead_code_facets_attached += 1
         events.append(evt)
 
     # RunEvents (only when opt-in)
@@ -660,6 +1227,17 @@ def merge_into_ol(
         "ndjson_path": str(ndjson_path),
         "bundle_path": str(bundle_path),
         "synthetic_run_id": synth_run_id,
+        "schema_facets_attached": schema_facets_attached,
+        "schema_facet_gaps": schema_facet_gaps,
+        "column_lineage_facets_attached": column_lineage_facets_attached,
+        "column_lineage_gaps": column_lineage_gaps,
+        "documentation_facets_attached": documentation_facets_attached,
+        "schemas_propagated": schemas_propagated,
+        "business_facets_attached": business_facets_attached,
+        "dead_code_facets_attached": dead_code_facets_attached,
+        "dataset_kinds_applied": dataset_kinds_applied,
+        "business_gaps": business_gaps,
+        "manifest_business": manifest_business,
     }
 
 

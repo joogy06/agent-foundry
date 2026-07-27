@@ -28,7 +28,7 @@ Fail-open policy:
       BEST-EFFORT semantics) so observation-write failure NEVER blocks
       the primary subprocess call nor the re-raise of TimeoutExpired.
 
-Consumers (future cycles): codex-orchestration, gemini-cli, gh-copilot-cli
+Consumers (future cycles): codex-orchestration, antigravity-cli, gh-copilot-cli
 scripts migrate from raw `subprocess.run` to `run_with_observation` so that
 external-tool failures/slowness feed the process-observation ledger.
 

@@ -77,6 +77,106 @@ add_action( 'wp_enqueue_scripts', function() {
 
 Hook `add_theme_support()` to `after_setup_theme`. Common supports: `title-tag`, `post-thumbnails`, `custom-logo`, `html5`, `editor-styles`, `responsive-embeds`, `wp-block-styles`, `align-wide`. Register nav menus with `register_nav_menus()`. Register widget areas on `widgets_init`. Prefix all functions with theme slug.
 
+## Modern CSS Theme Craft
+
+This section is the **platform/implementation side of the token seam**:
+`audience-experience-design` decides token *semantics* (roles, scale intent,
+usage rules); this section maps those roles to WordPress mechanisms. Design
+decides, the theme renders. Framework-side equivalents (Vite/Next apps) live in
+`modern-frontend` — referenced, never duplicated here.
+
+### Cascade layers — and the WordPress @layer trap
+
+Cascade layers (`@layer`) let a theme order its own internal strata so
+specificity wars disappear. **The trap: unlayered styles always beat layered
+ones, regardless of specificity — and WordPress core block styles and most
+plugin stylesheets are UNLAYERED.** A naive `@layer theme { ... }` wrapping your
+block overrides is therefore **silently beaten** by core/plugin CSS:
+
+```css
+/* TRAP: this loses to unlayered core block CSS, no matter how specific */
+@layer theme {
+  .wp-block-button__link { background: var(--wp--preset--color--primary-action); }
+}
+```
+
+Where layers ARE safe: a theme's **own internal ordering** (tokens, base,
+components, utilities) among styles you fully control. Where they are NOT:
+overriding core-block or plugin output — keep those **unlayered** (an unlayered
+rule beats every layer), or, if you deliberately layer everything, pull
+core/plugin CSS into a low-priority layer with `@import url("...") layer(vendor)`
+— an explicit, tested technique, never a default assumption.
+
+```css
+/* Safe: order only styles you own; keep block overrides unlayered */
+@layer tokens, base, components, utilities;
+.wp-block-button__link { background: var(--wp--preset--color--primary-action); } /* unlayered — wins */
+```
+
+### Semantic tokens → theme.json presets (the seam's platform side)
+
+Map each aed token ROLE to a `theme.json` preset; the preset auto-generates a
+CSS custom property usable identically in the editor and on the front end:
+
+```json
+{
+  "version": 3,
+  "settings": {
+    "color": { "palette": [
+      { "slug": "primary-action", "color": "#1a1a2e", "name": "Primary action" },
+      { "slug": "surface", "color": "#ffffff", "name": "Surface" }
+    ] },
+    "typography": { "fluid": true },
+    "spacing": { "spacingScale": { "steps": 7 } }
+  }
+}
+```
+
+Presets resolve to `var(--wp--preset--color--primary-action)` etc. — one source
+of truth. The aed brief's role name (`primary-action`) becomes the preset slug;
+keep them aligned so the seam is traceable.
+
+### Container queries & intrinsic layout
+
+Size components by their **container**, not the viewport, so a card behaves the
+same in a sidebar or a full-width row:
+
+```css
+.card-grid { container-type: inline-size; }
+@container (min-width: 30rem) {
+  .card { grid-template-columns: auto 1fr; }
+}
+```
+
+Prefer **intrinsic layout** — let content size itself and reflow without
+breakpoint soup:
+
+```css
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: var(--wp--preset--spacing--40); }
+```
+
+### Fluid type & spacing
+
+Use `clamp()` so type and spacing scale smoothly across viewports:
+`font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem)`. Setting `theme.json`
+`typography.fluid: true` applies this to preset font sizes automatically — prefer
+it over hand-rolled clamps for anything the editor exposes.
+
+### Editor / front-end parity
+
+Every token and layout decision must render identically in the block editor and
+on the front end. Enqueue theme styles for the editor with `add_editor_style()`
+(or a block stylesheet) so the editor sees the same tokens, and test in both. A
+design that looks right on the front end but broken in the editor is a parity
+bug, not "good enough".
+
+### CSS regression checking
+
+Cascade-layer and specificity changes fail **silently and globally**. Snapshot
+the key templates and the block library (a visual-regression pass in CI, or at
+minimum a deliberate before/after on core blocks) before shipping any token or
+layer change.
+
 ## Plugin Development
 
 ### Plugin Header
@@ -263,6 +363,61 @@ function myplugin_get_item( WP_REST_Request $request ) {
 **Namespace format:** `vendor/v{version}` (e.g., `myplugin/v1`).
 
 **Default endpoints:** `/wp-json/wp/v2/posts`, `/pages`, `/media`, `/comments`, `/categories`, `/tags`, `/users`, `/types`, `/taxonomies`, `/settings`, `/search`.
+
+## Headless / Hybrid Boundary
+
+When a Next/Vite front-end (see `modern-frontend`) consumes this WordPress
+install, **WordPress owns the data contract**; the front-end owns rendering.
+This section defines the WP side of that seam.
+
+**Content API — REST vs WPGraphQL.** Both are first-class; choose per query
+shape, not per fashion:
+- **Core REST** (`/wp-json/wp/v2/...`) — no plugin, straightforward resources,
+  broad tooling. Default when you are not fighting over-/under-fetching.
+- **WPGraphQL** (plugin, 2.x — actively maintained, tested against WordPress
+  7.0) — nested/related content in one round-trip, exact field selection, typed
+  schema + codegen. Query it directly from React Server Components or route
+  handlers; it needs no special App-Router adapter.
+- **Do not adopt a headless framework as a data client just to fetch.** Faust.js's
+  App Router package was deprecated in 2025 (its supported path is the Pages
+  Router) — for a new App-Router build, call REST or WPGraphQL directly.
+
+**Preview & auth.** Editors need to see unpublished drafts:
+- Same-origin (recommended): cookie + nonce, exactly as the REST section above.
+- Cross-origin/token: Application Passwords (Basic over HTTPS) for
+  server-to-server, or a JWT plugin for user-scoped preview. Keep the secret
+  server-side (a route handler / server component), never in client JS.
+- Gate preview behind a signed, short-lived token; never expose a general
+  "show drafts" switch to the public front-end.
+
+**CORS.** The browser only needs cross-origin WordPress access if the front-end
+calls WP directly from the client. Prefer a **same-origin reverse proxy /
+rewrite** (the front-end origin proxies `/wp-json` to WordPress) so cookies stay
+first-party and you avoid CORS entirely. If you must allow CORS, scope
+`Access-Control-Allow-Origin` to the known front-end origin(s) — never `*` for
+credentialed requests.
+
+**Cache invalidation (content-change → revalidate).** Static/ISR front-ends go
+stale on edit. Fire a webhook on `save_post` / `transition_post_status` (or a
+WPGraphQL Smart Cache purge) to the front-end's revalidation endpoint
+(`revalidateTag` / `revalidatePath` in Next). Tag content by type/ID so a
+single post edit revalidates only its routes, not the whole site.
+
+**Media & URL rewriting.** Uploaded media URLs point at the WordPress origin.
+Either serve media from WP (simplest) or rewrite `wp-content/uploads` URLs to a
+CDN at the edge; keep internal links relative or rewrite them so the front-end
+routes them, not WordPress.
+
+**Hybrid route ownership.** Fully-headless is not required — decide per route
+which pages stay **PHP-rendered by WordPress** (marketing pages a marketer edits
+in the block editor, plugin-driven pages) and which are **headless** (app-like,
+personalized, or design-critical). Draw the line explicitly and keep a single
+source of truth for each URL; the worst outcome is two systems both claiming a
+route.
+
+**Boundary:** this is the WordPress side of the contract. The consuming app —
+framework choice, rendering mode, hydration, and Core Web Vitals budgets — lives
+in `modern-frontend`.
 
 ## Hooks System
 

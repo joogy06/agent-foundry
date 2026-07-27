@@ -230,12 +230,18 @@ class HookOutputContractCase(unittest.TestCase):
         # Project CLAUDE.md: contains 3 project hard-rule directives that
         # are NOT in the checklist. Section header chosen to NOT trip the
         # ##+ heading regex (no 'mandatory/checkpoint/routing/...' words).
+        # Each directive carries MANDATE LANGUAGE, because extract_rules()
+        # applies a second-stage MANDATE_LANGUAGE_RE filter to bold-led bullets
+        # (a weak signal on its own — any wrapped reference line starting with
+        # bold would otherwise be captured). The trailing non-mandate bullet is
+        # the false-positive guard: it MUST NOT be reported as a directive.
         project_md.write_text(
             "# Project\n\n"
             "## Notes\n"
-            "- **inprogress-01 working branch only**\n"
+            "- **inprogress-01 working branch only, never commit to main**\n"
             "- **production-deploy requires explicit user approval**\n"
-            "- **private-only push to foundry-lab**\n",
+            "- **private-only push to foundry-lab, public remotes forbidden**\n"
+            "- **Other modes:** `-i` interactive, `-c` continue\n",
             encoding="utf-8",
         )
         # Checklist: contains tokens for the global rule only.
@@ -296,11 +302,11 @@ class HookOutputContractCase(unittest.TestCase):
             td = Path(td)
             global_md, project_md, checklist, state_file = self._setup_project(td)
             # Pre-populate state file with all 3 directive hashes.
-            h1 = directive_hash("- **inprogress-01 working branch only**")
+            h1 = directive_hash("- **inprogress-01 working branch only, never commit to main**")
             h2 = directive_hash(
                 "- **production-deploy requires explicit user approval**"
             )
-            h3 = directive_hash("- **private-only push to foundry-lab**")
+            h3 = directive_hash("- **private-only push to foundry-lab, public remotes forbidden**")
             state_file.write_text(json.dumps({
                 str(project_md.parent.resolve()): {
                     "suppressed": [
@@ -333,9 +339,9 @@ class HookOutputContractCase(unittest.TestCase):
                 fp.write(
                     "\n## Project HARD-RULEs\n\n"
                     f"{S.PROJECT_HARD_RULES_MARKER}\n\n"
-                    "- inprogress-01 working branch only\n"
+                    "- inprogress-01 working branch only, never commit to main\n"
                     "- production-deploy requires explicit user approval\n"
-                    "- private-only push to foundry-lab\n"
+                    "- private-only push to foundry-lab, public remotes forbidden\n"
                 )
             patches = _patch_globals(
                 global_md, project_md, checklist, state_file, cwd=td
@@ -366,13 +372,13 @@ class MixedSourceCoexistenceCase(unittest.TestCase):
             # Global has a rule NOT in checklist.
             global_md.write_text(
                 "# Global\n"
-                "- **global-only-rule should be in checklist**\n",
+                "- **global-only-rule must be in checklist**\n",
                 encoding="utf-8",
             )
             # Project has a rule NOT in checklist.
             project_md.write_text(
                 "# Project\n"
-                "- **project-only-rule needs surfacing**\n",
+                "- **project-only-rule must be surfaced**\n",
                 encoding="utf-8",
             )
             checklist.write_text(

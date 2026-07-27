@@ -126,6 +126,41 @@ CHECKS: tuple[Check, ...] = (
     # ----- HIGH -------------------------------------------------------------
 
     Check(
+        "CRITICAL", "WooCommerce REST consumer key/secret",
+        # ck_/cs_ are 40-hex WooCommerce REST credentials. Added 2026-07-25 after a
+        # cross-project report: the SAME consumer key was embedded in two repos, so
+        # rotation broke whichever copy was forgotten. Previously UNDETECTED here —
+        # an earlier grep for "ck_" matched `check_password` in an allowlist, not a
+        # real rule, so these sailed through every scan.
+        _re(r"\b(ck|cs)_[0-9a-fA-F]{32,}\b"),
+        _allow(
+            r"(example|placeholder|YOUR_|REDACTED|XXX|sample|0{32}|x{32}|f{32})",
+        ),
+    ),
+
+    Check(
+        "CRITICAL", "PostgreSQL password exposure",
+        _re(
+            r"(PGPASSWORD\s*[:=]\s*[\"']?[^\s\"'#`]{6,}"
+            r"|postgres(?:ql)?://[^:\s]+:[^@\s]{6,}@)"
+        ),
+        _allow(
+            # Placeholder / template forms.
+            r"(example|placeholder|YOUR_|REDACTED|XXX|CHANGEME|<[^>]*>|\$\{|\$[A-Z_]+|"
+            r"password@|:password|sample|dummy"
+            # Well-known FAKE passwords that appear in docs and test fixtures. Without
+            # these the check fires on its own test suite (legacy-code-intel's
+            # test_redaction.py asserts PGPASSWORD *is* redacted) and on
+            # docker-compose docs — a CRITICAL that cries wolf trains people to reach
+            # for --no-verify, which is strictly worse than no check.
+            r"|hunter2|devpass|mypgpass|testpass|secret123|changeme|letmein|passw0rd"
+            # Compose/doc-style host:port targets that are self-evidently non-prod.
+            r"|@(db|database|postgres|localhost|127\.0\.0\.1|host\.docker\.internal):"
+            r"|localhost:5432/postgres\b)",
+        ),
+    ),
+
+    Check(
         "HIGH", "inline password/token assignments",
         _re(
             r"(password|passwd|pwd|secret|token|api_key)\s*[:=]\s*"
@@ -146,6 +181,12 @@ CHECKS: tuple[Check, ...] = (
             r"secret_word|secret_phrase|FIXME|REPLACE-WITH)",
             # Env-var idioms
             r"(os\.environ|os\.getenv|getenv\(|environ\[|process\.env)",
+            # Reference to a named UPPER_SNAKE constant, optionally via a ternary.
+            # Assigning a bare UPPER_SNAKE name is a pointer, never a literal — and if the
+            # constant itself held a credential, its own definition line is what the
+            # CRITICAL live-key checks (and this check) would flag. Allowing the
+            # REFERENCE does not weaken detection of the DEFINITION.
+            r"[:=]\s*[A-Z][A-Z0-9_]{2,}\b(\s*(if|else)\b|\s*$|\s*[,)\]])",
             # Method-call assignments
             r"([:=]\s*passwordPrompt\(|[:=]\s*secrets\.token_(urlsafe|hex|bytes)\(|"
             r"[:=]\s*secrets\.choice|[:=]\s*[a-zA-Z_][a-zA-Z0-9_.]*\([^)]*\)\s*[,;]?\s*$|"
@@ -260,6 +301,34 @@ def should_scan(path: Path) -> bool:
     return False
 
 
+def iter_staged_files(root: Path):
+    """Yield (path, content) for files STAGED in git — the pre-commit surface.
+
+    Shares the exact same CHECKS as the full scan, so the commit-time hook and the
+    push-time gate can never drift apart. Deleted paths are skipped; content is read
+    from the INDEX (`git show :path`), not the worktree, so what is scanned is what
+    is actually about to be committed."""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+            capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return
+    for rel in (l.strip() for l in out.splitlines() if l.strip()):
+        full = root / rel
+        if not should_scan(full):
+            continue
+        try:
+            blob = subprocess.run(["git", "-C", str(root), "show", f":{rel}"],
+                                  capture_output=True, check=True).stdout
+            if len(blob) > MAX_FILE_BYTES:
+                continue
+            yield full, blob.decode("utf-8", errors="replace")
+        except (OSError, subprocess.CalledProcessError):
+            continue
+
+
 def iter_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
@@ -281,15 +350,19 @@ def iter_files(root: Path):
 # ---------------------------------------------------------------------------
 
 
-def scan(root: Path):
-    """Return dict of severity -> list of (category_name, [(rel_path, lineno, line)])."""
+def scan(root: Path, source=None):
+    """Return dict of severity -> list of (category_name, [(rel_path, lineno, line)]).
+
+    `source` is a callable(root) yielding (path, content); defaults to the full
+    worktree walk. `iter_staged_files` swaps in the git index for pre-commit use."""
+    source = source or iter_files
     results: dict[str, list[tuple[str, list[tuple[str, int, str]]]]] = {
         s: [] for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
     }
 
     for check in CHECKS:
         hits: list[tuple[str, int, str]] = []
-        for path, content in iter_files(root):
+        for path, content in source(root):
             rel = path.relative_to(root)
             rel_str = str(rel).replace("\\", "/")
             if DETECTOR_DOCS_RE.search(rel_str):
@@ -329,6 +402,9 @@ def main() -> int:
                         help="Silent unless a blocking hit is found.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Print all hits, not just first 10 per category.")
+    parser.add_argument("--staged", action="store_true",
+                        help="scan only files staged in git (pre-commit surface), "
+                             "reading content from the index rather than the worktree")
     parser.add_argument("--strict", action="store_true",
                         help="Promote MEDIUM/LOW to blocking.")
     args = parser.parse_args()
@@ -338,7 +414,7 @@ def main() -> int:
         print(f"ERROR: {root} is not a directory", file=sys.stderr)
         return 2
 
-    results = scan(root)
+    results = scan(root, source=iter_staged_files if args.staged else None)
 
     total_hits = 0
     severity_counts = {s: 0 for s in results}
@@ -390,7 +466,9 @@ def main() -> int:
     if blocking:
         print(
             "[!] BLOCKING — review above. "
-            "Override (use only when certain): git push --no-verify",
+            + ("Override (use only when certain): git commit --no-verify"
+               if args.staged else
+               "Override (use only when certain): git push --no-verify"),
             file=sys.stderr,
         )
         return 1

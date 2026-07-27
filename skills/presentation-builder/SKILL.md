@@ -45,7 +45,7 @@ Runs **once per session** and caches the result as the capability map.
 | Java (for Apache POI fallback) | `java -version 2>&1` |
 | PowerShell | `pwsh --version 2>/dev/null \|\| powershell -Command '$PSVersionTable.PSVersion'` |
 | Graphviz | `dot -V 2>&1` |
-| Banana / Gemini (image gen) | Check for `nano-banana` or `vertex-banana` skill availability |
+| vertex-banana (image gen) | Check for `vertex-banana` skill availability |
 | matplotlib | `python3 -c "import matplotlib; print(matplotlib.__version__)"` |
 | Internet connectivity | `curl -s --max-time 5 -o /dev/null -w '%{http_code}' https://httpbin.org/get` |
 
@@ -61,7 +61,7 @@ Produces a JSON object conforming to `capability-map-schema.md` (see Reference F
   "java": false,
   "powershell": false,
   "graphviz": true,
-  "image_gen": "nano-banana",
+  "image_gen": "vertex-banana",
   "matplotlib": true,
   "internet": false,
   "timestamp": "2026-03-27T10:00:00Z"
@@ -221,8 +221,9 @@ Steps 5a, 5b, and 5c run in parallel when independent. The renderer waits for al
 
 | Request | Use Instead |
 |---|---|
-| Image generation only (not for slides) | `nano-banana` or `vertex-banana` |
-| Document or report writing (not slides) | `content-writer` |
+| Image generation only (not for slides) | `vertex-banana` |
+| Report / document EXPERIENCE (layout, reading path, information architecture) | `audience-experience-design` |
+| Report / document PROSE (the writing itself) | `content-writer` |
 | General diagram creation not destined for slides | Use the appropriate diagram tool directly (Mermaid, Graphviz, etc.) |
 
 ---

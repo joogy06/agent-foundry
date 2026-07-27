@@ -47,7 +47,7 @@ Use it to:
 - Run parallel verification: WebSearch + agy + Codex (`/codex:rescue`) for triangulation
 - Synthesize large research outputs that exceed Claude's working context (agy handles large-context analysis well)
 
-(The old `mcp__gemini-cli__ask-gemini` MCP route is gone; the gemini CLI itself retired 2026-06-18. See `codex-orchestration` / `cross-cli-deliberation` for full delegation patterns.)
+(See `codex-orchestration` / `cross-cli-deliberation` for full delegation patterns.)
 ## The Research Process
 
 ```

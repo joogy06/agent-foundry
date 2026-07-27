@@ -18,9 +18,9 @@
 // changed stage args => surgical cache miss => resume across an amendment is
 // structurally impossible.
 //
-// SCHEMA-TWIN: work-packages.v1 sha256:f685a6911d691f48
-// SCHEMA-TWIN: plan-load.v1 sha256:1e7fc64c4b9f9c92
-// SCHEMA-TWIN: execution-report.v1 sha256:90dda7579ac3f564
+// SCHEMA-TWIN: work-packages.v1 sha256:8bbb2d51c67dec20
+// SCHEMA-TWIN: plan-load.v1 sha256:436e2be9080b81c5
+// SCHEMA-TWIN: execution-report.v1 sha256:10b6a2240c98ba61
 
 export const meta = {
   name: "bob-serial-exec",
@@ -185,7 +185,7 @@ function bobStagePrompt(mode, wpId, args) {
 anchors:
   - kind: tool_version
     subject: claude-code-workflow-surface
-    verified_against: "2.1.201 (workflow API: bare-body + pure-literal meta enforced at load; live probe)"
-    verified_on: "2026-07-10"
+    verified_against: "2.1.173 (workflow API; layout frozen WP-2 forge #159)"
+    verified_on: "2026-06-11"
     volatility: high
 --> */

@@ -113,7 +113,7 @@
         "model_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Identifier of the LLM/CLI that performed extraction (e.g. claude-code, codex-cli, gemini-cli, copilot-cli, or a test sentinel). Part of the pipeline fingerprint so a model change re-extracts."
+          "description": "Identifier of the LLM/CLI that performed extraction (e.g. claude-code, codex-cli, agy, copilot-cli, or a test sentinel). Part of the pipeline fingerprint so a model change re-extracts."
         },
         "prompt_hash": {
           "type": "string",

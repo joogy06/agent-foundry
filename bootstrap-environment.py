@@ -43,26 +43,27 @@ import sys
 from pathlib import Path
 
 # REPO_ROOT auto-detection:
-# - When bundled at agent-foundry/ root: __file__'s parent has CLAUDE.md, pa-server/, skills/.
-# - When run from foundry-lab/installer/ in dev: those siblings live in the parent dir.
+# - Root layout (this repo + public agent-foundry): __file__'s parent has
+#   CLAUDE.md, pa-server/, skills/ — bootstrap lives at the repo root.
+# - Legacy dev layout (script in an installer/ subdir): those siblings live in
+#   the parent dir. Kept as a harmless fallback for an older checkout.
 _HERE = Path(__file__).resolve().parent
 if (_HERE / "CLAUDE.md").exists() or (_HERE / "skills").exists():
-    REPO_ROOT = _HERE                         # bundled mode
+    REPO_ROOT = _HERE                         # root layout (bootstrap at repo root)
 elif (_HERE.parent / "CLAUDE.md").exists() or (_HERE.parent / "skills").exists():
-    REPO_ROOT = _HERE.parent                  # dev mode (script lives in installer/)
+    REPO_ROOT = _HERE.parent                  # legacy: script in an installer/ subdir
 else:
     REPO_ROOT = _HERE                         # fall back; steps will warn cleanly
 
 
 def _resolve_install_py() -> "Path | None":
-    """Locate install.py. It ALWAYS sits next to this bootstrap script
-    (both in installer/ in dev, both at the repo root when bundled), so
-    `_HERE/install.py` is canonical. `REPO_ROOT/install.py` is only a
-    fallback for unusual layouts.
+    """Locate install.py. It ALWAYS sits next to this bootstrap script (both at
+    the repo root now), so `_HERE/install.py` is canonical. `REPO_ROOT/install.py`
+    is only a fallback for unusual layouts.
 
-    Fixes the dev-layout bug where REPO_ROOT == _HERE.parent (foundry-lab/)
-    made `REPO_ROOT / "install.py"` point at a nonexistent path while the
-    real script was at installer/install.py.
+    Retains a guard for the legacy dev layout where REPO_ROOT == _HERE.parent
+    (an installer/ subdir) made `REPO_ROOT / "install.py"` point at a
+    nonexistent path while the real script was at installer/install.py.
     """
     for cand in (_HERE / "install.py", REPO_ROOT / "install.py"):
         if cand.exists():
@@ -70,25 +71,49 @@ def _resolve_install_py() -> "Path | None":
     return None
 
 
-def _load_run_logger():
-    """Import RunLogger + add_log_args from the sibling install.py (§8b).
+# Cache for the sibling install.py module (loaded at most once per run).
+_INSTALL_MOD = None
+_INSTALL_MOD_TRIED = False
 
-    The run-log machinery is defined once in install.py (canonical, pure-stdlib)
-    and reused here to avoid drift. If install.py is missing (partial clone),
-    return (None, None) so bootstrap degrades to no-logging — NEVER aborts.
+
+def _load_install_module():
+    """Import the sibling install.py as a module (cached) for the shared helpers
+    it owns: RunLogger / add_log_args (§8b), the CANONICAL_SESSION_START_HOOKS
+    single source of truth, and the pure merge / backup / atomic-write core reused
+    by step 5. Returns the module, or None on a partial clone (install.py missing)
+    so bootstrap degrades gracefully — NEVER aborts.
+
+    install.py is import-safe: it only DEFINES symbols at module scope (main() is
+    guarded by `if __name__ == '__main__'`), so importing it has no side effects.
     """
+    global _INSTALL_MOD, _INSTALL_MOD_TRIED
+    if _INSTALL_MOD_TRIED:
+        return _INSTALL_MOD
+    _INSTALL_MOD_TRIED = True
     inst = _resolve_install_py()
     if inst is None:
-        return None, None
+        return None
     try:
-        spec = importlib.util.spec_from_file_location("af_install_for_log", inst)
+        spec = importlib.util.spec_from_file_location("af_install_shared", inst)
         if not spec or not spec.loader:
-            return None, None
+            return None
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return getattr(mod, "RunLogger", None), getattr(mod, "add_log_args", None)
+        _INSTALL_MOD = mod
+        return mod
     except Exception:
+        return None
+
+
+def _load_run_logger():
+    """RunLogger + add_log_args from the sibling install.py (§8b), via the shared
+    loader. Returns (None, None) if install.py is unavailable (partial clone) so
+    bootstrap degrades to no-logging — NEVER aborts.
+    """
+    mod = _load_install_module()
+    if mod is None:
         return None, None
+    return getattr(mod, "RunLogger", None), getattr(mod, "add_log_args", None)
 
 
 # A no-op context manager fallback so main() can `with _logger_ctx(...)` even
@@ -104,11 +129,11 @@ class _NullRunLogger:
         return False
 
 
-# Bundled templates (agy.md host directive) live next to this script in both
-# layouts: installer/templates/ in dev, <root>/templates/ when bundled.
+# Bundled templates (agy.md host directive) live in templates/ next to this
+# script at the repo root.
 _TEMPLATES_DIR = _HERE / "templates"
 
-# Generic, publish-clean fallback if the bundled installer/templates/agy.md is
+# Generic, publish-clean fallback if the bundled templates/agy.md is
 # missing (partial clone). Mirrors the shipped template's essentials.
 _AGY_TEMPLATE_FALLBACK = """\
 # agy — host directive (Antigravity CLI global context)
@@ -125,59 +150,11 @@ research delegate for the primary coding agent. Invoked headlessly as
   prompt. Be decision-grade and concise.
 """
 
-# Canonical SessionStart hook entries that bootstrap ensures are present.
-# Bootstrap MERGES these into existing settings.json; it does NOT remove
-# user-added hooks (e.g. mobile notifications, Stop hooks, etc.).
-CANONICAL_SESSION_START_HOOKS = [
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "python3 ~/.claude/skills/_meta/scan_hard_rules.py --hook",
-            "timeout": 10,
-        }],
-    },
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "python3 ~/.claude/skills/_meta/forge_reminder_hook.py --hook",
-            "timeout": 10,
-        }],
-    },
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "bash ~/.claude/skills/cross-project-mail/hooks/session-start.sh",
-            "timeout": 5,
-        }],
-    },
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "python3 ~/.claude/skills/_meta/freshness_nudge.py --hook",
-            "timeout": 10,
-        }],
-    },
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "python3 ~/.claude/skills/_meta/scope_delta_compact_nudge.py --hook",
-            "timeout": 10,
-        }],
-    },
-    {
-        "matcher": "",
-        "hooks": [{
-            "type": "command",
-            "command": "python3 ~/.claude/skills/_meta/memory_primer.py --hook",
-            "timeout": 10,
-        }],
-    },
-]
+# Canonical SessionStart hooks + the pure merge core are the SINGLE SOURCE OF
+# TRUTH in install.py (CANONICAL_SESSION_START_HOOKS + merge_missing_session_start_hooks);
+# step 5 imports them via _load_install_module() so the two entry points cannot
+# drift. There is deliberately no local copy here (the exact drift the S060 /
+# e9554dc "pieces on the dev host but not reproducible" class warns about).
 
 POLICY_LIMITS_DEFAULT = {
     "restrictions": {
@@ -350,6 +327,13 @@ class Bootstrap:
 
     def step_5_settings_hooks(self):
         self.out.step(5, "merge SessionStart hooks into ~/.claude/settings.json")
+        # Single source of truth: the 6 hooks + the pure merge core live in
+        # install.py; import them so bootstrap and install.py cannot diverge.
+        shared = _load_install_module()
+        if shared is None:
+            self.out.fail("install.py not found next to bootstrap — cannot merge SessionStart "
+                          "hooks (their single source of truth lives there)")
+            return
         path = self.claude_home / "settings.json"
         settings = {}
         if path.exists():
@@ -359,24 +343,14 @@ class Bootstrap:
                 self.out.fail(f"could not parse {path}: {e} — fix manually before re-running")
                 return
 
-        hooks = settings.setdefault("hooks", {})
-        ss = hooks.setdefault("SessionStart", [])
-
-        # Canonicalize: a hook is "already present" if its first hooks[0].command matches.
-        existing_cmds = set()
-        for entry in ss:
-            for h in entry.get("hooks", []):
-                cmd = h.get("command")
-                if cmd:
-                    existing_cmds.add(cmd)
-
-        added = []
-        for new_entry in CANONICAL_SESSION_START_HOOKS:
-            new_cmd = new_entry["hooks"][0]["command"]
-            if new_cmd in existing_cmds:
-                continue
-            added.append(new_cmd)
-            ss.append(new_entry)
+        # Shared pure merge; raises on a wrong-shaped (but valid-JSON) settings
+        # object — the guard bootstrap previously lacked. Leave it untouched.
+        try:
+            added = shared.merge_missing_session_start_hooks(settings)
+        except (TypeError, ValueError) as e:
+            self.out.fail(f"{path} is valid JSON but the wrong shape ({e}) — "
+                          f"fix manually before re-running")
+            return
 
         if not added:
             self.out.skip("required SessionStart hooks already present")
@@ -389,10 +363,12 @@ class Bootstrap:
 
         self.claude_home.mkdir(parents=True, exist_ok=True)
         if path.exists():
-            backup = path.with_suffix(".json.bak")
-            shutil.copy2(path, backup)
+            backup = shared._backup(path)
+            if backup is None:
+                self.out.fail(f"could not write backup of {path}; refusing to modify")
+                return
             self.out.info(f"backup -> {backup}")
-        path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+        shared._atomic_write_text(path, json.dumps(settings, indent=2) + "\n")
         for cmd in added:
             self.out.info(f"added hook: {cmd}")
         self.out.ok(f"settings.json updated ({len(added)} new hook(s))")
@@ -456,13 +432,13 @@ class Bootstrap:
     def step_6c_place_publish_config(self):
         self.out.step("6c", "restore ~/.claude/publish-config.json (private publish scrub list, if present)")
         dest = self.claude_home / "publish-config.json"
-        src = REPO_ROOT / "installer" / "publish-config.json"
+        src = REPO_ROOT / "publish-config.json"
         if dest.exists() and not self.force:
             self.out.skip("publish-config.json already present — leaving in place")
             return
         if not src.is_file():
             # Public users won't have a private config bundled — they create their own.
-            self.out.skip("no private publish-config in installer/ — run the `publish-to-github` "
+            self.out.skip("no private publish-config at repo root — run the `publish-to-github` "
                           "init-config (or copy templates/publish-config.example.json) to make your own")
             return
         if self.dry_run:
@@ -685,7 +661,25 @@ class Bootstrap:
 # ---------------------------------------------------------------------------
 
 
+def _force_utf8_streams() -> None:
+    """Make stdout/stderr tolerate the Unicode glyphs bootstrap prints on hosts
+    whose console defaults to a non-UTF-8 codec (cp1252/cp437 on Windows).
+    Without this, an unguarded print() of →/⚠/✓/📝 raises UnicodeEncodeError and
+    aborts the bootstrap. Mirrors install.py's guard. NEVER raises."""
+    for name in ("stdout", "stderr"):
+        reconfigure = getattr(getattr(sys, name, None), "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main() -> int:
+    # Before ANY print() / RunLogger: keep Unicode glyphs from crashing a
+    # non-UTF-8 console (Windows cp1252/cp437).
+    _force_utf8_streams()
     p = argparse.ArgumentParser(
         description="Full Claude Code environment bootstrap.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -716,7 +710,7 @@ def main() -> int:
         p.add_argument("--no-log", action="store_true",
                        help="disable the run-log file (logging is on by default)")
         p.add_argument("--log", default=None, metavar="PATH",
-                       help="write the run-log to PATH (default: installer/logs/install-<UTC-ts>.log)")
+                       help="write the run-log to PATH (default: logs/bootstrap-<UTC-ts>.log)")
     args = p.parse_args()
 
     # §8b: tee all bootstrap output to a run-log (on by default; never aborts).

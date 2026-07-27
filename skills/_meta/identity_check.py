@@ -164,6 +164,12 @@ CRITICAL_FILES = [
     # pause_state.request_pause (HARD-RULE 6 / CB4) — its drift could silently
     # break scope-pause enforcement. (Caught by the C5 full-coverage test.)
     "scope_reaction.py",
+    # scope_delta_compact_nudge.py is the SessionStart surface for scope-delta
+    # state. Drift here silences the nudge without any other signal, so it is a
+    # safety file by the same argument as scope_reaction.py. It shipped into
+    # prod _meta without being added here — exactly the omission C5 exists to
+    # catch, and C5 did catch it.
+    "scope_delta_compact_nudge.py",
     # --- cold-context verifier spawners ---
     "audit_spawn.py",
     "verification_arbiter_spawn.py",

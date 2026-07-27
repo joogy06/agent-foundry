@@ -128,12 +128,29 @@ class TestKeywordsAndMarkers(unittest.TestCase):
         marked = next(
             t for t in result["tests"] if "test_with_criterion_marker" in t["nodeid"]
         )
-        # keywords include the marker name (pytest-json-report aggregates node
-        # keywords; the marker "criterion" should appear).
-        self.assertTrue(
-            any("criterion" in kw for kw in marked["keywords"]),
-            f"expected 'criterion' marker in keywords, got {marked['keywords']!r}",
-        )
+        # Markers are only recoverable from pytest-json-report. pytest's built-in
+        # JUnit XML carries no marker data at all, so on that path the runner MUST
+        # declare `keywords_available: False` rather than emit [] — an empty list
+        # is indistinguishable from "this test genuinely has no markers", and an
+        # auditor tying tests to success_criteria would silently find none.
+        if result.get("keywords_available") is False:
+            self.assertEqual(
+                result.get("granularity"), "junit",
+                "keywords_available=False is only legitimate on the JUnit path",
+            )
+            self.assertEqual(
+                marked["keywords"], [],
+                "JUnit path must emit [] alongside the keywords_available=False flag",
+            )
+            self.skipTest(
+                "marker capture requires pytest-json-report; runner correctly "
+                "declared keywords_available=False on the JUnit fallback"
+            )
+        else:
+            self.assertTrue(
+                any("criterion" in kw for kw in marked["keywords"]),
+                f"expected 'criterion' marker in keywords, got {marked['keywords']!r}",
+            )
 
         unmarked = next(
             t for t in result["tests"] if "test_without_marker" in t["nodeid"]

@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "avengers/run-record.v1",
+  "title": "avengers run-record (v1)",
+  "description": "The §6a instrumentation sink — the anti-superstition insurance. Every convene run writes <project>/.avengers/sessions/<id>/run-record.json (a NAMED artifact alongside the session-plan). It records the RESOLVED staffing (provider + effort per seat, WITH the seat-class name), the external-arbiter path + the fallback_arbiter_residual flag, the §2a advisory notes (e.g. 'no anti-sycophancy floor for this provider'), and the POST-RUN outcome fields (dissent margin + a crude arbiter-scored 1-5 grade) that the kernel/arbiter fill in after deliberation. convene.py writes the STAFFING half at plan-materialization time with the outcome half null (`graded: false`); the run fills the rest. This is what lets v3's measured routing start from data instead of zero and makes rotation meaningful if ever enabled. DATA/machine state (stdlib JSON), never executed.",
+  "type": "object",
+  "required": [
+    "schema", "session_id", "created_at", "profile", "family",
+    "staffing", "arbiter", "fallback_arbiter_residual", "advisory_notes", "outcome"
+  ],
+  "properties": {
+    "schema": { "type": "string", "enum": ["run-record.v1"] },
+    "session_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "profile": { "type": "string" },
+    "family": { "type": "string" },
+    "staffing": {
+      "type": "object",
+      "required": ["seats", "provider_families", "fallback_relaxed"],
+      "properties": {
+        "seats": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["seat_id", "provider", "effort", "seat_class", "adversarial_role"],
+            "properties": {
+              "seat_id": { "type": "string" },
+              "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
+              "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+              "seat_class": { "type": "string" },
+              "effort_note": { "type": ["string", "null"] },
+              "adversarial_role": { "type": "boolean" }
+            }
+          }
+        },
+        "provider_families": { "type": "array", "items": { "type": "string" } },
+        "fallback_relaxed": { "type": "boolean" }
+      }
+    },
+    "arbiter": {
+      "type": "object",
+      "required": ["provider", "effort", "path", "is_external", "cold_context"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
+        "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+        "path": { "type": "string", "enum": ["clean", "fallback"] },
+        "is_external": { "type": "boolean" },
+        "cold_context": { "type": "boolean" }
+      }
+    },
+    "fallback_arbiter_residual": { "type": "boolean" },
+    "advisory_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "outcome": {
+      "type": "object",
+      "description": "Filled POST-RUN by the kernel/arbiter. At plan-materialization time convene.py writes graded=false with both scores null.",
+      "required": ["dissent_margin", "outcome_grade", "graded"],
+      "properties": {
+        "dissent_margin": { "type": ["string", "null"] },
+        "outcome_grade": { "enum": [1, 2, 3, 4, 5, null] },
+        "graded": { "type": "boolean" }
+      }
+    }
+  }
+}

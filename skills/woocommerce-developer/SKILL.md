@@ -90,6 +90,52 @@ See `hooks-reference.md` for the complete hook map. Most important:
 
 **Rate limits:** Store API default 25 requests per 10 seconds. REST API has no built-in limit (server-dependent).
 
+## Headless Storefront (Store API)
+
+When a decoupled front-end (see `modern-frontend`) renders the storefront,
+**WooCommerce stays authoritative for all commerce invariants**; the front-end
+renders and collects input. This section defines the WooCommerce side.
+
+**Store API vs admin REST — pick by caller.**
+- **Store API** (`/wp-json/wc/store/v1/...`) — the **customer-facing**
+  cart/checkout API. Public, nonce-protected, session-aware. This is what a
+  storefront uses for products, cart, and checkout.
+- **Admin REST v3** (`/wp-json/wc/v3/...`, consumer key/secret) — the
+  **back-office** API (order management, product CRUD, reports). It is NOT for
+  the browser: its keys are admin credentials and must live server-side only.
+- A storefront that reaches for admin REST to render a cart is a security bug
+  waiting to happen — use the Store API.
+
+**Cart, session & nonce — SAME-ORIGIN by default.** The Store API keeps cart
+state in a session tied to cookies and a `Nonce` header. **Reverse-proxy /
+rewrite the storefront's Store-API calls to the WordPress origin** so those
+cookies stay **first-party**. A cross-domain decoupled front-end (front-end on
+one domain, WordPress on another) breaks cart persistence: third-party cookies
+are blocked by CORS credential rules and by Safari ITP, so the shopper's cart
+silently empties. Same-origin proxying is the default pattern, not an
+optimization.
+
+**Checkout boundary — what must stay WooCommerce-owned.** Payment
+authorization, tax calculation, inventory/stock decrement, coupon validation,
+and order totals are computed and enforced by WooCommerce. The front-end submits
+the order through the Store API and renders the result — it never computes a
+price, tax, or "in stock" verdict it then trusts. Never let the client be the
+source of truth for money or stock.
+
+**Price & stock freshness.** Cache product data for speed, but treat cached
+price/stock as display-only and **re-validate at add-to-cart and at checkout**
+against WooCommerce — the authoritative check happens server-side, so a stale
+cached price cannot be honored.
+
+**Webhook-driven revalidation.** Fire WooCommerce webhooks (product / order
+updated) to the front-end's revalidation endpoint so static/ISR product pages
+refresh on price/stock change; tag by product ID to revalidate only affected
+routes.
+
+**Boundary:** commerce invariants (cart/session, checkout, payment/tax/inventory
+authority) stay here; the storefront UI and rendering live in `modern-frontend`;
+experience and journey decisions live in `audience-experience-design`.
+
 ## HPOS (High-Performance Order Storage)
 
 WooCommerce moved from `wp_posts`/`wp_postmeta` to dedicated order tables (`wp_wc_orders`, `wp_wc_orders_meta`). **HPOS is now the default.**
@@ -223,9 +269,29 @@ add_action('wp_enqueue_scripts', function() {
 
 Never cache: cart, checkout, my-account pages. WooCommerce sets `DONOTCACHEPAGE` constant on these. Ensure your caching plugin respects it.
 
+### Feed Generation at Scale
+
+Large catalogues (10k+ products) break when a product feed (Google Shopping, Meta, or an AI-crawler product feed) is built synchronously on a page request — PHP `max_execution_time` and memory limits kill it mid-run.
+
+- Generate feeds with **Action Scheduler** (bundled with WooCommerce) in chunked batches (200-500 products each), never in one request. Paginate with `wc_get_products()` and free objects between batches.
+- Guard each batch: cap peak memory, and avoid loading full product objects when only feed fields are needed.
+- **Cache the artifact, not the request** — write the finished feed to a static file (or object storage) and serve that; regenerate off-peak via a real system cron / Action Scheduler, not on the visitor's request.
+- Write to a temp file and atomically rename so a crawler never reads a half-written feed.
+
+### Search Offload
+
+Default WordPress search is a `LIKE` scan on `wp_posts`; adding WooCommerce attribute/meta search layers on `meta_query` joins. Both degrade badly past a few thousand products or with high-cardinality attributes.
+
+- Offload to an external index — **ElasticPress** (Elasticsearch/OpenSearch) or **Algolia** — once search/filter latency or relevance is the bottleneck.
+- Keep **WooCommerce as the source of truth**; treat the index as a rebuildable projection re-synced on product save/delete. Never let the index hold authoritative price or order data.
+- **Security:** store index API keys in environment variables or `wp_options`, never in theme files or committed code; for any client-side calls use a scoped search-only key (e.g. Algolia's search-only API key), never the admin key.
+- For high-cardinality *attribute filtering* specifically (not free-text search), see `woocommerce-faceted-navigation` — the facet layer covers the `wc_product_attributes_lookup` boundary and when to reach for an external index.
+
 ## Analytics Integration (GA4)
 
 **Recommended method:** GTM4WP plugin → Google Tag Manager → GA4
+
+*To design and run experiments on these events (A/B testing, sample-size and statistical-validity guards, cache-safe variation delivery), see `ecommerce-cro-experimentation` — it references this event-mapping table rather than duplicating it.*
 
 ### E-commerce Event Mapping
 
@@ -236,7 +302,29 @@ Never cache: cart, checkout, my-account pages. WooCommerce sets `DONOTCACHEPAGE`
 | Remove from cart | `remove_from_cart` | item_id, quantity |
 | View cart | `view_cart` | items[], value |
 | Begin checkout | `begin_checkout` | items[], value, coupon |
+| Shipping method chosen | `add_shipping_info` | items[], value, shipping_tier |
+| Payment method chosen | `add_payment_info` | items[], value, payment_type |
 | Purchase | `purchase` | transaction_id, value, tax, shipping, items[] |
+
+#### ⚠️ Express wallets break this funnel — instrument them explicitly
+
+**An Apple Pay / Google Pay / Shop Pay / PayPal express purchase started from the product or cart
+page never passes through the checkout page, so `begin_checkout`, `add_shipping_info` and
+`add_payment_info` never fire.** Only `add_to_cart` (sometimes not even that) and `purchase` do.
+
+This matters more than it sounds: **wallets are roughly 65% of mobile conversions.** A funnel
+readout built on the table above will show those buyers appearing at `purchase` out of nowhere, and
+will compute a checkout-completion rate that is **silently wrong for about two-thirds of mobile
+orders** — usually presenting as an implausibly low `begin_checkout` → `purchase` rate that gets
+"fixed" by optimising a checkout page most mobile buyers never see.
+
+| Do | Why |
+|----|-----|
+| Fire `begin_checkout` **when the express-wallet sheet opens**, not only on the checkout page | Restores the funnel's entry event for wallet buyers |
+| Stamp every checkout + purchase event with a `checkout_type` parameter (`classic` \| `express_wallet`) and register it as a custom dimension | Lets you segment the two funnels instead of averaging them into nonsense |
+| Set `payment_type` on `add_payment_info` (`Apple Pay`, `Google Pay`, `PayPal`, `card`) | The only way to size the wallet share you are missing |
+| Analyse classic and express funnels **separately** | They have different step counts; a blended completion rate describes neither |
+| QA on a **real mobile device** with a live wallet | Wallet sheets frequently do not fire in desktop emulation or GTM Preview |
 
 ### Clarity Integration
 

@@ -9,6 +9,8 @@ description: Use when assigned as UX reviewer in an implementation team, or when
 
 You review implemented UI through the eyes of a real human user. Not what the developer intended, but what the visitor actually experiences. Every pixel, interaction, and content decision affects whether someone trusts this site enough to spend money.
 
+**Pairing with `audience-experience-design`:** that skill *designs* the experience before it is built (audience model, journey, information architecture, and measurable acceptance criteria); this skill *reviews* the built result. When an aed brief exists, review the implementation against its acceptance criteria first, then run the checks below.
+
 ## Review Process
 
 For every UI-facing task, work through these checks in order:
