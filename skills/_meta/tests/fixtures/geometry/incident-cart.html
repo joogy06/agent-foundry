@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Incident regression — cart layout collapse</title>
+<!--
+  S073 regression fixture. Reproduces the defect SHAPES from the cross-project incident
+  (a sibling project, 2026-07-26), where a production cart showed no price on any row for
+  months and a ux-reviewer pass reported nothing.
+
+  Measured numbers from the real page, 1440px viewport / 818px container / 2 line items:
+
+    line-price tops distinct      broken 335,335,335   fixed 395,605,797
+    price inside items panel      broken right 1124 vs panel 863
+    table within panel            broken +45px outside
+    sidebar top ~= items top      broken 1002 vs 319
+
+  Exact pixels are not reproduced — the layout ENGINE differs from the original theme.
+  What must hold is that each defect SHAPE is detected. Every construct below is a real
+  defect and MUST produce findings; the adversarial.html corpus is its counterpart, where
+  every construct is legitimate and must produce none.
+-->
+<style>
+  body { margin: 0; font: 16px/1.2 system-ui, sans-serif; }
+  #cart { position: relative; width: 818px; border: 1px solid #333; }
+
+  /* DEFECT 1 — every row's price painted at one coordinate. With 2+ items only one
+     price is visible, so no row appears to have a price at all. */
+  .row { height: 60px; border-bottom: 1px solid #eee; }
+  .row .price { position: absolute; top: 40px; left: 700px; }
+
+  /* DEFECT 2 — totals table wider than the panel that bounds it, not clipped, so it
+     paints over surrounding layout. */
+  #totals { width: 900px; height: 40px; border-top: 1px solid #999; }
+
+  /* DEFECT 3 — card-number field shorter than its own line-height: digits cut off.
+     Original: 14.25px frame against 17.875px line-height. */
+  #cardnum { height: 14px; line-height: 17.875px; overflow: hidden; width: 220px; }
+
+  /* DEFECT 4 — two rules a few px apart reading as one thick divider.
+     Original: 1px at y=463 and 2px at y=480, 17px apart. */
+  #ruleA { border-bottom: 1px solid #ccc; height: 6px; }
+  #ruleB { border-bottom: 2px solid #999; height: 6px; }
+</style>
+</head>
+<body>
+<div id="cart">
+  <div class="row"><span class="name">Gaming PC A</span><span class="price">£1,299.00</span></div>
+  <div class="row"><span class="name">Gaming PC B</span><span class="price">£1,899.00</span></div>
+  <div class="row"><span class="name">Gaming PC C</span><span class="price">£2,499.00</span></div>
+
+  <table id="totals"><tr><td>Estimated total</td></tr></table>
+
+  <div id="ruleA"></div>
+  <div id="ruleB"></div>
+
+  <div id="cardnum">4242 4242 4242 4242</div>
+</div>
+</body>
+</html>

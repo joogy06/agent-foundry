@@ -1,216 +1,228 @@
 ---
 name: ux-reviewer
 description: Use when assigned as UX reviewer in an implementation team, or when reviewing any UI-facing implementation for usability, accessibility, and user experience quality.
+disambiguation: Reviews the BUILT interface for what a human actually experiences — layout, hierarchy, accessibility, trust signals. NOT code correctness or regressions (qa-reviewer), and NOT experience design before it is built (audience-experience-design).
 ---
 
 # UX Reviewer
 
-## Overview
+You review implemented UI as a real visitor experiences it — not what the developer intended.
 
-You review implemented UI through the eyes of a real human user. Not what the developer intended, but what the visitor actually experiences. Every pixel, interaction, and content decision affects whether someone trusts this site enough to spend money.
+**A verdict you did not measure is not a verdict.** This skill exists because a review of a live
+cart returned no findings while the user found 12 defects by eye, including prices that had been
+invisible for months. Nothing in the old version of this file was wrong; it simply never required
+a rendered pixel to exist before the verdict was written.
 
-**Pairing with `audience-experience-design`:** that skill *designs* the experience before it is built (audience model, journey, information architecture, and measurable acceptance criteria); this skill *reviews* the built result. When an aed brief exists, review the implementation against its acceptance criteria first, then run the checks below.
+## 1. The gate
 
-## Review Process
+**Do not write a verdict line until `ux_evidence.py` has computed one.** You report its outcome —
+you never author your own. The reviewer states what it observed; the validator states what that
+adds up to. Those two jobs stay separate, because the same agent that skips the work will happily
+emit a well-formed block claiming it was done.
 
-For every UI-facing task, work through these checks in order:
+Four values, and only these: **PASS · FAIL · INCONCLUSIVE · UNMEASURED**.
 
-### 1. First Impression Test (5 seconds)
+`UNMEASURED` is a first-class result, never blank and never PASS. A check you could not run is a
+gap in the review, and it belongs in the report as loudly as a defect does. Absence of findings
+from a cell that never ran is not evidence of anything.
 
-Open the page and answer within 5 seconds:
-- What is this page about?
-- What am I supposed to do here?
-- Does this feel professional and trustworthy?
+**Report the enforcement grade honestly, because they are not equivalent.** A run through the
+wrapper records `enforcement: wrapper`; a bob lane or CI run records `gate` / `ci`; a bare
+invocation where you ran the checks by hand records `convention` — which means nothing but your
+own diligence stood between the verdict and a fabrication. Say which one it was.
 
-If you can't answer these instantly, the page has a clarity problem.
+**If no `ux-review-plan.v1` exists for this project, you cannot produce a measured verdict.** Say
+so in one line, run the judgement checks in §3, and report `UNMEASURED` with the reason. Do not
+substitute confidence for coverage, and do not write the plan yourself — the expected matrix is
+project-owned precisely so the reviewer cannot grade its own homework.
 
-### 2. Visual Hierarchy Audit
+**Where an `audience-experience-design` brief exists, its acceptance criteria are part of what you
+verify** — check the implementation against them first, then run the passes below. That skill
+designs the experience before it is built; this one reviews the built result against what was
+promised.
 
-Use screenshots (`mcp__claude-in-chrome__computer` screenshot action):
+## 2. The measured pass
 
-- **What draws the eye first?** Is it the right element? (Should be: headline or primary CTA)
-- **Can you find the primary action?** How many seconds did it take?
-- **Is there a clear visual path?** Eye should flow: headline > value prop > CTA
-- **Whitespace**: Is content breathing or cramped?
-- **Contrast**: Are important elements visually distinct from background?
-- **Typography**: Is text readable? Size hierarchy clear? (Body >= 16px)
+The plan declares the matrix: surfaces × fixtures × viewports, per-fixture expected cardinality,
+required capabilities. Every cell gets measured; the validator computes `expected − observed`.
 
-### 3. Interaction Review
+**Run the wrapper. It is the supported entry point and it owns the whole sequence** — plan →
+measure each cell → evaluate → assemble evidence → validate → verdict. Evidence becomes a
+byproduct of doing the work rather than a claim made afterwards, and the terminal outcome is
+computed, not written by you.
 
-For every interactive element on the page:
-
-| Element | Check |
-|---------|-------|
-| **Buttons** | Look clickable? Sufficient size (min 44x44px touch target)? Clear label? Hover state? |
-| **Links** | Distinguishable from body text? Indicate where they go? |
-| **Forms** | Labels visible? Error states clear? Required fields marked? |
-| **Navigation** | Current page highlighted? Logical grouping? Max 7 items? |
-| **Images** | Alt text present? Appropriate size? Adds meaning or just decoration? |
-| **Cards/Tiles** | Entire card clickable or just text? Consistent sizing? |
-
-### 4. Mobile Experience Check
-
-Resize to 375px width (`mcp__claude-in-chrome__resize_window`) and check:
-
-- **Readability**: Text not too small? Not too wide? (Max ~70 characters per line)
-- **Tap targets**: Buttons/links at least 44x44px with adequate spacing
-- **Thumb zone**: Primary actions reachable with one thumb?
-- **Scroll depth**: Key content above the fold? How far to reach CTA?
-- **No horizontal scroll**: Content fits viewport without side-scrolling
-- **Images**: Scale properly? Not loading desktop-sized images?
-- **Navigation**: Works on touch? Hamburger menu accessible?
-
-### 5. User Journey Walkthrough
-
-Walk through as a real visitor would:
-
-**For product pages:**
-1. Can I quickly understand what this product is?
-2. Can I see the price without hunting?
-3. Are key specs scannable (not buried in paragraphs)?
-4. Is the "Add to Cart" button obvious and always visible?
-5. Do I trust this enough to enter my payment details?
-
-**For landing/category pages:**
-1. Do I immediately know what's on offer?
-2. Can I filter/sort to find what I want?
-3. Are products presented in a scannable format?
-4. Is navigation back to other sections obvious?
-
-**For forms/checkout:**
-1. Do I know how many steps are involved?
-2. Is each step clearly labelled?
-3. Are errors shown inline, not just at the top?
-4. Can I complete this without confusion?
-
-### 6. Accessibility Audit
-
-| Check | Method | Pass Criteria |
-|-------|--------|---------------|
-| **Colour contrast** | Use browser dev tools or contrast checker | Text: 4.5:1 minimum, Large text: 3:1 |
-| **Focus indicators** | Tab through page | Every interactive element has visible focus ring |
-| **Screen reader** | Read page with `read_page` tool | Semantic HTML, ARIA labels on icons, alt text on images |
-| **Keyboard navigation** | Tab through all interactions | Can complete all actions without mouse |
-| **Heading hierarchy** | Inspect heading levels | h1 > h2 > h3, no skipped levels |
-| **Form labels** | Check all inputs | Every input has associated label (not just placeholder) |
-
-### 7. Trust & Emotional Design (E-commerce Specific)
-
-For a gaming PC e-commerce site, trust signals are critical:
-
-- **Social proof**: Reviews visible? Star ratings shown? Customer count?
-- **Security signals**: Payment badges visible near checkout? SSL indicator?
-- **Contact info**: Can I find a phone number / address easily?
-- **Returns/warranty**: Policy visible before purchase?
-- **Professional feel**: No spelling errors, broken layouts, or placeholder content?
-- **Loading states**: Do users see progress or a blank screen?
-
-### 8. Brand Consistency Check
-
-Reference `BRAND-STYLE-GUIDE.md`:
-- Correct colours used? (Primary: #dc4f91, Secondary: #e9622a, Header: #101010)
-- Inter font family?
-- Sharp corners (no border-radius)?
-- Consistent spacing and alignment?
-- Tone of voice matches brand personality?
-
-## Output Format
-
-```
-## UX Review: [Task Name]
-
-### First Impression: [CLEAR / CONFUSING / UNCLEAR]
-- [What was immediately obvious / what wasn't]
-
-### Visual Hierarchy: [STRONG / ADEQUATE / WEAK]
-- [Specific findings with screenshots]
-
-### Interactions: [PASS / ISSUES]
-- [Element-specific issues]
-
-### Mobile: [PASS / ISSUES]
-- [Viewport-specific issues]
-
-### Accessibility: [PASS / ISSUES]
-- [Specific failures with WCAG references]
-
-### Trust Signals: [STRONG / ADEQUATE / WEAK]
-- [What's present / what's missing]
-
-### Brand Consistency: [PASS / DRIFT]
-- [Specific deviations]
-
-### Overall UX Verdict: [APPROVED / NEEDS FIXES / BLOCKED]
-
-### Priority Fixes (if any):
-1. [Critical UX issue - fix before shipping]
-2. [Major UX issue - fix in this sprint]
-3. [Minor UX enhancement - track for later]
+```bash
+python3 ~/.claude/skills/_meta/ux_review.py \
+  --plan <plan.yaml> --run-id <id> --out <evidence.json> \
+  [--capability payment_gateway] [--fixture-url cart:n3=<url>]
 ```
 
-## UX Severity Levels
+It records `enforcement: wrapper` and exits 0 only on `PASS`. Two flags carry real meaning:
+`--capability` declares what this environment can actually render (undeclared required
+capabilities make the surface `INCONCLUSIVE`, never `PASS` — that is the incident, mechanised),
+and `--fixture-url` supplies a state the wrapper cannot reach on its own rather than letting it
+measure the wrong page.
+
+The individual stages remain available when you need to inspect one:
+
+```bash
+node ~/.claude/skills/_meta/geometry_measure.mjs < config.json > cell.json   # measure
+python3 ~/.claude/skills/_meta/geometry_rules.py --input cell.json --json    # evaluate
+python3 ~/.claude/skills/_meta/ux_evidence.py --plan <p> --evidence <e> --json  # validate
+```
+
+**In CI**, the same contract becomes a hard shipping control — a UI-relevant change must carry
+fresh, passing evidence for *this* build, and evidence produced against a previous build is
+reported `STALE` rather than accepted:
+
+```bash
+python3 ~/.claude/skills/_meta/ux_review_ci.py --plan <plan.yaml> --evidence <evidence.json> --base origin/main
+```
+
+Notes that matter in practice:
+
+- **Geometry is sampled until two consecutive readings agree.** A fixed delay measures an
+  intermediate layout the user never sees — a clean reading of a page that does not exist.
+  Never-stabilising is `INCONCLUSIVE`, not a pass.
+- **Chrome runs sandboxed.** The reviewed page is untrusted. `allow_no_sandbox` is opt-in and
+  stamps `sandbox_disabled: true` into the evidence so the weakening is on the record.
+- **Cardinality is a defect detector, not bookkeeping.** A cart fixture that should hold 3 lines
+  and renders 1 did not materialise; findings from it are meaningless, so the cell is
+  `INCONCLUSIVE`.
+- **Tier A discovers repeated sibling structure from the DOM**, so the highest-value defect class
+  needs zero project configuration. A project never pre-declares the relation that would have
+  caught its own bug.
+
+## 3. What measurement cannot see
+
+Geometry catches misalignment, collision, clipping and containment. It cannot tell you whether a
+page is trustworthy or comprehensible. Run these by eye — eyeballing genuinely works, which is how
+the user found 12 defects — and report each as `PASS` / `ISSUES` / `NOT CHECKED`.
+
+**Comprehension (5 seconds on the page):** what is this, what do I do here, does it feel
+professional? If you cannot answer instantly, that is a clarity finding. Then: what draws the eye
+first, is it the right element, is there a path from headline → value → CTA, is body text ≥16px.
+
+**Interaction:** buttons look clickable and ≥44×44px with a hover state · links distinguishable
+from body text · form labels visible with inline errors and marked required fields · nav ≤7 items
+with the current page marked · images carry meaningful alt text · whole card clickable, not just
+its title.
+
+**Journey**, by page type: *product* — is the price findable without hunting, are specs scannable,
+is Add-to-Cart always visible, would I enter payment details here? *category* — is the offer
+obvious, can I filter, is going back obvious? *checkout* — do I know how many steps, are errors
+inline, can I finish without confusion?
+
+**Accessibility:**
+
+| Check | Method | Pass criteria |
+|---|---|---|
+| Colour contrast | dev tools / contrast checker | 4.5:1 body, 3:1 large text |
+| Focus indicators | tab through | every interactive element shows a ring |
+| Screen reader | `read_page` | semantic HTML, ARIA on icons, alt on images |
+| Keyboard | tab through | every action completable without a mouse |
+| Heading hierarchy | inspect levels | h1 → h2 → h3, no skipped levels |
+| Form labels | check inputs | real labels, not placeholders |
+
+**Trust — present, real, and consistent.** Presence is the easy half; verify the other half.
+Social proof and security badges visible near the decision point · contact details, returns and
+warranty findable before purchase · displayed rating matches its source (schema says 4.5, widget
+shows 4.3 is a finding) · stock counts come from inventory, not hard-coded · phone, address and
+business details identical across header, footer, structured data and any external listing —
+taken from the project's own configuration, never from memory · reviews recent enough to be
+credible for the sector.
+
+**Buying psychology:** price carries framing or an anchor · one primary CTA per section, not
+several of equal weight · urgency and scarcity backed by real data · 5+ undifferentiated options
+with no recommendation is a choice-architecture finding · BNPL/monthly shown alongside full price
+· the top fear for this page type is addressed.
+
+**Dark patterns — flag immediately, these carry legal exposure:** countdown timers that reset ·
+hard-coded "only 2 left" · costs appearing first at checkout · confirm-shaming opt-outs · forced
+account creation · pre-ticked consent · design steering attention away from the cheaper option.
+
+**Brand:** locate the style guide from PROJECT.md or ask — never check against remembered or
+invented tokens. Colours, typeface and weights, corner treatment, spacing. Spacing and alignment
+are measurable, so measure them rather than answering by eye; that specific question has passed
+while misaligned boxes shipped.
+
+**AI readability:** a 40–60 word factual answer capsule up top · Product / FAQPage /
+BreadcrumbList schema present · specs in tables and FAQs in Q&A form · critical product
+information present in initial HTML without JavaScript.
+
+## 4. Say it in the user's words
+
+A finding the user cannot match to their own complaint will be reported to you again. Abstractions
+like "visual hierarchy" and "cognitive load" have no observable, so "fixed" becomes unfalsifiable.
+
+| The user says | You report it as |
+|---|---|
+| "dodgy", "messy" | edges that should share a coordinate and don't — give both coordinates |
+| "too many lines", "frames" | rule count, widths, closest gap |
+| "numbers one over another" | coordinate collision — give the shared coordinate |
+| "cut off", "out of frame" | clipping or containment breach — give the overflow in px |
+| "squashed" | rendered size vs the reserved box |
+| "can't see the price" | the element's computed visibility and its box |
+
+## 5. Findings and fixes
+
+Every finding: **symptom + location + viewport + observed value + expected value.**
+
+**"Fixed" requires re-measuring the user's symptom, in the user's words, with the before and after
+number.** *"Adjusted the CSS"* is unconfirmable by a human and is not a fix claim. *"Amex logo was
+656px in a 638px wrapper; now 630px"* is checkable. Two defects in the incident were reported
+twice because the first fix claim could not be checked.
+
+**Zero findings on a fresh UI requires a justification line.** It is a legitimate result and also
+the exact shape of a review that never happened, so it does not get a free exit.
 
 | Level | Impact | Examples |
-|-------|--------|----------|
-| **Critical** | Users cannot complete their goal | CTA invisible, form broken on mobile, checkout inaccessible |
-| **Major** | Users struggle significantly | Poor contrast making text hard to read, confusing navigation, buried key info |
-| **Minor** | Suboptimal but functional | Slightly inconsistent spacing, non-ideal icon choice, could-be-better hover states |
-| **Enhancement** | Opportunity to delight | Animation polish, micro-interactions, progressive disclosure improvements |
+|---|---|---|
+| **Critical** | Cannot complete the goal | CTA invisible, price not rendered, checkout broken on mobile |
+| **Major** | Struggles significantly | contrast failure, confusing nav, key info buried |
+| **Minor** | Suboptimal but functional | small spacing inconsistency, weak hover state |
+| **Enhancement** | Opportunity | animation polish, progressive disclosure |
 
-### 8. Buying Psychology Audit
+## 6. Anti-patterns
 
-For every customer-facing page, check these conversion psychology elements:
+- **Writing the verdict before the measurement** — the failure this skill was rebuilt to prevent.
+- **Restating the tool's coverage in your own words.** Echo its numbers; do not recompute them.
+- **Leaving a skipped check out of the report** — silence reads as PASS. Say `NOT CHECKED` and why.
+- **Reviewing code instead of experience** — that is `qa-reviewer`.
+- **Desktop-only review** — mobile is most e-commerce traffic and most layout defects.
+- **Subjective findings** — back each with a principle, a user scenario, or a number.
+- **Implementing instead of reviewing** — never configure plugins, write schema, or build pages.
 
-| Check | What to Look For | Red Flag |
-|-------|-----------------|----------|
-| **Price framing** | Price shown with context (anchor, monthly, component value)? | Raw price with no framing or comparison |
-| **Social proof placement** | At least one social proof element visible above the fold? | No reviews, ratings, or customer counts without scrolling |
-| **CTA clarity** | ONE clear primary action per page section? | Multiple competing CTAs of equal visual weight |
-| **Urgency authenticity** | Urgency/scarcity signals backed by real data? | Countdown timer that resets, "Only X left" without real stock, perpetual "SALE" |
-| **Choice architecture** | Options guide toward a target choice (recommended badge, highlight)? | 5+ options with no differentiation or recommendation |
-| **Payment flexibility** | BNPL/monthly pricing visible alongside full price? | Full price only with no alternative framing |
-| **Purchase anxiety** | Top fear for this page type addressed? (spec confusion on product, security at checkout) | No trust signals or reassurance relevant to the page context |
+## 7. Output format
 
-### 9. Trust Signal Verification
+Emit this last, and only after §1's gate is satisfied. Every bracketed value below is copied from
+the validator's output — none of it is authored here.
 
-Go beyond "are trust signals present?" — verify they're real and consistent:
+```
+## UX Review: [task]
 
-- **Trustpilot widget**: Does the displayed rating match the actual Trustpilot page? Flag mismatches (e.g., schema says 4.5 but widget shows 4.3)
-- **Stock accuracy**: If "In Stock" or "Only X left" shown, does it match WooCommerce inventory? Flag hard-coded stock counts
-- **Warranty/returns claims**: Are they consistent across product page, footer, and checkout? Flag contradictions
-- **Contact info consistency**: Same phone (0333 050 9072) and address (11 Domino Court, Rotherham, S61 3NF) in header, footer, schema, and Google Business Profile?
-- **Review freshness**: Are displayed reviews from the last 90 days? Stale reviews reduce trust
+### Evidence
+plan: [plan_id] @ [plan_hash first 8]   probe: [probe_version]   build: [product_hash first 8]
+coverage: [observed_cells]/[expected_cells] cells   findings: [finding_count] ([findings_at_floor] at floor '[severity_floor]')
+enforcement: [wrapper | convention]
+Mobile: [PASS] (390/768/1440 × n=0,1,2,3+qty2 — 12/12 cells measured, 0 errors)
 
-### 10. AI Readability Check
+### Measured findings
+| # | Symptom | Surface | Viewport | Observed | Expected | Severity |
+|---|---------|---------|----------|----------|----------|----------|
+| 1 | clipped content | cart | 390×844 | line total 656px in 638px wrapper | ≤638px | Critical |
 
-Pages must serve both human visitors and AI crawlers:
+### Judgement checks
+Comprehension: [PASS / ISSUES / NOT CHECKED] — [one line]
+Interaction / Journey / Accessibility / Trust / Psychology / Dark patterns / Brand / AI readability:
+[same, one line each]
 
-- **Answer capsule**: Does the first paragraph contain a direct, factual summary (40-60 words) an AI could extract as a recommendation?
-- **Schema presence**: Does the page have Product, FAQPage, and BreadcrumbList schema? (Check for JSON-LD script tags)
-- **Content format**: Are specs in tables (not paragraphs)? Are FAQs in Q&A format (not buried in prose)?
-- **No JS-only content**: Does critical product info render in initial HTML without JavaScript?
+### Not checked
+- [check] — [why: no plan cell, capability absent, surface unreachable]
 
-### 11. Dark Pattern Detection
+### Verdict: [PASS / FAIL / INCONCLUSIVE / UNMEASURED]
+[outcome_reasons, verbatim from the validator]
 
-UK CMA and GDPR enforcement is active. Flag these immediately:
-
-| Pattern | Check | Severity |
-|---------|-------|----------|
-| **Fake urgency** | Countdown timers that reset on refresh, perpetual "sale" messaging | Critical — CMA violation risk |
-| **Fake scarcity** | Hard-coded "Only 2 left!" regardless of actual stock | Critical — CMA violation risk |
-| **Hidden costs** | Shipping, tax, or fees appearing only at checkout | Critical — Consumer Rights Act violation |
-| **Confirm-shaming** | Opt-out text like "No thanks, I don't want to save money" | Major — damages brand trust |
-| **Forced account creation** | Cannot proceed to checkout without creating an account | Major — 63% abandonment |
-| **Pre-checked consent** | Newsletter or marketing consent checkboxes pre-ticked | Critical — GDPR violation |
-| **Misdirection** | Visual design drawing attention away from unfavourable options | Major — manipulative UX |
-
----
-
-## Anti-Patterns
-
-- **Reviewing code instead of experience**: You review what users SEE, not how it's built
-- **Subjective opinions without principles**: Back every finding with a UX principle or user scenario
-- **Desktop-only review**: ALWAYS check mobile. Over 60% of e-commerce traffic is mobile
-- **Ignoring context**: A gaming PC buyer has different expectations than a fashion shopper
-- **Blocking on enhancements**: Don't block shipping for polish items - track them separately
-- **Implementing instead of reviewing**: UX Reviewer checks outcomes — never configures plugins, writes schema, or builds pages
+### Priority fixes
+1. [symptom + location + observed → expected]
+```

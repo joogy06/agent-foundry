@@ -1,6 +1,7 @@
 ---
 name: equity-scanning-and-watchlists
 description: Use when building the pre-market routine or intraday universe screening for US equity day trading — universe definition and tradability filters, gapper scans with price/volume/float thresholds and corporate-action-adjusted baselines, earnings and catalyst calendar ingestion, LULD/halt status tracking, float and short-interest/days-to-cover lookup, relative volume (RVOL) computation, and ranked watchlist construction with a scoring template and freshness metadata. Trigger on - stock scanner, gappers, pre-market movers, watchlist, relative volume, RVOL, low float, short interest, days to cover, catalyst calendar, what to trade today. Chart-pattern recognition on a chosen symbol lives in day-trading-patterns; social and news sentiment inputs live in reddit-signal-mining, gdelt-event-mining, and financial-sentiment-analysis; historical validation lives in trading-strategy-backtester.
+family: equity
 ---
 
 # Equity Scanning and Watchlists

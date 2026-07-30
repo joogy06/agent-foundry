@@ -1,6 +1,7 @@
 ---
 name: legacy-code-intel
 description: "Use when you want a PERSISTENT, queryable, SCIP-inspired code-intelligence library over legacy artifacts — COBOL, DataStage .dsx (XML), ETL scripts (shell/SQL/Python), Java (legacy JEE/Spring estates), and Pick/MultiValue BASIC (UniVerse/UniData/D3/jBASE/OpenQM) — built ONCE into a content-addressed store and exposed via a deterministic graph-query layer + a self-contained HTML navigator. An LLM-as-parser framework (mirrors lineage-extract-static): model-neutral prompts the in-session AI CLI uses to extract symbols/occurrences/relationships, NOT per-format AST parsers. Triggerable as a single skill (ingest one artifact/dir) and via agent-teams (batch, one worker per artifact — NO new agent). Static analysis only (v1). Also trigger on \"index this COBOL\", \"symbol graph for DataStage jobs\", \"where is this paragraph called\", \"impact of changing this copybook\", \"index this Pick/MultiValue BASIC\", \"index this Java\", \"code intelligence for legacy\", \"build a navigator for this mainframe code\"."
+disambiguation: Builds a PERSISTENT, queryable index across legacy artefacts of many kinds. Writing or debugging Pick/MultiValue BASIC itself is pick-developer.
 ---
 
 # legacy-code-intel — persistent SCIP-inspired code-intelligence library

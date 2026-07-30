@@ -1,6 +1,7 @@
 ---
 name: docker-compose-patterns
 description: Use when writing advanced Docker Compose configurations — profiles, extends and inheritance, YAML anchors and merge keys, health-dependent startup (depends_on conditions), multi-environment configs (override files, env substitution), secrets and configs, GPU access, init containers pattern, sidecar patterns, development vs production configs, npm/Node.js Compose workflows, watch mode, and Compose file specification reference. Part of the docker-* skill family. OS-agnostic.
+family: docker
 ---
 
 # Docker Compose Advanced Patterns

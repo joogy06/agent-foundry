@@ -7,6 +7,7 @@ description: >
   and any caller that needs physical-world grounding from public Reddit data. One-shot fetch-analyze-
   return — NOT a real-time stream. Trigger on: "mine Reddit for X", "find pain points in r/Y",
   "what's hot on Reddit about Z", "subreddit discovery", "Reddit sentiment".
+disambiguation: Reddit — first-person pain points, velocity heat, community sentiment. Macro news-event and theme mining from GDELT is gdelt-event-mining.
 ---
 
 # Reddit Signal Mining

@@ -51,7 +51,12 @@ def _pref_domains(store: Path) -> list[str]:
 def _counts() -> dict:
     c = {"skills": 0, "agents": 0, "gates": "?"}
     try:
-        c["skills"] = sum(1 for p in (CLAUDE / "skills").glob("*/") if p.is_dir())
+        # A skill is a directory holding a SKILL.md. Counting bare directories
+        # also counted `_meta/` (tooling, not a skill) and any stray `.pytest_cache/`,
+        # which is how the digest came to report 218 for a library of 216.
+        c["skills"] = sum(
+            1 for p in (CLAUDE / "skills").glob("*/") if (p / "SKILL.md").is_file()
+        )
     except Exception:
         pass
     try:

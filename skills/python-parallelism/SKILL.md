@@ -1,6 +1,7 @@
 ---
 name: python-parallelism
 description: Use when implementing concurrent or parallel Python code — asyncio, multiprocessing, threading, concurrent.futures, task queues (Celery), or data processing parallelism (Polars, Dask). Covers the GIL-free Python transition, decision frameworks for choosing the right approach, and production patterns.
+family: python
 ---
 
 # Python Parallelism

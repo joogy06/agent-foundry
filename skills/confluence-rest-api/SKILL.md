@@ -1,6 +1,8 @@
 ---
 name: confluence-rest-api
 description: Use when interacting with Confluence programmatically via REST API — API v1 and v2 endpoints, authentication (API tokens, OAuth, PAT), CRUD operations on pages/spaces/attachments, CQL (Confluence Query Language), content properties, labels, comments, user/group management, bulk operations, pagination, rate limiting, and error handling. Works with both Confluence Cloud and Data Center.
+family: confluence
+disambiguation: Confluence's own REST surface — spaces, pages, content CRUD. Jira issues, JQL and workflows are jira-rest-api, a different product with a different API.
 ---
 
 # Confluence REST API

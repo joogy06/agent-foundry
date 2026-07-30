@@ -325,8 +325,16 @@ Security CVE awareness (REQUIRED, parallel to version awareness):
   default-safe pattern. Deviations need explicit justification."
 
 # UX Agent (for UI-facing work)
-Agent(subagent_type="multi-platform-apps:ui-ux-designer"):
+# subagent_type MUST be one that exists on this host. Verify against the available
+# agent-type list before spawning — a nonexistent type does NOT fail loudly, it
+# silently degrades, and the specialist runs without its intended role. (S073: this
+# line named `multi-platform-apps:ui-ux-designer`, which was never installed —
+# `enabledPlugins` contains only `superpowers` — so every UI-facing forge cycle had
+# been falling back silently.)
+Agent(subagent_type="general-purpose"):
 "You are the UX advocate for [TASK].
+Invoke the `ux-reviewer` skill first (and `audience-experience-design` when the task
+is design-before-build rather than review-after-build).
 Evaluate every approach through: user journey, visual hierarchy,
 cognitive load, mobile ergonomics, trust/emotion, accessibility.
 Rank approaches by real-world usability."
@@ -343,7 +351,15 @@ Rank approaches with reasoning."
 
 Check Codex availability first (step 4b). If unavailable, skip Codex agents and note the gap.
 
-**Primary: Use Codex plugin commands** (structured output, job tracking, resume capability):
+**CHECK AVAILABILITY FIRST.** The `/codex:*` commands come from a Codex *plugin*, which is a
+separate thing from the `codex` CLI. Having the CLI does NOT mean you have the commands. Verify
+the plugin is in `enabledPlugins` (`~/.claude/settings.json`) — or that the commands exist under
+`~/.claude/commands/` — before using this path. If it is absent, go straight to raw `codex exec`
+below; that path is fully capable and needs only the CLI. (S073: on this host `enabledPlugins`
+contains only `superpowers`, so every `/codex:*` invocation documented here was unavailable while
+raw `codex exec` worked normally.)
+
+**Preferred when available: Codex plugin commands** (structured output, job tracking, resume capability):
 
 ```
 # Codex Challenger — use /codex:adversarial-review for design challenge

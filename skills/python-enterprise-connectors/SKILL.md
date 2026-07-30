@@ -1,6 +1,7 @@
 ---
 name: python-enterprise-connectors
 description: Use when connecting Python to enterprise databases (DB2, Oracle, SQL Server, Teradata), mainframe systems (z/OS, CICS, IMS, MQ), or building custom database connectors. Covers ibm_db, Zowe SDK, pyodbc, python-oracledb, EBCDIC handling, credential management, and connection security.
+family: python
 ---
 
 # Python Enterprise Connectors

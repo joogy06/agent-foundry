@@ -1,6 +1,9 @@
 ---
 name: rhel-databases
 description: Use when installing, configuring, or managing databases on RHEL 9 (and AlmaLinux/Rocky 9) — PostgreSQL 15/16 via module streams, MySQL 8/MariaDB 10.11, Redis 7, performance tuning, backup/restore, replication, connection pooling, user/role management, SELinux contexts, and firewalld rules. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
+disambiguation: The open-source engines on RHEL — PostgreSQL, MySQL/MariaDB, MongoDB, Redis. IBM DB2 LUW has its own skill, db2-rhel.
 ---
 
 # Red Hat Enterprise Linux 9 — Database Administration

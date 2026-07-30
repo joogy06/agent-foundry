@@ -29,6 +29,31 @@ fi
 py=$(command -v python3 || command -v python) || {
   echo "pre-commit: no python found; skipping secrets scan" >&2; exit 0; }
 
+# --- SKILL.md frontmatter (#237) ---------------------------------------------
+# Claude Code's loader tolerates YAML that yaml.safe_load and Codex CLI reject, so a
+# broken skill is invisible here and missing THERE. This has landed twice (llm-security
+# S040, career-advocacy S074) — both times the file was fixed and the cause was not.
+# Advisory on warnings, blocking on parse/name errors.
+linter="$repo_root/skills/_meta/frontmatter_lint.py"
+[ -f "$linter" ] || linter="$HOME/.claude/skills/_meta/frontmatter_lint.py"
+if [ -f "$linter" ]; then
+  staged_skills=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)SKILL\.md$' || true)
+  if [ -n "$staged_skills" ]; then
+    # shellcheck disable=SC2086
+    fm_out=$("$py" "$linter" check $staged_skills 2>&1)
+    if printf '%s' "$fm_out" | grep -qE '^  E[0-9]'; then
+      echo "$fm_out" >&2
+      echo "" >&2
+      echo "pre-commit: BLOCKED — a staged SKILL.md has invalid frontmatter." >&2
+      echo "  Commonest cause: an unquoted ': ' inside a value. Quote the value." >&2
+      echo "  Bypass deliberately with: git commit --no-verify" >&2
+      exit 1
+    fi
+    printf '%s' "$fm_out" | grep -qE '^  W[0-9]' && echo "$fm_out" >&2
+  fi
+fi
+# -----------------------------------------------------------------------------
+
 "$py" "$scanner" "$repo_root" --staged
 status=$?
 

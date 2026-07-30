@@ -1,6 +1,8 @@
 ---
 name: ubuntu-web-servers
 description: Use when configuring web servers on Ubuntu 24.04 LTS — Nginx, Apache, Caddy setup and tuning, virtual hosts, SSL/TLS certificates, Let's Encrypt/certbot, reverse proxy patterns, load balancing, HTTP/2/3, security headers, and performance optimization. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — Web Server Administration

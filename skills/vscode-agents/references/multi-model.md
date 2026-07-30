@@ -4,6 +4,11 @@ Current to 2026-06-24 (official VS Code "Subagents" + "AI language models" docs)
 the VS Code equivalent of the Claude-CLI pattern this repo runs: **one top model drives,
 peer models give second opinions / verify**.
 
+> **Model ids below are ILLUSTRATIVE and dated.** They show the SYNTAX; they are not a
+> recommendation and they will rot. Resolve what this machine can actually reach with
+> `python3 vs-code/scripts/detect_models.py`, and see `vs-code/docs/model-routing.md`
+> for tier routing. *(ids as written 2026-06-24; not re-verified since.)*
+
 ## The mechanism: subagents, each on its own model
 
 - Subagents are **agent-initiated** — the *main* agent decides to delegate (not the user).

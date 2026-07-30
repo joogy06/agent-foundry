@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foundry-lab.local/schemas/ux-evidence.v1.json",
+  "title": "ux-evidence.v1",
+  "description": "S073. The artifact a UX review produces, and the only thing G_UX_EVIDENCE will accept. Every field here is either measured by the driver or computed by the validator — the reviewing agent authors NONE of it. That is the whole point: a schema does not make a self-attested claim trustworthy, so coverage is never something the reviewer states. `outcome` in particular is COMPUTED from the cells, never accepted from input.",
+  "type": "object",
+  "required": [
+    "schema_version", "run_id", "plan_id", "plan_hash",
+    "probe_version", "probe_hash", "product_url",
+    "expected_cells", "observed_cells", "cells", "outcome"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "ux-evidence.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$",
+      "description": "sha256 of the plan this run was measured against. A plan edited after the fact invalidates the evidence."
+    },
+    "product_url": { "type": "string", "minLength": 1 },
+    "product_hash": {
+      "type": ["string", "null"],
+      "description": "Identity of what was reviewed — commit sha, build id, or asset version. Evidence that cannot be tied to a specific reviewed artifact is decoration: it would let a stale pass be replayed against changed code."
+    },
+    "environment_fingerprint": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "App/framework versions, installed integrations, feature flags. Records what the environment could and could not render, so a clean pass on a surface that did not exist locally is visible as such."
+    },
+    "probe_version": { "type": "string", "minLength": 1 },
+    "probe_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$",
+      "description": "Content hash of the measurement probe. Two runs measured by different probe versions are not comparable."
+    },
+    "transport": {
+      "type": ["string", "null"],
+      "description": "Which driver produced the measurements (e.g. puppeteer, browser-mcp). Recorded, not trusted."
+    },
+    "sandbox_disabled": { "type": "boolean" },
+    "started_at": { "type": ["string", "null"] },
+    "finished_at": { "type": ["string", "null"] },
+
+    "expected_cells": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Derived from the PLAN (surfaces x fixtures x viewports), never from the reviewer."
+    },
+    "observed_cells": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cells actually measured. expected minus observed is computed by the validator; the reviewer never supplies a coverage count."
+    },
+
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["surface_id", "fixture_id", "viewport_id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "surface_id": { "type": "string" },
+          "fixture_id": { "type": "string" },
+          "viewport_id": { "type": "string" },
+          "status": {
+            "enum": ["measured", "unmeasured", "inconclusive", "error"],
+            "description": "`unmeasured` is a first-class value and is NEVER equivalent to a pass. An un-run cell that reads as clean is the exact failure this contract exists to prevent."
+          },
+          "expected_cardinality": { "type": ["integer", "null"] },
+          "observed_cardinality": {
+            "type": ["integer", "null"],
+            "description": "Counted from the page by the driver. A mismatch against expected means the fixture did not materialise, so the cell cannot support a verdict however clean its geometry looks."
+          },
+          "readiness": {
+            "enum": ["stable", "unstable", "timeout", "unknown"],
+            "description": "Geometry sampled until two consecutive snapshots agreed. `unstable` means an intermediate layout was measured — a clean reading of something the user never sees."
+          },
+          "capabilities_missing": { "type": "array", "items": { "type": "string" } },
+          "findings": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": true }
+          },
+          "errors": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+
+    "missing_cells": {
+      "type": "array",
+      "description": "Computed: planned cells with no corresponding measurement. Non-empty makes PASS impossible.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "surface_id": { "type": "string" },
+          "fixture_id": { "type": "string" },
+          "viewport_id": { "type": "string" }
+        }
+      }
+    },
+
+    "outcome": {
+      "enum": ["PASS", "FAIL", "INCONCLUSIVE", "UNMEASURED"],
+      "description": "COMPUTED by the validator, never accepted from input. PASS requires: full cell coverage, zero errors, every cardinality matching, every cell stable, and no finding at or above the severity floor."
+    },
+    "outcome_reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Why the outcome is what it is. A FAIL that cannot explain itself is not actionable."
+    },
+    "finding_count": { "type": "integer", "minimum": 0 },
+    "unmeasured_by_design": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Limits stated up front rather than discovered later — e.g. paint bounds (shadows, outlines, pseudo-elements, glyph overflow) are not measurable from DOM geometry and are reported unmeasured, not passed."
+    },
+    "enforcement": {
+      "type": ["string", "null"],
+      "enum": ["gate", "wrapper", "ci", "convention", null],
+      "description": "How this run was actually enforced. `convention` means a bare standalone invocation with NO enforcement edge — recorded honestly so a convention-grade run is never mistaken for a gated one."
+    }
+  }
+}

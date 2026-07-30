@@ -1,6 +1,8 @@
 ---
 name: rhel-file-storage
 description: Use when configuring file sharing and advanced storage on RHEL 9 (and AlmaLinux/Rocky 9) — NFS server/client with nfs-utils, Samba/CIFS shares with SELinux contexts, Stratis storage management, XFS administration, VDO deduplication, disk quotas, POSIX ACLs, snapshots, and storage monitoring. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # Red Hat Enterprise Linux 9 — File Sharing & Advanced Storage

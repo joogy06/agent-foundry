@@ -37,3 +37,8 @@ Full focal-word table, structural-tell fixes, before/after examples, and the voi
 | Over-humanization (forcing quirks, slang, choppiness) | The "de-AI'd" tell; misrepresents the author; penalizes non-native voices |
 | Treating the tells list as a blocklist | Each word alone is ~chance; the list is a sweep, not a ban |
 | Humanizing to disguise authorship | Integrity failure (HARD RULE 1) — refuse |
+
+## See also
+
+- `business-writing` — structure, order and the ask for workplace writing. This skill fixes HOW a
+  draft reads; that one decides what it says and in what order.

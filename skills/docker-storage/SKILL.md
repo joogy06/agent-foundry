@@ -1,6 +1,7 @@
 ---
 name: docker-storage
 description: Use when managing Docker storage — volumes (named, anonymous), bind mounts, tmpfs mounts, volume drivers, backup and restore strategies, storage drivers (overlay2), disk usage management, data-only containers, volume plugins, and storage performance tuning. Part of the docker-* skill family. OS-agnostic.
+family: docker
 ---
 
 # Docker Storage

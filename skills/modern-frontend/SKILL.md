@@ -1,6 +1,7 @@
 ---
 name: modern-frontend
 description: Use when building or debugging modern web front-ends — framework and rendering-mode selection (Vite SPA, Next.js SSR/SSG/ISR, hydration strategies), React/TypeScript component architecture, enterprise SPA patterns (Angular, NgRx, OIDC/PKCE, Nx monorepos), state and server-cache management, responsive layouts, Core Web Vitals as build-time budgets, source-map and browser-devtools debugging, bundle analysis and code splitting, testing (Playwright, MSW, axe/WCAG), and deployment-mode selection (static-first default, SSR only with platform validation). Trigger on - Vite, Next.js, SSR, SSG, hydration, React app, frontend build, web app performance budget, bundle size, frontend debugging, headless frontend. Headless WordPress/WooCommerce data boundaries live in wordpress-developer / woocommerce-developer; CWV measurement lives in performance; trading dashboards live in trading-dashboard-ux; UI/UX design decisions live in audience-experience-design.
+disambiguation: The SELECTOR and cross-cutting layer — which framework, which rendering mode, Core Web Vitals budgets, debugging, bundle analysis, and the boundary where a front-end server surface should become a Node service. Depth on React itself is react-developer; depth on the Next.js framework is nextjs-developer; Angular and enterprise SPA patterns stay here.
 ---
 
 # Modern Web Front-End Development
@@ -41,6 +42,16 @@ Always use semantic HTML elements before adding ARIA attributes — div with rol
 </HARD-RULE>
 
 ---
+
+> **Depth lives in the dedicated skills.** This file decides *which* framework and *which* rendering
+> mode, and owns the cross-cutting concerns. For React itself — Server vs Client Components, Actions,
+> the React Compiler, hooks and render behaviour — use **`react-developer`**. For the Next.js
+> framework — App Router, Cache Components and the `use cache` model, Route Handlers, Turbopack,
+> deployment targets — use **`nextjs-developer`**. Angular and enterprise SPA patterns stay here.
+>
+> **Two currency notes that invalidate older advice:** the React Compiler is stable and makes manual
+> memoisation mostly unnecessary, and Next.js 16 **inverted caching to opt-in** (`'use cache'`).
+> Check the version before applying any remembered guidance on either.
 
 ## Framework & Rendering-Mode Selection
 
@@ -279,6 +290,7 @@ decide the mode from content behavior first, static-first by default.
 | Core Web Vitals measurement / profiling | `performance` |
 | Trading-application UI surfaces | `trading-dashboard-ux` |
 | Experience / UX design (pre-build brief) | `audience-experience-design` |
+| An LLM feature in the app (retrieval, agents, API cost) | `rag-architecture`, `agentic-architecture`, `llm-api-optimization` |
 | Java backend (Spring Boot, REST APIs) | `java-backend`, `java-spring-boot` |
 | SaaS architecture / implementation | `saas-architecture`, `saas-developer` |
 | Docker containers and CI/CD | `docker-admin`, `docker-cicd` |

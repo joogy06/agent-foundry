@@ -1,6 +1,7 @@
 ---
 name: seo-serp-optimizer
 description: Use when optimizing content for featured snippets, People Also Ask, AI Overview citations, rich results, or any SERP feature. Covers snippet formats, PAA optimization, AI citation strategy, and the current rich results inventory.
+family: seo
 ---
 
 # SEO SERP Optimizer

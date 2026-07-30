@@ -1,6 +1,7 @@
 ---
 name: cognos-user
 description: Use when consuming, creating, or customizing reports and dashboards in IBM Cognos Analytics as an end user — navigating the Cognos portal, running and scheduling reports, creating dashboards (drag-and-drop), self-service report authoring (Cognos Analytics Reporting), data exploration, prompted reports (value/date/search prompts), exporting (PDF/Excel/CSV), personal folders, subscriptions and bursts, data modules (self-service data prep), and collaboration features. Complements cognos-admin with user-role focus. Part of the cognos-* skill family.
+disambiguation: Uses the Cognos FRONT END — running, authoring and customising reports and dashboards. Server install, security and administration is cognos-admin.
 ---
 
 # IBM Cognos Analytics — End User & Report Consumer

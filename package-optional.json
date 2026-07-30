@@ -1,0 +1,20 @@
+{
+  "schema_version": "optional-npm.v1",
+  "note": "S075 (#240). The npm half of optional-dependency readiness; requirements-optional.txt is the pip half. Everything here is OPTIONAL — the harness runs without node entirely. install_root is ~/.claude and NOT skills/_meta, deliberately: publish-config.json has no file-exclusion mechanism, so anything under skills/ is staged for the public repo, and node_modules must never be. Node resolves bare specifiers by walking node_modules upward, so skills/_meta/*.mjs finds a package installed at ~/.claude/.",
+  "install_root": "~/.claude",
+  "capabilities": [
+    {
+      "capability": "browser-measurement",
+      "unlocks": "Real-browser DOM geometry — the measured UX review lane and visual arbitration",
+      "skills": "_meta/geometry_measure.mjs, _meta/visual_arbiter_measure.mjs, visual-arbiter, ux-reviewer",
+      "without": "The UI verification lane cannot execute at all. This is not hypothetical: puppeteer-core was never installed on this host until S073, so the lane had NEVER run, and fixing its resolution repaired 7 pre-existing test failures that had been mistaken for test rot.",
+      "packages": [
+        { "name": "puppeteer-core", "spec": "^24.0.0" }
+      ]
+    }
+  ],
+  "not_listed": {
+    "puppeteer": "The full `puppeteer` package downloads its own Chromium (~150 MB). `puppeteer-core` drives a browser already on the machine, which is what we want — the host Chrome is the binding constraint anyway (#50).",
+    "playwright": "Considered and not adopted: Playwright over the same Chrome is binding diversity, not renderer diversity (#50), so it buys less than it costs."
+  }
+}

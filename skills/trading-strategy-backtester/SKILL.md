@@ -1,6 +1,7 @@
 ---
 name: trading-strategy-backtester
 description: Use when backtesting trading strategies, implementing walk-forward validation, detecting overfitting, modelling transaction costs, or evaluating statistical significance of strategy results using vectorbt, backtrader, or Freqtrade
+family: trading
 ---
 
 # Trading Strategy Backtester

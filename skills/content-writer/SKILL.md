@@ -194,3 +194,8 @@ description: One-line description of voice and best use cases
 ## Example Passages
 [2-3 short examples showing the voice in action on tech topics]
 ```
+
+## See also
+
+- `business-writing` — internal and stakeholder writing (email, message, one-pager, proposal,
+  status update). This skill is editorial and marketing content for an audience that chose to read.

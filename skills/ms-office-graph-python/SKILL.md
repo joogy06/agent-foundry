@@ -1,6 +1,8 @@
 ---
 name: ms-office-graph-python
 description: Use when calling Microsoft Graph from Python for mail (Outlook), calendar, contacts, Teams chat / channels / meetings, SharePoint sites / lists / documents, OneDrive files, or Microsoft 365 user / group administration. Libraries — msgraph-sdk (primary, Microsoft-blessed, Kiota-generated), O365 (community wrapper, friendlier API), exchangelib (on-prem Exchange Server only — EWS retires for Exchange Online per Microsoft's announced schedule, disabled-by-default 2026-10-01 with permanent shutdown 2027-04-01; verify before relying), extract-msg / libpff-python (offline .msg / .pst parsing), botbuilder-* (full Teams bots), adaptive-cards-py (Adaptive Cards 1.5+). Covers delegated vs application permissions, RSC, throttling, paging, change-tracking, webhook validation. Part of the ms-office-python-* skill family.
+family: ms-office
+disambiguation: Microsoft Graph from Python — mail, calendar, Teams, SharePoint, OneDrive. Local file formats and the family overview are ms-office-python.
 ---
 
 # Microsoft Graph — Python

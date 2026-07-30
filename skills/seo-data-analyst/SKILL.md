@@ -1,6 +1,7 @@
 ---
 name: seo-data-analyst
 description: Use when querying Google Search Console, Google Analytics 4, or Microsoft Clarity data for SEO analysis. Covers API endpoints, authentication, rate limits, and agent workflow recipes for content decay detection, cannibalization analysis, funnel optimization, and behavioral insights.
+family: seo
 ---
 
 # SEO Data Analyst

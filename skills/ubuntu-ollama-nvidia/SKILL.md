@@ -1,6 +1,8 @@
 ---
 name: ubuntu-ollama-nvidia
 description: Use when setting up NVIDIA GPUs, CUDA, container toolkit, or Ollama on Ubuntu 24.04 LTS — driver installation (proprietary vs open kernel module), CUDA toolkit, cuDNN, NVIDIA Container Toolkit for Docker, Ollama installation and model management, GPU monitoring (nvidia-smi), vGPU basics, multi-GPU configuration, and troubleshooting. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu 24.04 LTS -- NVIDIA GPU & Ollama Administration

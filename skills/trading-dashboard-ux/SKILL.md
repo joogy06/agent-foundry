@@ -1,6 +1,7 @@
 ---
 name: trading-dashboard-ux
 description: Use when designing or building the user-facing surfaces of a trading application — order-entry tickets, live blotters, and operator/monitoring consoles — where UX defects convert directly to monetary loss. Covers order-ticket safety (side/size/symbol/notional review, exact-order-digest confirmation, fat-finger guards, keyboard and focus safety), order-lifecycle presentation without optimistic success, market-data freshness encoding (quote age, feed degradation, session/halt/connection state), blotter and partial-fill presentation, alert prioritization, and render contracts that keep emergency cancel/reduce/flatten controls responsive under tick storms (off-main-thread ingestion). Trigger on - trading dashboard, order ticket UI, order entry form, live blotter, trading terminal UX, stale quote display, emergency flatten button. Analytical charts and KPI tiles live in the dataviz skill; generic SPA mechanics live in modern-frontend; signal design lives in observability.
+family: trading
 ---
 
 # Trading Dashboard UX

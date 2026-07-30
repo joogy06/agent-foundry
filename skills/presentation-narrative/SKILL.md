@@ -4,6 +4,7 @@ description: >
   Use when presentation-builder delegates narrative construction — selecting audience-adapted
   narrative flows from 23 framework templates based on audience type, purpose, and constraints.
   Part of the presentation-* skill family.
+family: presentation
 ---
 
 # Presentation Narrative
@@ -207,3 +208,9 @@ Follow this sequence every time:
 | Front-loading all the detail before the recommendation | Audiences lose attention; the key ask comes when energy is lowest; decisions get deferred | Lead with the recommendation/ask; support with evidence; detail in appendix for those who want depth |
 | Not including a clear call-to-action | Audience agrees with the content but has no next step; presentation achieves nothing | Every presentation needs an explicit ask: approve, fund, decide, review by date, or acknowledge |
 | Ignoring time constraints in narrative design | A 30-minute narrative for a 10-minute slot means rushing or cutting the conclusion (the most important part) | Design narrative to fit allocated time minus 20% (for questions); practice against clock |
+
+## See also
+
+- `business-writing` — the words themselves, and the same lead-with-the-outcome rule applied to
+  slide headlines (state the *finding*, not the topic), plus every non-deck surface the same
+  message has to survive: the covering email, the one-pager, the follow-up message.

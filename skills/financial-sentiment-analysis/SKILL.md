@@ -1,6 +1,7 @@
 ---
 name: financial-sentiment-analysis
 description: Use when analysing financial text sentiment using FinBERT or LLMs, building sentiment scoring pipelines for news/earnings/social media, extracting financial entities, or normalising sentiment signals for trading use
+disambiguation: Scores sentiment in financial TEXT — news, earnings calls, filings — with FinBERT or LLMs. Tradeable signals from social platforms, including manipulation detection, are social-trading-signals.
 ---
 
 # Financial Sentiment Analysis

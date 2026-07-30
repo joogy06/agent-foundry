@@ -4252,13 +4252,58 @@ def check_G_SECURITY(project_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def check_G_UX_EVIDENCE(plan_path: Path, evidence_path: Path) -> None:
+    """Validate a ux-evidence.v1 artifact against its ux-review-plan.v1. Exit 0/2/3.
+
+    S073. Delegates the computation to ux_evidence.validate() so the gate and any direct
+    caller cannot disagree about what PASS means.
+
+    Scope, stated plainly: this gate validates an artifact that ALREADY EXISTS. It cannot
+    cause a review to happen. It binds wherever something consumes an exit code — bob's WP
+    boundary, an executable wrapper, or CI. A bare standalone skill invocation has no
+    enforcement edge on this host (settings.json carries SessionStart hooks only, with no
+    Stop or PostToolUse interceptor), and evidence from such a run records
+    `enforcement: convention` rather than implying it was gated.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import ux_evidence
+    except ImportError as exc:  # pragma: no cover - packaging error
+        env_error(f"G_UX_EVIDENCE: ux_evidence module unavailable: {exc}")
+
+    try:
+        plan = ux_evidence.load_plan(plan_path)
+    except Exception as exc:
+        env_error(f"G_UX_EVIDENCE: plan unreadable ({plan_path}): {exc}")
+    try:
+        evidence = ux_evidence._load_structured(evidence_path)
+    except Exception as exc:
+        env_error(f"G_UX_EVIDENCE: evidence unreadable ({evidence_path}): {exc}")
+
+    verdict = ux_evidence.validate(evidence, plan)
+    summary = (
+        f"outcome={verdict['outcome']} "
+        f"cells={verdict['observed_cells']}/{verdict['expected_cells']} "
+        f"findings={verdict['finding_count']} "
+        f"(at/above {verdict['severity_floor']}: {verdict['findings_at_floor']}) "
+        f"enforcement={verdict['enforcement']}"
+    )
+
+    if verdict["outcome"] != "PASS":
+        reasons = "; ".join(verdict["outcome_reasons"][:4])
+        fail("G_UX_EVIDENCE", f"{summary} :: {reasons}")
+
+    ok("G_UX_EVIDENCE", summary)
+
+
 def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
     if len(argv) < 2:
         env_error(
             "usage: gates.py "
             "G1|G2|G3|G4|G_V|G_XR|G_SCOPE|G_CONTRACT_SCOPE|G_DEP_CURRENCY|"
             "G_INTENT_MAP_FRESH|G_SECRETS_SCAN|G_SECURE|G_SECURITY|G_CLASSIFY|"
-            "G_IDENTITY|G_DUAL_VERDICT|G_CLAIM_FRESHNESS ...\n"
+            "G_IDENTITY|G_DUAL_VERDICT|G_CLAIM_FRESHNESS|G_UX_EVIDENCE ...\n"
+            "  G_UX_EVIDENCE --plan <ux-review-plan> --evidence <ux-evidence>\n"
             "  G_CLAIM_FRESHNESS [<skills_root>] "
             "[--claim-mode advisory|strict] [--skills a,b,c] [--stale-months N]\n"
             "  G_SECURITY <project_root>  "
@@ -4285,6 +4330,20 @@ def _parse_args(argv: List[str]) -> Tuple[str, List[str], Dict[str, str]]:
             flags["project_root"] = argv[i + 1]
             i += 2
             continue
+        if a == "--plan":
+            if i + 1 >= len(argv):
+                env_error("--plan requires a value")
+            flags["ux_plan"] = argv[i + 1]
+            i += 2
+            continue
+
+        if a == "--evidence":
+            if i + 1 >= len(argv):
+                env_error("--evidence requires a value")
+            flags["ux_evidence"] = argv[i + 1]
+            i += 2
+            continue
+
         if a == "--claim-mode":
             if i + 1 >= len(argv):
                 env_error("--claim-mode requires a value (advisory|strict)")
@@ -4589,6 +4648,22 @@ def _dispatch_gate(gate: str, positional: List[str], flags: Dict[str, Any]) -> N
             project_root, mode=mode, changed_manifests=changed,
             allow_deferred=allow_deferred,
         )
+    elif gate == "G_UX_EVIDENCE":
+        # CLI: gates.py G_UX_EVIDENCE --plan <plan> --evidence <evidence>
+        # Exit codes:
+        #   0 = evidence PASSes against its plan
+        #   2 = FAIL / INCONCLUSIVE / UNMEASURED, or the artifact is structurally invalid
+        #   3 = plan or evidence unreadable
+        # S073. The gate VALIDATES an existing artifact; it does not and cannot trigger a
+        # review. It binds where something already consumes an exit code — bob's WP
+        # boundary, a wrapper, CI. A bare standalone skill invocation has no enforcement
+        # edge (settings.json carries only SessionStart hooks), and the evidence records
+        # `enforcement: convention` for that case rather than implying otherwise.
+        plan_path = flags.get("ux_plan")
+        evidence_path = flags.get("ux_evidence")
+        if not plan_path or not evidence_path:
+            env_error("G_UX_EVIDENCE requires --plan <path> and --evidence <path>")
+        check_G_UX_EVIDENCE(Path(plan_path).resolve(), Path(evidence_path).resolve())
     elif gate == "G_SECRETS_SCAN":
         # CLI: gates.py G_SECRETS_SCAN <project_root>
         #                                 [--mode advisory|strict]

@@ -1,6 +1,8 @@
 ---
 name: ms-office-word-python
 description: Use when reading, writing, transforming, or converting Word documents from Python — .docx (python-docx, docx2txt, mammoth, pypandoc), .docm (macro-enabled — handled with explicit user intent), .doc legacy (LibreOffice headless or antiword), or generating PDF (docx2pdf on Windows/macOS, LibreOffice headless on Linux, pypandoc + xelatex/wkhtmltopdf). Covers OOXML XXE defence, full-fidelity caveats (python-docx is NOT a 100% renderer), and macro handling. Part of the ms-office-python-* skill family.
+family: ms-office
+disambiguation: Word documents from Python. Decks are ms-office-powerpoint-python; spreadsheets are ms-office-excel-python.
 ---
 
 # Microsoft Word — Python
@@ -196,3 +198,4 @@ See `ms-office-security-python` for the consolidated checklist. Area-specific it
 | Sending Word docs through Outlook / SharePoint via Graph | `ms-office-graph-python` |
 | Hardening / validator / checklist | `ms-office-security-python` |
 | Live Word automation on Windows | `windows-powershell` + `windows-ps-server-admin` (PowerShell-driven Word) for PS-native paths |
+| Working with the PDF **after** it exists (extract, redact, merge, forms, OCR) | `pdf-processing` |

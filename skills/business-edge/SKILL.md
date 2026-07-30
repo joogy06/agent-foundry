@@ -68,6 +68,27 @@ engagement of wrong-denominated advice.**
 Record every figure as measured / operator-stated / estimated. **State assumptions inline and flag
 the most load-bearing one.**
 
+**Flagging an assumption does not license concluding from it (S074).** Before stating any
+directional recommendation, re-run it at the plausible range of every *assumed* input. **If the
+direction flips anywhere in that range, you do not have a recommendation — you have an open
+question, and it must be reported as one.**
+
+This is not hypothetical. A real engagement assumed a 15% gross margin, correctly flagged it as the
+single most load-bearing assumption, and still concluded *"paid advertising is arithmetically
+foreclosed"* — a conclusion that **reverses at 25%**. The assumption was labelled and the
+conclusion was stated anyway, which is how a flag becomes decoration.
+
+    UNGROUNDED — direction depends on an assumed input
+      claim:      paid acquisition is foreclosed
+      hinges on:  gross margin (ASSUMED 15%, never measured)
+      flips at:   ~20%
+      to resolve: one COGS figure from the operator
+
+Report it in that shape. `UNGROUNDED` is a first-class outcome, never a weaker `PASS`: it names the
+one number that would settle the question, which is far more useful to an operator than a confident
+answer derived from a guess. Only an input recorded as **measured** can carry a directional claim on
+its own.
+
 ### 2.2 Also capture
 Goal and time horizon · constraints (budget, operator hours/week, technical capability) · what has
 already been tried · the competitor set · what the operator believes is true (to be tested, not

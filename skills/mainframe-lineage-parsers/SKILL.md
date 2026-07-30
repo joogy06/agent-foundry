@@ -1,6 +1,7 @@
 ---
 name: mainframe-lineage-parsers
 description: "Use when you want a STANDALONE, DETERMINISTIC (no-LLM) data-lineage extractor for legacy mainframe code — fixed-format COBOL + JCL + embedded EXEC SQL (DB2), plus deterministic Control-M Automation-API jobs-as-code (scheduler->program->data, job->job event DAG) -> OpenLineage 2.0.2 ndjson. The deterministic plug-in track under lineage-extract-static (a complement to the LLM-as-parser family — run both and compare yourself; no diff harness in scope). Pure stdlib + OPTIONAL sqlglot (regex fallback, NO silent LLM fallback) + OPTIONAL networkx. Non-interactive CLI (run_lineage.py): flags only, zero prompts, scriptable in CI/cron. Static analysis only (v1). The mainframe sibling of lineage-extract-static (flow), structure-recovery (shape), legacy-code-intel (symbols). Also trigger on \"deterministic mainframe lineage\", \"COBOL/JCL/DB2 lineage\", \"EXEC SQL lineage\", \"OpenLineage from mainframe\", \"DD-join lineage\", \"host-var to column lineage\", \"Control-M lineage\", \"scheduler lineage\"."
+disambiguation: Deterministic, no-LLM parsers for fixed-format COBOL, JCL and embedded EXEC SQL. The LLM-driven multi-stack framework is lineage-extract-static.
 ---
 
 # mainframe-lineage-parsers — deterministic COBOL/JCL/DB2 lineage extractor

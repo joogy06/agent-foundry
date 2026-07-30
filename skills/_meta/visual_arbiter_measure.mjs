@@ -64,6 +64,12 @@ import { readFileSync } from "node:fs";
 
 async function loadPuppeteer() {
   const candidates = [
+    // The declared runtime lives at ~/.claude/node_modules (NOT under skills/, because
+    // publish-config has no file-exclusion mechanism and anything under skills/ is staged
+    // for the public repo). Node's bare-specifier walk only finds it from inside
+    // ~/.claude, so the repo copy of this file cannot resolve it without an explicit
+    // path — which is why this candidate is listed first.
+    `${process.env.HOME || ""}/.claude/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js`,
     "/usr/local/lib/node_modules/chrome-devtools-mcp/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js",
     "/usr/local/lib/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js",
   ];
@@ -320,8 +326,11 @@ async function main() {
       executablePath: chromePath,
       headless: "shell",
       args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
+        // S073: --no-sandbox was unconditional. Against an untrusted page under review
+        // that is a real weakening, and it is not needed here — verified that Chrome
+        // launches fine WITHOUT it as a non-root user. Now opt-in via
+        // `allow_no_sandbox`, for hosts (root/container) that genuinely require it.
+        ...(input.allow_no_sandbox ? ["--no-sandbox", "--disable-setuid-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--disable-gpu",
       ],
@@ -343,8 +352,61 @@ async function main() {
     try { await browser.close(); } catch (_) { /* ignore */ }
   }
 
-  process.stdout.write(JSON.stringify({ measurements, errors }) + "\n");
-  process.exit(0);
+  // S074 (#218): state the completeness of THIS run in the payload, where a consumer can
+  // map it deliberately. The exit code deliberately stays 0 — see the note below. A
+  // breakpoint counts as measured only if it produced no error; `error: null` with an
+  // empty element list is still a measurement, an errored breakpoint is not.
+  const expected = Object.keys(input.breakpoints || {}).length;
+  const measured = Object.values(measurements).filter((r) => !r.error).length;
+  const outcome = measured === 0 && expected > 0
+    ? "INCONCLUSIVE"
+    : measured < expected
+      ? "PARTIAL"
+      : "MEASURED";
+
+  process.stdout.write(JSON.stringify({
+    measurements,
+    errors,
+    outcome,
+    breakpoints_expected: expected,
+    breakpoints_measured: measured,
+  }) + "\n");
+  // NOTE (S073): exit 0 here even when `errors` is non-empty, so a PARTIAL run is
+  // exit-code-indistinguishable from a complete one. That is a real hole — a consumer
+  // checking only the return code reads a half-finished measurement as success.
+  //
+  // It was briefly changed to `exit(errors.length ? 2 : 0)` and REVERTED deliberately.
+  // Exit code is the wrong lever: visual_arbiter_spawn.py maps any non-zero to
+  // AUDIT_UNAVAILABLE, which would flatten "chrome crashed" and "3 of 4 breakpoints
+  // measured" into one outcome and lose the distinction that matters.
+  //
+  // The fix belongs at the CONSUMER. Corrected S074 after re-reading it: an earlier
+  // version of this note said the consumer "ignores `errors` entirely" — it does not.
+  // visual_arbiter_spawn.py:800-812 DOES read `errors[]` and emits an
+  // `external_tool_fail` observation at severity=degraded — then deliberately
+  // continues ("Non-fatal — we still build a verdict against whatever was measured")
+  // and exits 0. So the degradation is recorded in TELEMETRY and never reaches the
+  // VERDICT: a verdict built from 1 of 4 breakpoints is byte-indistinguishable, to
+  // bob and to G_V, from one built on all 4. The information already exists and is
+  // discarded at the boundary where it matters.
+  //
+  // So: emit an explicit outcome (MEASURED / PARTIAL / INCONCLUSIVE) in the payload
+  // and have the consumer carry it INTO the verdict. geometry_measure.mjs already
+  // emits exactly this shape. Tracked as a task — do NOT re-add the exit-code change
+  // on its own.
+  //
+  // Cost note for whoever picks this up: visual_arbiter_spawn.py is hash-pinned by
+  // identity_check.py across three trees, and visual-arbiter/SKILL.md declares it
+  // part of the rubric source of truth ("both hashed") with a semver bump required
+  // when a change affects verdict semantics. Adding a field to the verdict IS such a
+  // change. This is not a local edit.
+  //
+  // Separately (S073): use process.exitCode rather than process.exit(). process.exit()
+  // does NOT wait for a pipe to flush, so a payload larger than the 64KB pipe buffer is
+  // silently TRUNCATED mid-JSON. Found in the sibling geometry transport, which cut off
+  // at exactly 65536 bytes on a page with many elements — every real page is larger than
+  // a test fixture. This preserves the exit code exactly; it only stops the data loss.
+  process.exitCode = 0;
 }
 
 main().catch((e) => {

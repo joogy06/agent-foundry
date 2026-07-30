@@ -1,6 +1,8 @@
 ---
 name: career-positioning
 description: "Use when the user needs positioning strategy — what to emphasize on a resume/CV, LinkedIn profile and content strategy, personal brand narrative, recruiter relationships, internal visibility, conference speaking, or network mapping. Strategy and emphasis only - to WRITE or tailor the CV/cover-letter document itself use career-application-writer; to build online presence beyond LinkedIn (website, GitHub, social, newsletters, AI findability) use career-online-presence. Trigger on - position myself, CV strategy, what should my resume emphasize, LinkedIn profile, personal brand, recruiter, visibility, thought leadership. Part of the career-* skill family."
+family: career
+disambiguation: What to emphasise and how to frame it across CV, LinkedIn and personal narrative. The public artefacts and their findability are career-online-presence; the progression conversation is career-coach.
 ---
 
 # Career Positioning
@@ -18,6 +20,8 @@ Siblings: `career-coach` (parent), `career-application-writer` (writes the CV/le
 | Career strategy, promotion planning, performance reviews | `career-coach` |
 | Salary/compensation negotiation | `career-coach` / `career-transition` |
 | Interview preparation, behavioural questions | `career-storytelling` |
+| Internal standing — goals, reviews, brag doc, internal skills profile, internal writing | `career-internal-visibility` |
+| **How LinkedIn actually surfaces you** — search/skills graph, connections, content distribution, certifications | `career-coach/references/linkedin-mechanics.md` |
 | Leadership development, managing up | `career-leadership` |
 | Technical competency gap analysis | `career-assessment` or domain-specific skill |
 | Building online presence beyond LinkedIn (website, GitHub, social, AI findability) | `career-online-presence` |

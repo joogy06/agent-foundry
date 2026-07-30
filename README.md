@@ -2,16 +2,16 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.5.0 · **Last published:** 2026-07-26 · **197 skills · 6 agents · 9 workflows · 2 commands**
+> **Version:** 1.6.0 · **Last published:** 2026-07-26 (v1.5.0) · **225 skills · 6 agents · 8 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
 
 ## What's Inside
 
-- **197 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **web-experience pair** (`modern-frontend` — the promoted canonical frontend skill: Vite/Next rendering-mode selection, RSC-first App Router, CWV build budgets, debugging, with `java-frontend` living on as an enterprise-scoped compatibility stub; and `audience-experience-design` — the generative sibling of ux-reviewer that turns audience, intent, and emotional/trust response into buildable design decisions for web, apps, and reports), the **trading-engineering pair** (`trading-automation-runtime`, `trading-dashboard-ux` — the unattended-bot process lifecycle with halts that persist across restarts, gateway-fenced single-instance enforcement, and a crash-consistent drain; plus the trading-surface UX where a mis-shown side or a stale quote is a monetary loss), the **equity day-trading family** (`equity-broker-execution`, `equity-scanning-and-watchlists`, `equity-trading-compliance`, `trade-journaling-and-review` — real-broker order execution with a fail-closed exposure-intent gate, universe screening, PDT/wash-sale/§475(f) compliance with a canonical pre-trade guard, and a live-fill journal), the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
+- **225 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **web-experience pair** (`modern-frontend` — the promoted canonical frontend skill: Vite/Next rendering-mode selection, RSC-first App Router, CWV build budgets, debugging, with `java-frontend` living on as an enterprise-scoped compatibility stub; and `audience-experience-design` — the generative sibling of ux-reviewer that turns audience, intent, and emotional/trust response into buildable design decisions for web, apps, and reports), the **trading-engineering pair** (`trading-automation-runtime`, `trading-dashboard-ux` — the unattended-bot process lifecycle with halts that persist across restarts, gateway-fenced single-instance enforcement, and a crash-consistent drain; plus the trading-surface UX where a mis-shown side or a stale quote is a monetary loss), the **equity day-trading family** (`equity-broker-execution`, `equity-scanning-and-watchlists`, `equity-trading-compliance`, `trade-journaling-and-review` — real-broker order execution with a fail-closed exposure-intent gate, universe screening, PDT/wash-sale/§475(f) compliance with a canonical pre-trade guard, and a live-fill journal), the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
 - **6 agents** — specialized sub-agents for execution, review/evolution, evergreening, task routing, and knowledge management
-- **9 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
+- **8 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
 Skills are auto-discovered by Claude Code from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
@@ -32,6 +32,16 @@ python3 bootstrap-environment.py
 
 The bootstrap orchestrator runs `install.py` plus a series of idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
 
+**Look before you install.** `install.py --preview` prints exactly what will be placed, where, for every tool it supports — and `--os` lets you inspect a machine you are not sitting at:
+
+```bash
+python3 install.py --preview                            # this machine
+python3 install.py --preview --os windows               # what your Windows laptop will do
+python3 install.py --preview --os macos --tool vscode   # one cell
+```
+
+Simulated output is labelled as such: paths are computed, nothing is probed, and no tool detection runs.
+
 | Step | What happens |
 |---|---|
 | 1 | `install.py` places skills / agents / commands under `~/.claude/` |
@@ -44,7 +54,7 @@ The bootstrap orchestrator runs `install.py` plus a series of idempotent post-in
 | 6c | Restores `~/.claude/publish-config.json` from the repo root if present (your private publish scrub list) — else points you at `init-config` |
 | 7 | Symlinks `~/.claude/bin/claude-observe` for the process-observation skill |
 | 8 | Mirrors skills into `~/.codex/skills/*` (only if `codex` CLI is on PATH) |
-| 9 | Pins Gemini model in `~/.gemini/settings.json` (legacy — only if file exists) |
+| 9 | Pins Gemini model in `~/.gemini/settings.json` (only if the file exists) |
 | 10 | Prints next-step guidance |
 
 After bootstrap, two more steps inside Claude Code finish the setup:
@@ -63,6 +73,35 @@ python3 scripts/install-pre-push-hook.py --target-repo /path/to/repo
 ```
 
 The pre-push hook runs a secrets scanner (live API keys, PEM private keys, AWS credentials, JWTs, inline tokens, etc.) before every `git push`. Critical/high findings block the push; medium/low advisory hits print but don't block. Override per-push with `git push --no-verify`.
+
+### Optional libraries — nothing here is required
+
+Everything ships **stdlib-only**: all 225 skills, the gates, the hooks and the installer work with no third-party Python and no Node. A handful of capabilities need a library, so the installer *reports* what is missing and what that actually costs you, and installs only when asked.
+
+```bash
+python3 install.py --extras-report                    # what's missing, and what stops working
+python3 install.py --with-extras=documents,spreadsheets
+python3 install.py --with-extras                      # everything
+python3 skills/_meta/optional_deps.py doctor          # which package managers work here
+```
+
+| Capability | Unlocks | Without it |
+|---|---|---|
+| `documents` | PDF statements, invoices, receipts | CSV import still works, and is the better source anyway |
+| `spreadsheets` | `.xlsx` read/write | the spreadsheet route is unavailable |
+| `office-docs` | `.docx` / `.pptx` | Markdown and HTML output unaffected |
+| `reporting` | HTML report rendering | lineage/code-intel reports emit Markdown only |
+| `lineage-sql` | SQL-dialect parsing | nothing breaks — stdlib-first by design |
+| `hardening` | XXE-refusing XML parsing | needed by skills that parse **untrusted** XML |
+| `llm-clients` | direct Anthropic / Google API calls | CLI-routed work is unaffected |
+| `browser-measurement` (npm) | real-browser DOM geometry | the UI-verification lane cannot run |
+
+A failed optional install is a **reported outcome, not an installer failure** — on a locked-down machine where `pip install` is refused, you still get a working harness.
+
+Two traps it handles for you, because both produce a *silent* wrong result:
+
+- **A bare `pip` / `pip3` may belong to a different Python than the one that will import the package.** Installs always go through `<the running interpreter> -m pip`, and `doctor` names any mismatched shim.
+- **PEP 668 externally-managed environments** (Debian, Ubuntu, Fedora) refuse `pip install` — *and refuse `--user` too*, which is the part that surprises people. The emitted command carries the flags that actually work there.
 
 ### Bootstrap flags
 
@@ -402,6 +441,14 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.6.0 — 2026-07-29
+- **Skills 197 → 225.** Largest additions: the **UK small-company accounting family** (`accounting-uk-ltd`, `bookkeeping-double-entry`, `financial-document-ingestion`, `uk-vat`, `uk-corporation-tax`, `uk-statutory-accounts`, `uk-payroll` — every rate in ONE reference with a review date and a primary-source URL per figure, because process is durable and figures rot); the **LLM-application quartet** (`rag-architecture`, `llm-api-optimization`, `agentic-architecture`, `mcp-integration`); the **career family** (`career-coach`, `career-advocacy`, `career-internal-visibility` and siblings); plus `pdf-processing`, `macos-cheatsheet`, `business-writing`, `react-developer`, `nextjs-developer`, `skill-intake`, `project-profile`, `session-continuity`.
+- **Optional dependencies, declared and reported** — `requirements-optional.txt` + `package-optional.json` group libraries **by capability**, so the answer to "what am I missing?" says what *stops working*, not just which module is absent. `install.py --extras-report` / `--with-extras`. Covers pip **and** npm; nothing is required, nothing installs silently, and a failed optional install never fails the install.
+- **`install.py --preview`** — the OS × tool install matrix, declared rather than scattered across inline platform checks, and inspectable for a machine you are not on (`--os windows` from Linux). Per-OS traps are stated: PowerShell hook shell and absent `python3` on Windows, BSD coreutils and `code`-not-on-PATH on macOS.
+- **Windows session-start hooks actually work.** The six canonical hooks were `python3 ~/…` / `bash ~/…`; on Windows all three assumptions fail and hooks fail *silently*, so the layer was inert while looking configured. Windows installs now get absolute, quoted paths with a detected interpreter, and the one bash hook has a Python twin. POSIX command strings are byte-identical to before, so existing installs see no churn.
+- **Six protocols became commands:** `frontmatter_lint.py` (wired into the pre-commit hook), `wiki_lint.py`, `reconcile.py`, `career_plan.py`, `settlement_reconcile.py`, and `doc_store.py` (the document store: content-addressed, refuses to overwrite, and derives open items rather than trusting a flag).
+- **Scanner parity fix:** the pre-push secrets scanner had been allowlisting real credentials by *path*. Fixed, with the property pinned by tests.
 
 ### 1.5.0 — 2026-07-26
 - **`business-edge` (new):** an entity/market intelligence harness built on a role-is-data invariant — 7 specialist roles as ~25-line YAML data cards rather than 7 skills, one owner per fact, one brief per engagement. Ships `probe_ledger.py`, which enforces that only a `SEARCHED_NOT_FOUND` probe can support a claim of absence (a failed search yields `UNKNOWN`, never "absent"), and `claims_lint.py`, which finds one fact owned by several skills with *disagreeing* verdicts.

@@ -1,6 +1,8 @@
 ---
 name: ubuntu-monitoring
 description: Use when setting up monitoring and logging on Ubuntu 24.04 LTS — Prometheus and node_exporter, Grafana dashboards, Loki/Alloy log aggregation (Promtail legacy), ELK stack (Elasticsearch, Logstash, Kibana), alerting with Alertmanager, systemd journal management, rsyslog, and health check patterns. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — Monitoring and Logging

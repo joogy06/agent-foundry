@@ -4,6 +4,8 @@ description: >
   Use when a presentation needs architecture diagrams, flowcharts, sequence diagrams, or system
   visuals — tagged [DIAGRAM] slides from narrative, "add a visual of how X connects to Y", or
   any system overview visualization for slides. Part of the presentation-* skill family.
+family: presentation
+disambiguation: STRUCTURAL visuals — architecture diagrams, flowcharts, sequence diagrams. Quantitative charts from data are presentation-datavis.
 ---
 
 # Presentation Diagrams

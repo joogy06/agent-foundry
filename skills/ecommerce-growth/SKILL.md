@@ -1,6 +1,7 @@
 ---
 name: ecommerce-growth
 description: Use when building or auditing customer-facing pages (homepage, category, product, cart, checkout), planning cart recovery or email campaigns, implementing cross-sell/upsell, or optimizing site performance and navigation for a WooCommerce store.
+disambiguation: WHAT goes on each customer-facing page and the growth levers across the store — page checklists, cart recovery, cross-sell, campaigns. The filtering and faceted-navigation layer specifically is woocommerce-faceted-navigation; experiment design is ecommerce-cro-experimentation; persuasion mechanics are conversion-psychology.
 ---
 
 # E-Commerce Growth

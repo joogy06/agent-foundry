@@ -1,6 +1,7 @@
 ---
 name: windows-cmd
 description: Use when writing CMD batch scripts or using Windows Command Prompt — batch file syntax (.bat/.cmd), CRLF line-ending requirements, .gitattributes last-match-wins traps, parser-error diagnostics ("X was unexpected at this time"), paren escaping inside IF/FOR blocks, environment variables, FOR loops, IF conditionals, pipes and redirection, common system commands (net, netsh, wmic, sfc, dism, robocopy, icacls, diskpart, bcdedit), file operations, networking diagnostics, and system administration from the command line. Part of the windows-* skill family.
+family: windows
 ---
 
 # Windows CMD / Batch Scripting

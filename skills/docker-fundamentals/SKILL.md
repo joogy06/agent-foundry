@@ -1,6 +1,8 @@
 ---
 name: docker-fundamentals
 description: Use when working with Docker containers — core concepts, CLI commands, image management, container lifecycle, Dockerfile patterns, BuildKit features, multi-stage builds, layer caching optimization, health checks, restart policies, resource limits, npm/Node.js Docker patterns, Python Docker patterns, .dockerignore, debugging and troubleshooting containers. Parent skill for the docker-* skill family. OS-agnostic — for OS-specific setup see ubuntu-docker-host or rhel-docker-host.
+family: docker
+disambiguation: Core local usage — CLI, image and container lifecycle, Dockerfile patterns, BuildKit. Running builds inside CI pipelines is docker-cicd.
 ---
 
 # Docker Fundamentals

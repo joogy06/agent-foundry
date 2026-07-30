@@ -1,0 +1,322 @@
+{
+  "schema": "skill-overlap-baseline.v1",
+  "threshold": 0.3,
+  "_comment": "Accepted description-overlap pairs. Re-running skill_overlap.py flags only NEW pairs. Adding a pair here asserts the collision is understood and handled (via applies_when: or disambiguation:), not that it is harmless.",
+  "accepted_pairs": [
+    {
+      "a": "rhel-web-servers",
+      "b": "ubuntu-web-servers",
+      "score": 0.8785
+    },
+    {
+      "a": "rhel-ollama-nvidia",
+      "b": "ubuntu-ollama-nvidia",
+      "score": 0.8486
+    },
+    {
+      "a": "rhel-network-infra",
+      "b": "ubuntu-network-infra",
+      "score": 0.8363
+    },
+    {
+      "a": "rhel-monitoring",
+      "b": "ubuntu-monitoring",
+      "score": 0.8238
+    },
+    {
+      "a": "rhel-file-storage",
+      "b": "ubuntu-file-storage",
+      "score": 0.806
+    },
+    {
+      "a": "rhel-server-admin",
+      "b": "ubuntu-server-admin",
+      "score": 0.7497
+    },
+    {
+      "a": "rhel-databases",
+      "b": "ubuntu-databases",
+      "score": 0.7356
+    },
+    {
+      "a": "confluence-rest-api",
+      "b": "jira-rest-api",
+      "score": 0.6519
+    },
+    {
+      "a": "data-mart",
+      "b": "data-warehouse",
+      "score": 0.6501
+    },
+    {
+      "a": "confluence-content-creator",
+      "b": "confluence-documentation",
+      "score": 0.5915
+    },
+    {
+      "a": "ms-office-powerpoint-python",
+      "b": "ms-office-word-python",
+      "score": 0.5755
+    },
+    {
+      "a": "integration-flow-testing",
+      "b": "sample-data-scaffolding",
+      "score": 0.5027
+    },
+    {
+      "a": "qa-reviewer",
+      "b": "ux-reviewer",
+      "score": 0.5008
+    },
+    {
+      "a": "db2-rhel",
+      "b": "rhel-databases",
+      "score": 0.4891
+    },
+    {
+      "a": "rhel-docker-host",
+      "b": "ubuntu-docker-host",
+      "score": 0.4855
+    },
+    {
+      "a": "presentation-datavis",
+      "b": "presentation-diagrams",
+      "score": 0.4769
+    },
+    {
+      "a": "ever-test-gen",
+      "b": "integration-flow-testing",
+      "score": 0.4655
+    },
+    {
+      "a": "career-online-presence",
+      "b": "career-positioning",
+      "score": 0.4552
+    },
+    {
+      "a": "wiring-extract-static",
+      "b": "wiring-reconcile",
+      "score": 0.4548
+    },
+    {
+      "a": "ibm-mq",
+      "b": "ibm-websphere",
+      "score": 0.4361
+    },
+    {
+      "a": "db2-rhel",
+      "b": "ibm-mq",
+      "score": 0.4238
+    },
+    {
+      "a": "accounting-uk-ltd",
+      "b": "uk-statutory-accounts",
+      "score": 0.4164
+    },
+    {
+      "a": "antigravity-cli",
+      "b": "codex-orchestration",
+      "score": 0.4119
+    },
+    {
+      "a": "qa-reviewer",
+      "b": "team-manager",
+      "score": 0.4095
+    },
+    {
+      "a": "financial-sentiment-analysis",
+      "b": "social-trading-signals",
+      "score": 0.4079
+    },
+    {
+      "a": "challenger",
+      "b": "qa-reviewer",
+      "score": 0.405
+    },
+    {
+      "a": "cognos-admin",
+      "b": "cognos-user",
+      "score": 0.3964
+    },
+    {
+      "a": "gh-copilot-cli",
+      "b": "vscode-agents",
+      "score": 0.3793
+    },
+    {
+      "a": "verification-arbiter",
+      "b": "visual-arbiter",
+      "score": 0.378
+    },
+    {
+      "a": "docker-networking",
+      "b": "ubuntu-docker-host",
+      "score": 0.3775
+    },
+    {
+      "a": "integration-flow-testing",
+      "b": "intent-extract",
+      "score": 0.3755
+    },
+    {
+      "a": "gdelt-event-mining",
+      "b": "reddit-signal-mining",
+      "score": 0.3715
+    },
+    {
+      "a": "obsidian",
+      "b": "wiki",
+      "score": 0.3709
+    },
+    {
+      "a": "lineage-extract-static",
+      "b": "mainframe-lineage-parsers",
+      "score": 0.3582
+    },
+    {
+      "a": "skeleton-extractor",
+      "b": "visual-architect",
+      "score": 0.3542
+    },
+    {
+      "a": "team-manager",
+      "b": "ux-reviewer",
+      "score": 0.3533
+    },
+    {
+      "a": "hostinger-hosting",
+      "b": "wordpress-admin",
+      "score": 0.3511
+    },
+    {
+      "a": "career-planning",
+      "b": "career-storytelling",
+      "score": 0.3488
+    },
+    {
+      "a": "ever-test-gen",
+      "b": "sample-data-scaffolding",
+      "score": 0.3488
+    },
+    {
+      "a": "claude-code-cli",
+      "b": "gh-copilot-cli",
+      "score": 0.3456
+    },
+    {
+      "a": "db2-mainframe",
+      "b": "db2-rhel",
+      "score": 0.3452
+    },
+    {
+      "a": "bookkeeping-double-entry",
+      "b": "ledger-error-diagnosis",
+      "score": 0.3443
+    },
+    {
+      "a": "accounting-uk-ltd",
+      "b": "uk-payroll",
+      "score": 0.3433
+    },
+    {
+      "a": "rhel-docker-host",
+      "b": "rhel-ollama-nvidia",
+      "score": 0.3429
+    },
+    {
+      "a": "ms-office-excel-python",
+      "b": "ms-office-powerpoint-python",
+      "score": 0.3423
+    },
+    {
+      "a": "python-auth-security",
+      "b": "python-flask-developer",
+      "score": 0.3378
+    },
+    {
+      "a": "ms-office-graph-python",
+      "b": "ms-office-python",
+      "score": 0.3376
+    },
+    {
+      "a": "docker-cicd",
+      "b": "docker-fundamentals",
+      "score": 0.3292
+    },
+    {
+      "a": "design-drift-arbiter",
+      "b": "verification-arbiter",
+      "score": 0.329
+    },
+    {
+      "a": "intent-extract",
+      "b": "sample-data-scaffolding",
+      "score": 0.3273
+    },
+    {
+      "a": "design-drift-arbiter",
+      "b": "visual-arbiter",
+      "score": 0.3262
+    },
+    {
+      "a": "docker-networking",
+      "b": "rhel-docker-host",
+      "score": 0.3218
+    },
+    {
+      "a": "challenger",
+      "b": "ux-reviewer",
+      "score": 0.3145
+    },
+    {
+      "a": "uk-corporation-tax",
+      "b": "uk-statutory-accounts",
+      "score": 0.3144
+    },
+    {
+      "a": "windows-ad-admin",
+      "b": "windows-ps-server-admin",
+      "score": 0.3128
+    },
+    {
+      "a": "accounting-uk-ltd",
+      "b": "uk-corporation-tax",
+      "score": 0.3085
+    },
+    {
+      "a": "java-frontend",
+      "b": "modern-frontend",
+      "score": 0.3084
+    },
+    {
+      "a": "docker-cicd",
+      "b": "docker-security",
+      "score": 0.3077
+    },
+    {
+      "a": "ms-office-excel-python",
+      "b": "ms-office-word-python",
+      "score": 0.3062
+    },
+    {
+      "a": "accounting-uk-ltd",
+      "b": "bookkeeping-double-entry",
+      "score": 0.3062
+    },
+    {
+      "a": "legacy-code-intel",
+      "b": "pick-developer",
+      "score": 0.3059
+    },
+    {
+      "a": "career-coach",
+      "b": "career-positioning",
+      "score": 0.3042
+    },
+    {
+      "a": "mongodb",
+      "b": "ubuntu-databases",
+      "score": 0.3032
+    }
+  ]
+}

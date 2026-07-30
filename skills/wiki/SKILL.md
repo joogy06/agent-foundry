@@ -1,6 +1,7 @@
 ---
 name: wiki
 description: "Knowledge base builder and maintainer for persistent markdown wikis. Use when ingesting sources into structured wiki pages, querying existing knowledge bases, creating new wikis, maintaining wiki quality, or navigating wiki content. Covers 6 domain templates (research, project, personal, business, reading, general), anti-hallucination citations, index-first queries, and lint protocols. Also trigger on: knowledge base, wiki, compile notes, persistent notes, second brain, Zettelkasten, Obsidian vault content. Parent skill for the wiki skill family."
+disambiguation: Building and maintaining knowledge-base CONTENT — ingestion, structure, citations, linting — editor-agnostic. Configuring the Obsidian app is obsidian.
 ---
 
 # Wiki — Persistent Knowledge Base Skill Family
@@ -8,6 +9,32 @@ description: "Knowledge base builder and maintainer for persistent markdown wiki
 Parent skill for building and maintaining file-based markdown knowledge bases. Routes operational work to reference files.
 
 This is a **slim parent** — detailed protocols live in reference files. Read this file to understand WHAT wikis are and WHICH reference file handles WHICH operation. Read the reference files for HOW.
+
+## Runnable commands (#35)
+
+The protocol files describe the contract; these perform the parts of it that are pure
+mechanism, so they are not re-derived by a model on every run:
+
+```bash
+W=~/.claude/skills/wiki/scripts/wiki_lint.py
+python3 $W create --path ~/wikis/trading --name "Trading Research" --domain "systematic equity"
+python3 $W lint   --wiki ~/wikis/trading        # exit 2 if anything fails or warns
+```
+
+`create` writes the skeleton and a `WIKI.md` carrying all **11 required sections**, leaving
+sections 1 and 10 as deliberate placeholders — a wiki whose purpose and domain behaviour are
+unstated drifts into a folder of notes.
+
+`lint` enforces the §3 frontmatter contract: required fields, closed enums, kebab-case slugs
+matching filenames, dates in order, and **every source entry citable** (a `path` plus one of
+`pages`/`lines`/`anchor`). **A wikilink that resolves to nothing is an ERROR**, because a wiki
+asserting connections it does not have is worse than no wiki. Staleness and a deprecated page
+with no successor are warnings, not errors — conflating the two teaches people to ignore the
+output.
+
+**`ingest.py` is deliberately absent.** Reading a source and deciding what a page should SAY
+is comprehension, not mechanism, and a script pretending otherwise would produce confident,
+shallow pages. `ingest.md` remains the protocol the model follows.
 
 <HARD-RULE>
 **Cite every claim.** No fact lands in a wiki page without `[Source: raw/<file>, p.<page>]` or equivalent. Hallucination is the #1 failure mode. Lint enforces this at check #3 (source traceability).

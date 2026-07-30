@@ -4,6 +4,8 @@ description: >
   Use when the user needs to build a career plan, set milestones, define OKRs, create
   timelines, choose certifications, or map a professional development roadmap.
   Part of the career-* skill family.
+family: career
+disambiguation: Forward-looking structure — milestones, OKRs, timelines, certifications, development paths. Turning what you have ALREADY done into narrative is career-storytelling.
 ---
 
 # Career Planning

@@ -1,6 +1,8 @@
 ---
 name: wiring-extract-static
 description: Emit run-scoped static wiring edges from a target project via SCIP (scip-python, scip-typescript) plus framework plug-ins (FastAPI, Express) or a generic fallback (Python ast + JS regex). Writes `.wiring/runs/<run_id>/static.jsonl` and `manifest.json` conforming to `wiring-source-edge.v1` and `wiring-source-manifest.v1`. Single-writer of `static.jsonl`. Deterministic Python, no LLM calls. Invoked by bob with a claim UUID; heartbeats every 60s via `~/.claude/skills/_meta/claims.py`.
+family: wiring
+disambiguation: EMITS per-run static edges from source via SCIP and framework plug-ins. Merging run artefacts into the promoted snapshot is wiring-reconcile.
 ---
 
 # wiring-extract-static (v1)

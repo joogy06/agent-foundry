@@ -1,6 +1,7 @@
 ---
 name: db2-rhel
 description: Use when installing, configuring, or managing IBM DB2 LUW on RHEL 9 (and AlmaLinux/Rocky 9) — instance creation, database administration, buffer pool and tablespace management, backup/restore with HADR, performance tuning (db2advis, db2pd, MON functions), runstats/reorg, SELinux contexts, firewalld rules, and DB2 pureScale. Part of the db2-* skill family.
+disambiguation: DB2 LUW specifically, on RHEL. Other engines on RHEL are rhel-databases; DB2 for z/OS is db2-mainframe; MQ messaging is ibm-mq.
 ---
 
 # IBM DB2 LUW — Administration on RHEL 9

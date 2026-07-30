@@ -1,6 +1,7 @@
 ---
 name: db2-mainframe
 description: Use when administering IBM DB2 for z/OS — subsystem management, buffer pool tuning, binding plans/packages, utilities (REORG/RUNSTATS/COPY/RECOVER), SQL performance (EXPLAIN/DSN_STATEMNT_TABLE), WLM service classes, data sharing groups, catalog/directory management, and z/OS-specific access patterns. Part of the db2-* skill family.
+disambiguation: DB2 for z/OS — subsystems, plans and packages, mainframe utilities. DB2 LUW on Linux is db2-rhel, a different product line.
 ---
 
 # IBM DB2 for z/OS — Mainframe DBA Administration

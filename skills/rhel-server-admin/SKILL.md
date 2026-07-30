@@ -1,6 +1,8 @@
 ---
 name: rhel-server-admin
 description: Use when administering Red Hat Enterprise Linux 9 systems — dnf/rpm package management, subscription-manager, user/group management, SSH hardening, systemd services, firewalld, NetworkManager/nmcli networking, LVM/Stratis storage, kernel tuning, security hardening (CIS, SELinux, fail2ban), Cockpit web console, backup/restore, and on-prem VM guest tools (Proxmox, VMware, Hyper-V). Parent skill for the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # Red Hat Enterprise Linux 9 — Core Administration

@@ -5,6 +5,7 @@ description: >
   "what should I do next?", SWOT analysis, SOAR analysis, gap analysis, values alignment, career stage
   diagnosis, competency assessment, Ikigai alignment, or needs help figuring out their current position
   and potential next moves. Part of the career-* skill family.
+family: career
 ---
 
 # Career Assessment

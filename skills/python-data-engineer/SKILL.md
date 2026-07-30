@@ -1,6 +1,7 @@
 ---
 name: python-data-engineer
 description: Use when working with SQLAlchemy 2.0, Alembic migrations, database administration, data lineage visualization, query optimization, connection pooling, or database monitoring in Python. Covers PostgreSQL, MySQL, SQL Server administration patterns and data pipeline lineage tracking.
+family: python
 ---
 
 # Python Data Engineer

@@ -15,8 +15,9 @@ tree(s) of whichever AI CLIs you actually have installed:
                           and VS Code 1.123+; plus ~/.copilot/ instructions and
                           an optional ~/.copilot/skills/ mirror)
     - Antigravity CLI    (`agy` — host directive at ~/.gemini/agy.md)
-    - Gemini CLI         (RETIRED from this ecosystem 2026-07-25 — agy replaced it;
-                          the gemini CLI retires 2026-06-18, agy is primary)
+    - Gemini CLI         (SKILLS ONLY — a live target for legacy enterprise systems
+                          that read the skill library. NOT a delegate: agy replaced it
+                          on 2026-07-25 and foundry passes it no work.)
 
 The scan uses OR'd detection (PATH lookup OR known install locations OR config
 dir) so it sees CLIs that aren't on the installer process's PATH (npm-global,
@@ -86,7 +87,7 @@ Targets:
                                note: ~/.claude/skills/ is already auto-discovered by Copilot CLI
                                and VS Code 1.123+ — no bridge needed)
   y = Antigravity CLI (agy)   (host directive at ~/.gemini/agy.md — primary delegate)
-  g = Gemini CLI              (RETIRED 2026-07-25 — agy replaced it; target kept only because ~/.gemini/skills/ may still be read)
+  g = Gemini CLI              (SKILLS ONLY — legacy enterprise systems read ~/.gemini/skills/; foundry passes it no work)
   a = All of the above
   auto = install into every CLI the scan actually detected
 """
@@ -100,6 +101,10 @@ DEFAULT_COPILOT_HOME = Path.home() / ".copilot"
 # from path/known-location/config-dir, which need no subprocess).
 SCAN_BUDGET_SECONDS = 25.0
 PROBE_TIMEOUT_SECONDS = 5
+# Optional-dependency installs (#240) reach the network and can be slow on a cold
+# cache or a corporate proxy. Generous, because the alternative — a half-finished
+# pip run killed mid-download — is worse than waiting.
+EXTRAS_INSTALL_TIMEOUT = 900
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +693,12 @@ def scan_environment() -> dict:
         ("agy",    ["--version"], "Antigravity CLI delegate (host directive ~/.gemini/agy.md)", False),
         ("copilot", ["--version"], "Copilot CLI — auto-discovers ~/.claude/skills/; + ~/.copilot/", False),
         ("code",   ["--version"], "VS Code — auto-discovers ~/.claude/skills/ (1.123+)", False),
-        ("gemini", ["--version"], "Gemini CLI (RETIRED 2026-07-25 — agy replaced it)", True),
+        # legacy=True is still correct, but for the reason the messaging now gives:
+        # the gemini CLI is used in LEGACY ENTERPRISE contexts, where it reads the
+        # skill library. It is not deprecated as a skills target. What it is not, and
+        # has not been since 2026-07-25, is a delegate foundry passes work to.
+        ("gemini", ["--version"], "Gemini CLI — skills target only (legacy enterprise); "
+                                  "not a delegate", True),
         ("python3", ["--version"], "runs install.py / bootstrap-environment.py", False),
         ("gh",     ["--version"], "GitHub CLI (publish, auth)", False),
         ("docker", ["--version"], "containerized tooling", False),
@@ -2614,6 +2624,94 @@ CANONICAL_SESSION_START_HOOKS = [
     },
 ]
 
+
+# ---------------------------------------------------------------------------
+# Per-OS hook commands (S075) — the half of the matrix that has to WORK, not
+# merely be described.
+#
+# Every canonical hook above is `python3 ~/…` or `bash ~/…`. On Windows all
+# three assumptions fail: `python3` is usually absent (the launcher is `py -3`),
+# `bash` may not exist at all, and `~` expansion by the hook runner cannot be
+# relied on. A Windows install would therefore wire six hooks that never run —
+# and hooks fail SILENTLY, so the session-start layer would be inert while
+# looking configured. That is the exact failure mode PROJECT.md keeps warning
+# about, and it is worth fixing before a machine ever sees it.
+#
+# Two rules shape the fix:
+#
+#   1. POSIX output must stay BYTE-IDENTICAL. A hook's identity for dedup is its
+#      command string, so changing it on already-deployed machines would inject
+#      duplicates of all six on the next install. Windows has no deployed base,
+#      so it is free to differ. A test pins the byte-identity.
+#
+#   2. Windows gets ABSOLUTE paths, resolved at install time. It sidesteps both
+#      `~` and %USERPROFILE% expansion questions — we know the real path while
+#      installing, so there is nothing to expand later and nothing to get wrong.
+# ---------------------------------------------------------------------------
+
+WINDOWS_PYTHON_FALLBACK = "py -3"
+
+
+def windows_python_command(probe: bool = True) -> str:
+    """The interpreter to bake into a Windows hook command.
+
+    Enterprise Windows is not uniform: python.org installs ship the `py` launcher,
+    Store and conda installs often give only `python`, and `python3` is frequently
+    missing entirely. So this PROBES on a real Windows box and only falls back to
+    `py -3` when it cannot (which includes every simulated preview from another
+    OS — hence the note in the preview output saying the real choice happens at
+    install time).
+    """
+    if not probe or not sys.platform.startswith("win"):
+        return WINDOWS_PYTHON_FALLBACK
+    for cand in (["py", "-3"], ["python"], ["python3"]):
+        exe = shutil.which(cand[0])
+        if not exe:
+            continue
+        try:
+            r = subprocess.run([exe, *cand[1:], "-c", "import sys;print(sys.version_info[0])"],
+                               capture_output=True, text=True, timeout=PROBE_TIMEOUT_SECONDS)
+            if r.returncode == 0 and (r.stdout or "").strip() == "3":
+                return " ".join([cand[0], *cand[1:]])
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return WINDOWS_PYTHON_FALLBACK
+
+
+def canonical_session_start_hooks(os_key: str | None = None,
+                                  claude_home: Path | None = None,
+                                  python_cmd: str | None = None) -> list:
+    """The six canonical hooks, rendered for a target OS.
+
+    On POSIX this returns CANONICAL_SESSION_START_HOOKS unchanged — same objects'
+    content, same command strings, so dedup against existing installs is
+    unaffected.
+    """
+    key = normalize_os(os_key)
+    if key != "windows":
+        return copy.deepcopy(CANONICAL_SESSION_START_HOOKS)
+
+    home = claude_home if claude_home is not None else DEFAULT_CLAUDE_HOME
+    py = python_cmd or windows_python_command()
+
+    def win_path(rel: str) -> str:
+        return str(Path(home) / rel).replace("/", "\\")
+
+    out = []
+    for entry in CANONICAL_SESSION_START_HOOKS:
+        inner = copy.deepcopy(entry["hooks"][0])
+        cmd = inner["command"]
+        rel = cmd.split("~/.claude/", 1)[1].split(" ", 1)[0]
+        tail = cmd[len(cmd.split(" --")[0]):] if " --" in cmd else ""
+        # The one bash hook has a Python twin precisely so Windows is not asked
+        # to provide bash. Same output, verified identical on POSIX.
+        if rel.endswith("hooks/session-start.sh"):
+            rel = "skills/cross-project-mail/hooks/session_start.py"
+        inner["command"] = f'{py} "{win_path(rel)}"{tail}'
+        out.append({"matcher": entry.get("matcher", ""), "hooks": [inner]})
+    return out
+
+
 def _settings_template_text() -> "str | None":
     """Read the bundled templates/settings.global.json, or None if it cannot be
     read.
@@ -2637,7 +2735,8 @@ def _settings_template_text() -> "str | None":
         return None
 
 
-def merge_missing_session_start_hooks(settings: dict) -> list:
+def merge_missing_session_start_hooks(settings: dict, os_key: str | None = None,
+                                      claude_home: Path | None = None) -> list:
     """PURE merge core (shared with bootstrap): mutate `settings` IN PLACE,
     appending each canonical SessionStart entry whose command is absent, and
     return the list of added command strings.
@@ -2670,7 +2769,9 @@ def merge_missing_session_start_hooks(settings: dict) -> list:
                     existing_cmds.add(cmd)
 
     added = []
-    for new_entry in CANONICAL_SESSION_START_HOOKS:
+    # os_key defaults to THIS machine, so every existing caller is unchanged on
+    # POSIX and correct on Windows without being updated.
+    for new_entry in canonical_session_start_hooks(os_key, claude_home):
         new_cmd = new_entry["hooks"][0]["command"]
         if new_cmd in existing_cmds:
             continue
@@ -3185,7 +3286,7 @@ installed:
 | Copilot CLI | auto, from `~/.claude/skills/` + `~/.copilot/skills/` + repo dirs  |
 | VS Code 1.123+ | auto, from `~/.claude/skills/` (+ `chat.agentSkillsLocations`)  |
 | Codex CLI   | symlinks under `~/.codex/skills/<name>/`                           |
-| Gemini CLI  | `gemini skills link <path>` per skill (LEGACY; retires 2026-06-18) |
+| Gemini CLI  | `gemini skills link <path>` per skill (skills only — not a delegate) |
 
 Skills are auto-discovered from each skill's frontmatter `description:`.
 This file (and per-repo `AGENTS.md` / `.github/copilot-instructions.md`)
@@ -3306,8 +3407,333 @@ def install_copilot(repo_root: Path, force: bool = False,
 
     print(f"    Per-project setup: cd <project> && copilot init")
     print(f"      (or copy/symlink {target.name} → <project>/AGENTS.md)")
-    print(f"    Model selection:   copilot --model <name>   (Claude / GPT / Gemini)")
+    print(f"    Model selection:   copilot --model <name>   (detect first — see below)")
+    print(f"    VS Code workspace: python3 install.py --vscode-workspace <path>")
+    print(f"      places AGENTS.md, .vscode/tasks.json + mcp.json, the VSPrime agent and")
+    print(f"      the /prime command. Skills need no bridge; startup and agents do.")
     return True
+
+
+def install_vscode_workspace(repo_root: Path, workspace: Path, force: bool = False,
+                             dry_run: bool = False) -> bool:
+    """Place the VS Code / Copilot workspace files from `vs-code/`.
+
+    Skills need NO bridge — VS Code and Copilot auto-discover ~/.claude/skills/. What does
+    not come across for free is startup, the custom agents, slash commands and MCP wiring,
+    and that is all this places.
+
+    Idempotency mirrors install_agy: create-if-absent, and leave a customised file alone
+    unless --force. A workspace file the user has edited is theirs.
+    """
+    src = repo_root / "vs-code"
+    if not src.is_dir():
+        print(f"    ⚠ {src} not found — skipping VS Code workspace setup")
+        return False
+
+    # (source, destination-relative-to-workspace)
+    placements = [
+        (src / "AGENTS.md", workspace / "AGENTS.md"),
+        (src / "tasks.json", workspace / ".vscode" / "tasks.json"),
+        (src / "mcp.json", workspace / ".vscode" / "mcp.json"),
+        (src / "agents" / "vsprime.agent.md", workspace / ".github" / "agents" / "vsprime.agent.md"),
+        (src / "prompts" / "prime.prompt.md", workspace / ".github" / "prompts" / "prime.prompt.md"),
+    ]
+
+    placed = skipped = 0
+    for s, d in placements:
+        if not s.is_file():
+            continue
+        if d.exists() and not force:
+            print(f"    ⚠ {d} exists — leaving as-is (use --force to overwrite)")
+            skipped += 1
+            continue
+        if dry_run:
+            print(f"    [dry-run] would write {d}")
+            placed += 1
+            continue
+        d.parent.mkdir(parents=True, exist_ok=True)
+        d.write_text(s.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"    + wrote {d}")
+        placed += 1
+
+    print(f"    VS Code workspace: {placed} placed, {skipped} left as-is")
+    print(f"    Startup: `foundry: session prime` runs on folderOpen — the only automatic")
+    print(f"      trigger VS Code offers. It writes .foundry/session-state.json; it cannot")
+    print(f"      make the model READ it. See vs-code/docs/startup.md for the four layers.")
+    print(f"    Models:  python3 vs-code/scripts/detect_models.py  (detected, never hardcoded)")
+
+    # Everything placed above is workspace-relative and therefore portable. What is NOT
+    # portable is where VS Code keeps USER settings, and whether `code` is on PATH — so
+    # report both rather than leaving the user to discover the difference.
+    print(f"    User config: {vscode_user_dir()}")
+    if sys.platform == "darwin" and shutil.which("code") is None:
+        print(f"    ⚠ macOS: the `code` CLI is NOT on PATH by default.")
+        print(f"      Command Palette → \"Shell Command: Install 'code' command in PATH\",")
+        print(f"      then restart the terminal. See vs-code/docs/platforms.md §3.")
+    return placed > 0
+
+
+# ---------------------------------------------------------------------------
+# The OS x TOOL install matrix (S075)
+#
+# Before this, per-OS behaviour lived in ~8 inline `sys.platform == "win32"`
+# checks scattered through 4,000 lines. Nobody could answer "what does this do
+# for VS Code on macOS?" without reading all of it, and nobody could answer it
+# AT ALL from a different machine — which is the case that matters, because the
+# harness is developed on Linux and run on a Windows laptop and a Mac.
+#
+# So the matrix is DECLARED, and every function that consumes it takes an
+# explicit `os_key` rather than reading sys.platform. That is what makes
+# `--preview --os windows` possible from anywhere, and what makes each cell
+# unit-testable without the OS it describes. It follows the shape
+# vscode_user_dir() already had, generalised.
+#
+# `native` is the field that keeps the matrix honest. Several tools READ our
+# files without anything being placed — VS Code and Copilot both discover
+# ~/.claude/skills, and VS Code reads ~/.claude/settings.json for hooks (#241).
+# A matrix that only listed writes would imply those cells do nothing, when in
+# fact they are the cells that work best.
+# ---------------------------------------------------------------------------
+
+OS_KEYS = ("windows", "macos", "linux")
+MATRIX_TOOLS = ("claude", "codex", "copilot", "vscode", "agy", "gemini")
+
+# TWO SCOPES, and conflating them is what made the gemini question confusing enough
+# to need asking twice:
+#
+#   SKILLS CONSUMER — a tool that READS the skill library. gemini IS one, on legacy
+#     enterprise systems, and therefore IS a live install target. Nothing about the
+#     2026-07-25 change touches this.
+#
+#   DELEGATE — a tool the harness CALLS OUT TO for second opinions, challenger
+#     review or research. gemini is NOT one: agy replaced it on 2026-07-25, and no
+#     skill may reintroduce `gemini -p` or `mcp__gemini-cli__*`.
+#
+# So "gemini is retired" and "install skills for gemini" are both true, because they
+# are statements about different scopes. The installer only ever spoke to the first;
+# the retirement only ever spoke to the second. Every cell below declares which
+# scopes it participates in, so the distinction survives the next person to read it.
+SKILL_CONSUMERS = ("claude", "codex", "copilot", "vscode", "gemini")
+DELEGATES = ("claude", "codex", "agy")
+
+
+def normalize_os(platform_name: str | None = None) -> str:
+    """sys.platform -> a matrix key. Accepts matrix keys unchanged so callers can
+    pass either, which is what lets --os windows work on a Linux box."""
+    p = (platform_name if platform_name is not None else sys.platform).lower()
+    if p in OS_KEYS:
+        return p
+    if p.startswith("win") or p == "cygwin":
+        return "windows"
+    if p == "darwin":
+        return "macos"
+    return "linux"
+
+
+def user_home(os_key: str, home: Path | None = None) -> Path:
+    return home if home is not None else Path.home()
+
+
+def _appdata_for(os_key: str, home: Path) -> Path:
+    """%APPDATA% when we are actually ON Windows; the conventional path when we
+    are only SIMULATING it. Reading the live env var during a simulation would
+    silently produce a Linux path under a Windows heading."""
+    if os_key == "windows" and sys.platform.startswith("win"):
+        return Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+    return home / "AppData" / "Roaming"
+
+
+def resolve_cell(tool: str, os_key: str, home: Path | None = None) -> dict:
+    """One matrix cell: where things go, what is already discovered, what bites.
+
+    Pure — no filesystem probing, no sys.platform reads. Same inputs, same
+    output, on any machine.
+    """
+    if tool not in MATRIX_TOOLS:
+        raise ValueError(f"unknown tool {tool!r}; expected one of {MATRIX_TOOLS}")
+    if os_key not in OS_KEYS:
+        raise ValueError(f"unknown os {os_key!r}; expected one of {OS_KEYS}")
+    h = user_home(os_key, home)
+    win, mac = os_key == "windows", os_key == "macos"
+
+    # Two facts that apply to every cell on a given OS.
+    shell = "powershell" if win else "bash"
+    os_notes: list[str] = []
+    if win:
+        os_notes += [
+            "hook commands run in PowerShell by default — a bash/`python3` command "
+            "needs a `windows:` override",
+            "`python3` often does not exist; the launcher is `py -3` "
+            "(see _meta/optional_deps.py::discover_python_interpreters)",
+            "symlinks need Developer Mode or admin — `--mode link` falls back to copy",
+        ]
+    if mac:
+        os_notes += [
+            "BSD coreutils: `stat -c` is GNU-only — write `stat -c … || stat -f …` and "
+            "fail loudly rather than defaulting; `sed -i` needs an argument; no `date -d`",
+        ]
+
+    cell = {
+        "tool": tool, "os": os_key, "hook_shell": shell,
+        "binaries": [], "config_root": None, "places": {}, "native": [],
+        "notes": list(os_notes),
+        # Declared per cell so "reads our skills" and "we call it" can never be
+        # read as the same claim again.
+        "skill_consumer": tool in SKILL_CONSUMERS,
+        "delegate": tool in DELEGATES,
+    }
+
+    if tool == "claude":
+        cell["binaries"] = ["claude.cmd", "claude.exe", "claude"] if win else ["claude"]
+        cell["config_root"] = h / ".claude"
+        cell["places"] = {
+            "skills": h / ".claude" / "skills",
+            "agents": h / ".claude" / "agents",
+            "commands": h / ".claude" / "commands",
+            "workflows": h / ".claude" / "workflows",
+            "instructions": h / ".claude" / "CLAUDE.md",
+            "settings": h / ".claude" / "settings.json",
+            "optional-manifests": h / ".claude",
+        }
+        cell["notes"].append("the primary target — every other tool reads from this tree")
+
+    elif tool == "codex":
+        cell["binaries"] = ["codex.cmd", "codex"] if win else ["codex"]
+        cell["config_root"] = h / ".codex"
+        cell["places"] = {"skills": h / ".codex" / "skills"}
+        cell["notes"].append("skills are symlinks into ~/.claude/skills where the OS allows it")
+        if win:
+            cell["notes"].append("without Developer Mode the mirror is COPIED, so it can "
+                                 "drift from ~/.claude/skills — re-run install to refresh")
+
+    elif tool == "copilot":
+        cell["binaries"] = ["copilot.cmd", "copilot"] if win else ["copilot"]
+        cell["config_root"] = h / ".copilot"
+        cell["places"] = {"skills-optional": h / ".copilot" / "skills"}
+        cell["native"] = [(h / ".claude" / "skills", "auto-discovered — nothing to place")]
+
+    elif tool == "vscode":
+        cell["binaries"] = ["code.cmd", "code"] if win else ["code"]
+        if win:
+            cell["config_root"] = _appdata_for(os_key, h) / "Code" / "User"
+        elif mac:
+            cell["config_root"] = h / "Library" / "Application Support" / "Code" / "User"
+        else:
+            cell["config_root"] = h / ".config" / "Code" / "User"
+        cell["places"] = {
+            "workspace-agents": Path(".github/agents/"),
+            "workspace-prompts": Path(".github/prompts/"),
+            "workspace-tasks": Path(".vscode/tasks.json"),
+            "workspace-mcp": Path(".vscode/mcp.json"),
+            "workspace-instructions": Path("AGENTS.md"),
+        }
+        # #241: the cell that places least is the one that works best.
+        cell["native"] = [
+            (h / ".claude" / "skills", "user skill location, auto-discovered"),
+            (h / ".claude" / "settings.json", "hooks — SessionStart injects context (#241)"),
+            (Path(".claude/agents"), "custom agents, with Claude->VS Code tool-name mapping"),
+        ]
+        cell["notes"].append("workspace files are workspace-relative and therefore identical "
+                             "on all three OSes; only the user-config root below differs")
+        if mac:
+            cell["notes"].append("`code` is NOT on PATH by default — Command Palette -> "
+                                 "\"Shell Command: Install 'code' command in PATH\"")
+
+    elif tool == "agy":
+        cell["binaries"] = ["agy.cmd", "agy"] if win else ["agy"]
+        cell["config_root"] = h / ".gemini"
+        cell["places"] = {"host-directive": h / ".gemini" / "agy.md"}
+        cell["notes"].append("~/.gemini is AGY's config home despite the name — never delete it; "
+                             "auth lives separately in ~/.antigravity")
+
+    elif tool == "gemini":
+        cell["binaries"] = ["gemini.cmd", "gemini"] if win else ["gemini"]
+        cell["config_root"] = h / ".gemini"
+        cell["places"] = {"skills": h / ".gemini" / "skills"}
+        cell["notes"].append("SKILLS ONLY. foundry passes NO work to the gemini CLI — it is not "
+                             "a delegate, not a challenger, not a second opinion. agy replaced "
+                             "it on 2026-07-25 and no skill may reintroduce `gemini -p` or "
+                             "`mcp__gemini-cli__*`. This target exists so legacy enterprise "
+                             "systems can READ the skill library, and for nothing else.")
+        cell["notes"].append("shares ~/.gemini with agy but writes only skills/ — agy owns "
+                             "agy.md and antigravity-cli/, so the two targets do not collide")
+
+    return cell
+
+
+def simulated_home(os_key: str) -> Path:
+    """A placeholder home for an OS we are not on.
+
+    Using the LIVE Path.home() while simulating renders `/home/you/AppData/Roaming`
+    under a Windows heading — a Linux path wearing a Windows label, which is worse
+    than not offering the preview. The placeholder makes it obvious the value is a
+    shape, not a location.
+    """
+    if os_key == "windows":
+        return Path("C:/Users/<you>")
+    if os_key == "macos":
+        return Path("/Users/<you>")
+    return Path("/home/<you>")
+
+
+def _display(p, os_key: str) -> str:
+    """Render with the target OS's separators. A Windows path shown with forward
+    slashes invites someone to paste it into PowerShell and wonder why it fails."""
+    if not isinstance(p, Path):
+        return str(p)
+    s = str(p)
+    if os_key == "windows":
+        return s.replace("/", "\\")
+    return s
+
+
+def render_matrix(os_key: str, tools: "tuple[str, ...] | list[str]" = MATRIX_TOOLS,
+                  home: Path | None = None, simulated: bool = False) -> str:
+    if home is None and simulated:
+        home = simulated_home(os_key)
+    L = []
+    header = f"[install matrix] os={os_key}"
+    if simulated:
+        header += "   ** SIMULATED — not this machine **"
+    L.append(header)
+    if simulated:
+        L.append("  Paths are computed, not probed: nothing was checked for existence and no")
+        L.append("  tool detection ran. `<you>` stands in for the real home — this says what")
+        L.append("  WOULD happen and where, not what is actually there.")
+    L.append("")
+    for tool in tools:
+        c = resolve_cell(tool, os_key, home=home)
+        scope = []
+        if c["skill_consumer"]:
+            scope.append("reads our skills")
+        if c["delegate"]:
+            scope.append("we delegate work to it")
+        L.append(f"  {tool}" + (f"   [{'; '.join(scope)}]" if scope else ""))
+        L.append(f"    detect as    {', '.join(c['binaries'])}")
+        L.append(f"    config root  {_display(c['config_root'], os_key)}")
+        L.append(f"    hook shell   {c['hook_shell']}")
+        for label, dest in c["places"].items():
+            L.append(f"    place        {label:<22} -> {_display(dest, os_key)}")
+        for np, why in c["native"]:
+            L.append(f"    free         {_display(np, os_key)}  ({why})")
+        for n in c["notes"]:
+            L.append(f"    ! {n}")
+        L.append("")
+    return "\n".join(L)
+
+
+def vscode_user_dir(platform_name: str | None = None,
+                    home: Path | None = None) -> Path:
+    """Where VS Code keeps USER-level settings, per platform.
+
+    Mirrors vs-code/scripts/detect_models.py — kept in step deliberately, since a
+    divergence here would send the installer's advice somewhere the detector never looks.
+
+    Delegates to the matrix rather than repeating the three branches. Two copies of
+    this logic is exactly how the installer and the preview would come to disagree
+    about the same machine, which is the failure the matrix exists to prevent.
+    """
+    return resolve_cell("vscode", normalize_os(platform_name), home=home)["config_root"]
 
 
 # ---------------------------------------------------------------------------
@@ -3506,7 +3932,7 @@ def render_adapted_plan(report: dict, preselected: list[str]) -> None:
         print(f"  • agy      → not detected (install Antigravity CLI to enable the primary delegate)")
     # gemini legacy
     if tools.get("gemini", {}).get("found"):
-        print(f"  • gemini   → {status('gemini')} — LEGACY, retires 2026-06-18; agy is primary")
+        print(f"  • gemini   → {status('gemini')} — skills target only; agy is the delegate")
     else:
         print(f"  • gemini   → not detected (legacy; agy is the primary delegate)")
     print()
@@ -3515,7 +3941,8 @@ def render_adapted_plan(report: dict, preselected: list[str]) -> None:
         print("  - agy is your primary second-opinion/challenger delegate; its host directive")
         print("    (~/.gemini/agy.md, distinct from the gemini CLI) is created if absent.")
     if tools.get("gemini", {}).get("found"):
-        print("  - gemini CLI is detected but is LEGACY (retires 2026-06-18) — prefer agy.")
+        print("  - gemini CLI detected: it READS the skill library (legacy enterprise use).")
+        print("    foundry passes it no work — agy is the delegate.")
     if report.get("skills_consumers"):
         print("  - " + " and ".join(report["skills_consumers"]) +
               " consume ~/.claude/skills/ for free; install the claude target.")
@@ -3581,6 +4008,30 @@ def main() -> int:
                         help="pre-authorize the --mode mc cleanup. REQUIRED for a "
                              "destructive prune under --noninteractive; without it "
                              "such a run fails before writing anything.")
+    parser.add_argument("--preview", action="store_true",
+                        help="print the OS x tool install matrix and exit — where each "
+                             "tool's files go, which shell its hooks run in, what it "
+                             "discovers for free, and the per-OS traps. Combine with "
+                             "--os / --tool.")
+    parser.add_argument("--os", dest="os_key", default=None,
+                        choices=list(OS_KEYS),
+                        help="preview a DIFFERENT OS than this one (e.g. --preview --os "
+                             "windows from Linux). Output is marked SIMULATED: paths are "
+                             "computed, nothing is probed, no detection runs.")
+    parser.add_argument("--tool", dest="matrix_tool", default=None,
+                        choices=list(MATRIX_TOOLS),
+                        help="preview a single tool's cell instead of all of them")
+    parser.add_argument("--with-extras", metavar="GROUPS", default=None,
+                        const="__ALL__", nargs="?",
+                        help="install OPTIONAL libraries for one or more capabilities "
+                             "(comma-separated, or bare for all). Covers both pip and npm. "
+                             "Nothing here is required — the harness runs stdlib-only — so "
+                             "this is opt-in and a failure to install never fails the "
+                             "install. See requirements-optional.txt / package-optional.json.")
+    parser.add_argument("--extras-report", action="store_true",
+                        help="report optional-capability readiness and exit. Says what is "
+                             "missing, what stops working without it, and the exact install "
+                             "command for this machine.")
     parser.add_argument("--rollback", metavar="RUN_ID", default=None,
                         help="undo a previous run: replays that run's archive journal in "
                              "reverse, restoring the tree byte-for-byte. Archives live under "
@@ -3607,6 +4058,154 @@ def main() -> int:
         return _run(args)
 
 
+# ---------------------------------------------------------------------------
+# Optional dependencies (#240) — pip AND npm, opt-in, never fatal
+#
+# Everything here is OPTIONAL. 225 skills, the gates, the hooks and this
+# installer all run stdlib-only, and a locked-down machine where `pip install`
+# is refused must still end up with a working harness. So: report always,
+# install only when asked, and NEVER let either turn a successful install into
+# a failed one — turning "this skill cannot extract a PDF" into "the installer
+# failed" is a strictly worse outcome.
+#
+# The logic lives in skills/_meta/optional_deps.py so that the installer, the
+# env-adoption probe and a standalone caller all get the same answer. Loaded by
+# path rather than imported, because install.py must keep working when the
+# module is absent (an older checkout, a partial clone).
+# ---------------------------------------------------------------------------
+
+OPTIONAL_MANIFESTS = ("requirements-optional.txt", "package-optional.json")
+
+
+def install_optional_manifests(repo_root: Path, claude_home: Path, archive=None) -> bool:
+    """Place the optional-dependency manifests at ~/.claude/ (#240).
+
+    They have to be at the INSTALLED root, not just in a checkout: the readiness
+    report runs from ~/.claude/skills/_meta at session start, on machines that
+    have no clone at all. Without them the report finds nothing — and "found no
+    manifest" must never be mistaken for "nothing missing", which is why
+    optional_deps.py reports that state as UNKNOWN rather than as 0/0 ready.
+
+    Data files with no user-editable content, so the rule is simple: write when
+    absent or when the content differs. There is no merge to preserve and no
+    provenance question — unlike CLAUDE.md and settings.json, nobody customises
+    a manifest that the harness regenerates from the repo.
+    """
+    ok = True
+    for name in OPTIONAL_MANIFESTS:
+        src, dest = repo_root / name, claude_home / name
+        if not src.is_file():
+            continue
+        try:
+            existed = dest.exists()
+            if existed and dest.read_bytes() == src.read_bytes():
+                print(f"  = {name} (already current)")
+                continue
+            claude_home.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            if archive is not None and not existed:
+                archive.record_created(dest)
+            print(f"  {'~' if existed else '+'} {name}")
+        except OSError as exc:
+            print(f"  ⚠ could not place {name}: {exc}")
+            ok = False
+    return ok
+
+
+def _load_optional_deps():
+    """Returns the module, or None. Never raises — this is a convenience, not a
+    dependency of installing."""
+    mod_path = REPO_ROOT / "skills" / "_meta" / "optional_deps.py"
+    if not mod_path.is_file():
+        return None
+    try:
+        import importlib.util as _ilu
+        spec = _ilu.spec_from_file_location("_af_optional_deps", mod_path)
+        if spec is None or spec.loader is None:
+            return None
+        mod = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def extras_report() -> int:
+    """`--extras-report`: what is missing, what it costs, how to get it."""
+    mod = _load_optional_deps()
+    if mod is None:
+        print("optional-dependency reporting is unavailable in this checkout")
+        print(f"  expected: {REPO_ROOT / 'skills' / '_meta' / 'optional_deps.py'}")
+        return 0
+    try:
+        argv = ["report"]
+        return int(mod.main(argv) or 0)
+    except Exception as exc:
+        print(f"optional-dependency report skipped ({exc})")
+        return 0
+
+
+def run_extras(args) -> None:
+    """Print readiness at the end of every install; install only if asked.
+
+    A run WITHOUT --with-extras still gets the one-line digest, because the
+    whole point of #240 is that a first run tells you what is missing instead of
+    leaving it to be discovered one skill at a time.
+    """
+    mod = _load_optional_deps()
+    if mod is None:
+        return
+
+    groups = getattr(args, "with_extras", None)
+    try:
+        if not groups:
+            print()
+            mod.main(["report", "--digest"])
+            print("  (`install.py --extras-report` for detail, "
+                  "`--with-extras=<capability>` to install)")
+            return
+
+        only = None if groups == "__ALL__" else groups
+        print()
+        print("=" * 60)
+        print("Optional dependencies" + (f" — {only}" if only else " — all capabilities"))
+        print("=" * 60)
+
+        ns = ["install-cmd", "--json"] + (["--group", only] if only else [])
+        import io as _io
+        import contextlib as _ctx
+        buf = _io.StringIO()
+        with _ctx.redirect_stdout(buf):
+            mod.main(ns)
+        commands = [json.loads(line) for line in buf.getvalue().splitlines() if line.strip()]
+
+        if not commands:
+            print("nothing missing — every requested capability is already available.")
+            return
+
+        for cmd in commands:
+            print(f"\n$ {' '.join(cmd)}")
+            try:
+                proc = subprocess.run(cmd, timeout=EXTRAS_INSTALL_TIMEOUT)
+                if proc.returncode != 0:
+                    # A failed optional install is a reported outcome, not an
+                    # installer failure. The user may be offline, behind a proxy,
+                    # or on a machine where installing is simply not permitted.
+                    print(f"  ⚠ exit {proc.returncode} — capability stays unavailable.")
+                    print("    The harness is unaffected; skills needing it will say so.")
+            except subprocess.TimeoutExpired:
+                print(f"  ⚠ timed out after {EXTRAS_INSTALL_TIMEOUT}s — capability stays "
+                      f"unavailable.")
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(f"  ⚠ could not run it ({exc}) — capability stays unavailable.")
+
+        print()
+        mod.main(["report", "--digest"])
+    except Exception as exc:
+        # Belt and braces: no failure in this block may change the install's outcome.
+        print(f"optional-dependency step skipped ({exc})")
+
+
 def _run(args) -> int:
     banner()
     print()
@@ -3618,6 +4217,30 @@ def _run(args) -> int:
     if getattr(args, "rollback", None):
         rb_home = Path(args.claude_home).expanduser() if args.claude_home else DEFAULT_CLAUDE_HOME
         return rollback_run(rb_home, args.rollback)
+
+    # ---- --preview: the OS x tool matrix, then exit ----
+    # Before the scan, and deliberately runnable for an OS this is not: the harness
+    # is developed on one machine and run on others, so "what will my Windows laptop
+    # do" has to be answerable from here. A simulated preview probes nothing and
+    # says so in its header — a computed path presented as a detected one would be
+    # worse than no preview at all.
+    if getattr(args, "preview", False):
+        requested = getattr(args, "os_key", None)
+        os_key = normalize_os(requested)
+        simulated = requested is not None and os_key != normalize_os()
+        tools = (getattr(args, "matrix_tool", None),) if getattr(args, "matrix_tool", None) \
+            else MATRIX_TOOLS
+        print(render_matrix(os_key, tools, simulated=simulated))
+        if not simulated:
+            print("  Paths above are for THIS machine. Add --os windows|macos|linux to")
+            print("  preview another (marked SIMULATED).")
+        return 0
+
+    # ---- --extras-report: readiness and exit ----
+    # Before the scan, because someone asking "what am I missing?" should not have
+    # to sit through an install they did not ask for.
+    if getattr(args, "extras_report", False):
+        return extras_report()
 
     skill_n, agent_n, command_n, workflow_n = detect(REPO_ROOT)
     print(f"Repo root:      {REPO_ROOT}")
@@ -3829,10 +4452,10 @@ def _run(args) -> int:
     if "gemini" in targets:
         if report["tools"]["gemini"]["found"]:
             gemini_via = "via `gemini skills link`" if shutil.which("gemini") else "direct symlink"
-            print(f"  Gemini  ({mode}, {gemini_via}, LEGACY — retires 2026-06-18): "
+            print(f"  Gemini  ({mode}, {gemini_via}, skills only): "
                   f"{REPO_ROOT/'skills'} → {gemini_home/'skills'}")
         else:
-            print(f"  Gemini  (LEGACY): requested but `gemini` not detected — "
+            print(f"  Gemini  (skills only): requested but `gemini` not detected — "
                   f"will use direct {mode} fallback into {gemini_home/'skills'}")
     if args.skip_existing:
         print("  Existing skills/agents/commands at the targets will be KEPT (--skip-existing).")
@@ -3971,6 +4594,7 @@ def _run(args) -> int:
                           canonical_prev=canonical_prev, canonical_out=canonical_new)
         ok = install_settings(claude_home, force_global=force_global,
                               canonical_prev=canonical_prev, canonical_out=canonical_new)
+        install_optional_manifests(REPO_ROOT, claude_home, archive=archive)
         if archive is not None:
             for env_file in env_files:
                 if not env_existed[env_file] and (env_file.exists() or env_file.is_symlink()):
@@ -3994,16 +4618,20 @@ def _run(args) -> int:
         print("[Copilot / VS Code]")
         install_copilot(REPO_ROOT, force=force, mirror_skills=args.mirror_copilot_skills,
                         mode=placement_mode)
+
+        if getattr(args, "vscode_workspace", None):
+            install_vscode_workspace(REPO_ROOT, args.vscode_workspace,
+                                     force=force, dry_run=args.dry_run)
     if "agy" in targets:
         print("[agy]")
         install_agy(gemini_home, force=force)
     if "gemini" in targets:
-        print("[Gemini — LEGACY]")
+        print("[Gemini — skills only]")
         # install_gemini uses `force`-style semantics; pass not-skip to mean replace.
         n, sk, used_cli = install_gemini(REPO_ROOT, gemini_home, placement_mode, not skip_existing)
         if not used_cli:
             print(f"  ⚠ `gemini` CLI not found on PATH; used direct {mode} fallback")
-        print(f"  ✓ {n} skills (skipped {sk}) — note: gemini CLI retires 2026-06-18; agy is primary")
+        print(f"  ✓ {n} skills (skipped {sk}) — skills only; foundry passes gemini no work")
 
     # ---- Provenance manifest (§11 A2) ----
     #
@@ -4114,9 +4742,11 @@ def _run(args) -> int:
         print("   Re-run with --mode mc once the source tree changes and the cleanup")
         print("   will have the ownership record it needs.")
         print("=" * 60)
+        run_extras(args)
         print("done (cleanup deferred).")
         return 2
 
+    run_extras(args)
     print("done.")
     return 0
 

@@ -1,6 +1,7 @@
 ---
 name: design-drift-arbiter
 description: Use AFTER visual-arbiter returns `reject` on a visual verification run, when bob needs to know whether the failures are micro-drift (auto-approvable as a patch-version bump) or material change (escalate to user review). Pure-Python algorithmic comparison — no LLM, no browser. Consumes a rejected visual-verdict JSON + skeleton tokens + an active profile from `_meta/config.yaml` (strict | lenient | project_override) and emits one JSON verdict on stdout. Bob persists the verdict; the arbiter never writes to `.design-ledger/` (CB4 boundary, mirrors visual-arbiter).
+disambiguation: Runs ONLY AFTER visual-arbiter rejects, to classify failures as micro-drift or real regression. The reject verdict itself is visual-arbiter; evidence-bundle verdicts are verification-arbiter.
 ---
 
 # design-drift-arbiter

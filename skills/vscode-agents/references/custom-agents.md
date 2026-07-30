@@ -4,6 +4,11 @@ Current to 2026-06-24, from the official VS Code "Custom agents" + "Customize AI
 A custom agent is a Markdown file: **YAML frontmatter** (config) + **body** (the agent's
 system instructions). The filename minus `.agent.md` is the default agent `name`.
 
+> **Model ids below are ILLUSTRATIVE and dated.** They show the SYNTAX; they are not a
+> recommendation and they will rot. Resolve what this machine can actually reach with
+> `python3 vs-code/scripts/detect_models.py`, and see `vs-code/docs/model-routing.md`
+> for tier routing. *(ids as written 2026-06-24; not re-verified since.)*
+
 ## Storage locations (first match wins; `chat.agentFilesLocations` extends)
 
 | Scope | Path |

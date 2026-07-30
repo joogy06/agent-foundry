@@ -1,6 +1,7 @@
 ---
 name: pick-developer
 description: Use when reading, understanding, writing, or debugging Pick / MultiValue database applications — the MultiValue products and dialects (Rocket UniVerse, UniData, D3, jBASE, OpenQM, ScarletDME, NEC Reality), the schema-in-the-dictionary data model and the mark hierarchy (item/field/value/sub-value/text marks), Pick/Data/MV BASIC (file I/O, dynamic-array `<a,v,s>` operations, OCONV/ICONV conversions, flow, SUBROUTINE/CALL/COMMON/EXECUTE/CHAIN), DICT items and correlatives (D/I/A/S/X/PH, TRANS/Tfile as the SQL-JOIN substitute), TCL versus the query/report language versus BASIC, and orienting in unfamiliar Pick code. Trigger on - Pick, MultiValue, MV database, UniVerse, UniData, U2, D3, jBASE, OpenQM, ScarletDME, Reality, Pick BASIC, UniBasic, jBC, QMBasic, dynamic array, dictionary item, correlative, conversion code, "understand Pick code", "read this MultiValue program". Part of a legacy-comprehension skill family with cobol-developer and datastage-developer.
+disambiguation: Reading, writing and debugging Pick/MultiValue applications — the dialects and their idioms. Indexing legacy code into a queryable library is legacy-code-intel.
 ---
 
 # Pick / MultiValue Developer Reference

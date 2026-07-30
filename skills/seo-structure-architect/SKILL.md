@@ -1,6 +1,7 @@
 ---
 name: seo-structure-architect
 description: Use when implementing schema markup, optimizing header hierarchy, building internal linking structures, planning site architecture, or checking Core Web Vitals. Covers JSON-LD schema, topic clusters, breadcrumbs, sitemaps, and page structure for both traditional and AI search.
+family: seo
 ---
 
 # SEO Structure Architect

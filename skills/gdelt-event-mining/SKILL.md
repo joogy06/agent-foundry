@@ -8,6 +8,7 @@ description: >
   global event signal grounding. One-shot fetch-analyze-return. Trigger on: "query GDELT",
   "industry inflections", "event velocity for theme X", "what global events relate to Y",
   "macro trends in Z".
+disambiguation: GDELT 2.0 — global news events, themes and tone at macro scale. First-person pain points and community sentiment from Reddit are reddit-signal-mining.
 ---
 
 # GDELT Event Mining

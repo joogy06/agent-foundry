@@ -261,27 +261,46 @@ class TestMalformedTable(unittest.TestCase):
 
 
 class TestLiveS023LedgerIntegration(unittest.TestCase):
-    """Integration against the real S023 ledger on disk.
+    """Integration against the ARCHIVED S023 ledger — asserts tasks.md #59 stays fixed.
 
-    This test is skipped if the live ledger isn't present (so the suite
-    works in fresh CI checkouts). When present, it asserts the exact
-    false-positive from tasks.md #59 is fixed.
+    S074 (#177): this used to hardcode an absolute path to the LIVE
+    `progress/integration-ledger.md` and assert S023-era rows in it. Two failure modes,
+    and the second is the dangerous one:
+
+      * the live ledger is a per-cycle artifact, so every new cycle either broke these
+        assertions or (once S023's ledger was archived) silently SKIPPED them — which is
+        what it had been doing, a regression test quietly not running;
+      * an absolute path to this machine means the suite could never assert anything on
+        another host.
+
+    Pinned to the archived copy instead. It is immutable, it is in the repo, and the rows
+    it asserts are exactly the ones the parser fix was written against — so the test now
+    RUNS everywhere instead of skipping where it matters most.
     """
 
-    LIVE_LEDGER = Path("/path/to/project/progress/integration-ledger.md")
+    LIVE_LEDGER = (
+        Path(__file__).resolve().parents[3]
+        / "progress" / "archive" / "s023-s024-wiring-skills" / "integration-ledger.md"
+    )
+
+    def _root(self):
+        """`load_ledger_row` appends progress/integration-ledger.md to a project root, so
+        the archived ledger is exposed through a temp root that symlinks to it."""
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "progress").mkdir()
+        (tmp / "progress" / "integration-ledger.md").write_bytes(self.LIVE_LEDGER.read_bytes())
+        return tmp
 
     @unittest.skipUnless(LIVE_LEDGER.is_file(), "live S023 ledger not present")
     def test_wiring_extract_static_no_longer_returns_planned(self):
-        row = audit_spawn.load_ledger_row(
-            self.LIVE_LEDGER.parent.parent, "wiring-extract-static"
-        )
+        row = audit_spawn.load_ledger_row(self._root(), "wiring-extract-static")
         self.assertEqual(row["stage"], "INTEGRATED",
                          f"regression: expected INTEGRATED, got {row}")
         self.assertEqual(row["generation"], 3)
 
     @unittest.skipUnless(LIVE_LEDGER.is_file(), "live S023 ledger not present")
     def test_all_five_tracked_components_resolve(self):
-        root = self.LIVE_LEDGER.parent.parent
+        root = self._root()
         for comp in ("wiring-extract-static", "wiring-reconcile",
                      "wiring-query", "gates-g4",
                      "integration-flow-testing-v11"):

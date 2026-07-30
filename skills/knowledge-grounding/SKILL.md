@@ -105,3 +105,9 @@ See `references/integration.md` for detailed patterns.
 | Score confidence by source type alone | Stale wiki page is not better than training data | Consider match quality, freshness, provenance |
 | Block on training-only answers by default | Most systems are not strict air-gap | strict_airgap is opt-in, default=off |
 | Auto-detect enterprise endpoints | URLs are not discoverable, wrong guesses waste time | Config file for enterprise, auto-detect for local |
+
+## See also
+
+- `rag-architecture` — once a vector store is the chosen source, this covers how to build one that
+  retrieves the right thing and how to prove it does.
+- `llm-api-optimization` — the cost of what you ground with, and when a cached corpus beats retrieval.

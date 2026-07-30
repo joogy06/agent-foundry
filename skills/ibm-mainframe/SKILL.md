@@ -1,6 +1,7 @@
 ---
 name: ibm-mainframe
 description: Use when working with IBM z/OS mainframe systems — JCL (Job Control Language) syntax and patterns, dataset types (sequential/PDS/PDSE/VSAM), IDCAMS utility, DFSORT/ICETOOL, ISPF navigation, TSO/REXX scripting, system utilities (IEBCOPY/IEBGENER/IEFBR14), RACF security basics, GDG (Generation Data Groups), SMS (Storage Management Subsystem), and z/OS fundamentals. Part of the ibm-mainframe skill family.
+family: ibm
 ---
 
 # IBM z/OS Mainframe Fundamentals

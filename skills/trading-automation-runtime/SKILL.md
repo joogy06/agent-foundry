@@ -1,6 +1,7 @@
 ---
 name: trading-automation-runtime
 description: "Use when building or reviewing an unattended trading bot or automation daemon (any asset class) — the process lifecycle around a trading loop: boot state machine (BOOT → QUARANTINED → RECONCILING → ACTIVE/HALTED), halt and kill-switch state that persists across restarts, single-active-instance enforcement with lease fencing at order submission, a startup admission gate (broker reconciliation, feed health, risk and compliance reload) before the first strategy callback, market-calendar scheduling with misfire policy, graceful shutdown that drains exposure without cancelling protective exits, readiness vs liveness, and restart/failover/split-brain test matrices. Trigger on - trading bot, trading daemon, unattended trading, bot restart, kill switch persistence, duplicate orders after restart, split brain, reconcile on startup. Order placement lives in equity-broker-execution / crypto-exchange-integration; risk thresholds in trading-risk-management; feed health in market-data-engineering."
+family: trading
 ---
 
 # Trading Automation Runtime

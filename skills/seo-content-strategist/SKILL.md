@@ -1,6 +1,7 @@
 ---
 name: seo-content-strategist
 description: Use when planning content strategy, writing SEO-optimized content, auditing existing content quality, identifying content decay, deciding whether to create, update, consolidate, or delete pages, or building topical authority through content clusters.
+family: seo
 ---
 
 # SEO Content Strategist

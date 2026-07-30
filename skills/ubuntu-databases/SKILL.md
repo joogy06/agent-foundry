@@ -1,6 +1,8 @@
 ---
 name: ubuntu-databases
 description: Use when installing, configuring, or managing databases on Ubuntu 24.04 LTS — PostgreSQL 16, MySQL 8/MariaDB, Redis 7, performance tuning, backup/restore, replication, connection pooling, user/role management, and monitoring. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — Database Administration

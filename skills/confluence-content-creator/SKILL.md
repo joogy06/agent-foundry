@@ -1,6 +1,8 @@
 ---
 name: confluence-content-creator
 description: Use when creating or generating Confluence pages and content — XHTML storage format syntax, macros (TOC, code blocks, panels, status badges, expand, children, info/warning/note, jira issues, drawio), page templates, structured documentation patterns (ADRs, runbooks, project docs), markdown to Confluence conversion, bulk page generation, and content migration strategies.
+family: confluence
+disambiguation: Authoring page CONTENT for any Confluence page — storage-format syntax, macros, layouts. The project-documentation export path is confluence-documentation.
 ---
 
 # Confluence Content Creator

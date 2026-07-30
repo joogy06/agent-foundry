@@ -1,6 +1,7 @@
 ---
 name: windows-powershell
 description: Use when writing or debugging PowerShell scripts — PowerShell 7.x and Windows PowerShell 5.1 (including PS 5.1 BOM-less script encoding hazards, mojibake on non-ASCII chars, Windows-1252 default), pipeline and object manipulation, error handling (try/catch/ErrorAction, native-stderr silencing under $ErrorActionPreference='Stop'), advanced-function common-parameter conflicts (-Verbose / -v collision, "specified more than once"), native-command splatting (empty-string arg drop on PS 5.1), modules and package management (PSGallery), remoting (WinRM, SSH), Desired State Configuration (DSC), scheduled tasks, WMI/CIM queries, registry operations, file system operations (Split-Path -LiteralPath/-Parent parameter-set collision on PS 7.6), string/regex, JSON/XML/CSV handling, process management (Start-Process PID-without-health, tree-kill via Win32_Process BFS), and cross-platform considerations (Linux→Windows primitive porting, nohup / kill / pgrep equivalents). Parent skill for the windows-ps-* skill family.
+family: windows
 ---
 
 # Windows PowerShell Administration

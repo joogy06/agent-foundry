@@ -12,6 +12,8 @@ triggers:
   - data-driven presentation
   - chart generation
   - slide charts and graphs
+family: presentation
+disambiguation: QUANTITATIVE visuals — charts, tables, data-driven slides. Architecture, flow and sequence visuals are presentation-diagrams.
 ---
 
 # Presentation Data Visualization

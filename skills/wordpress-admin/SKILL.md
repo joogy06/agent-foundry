@@ -1,6 +1,7 @@
 ---
 name: wordpress-admin
 description: Use when administering WordPress sites — wp-config.php configuration, security hardening, performance optimization (object cache, page cache, CDN), user roles and capabilities, database maintenance and cleanup, backup and migration (WP-CLI search-replace), debugging (WP_DEBUG, error logs, white screen of death), multisite network setup, cron system configuration, auto-updates, or troubleshooting WordPress errors.
+disambiguation: The WordPress APPLICATION on any host — wp-config, hardening, caching, users, plugins. Hostinger's own control panel and platform features are hostinger-hosting.
 ---
 
 # WordPress Admin

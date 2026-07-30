@@ -1,6 +1,7 @@
 ---
 name: docker-admin
 description: Use when working with Docker containers, Compose files, Dockerfiles, container networking, volume mounts, cross-platform issues (Windows/Linux/PowerShell quoting), package installation in containers, Centrify/AD user mapping, or container security. Covers build patterns, entrypoint scripts, stateless design, and production operations.
+family: docker
 ---
 
 # Docker Admin

@@ -1,6 +1,8 @@
 ---
 name: ms-office-excel-python
 description: Use when reading, writing, transforming, decrypting, or converting Excel files from Python — .xlsx (openpyxl, xlsxwriter, pandas), .xls legacy (xlrd <2.0), .xlsb (pyxlsb), encrypted workbooks (msoffcrypto-tool), Excel automation on Windows/macOS with Office installed (xlwings, pywin32 COM), or formula evaluation without Excel (pycel, formulas). Covers formula injection (CWE-1236) sanitization, XXE defence for parsed XML, and large-file streaming patterns. Part of the ms-office-python-* skill family.
+family: ms-office
+disambiguation: Excel files from Python. Word documents are ms-office-word-python; decks are ms-office-powerpoint-python.
 ---
 
 # Microsoft Excel — Python

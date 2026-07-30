@@ -1,6 +1,7 @@
 ---
 name: data-mart
 description: Use when designing, building, or optimizing data marts — dimensional modeling (star/snowflake schemas), fact and dimension table design, conformed dimensions, slowly changing dimensions (SCD Types 1-6), aggregation strategies, ETL/ELT loading patterns, data mart bus architecture, performance optimization (indexing/partitioning/materialized views), and data quality frameworks. Part of the data-* skill family.
+disambiguation: A single subject-area mart — its star schema, conformed dimensions and consumption patterns. Enterprise-wide architecture, Kimball vs Inmon and the integration layer is data-warehouse.
 ---
 
 # Data Mart Design and Implementation
