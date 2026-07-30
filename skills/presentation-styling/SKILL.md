@@ -4,6 +4,7 @@ description: >
   Use when a presentation needs template selection, branding enforcement, color palettes, tone
   profiles, or layout conventions — asset management, consulting slide standards, and visual
   identity enforcement. Part of the presentation-* skill family.
+family: presentation
 ---
 
 # Presentation Styling

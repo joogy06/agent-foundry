@@ -1,6 +1,8 @@
 ---
 name: rhel-web-servers
 description: Use when configuring web servers on RHEL 9 (and AlmaLinux/Rocky 9) — Nginx, Apache (httpd), Caddy setup and tuning, virtual hosts, SSL/TLS certificates, Let's Encrypt/certbot, reverse proxy patterns, load balancing, HTTP/2/3, security headers, SELinux booleans for web services, and performance optimization. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # Red Hat Enterprise Linux 9 — Web Server Administration

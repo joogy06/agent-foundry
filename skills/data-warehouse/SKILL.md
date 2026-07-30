@@ -1,6 +1,7 @@
 ---
 name: data-warehouse
 description: Use when designing, building, or optimizing enterprise data warehouses — Kimball vs Inmon methodology, dimensional and normalized modeling, slowly changing dimensions, ETL/ELT pipeline design, partitioning and distribution strategies, materialized views, query optimization, data vault 2.0, warehouse platforms (PostgreSQL/Snowflake/Redshift/BigQuery/Synapse/DB2 Warehouse), and operational patterns (incremental loads, CDC, reconciliation). Part of the data-* skill family.
+disambiguation: The ENTERPRISE layer — methodology choice, integration, SCD strategy, warehouse-wide modelling. One departmental subject-area mart is data-mart.
 ---
 
 # Enterprise Data Warehouse — Design & Implementation

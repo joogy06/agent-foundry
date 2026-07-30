@@ -1,6 +1,7 @@
 ---
 name: codex-orchestration
 description: "Use when delegating tasks to Codex CLI (OpenAI GPT-5.6) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers Codex plugin commands, codex exec (incl. per-call reasoning-effort tiers), and agy -p headless mode. Triple-model orchestration for Claude + Codex + Antigravity (agy)."
+disambiguation: Delegation STRATEGY across external CLIs — when to ask a second model, how to frame the task, how to weigh the answer. The `agy` binary's own flags and failure modes are antigravity-cli.
 ---
 
 # Cross-Model Orchestration — Claude + Codex + Antigravity (agy)

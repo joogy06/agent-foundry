@@ -1,6 +1,8 @@
 ---
 name: windows-ps-server-admin
 description: Use when administering Windows Server via PowerShell — Active Directory (users, groups, OUs, GPO), DNS Server, DHCP Server, IIS/web hosting, Hyper-V VM management, Windows Server Update Services (WSUS), file server/shares (SMB), Print Server, Certificate Services, and server roles/features installation. Part of the windows-ps-* skill family.
+family: windows
+disambiguation: Administering Windows Server ROLES via PowerShell — DNS, DHCP, IIS, Hyper-V, and routine AD tasks. AD architecture and design decisions are windows-ad-admin.
 ---
 
 # Windows Server Administration via PowerShell

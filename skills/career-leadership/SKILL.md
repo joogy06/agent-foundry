@@ -17,6 +17,7 @@ triggers:
   - coaching direct reports
   - leading change
   - organizational politics
+family: career
 ---
 
 # Career Leadership
@@ -36,6 +37,7 @@ Child of `career-coach`. This skill provides frameworks, models, and actionable 
 | If the user asks about... | Redirect to... |
 |---|---|
 | Promotion strategy, career planning, performance reviews | `career-coach` |
+| The tactical moves — pre-wiring a decision, events, internal channels, the ask | `career-advocacy` |
 | Interview preparation, behavioral questions, case studies | `career-storytelling` |
 | Salary negotiation, offer evaluation, compensation benchmarking | `career-transition` |
 | Resume / cover-letter writing | `career-application-writer` |

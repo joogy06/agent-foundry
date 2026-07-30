@@ -1,6 +1,7 @@
 ---
 name: trading-risk-management
 description: Use when implementing kill switches, circuit breakers, position sizing, drawdown controls, VaR/CVaR calculations, Kelly criterion, or correlation-based portfolio risk management for automated trading systems. Also covers risk-constrained allocation overlays (applying constraints, risk budgets, and feasibility checks over externally-supplied point-in-time forecasts - never producing forecasts), benchmark and return conventions, factor/benchmark exposure analysis, cost-aware rebalance/turnover analysis, ex-ante vs realized risk attribution (risk contribution, not performance attribution), and serializing kill-switch state into the runtime's append-only persistent halt record. Trigger on - portfolio construction, risk budget, risk-constrained allocation, risk attribution, risk contribution, rebalance turnover, factor exposure, persistent halt state
+family: trading
 ---
 
 # Trading Risk Management

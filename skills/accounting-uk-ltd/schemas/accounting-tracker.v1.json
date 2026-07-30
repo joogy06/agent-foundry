@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foundry-lab.local/schemas/accounting-tracker.v1.json",
+  "title": "accounting-tracker.v1",
+  "description": "S074. Persistent state for a UK small-company accounting engagement: the company profile established at first contact, the obligation calendar DERIVED from it, and the law-watch record. The load-bearing rule mirrors ux-evidence.v1 — anything derivable is COMPUTED, never accepted from input. Due dates come from the profile plus the statutory rule; overdue comes from the due date plus today. A user or agent can record that something was DONE; nobody can assert that an obligation is not due.",
+  "type": "object",
+  "required": ["schema_version", "company", "obligations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "accounting-tracker.v1" },
+    "generated_at": { "type": "string" },
+    "company": {
+      "type": "object",
+      "description": "Established at first contact. Every field records whether it was CONFIRMED from a document or ASSUMED — an assumed field cannot carry a conclusion, the same rule business-edge applies to an assumed margin.",
+      "required": ["name", "accounting_reference_date"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "company_number": { "type": ["string", "null"] },
+        "accounting_reference_date": {
+          "type": "string",
+          "description": "MM-DD. Drives year end, Companies House deadline and the corporation tax period."
+        },
+        "incorporated_on": { "type": ["string", "null"], "description": "ISO date. A first period runs to 21 months, not 9." },
+        "vat_registered": { "type": "boolean" },
+        "vat_scheme": {
+          "enum": ["standard", "cash", "flat_rate", "annual", "margin", "retail", null],
+          "description": "Changes the arithmetic of every VAT box. Never defaulted silently."
+        },
+        "vat_stagger_month": {
+          "type": ["integer", "null"], "minimum": 1, "maximum": 12,
+          "description": "Calendar month (1-12) in which a VAT quarter ENDS. Sets four deadlines a year."
+        },
+        "accounting_framework": { "enum": ["FRS105", "FRS102_1A", null] },
+        "associated_companies": {
+          "type": ["integer", "null"], "minimum": 0,
+          "description": "DIVIDES the corporation-tax marginal relief limits. Absent is not the same as zero."
+        },
+        "has_employees": { "type": ["boolean", "null"] },
+        "payroll_frequency": { "enum": ["monthly", "weekly", "none", null] },
+        "confirmation_statement_review_date": { "type": ["string", "null"], "description": "ISO date the review period ends." },
+        "field_provenance": {
+          "type": "object",
+          "additionalProperties": { "enum": ["confirmed", "assumed"] },
+          "description": "Per-field. A profile of assumptions produces a calendar of guesses."
+        }
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "due_date", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "kind": {
+            "enum": ["vat_return", "ct_payment", "ct_filing", "annual_accounts",
+                     "confirmation_statement", "payroll_fps", "paye_payment",
+                     "p60", "p11d", "class_1a_payment"]
+          },
+          "period_label": { "type": "string" },
+          "period_end": { "type": ["string", "null"] },
+          "due_date": { "type": "string", "description": "COMPUTED from the profile and the statutory rule." },
+          "status": {
+            "enum": ["pending", "in_progress", "done", "not_applicable"],
+            "description": "The ONLY field a caller may set. `overdue` is deliberately absent — it is derived from due_date and today, so it cannot be asserted away."
+          },
+          "completed_on": { "type": ["string", "null"] },
+          "evidence": { "type": ["string", "null"], "description": "What proves it was done — a receipt reference, a submission id." },
+          "notes": { "type": ["string", "null"] },
+          "rule": { "type": ["string", "null"], "description": "The statutory rule the due date came from, so a wrong date is traceable." }
+        }
+      }
+    },
+    "law_watch": {
+      "type": "object",
+      "description": "Rules and rates change; a tracker that silently outlives them produces confidently wrong figures.",
+      "additionalProperties": true,
+      "properties": {
+        "rates_review_by": { "type": ["string", "null"] },
+        "last_checked": { "type": ["string", "null"] },
+        "check_interval_days": { "type": "integer", "default": 90 },
+        "watch_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "topic": { "type": "string" },
+              "effective_from": { "type": ["string", "null"] },
+              "source_url": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "Append-only. Re-running the routine must never silently rewrite what was recorded before.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "at": { "type": "string" },
+          "action": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

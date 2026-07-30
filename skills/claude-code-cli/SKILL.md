@@ -1,6 +1,7 @@
 ---
 name: claude-code-cli
 description: Use when working with the Claude Code CLI (`claude`) — headless and interactive modes, flags, agents, plugins, MCP servers, hooks, settings, sessions, and the local custom ecosystem (forge, bob, alf, pa, wiki, agent-teams). Covers Claude Code 2.1.x. Refresh of the upstream `superpowers:working-with-claude-code` reference plus local-environment additions.
+disambiguation: The `claude` binary — its flags, hooks, settings, MCP and plugin surfaces. The `copilot` binary's equivalents are gh-copilot-cli.
 ---
 
 # Claude Code CLI

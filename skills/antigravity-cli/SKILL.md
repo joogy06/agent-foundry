@@ -1,6 +1,7 @@
 ---
 name: antigravity-cli
 description: Use when delegating to or working with the Antigravity CLI (`agy`) — headless single-prompt orchestration (`agy -p`), interactive/resume modes, model selection, plugins, sandbox, and auth. `agy` is this host's SOLE second-opinion / challenger / research delegate — the gemini CLI was retired from this ecosystem on 2026-07-25 and has no fallback path. Covers Antigravity CLI 1.1.6 (verified locally 2026-07-24 from `agy --help`, `agy models`, `agy --version`).
+disambiguation: The `agy` binary itself — its flags, headless invocation patterns, model policy and failure modes. Deciding WHICH external model to delegate to, and how to structure a cross-CLI review, is codex-orchestration.
 ---
 
 # Antigravity CLI (`agy`)

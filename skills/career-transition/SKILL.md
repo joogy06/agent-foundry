@@ -18,6 +18,7 @@ triggers:
   - internal mobility
   - lateral move
   - counteroffer
+family: career
 ---
 
 # Career Transition

@@ -128,6 +128,10 @@ case "$TIER" in
         refresh_note="rot-report fresh (<7d) — not re-run"
       fi
       python3 "$META_DIR/freshness.py" reindex >/dev/null 2>&1 || true
+      # S074 (#217): NEW description collisions across the skill library. Exit 2 means
+      # new pairs, which is a finding for the sweep to surface — not a launcher failure.
+      python3 "$META_DIR/skill_overlap.py" --json \
+        > "$HOME/.claude/state/skill-overlap.json" 2>/dev/null || true
     fi
     ;;
   full)
@@ -139,6 +143,8 @@ case "$TIER" in
       # comparison (publish path-scrub makes the checker's own published copy
       # differ by design) belongs to the publish pipeline's strict check.
       python3 "$META_DIR/identity_check.py" --pair prod-shadow >/dev/null 2>&1 || true
+      python3 "$META_DIR/skill_overlap.py" --json \
+        > "$HOME/.claude/state/skill-overlap.json" 2>/dev/null || true
       refresh_note="all feeds refreshed"
     fi
     ;;

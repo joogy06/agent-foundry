@@ -1,6 +1,7 @@
 ---
 name: ms-office-security-python
 description: Use when hardening Python code that touches Microsoft Office files or Microsoft 365 APIs — covers the consolidated security checklist for the ms-office-python-* family, the YAML rule manifest (17 Office-specific rules), and the runnable Python validator (python3 -m ms_office_security_check). All output is advisory-only; defers generic SAST to bandit/semgrep, dependency CVEs to dep-currency-check/pip-audit, secrets to gitleaks/trufflehog, and SBOM to cyclonedx/syft. Part of the ms-office-python-* skill family.
+family: ms-office
 ---
 
 # Microsoft Office Security — Python

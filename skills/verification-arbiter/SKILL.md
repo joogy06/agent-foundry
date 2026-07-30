@@ -1,6 +1,7 @@
 ---
 name: verification-arbiter
 description: Use when bob needs an independent verdict on an evidence bundle as part of the INTEGRATED → VERIFIED transition. Invoked as a subprocess (not a Claude Code Agent). Reads a frozen evidence bundle + frozen test plan, runs a cold-context Claude to score coverage against the plan and self-check the bundle hash, and emits one JSON verdict on stdout. Bob persists the verdict; the arbiter never writes to .ledger/ (CB4 boundary per design §5.6).
+disambiguation: Scores an EVIDENCE BUNDLE against a frozen test plan for INTEGRATED to VERIFIED. Rendered-UI geometry is visual-arbiter; drift classification is design-drift-arbiter.
 ---
 
 # verification-arbiter

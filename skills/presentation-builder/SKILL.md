@@ -4,6 +4,7 @@ description: >
   Use when the user asks to build a presentation, create slides, make a deck, PowerPoint, PPTX,
   pitch deck, status update deck, architecture review presentation, or steering committee deck.
   Parent skill for the presentation-* skill family.
+family: presentation
 ---
 
 # Presentation Builder

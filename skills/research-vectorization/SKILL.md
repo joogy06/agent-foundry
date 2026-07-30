@@ -1,9 +1,19 @@
 ---
 name: research-vectorization
-description: Use when converting research documents to vector embeddings, building queryable knowledge bases with ChromaDB or FAISS, implementing RAG pipelines, chunking markdown documents, or integrating Qwen for embedding-augmented generation
+description: Use when writing the code that turns a document corpus into a queryable vector store — runnable Python for markdown chunking, sentence-transformer embedding, ChromaDB and FAISS indexing, metadata schemas and a basic RAG query pipeline.
+disambiguation: The PIPELINE CODE — chunk, embed, index, query, in working Python. The design decisions around it (RAG vs CAG, hybrid retrieval, reranking, which embedding model and vector store, evaluation) are rag-architecture; read that first if the question is "what should this system be" rather than "how do I write it".
 ---
 
 # Research Vectorization
+
+> **This skill is the implementation companion to `rag-architecture`.** It gives you working code for
+> a local corpus. The architectural decisions it assumes — dense-only retrieval, fixed chunk sizes,
+> a local embedding model, no reranking — are defaults suited to a single-user research corpus, not
+> to a production application. **For an application, decide the architecture in `rag-architecture`
+> first**, then come back here for the pipeline mechanics.
+>
+> *(Code verified working; named models and library defaults were current when written and drift
+> quickly — check `rag-architecture` §6 before adopting a model from the table below.)*
 
 ## Overview
 

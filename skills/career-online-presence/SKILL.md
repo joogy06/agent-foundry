@@ -1,6 +1,8 @@
 ---
 name: career-online-presence
 description: "Use when building or auditing an individual professional's online presence and findability — personal website (Person schema, canonical bio), GitHub portfolio, multi-platform social strategy (LinkedIn content cadence, X, Bluesky, Threads), newsletters (Substack), YouTube, AI people-search visibility (how ChatGPT, Perplexity, Gemini answer 'who is <name>'), and digital-footprint hygiene under employer screening. Includes a mandatory regulated-employee publishing check (finance/FINRA/MNPI). Trigger on - personal website, GitHub profile, online presence, personal brand online, be found by AI, Bluesky, Threads, Substack, newsletter strategy, digital footprint, what does ChatGPT say about me. Part of the career-* skill family; business/brand E-E-A-T lives in seo-authority-builder; e-commerce AI visibility lives in ai-search-optimizer."
+family: career
+disambiguation: The public artefacts and their findability — personal site, Person schema, GitHub profile, what search returns. What message those artefacts should carry is career-positioning.
 ---
 
 # Career Online Presence

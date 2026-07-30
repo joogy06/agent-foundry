@@ -1,6 +1,7 @@
 ---
 name: woocommerce-faceted-navigation
 description: Use when building, reviewing, or fixing faceted/layered navigation and product filters on a WooCommerce store — filter UX (AJAX vs reload, mobile filter drawer, applied-filter chips, sort logic), facet indexability strategy (index-worthy facet landing pages vs thin parameter combinations, canonical/noindex/robots decision matrix), crawl-budget and origin-load protection (parameter normalization, cache-key design, allowlisted exposure), and Woo query/DB performance for high-cardinality attributes (attribute lookup tables, external index offload boundary). Trigger on - product filters, layered nav, faceted navigation, filter SEO, crawl trap, filter URLs indexed, AJAX filters slow. Category-page content checklists live in ecommerce-growth; generic schema and site architecture live in seo-structure-architect; Woo code security patterns live in woocommerce-developer.
+disambiguation: The FILTER and faceted-navigation layer only — filter UX, facet indexability, crawl control, and the SEO consequences of filtered URLs. Whole-page content and store-wide growth levers are ecommerce-growth.
 ---
 
 # WooCommerce Faceted Navigation

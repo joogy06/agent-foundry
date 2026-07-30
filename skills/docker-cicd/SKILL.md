@@ -1,6 +1,8 @@
 ---
 name: docker-cicd
 description: Use when building Docker images in CI/CD pipelines — GitHub Actions Docker workflows, GitLab CI Docker builds, Jenkins Docker agents, multi-platform builds with buildx, registry authentication and push workflows, image tagging strategies (semver, git SHA, branch), layer cache optimization in CI, Docker-in-Docker vs socket mount vs daemonless builders (rootless BuildKit, Buildah; Kaniko is archived/legacy), automated image scanning in pipelines, and deployment patterns. Part of the docker-* skill family. OS-agnostic.
+family: docker
+disambiguation: Building images in a PIPELINE — Actions, GitLab CI, Jenkins, caching, multi-platform, registry push. Local container and Dockerfile basics are docker-fundamentals; hardening is docker-security.
 ---
 
 # Docker in CI/CD Pipelines

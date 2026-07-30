@@ -1,6 +1,8 @@
 ---
 name: ubuntu-network-infra
 description: Use when configuring network infrastructure services on Ubuntu 24.04 LTS — BIND9 DNS server, dnsmasq, Kea/ISC DHCP server, NTP with chrony/timesyncd, VLAN routing, IP forwarding, NAT, and network troubleshooting tools. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — Network Infrastructure

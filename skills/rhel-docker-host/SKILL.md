@@ -1,6 +1,9 @@
 ---
 name: rhel-docker-host
 description: Use when setting up and managing containers on RHEL 9 (and AlmaLinux/Rocky 9) — Podman (rootless and rootful), Docker CE installation, Buildah, Skopeo, container networking (podman network, macvlan), Quadlet systemd integration, pod management, Compose with podman-compose, private registry, SELinux container contexts, and security best practices. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
+disambiguation: Standing up containers on RHEL — Podman rootless and rootful, Docker CE, Buildah, Skopeo, SELinux. Network topology itself is docker-networking.
 ---
 
 # Container Host on RHEL 9 — Podman, Buildah, Skopeo, Docker CE

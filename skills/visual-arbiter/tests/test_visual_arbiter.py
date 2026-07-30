@@ -741,3 +741,88 @@ def test_phase5b_visual_only_true_skips_handler_check():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# --- S074 (#218): partial measurement must not read as clean ------------------
+
+
+def _apply_measurement(parsed, base_verdict):
+    """Mirror of the mapping in main(), exercised without a browser."""
+    verdict = dict(base_verdict)
+    verdict["measurement"] = {
+        "outcome": parsed.get("outcome", "MEASURED"),
+        "breakpoints_expected": parsed.get("breakpoints_expected"),
+        "breakpoints_measured": parsed.get("breakpoints_measured"),
+        "errors": parsed.get("errors") or [],
+    }
+    if verdict["measurement"]["outcome"] != "MEASURED":
+        verdict.setdefault("concerns", []).append(
+            {"kind": "partial_measurement", "severity": "warning", "detail": "x"}
+        )
+        if verdict.get("verdict") == "pass":
+            verdict["verdict"] = "warn"
+    return verdict
+
+
+class TestPartialMeasurementMapping:
+    """The degradation must reach the VERDICT, not just telemetry.
+
+    Before v1.1.0 a verdict built from 1 of 4 breakpoints was byte-indistinguishable, to
+    bob and to G_V, from one built on all 4 — the information existed in `errors[]` and was
+    discarded at the one boundary that decides anything.
+    """
+
+    def test_partial_downgrades_pass_to_warn(self):
+        v = _apply_measurement(
+            {"outcome": "PARTIAL", "breakpoints_expected": 4, "breakpoints_measured": 1},
+            {"verdict": "pass", "concerns": []},
+        )
+        assert v["verdict"] == "warn"
+        assert v["measurement"]["breakpoints_measured"] == 1
+        assert any(c["kind"] == "partial_measurement" for c in v["concerns"])
+
+    def test_partial_does_not_soften_a_reject(self):
+        """A real failure outranks an incomplete measurement — never the other way."""
+        v = _apply_measurement(
+            {"outcome": "PARTIAL", "breakpoints_expected": 4, "breakpoints_measured": 1},
+            {"verdict": "reject", "concerns": []},
+        )
+        assert v["verdict"] == "reject"
+
+    def test_complete_measurement_leaves_pass_alone(self):
+        v = _apply_measurement(
+            {"outcome": "MEASURED", "breakpoints_expected": 3, "breakpoints_measured": 3},
+            {"verdict": "pass", "concerns": []},
+        )
+        assert v["verdict"] == "pass"
+        assert v["concerns"] == []
+
+    def test_absent_outcome_is_treated_as_measured_for_back_compat(self):
+        """An older measure script emits no `outcome`; that must not fabricate a warning."""
+        v = _apply_measurement({"breakpoints_expected": None}, {"verdict": "pass", "concerns": []})
+        assert v["verdict"] == "pass"
+
+
+class TestVetoedExitCodeStillHolds:
+    """The user vetoed changing measure.mjs's exit code. Pinned so it is not re-added.
+
+    Not stylistic: visual_arbiter_spawn.py maps ANY non-zero to AUDIT_UNAVAILABLE, so an
+    exit-code fix would flatten "chrome crashed" and "3 of 4 breakpoints measured" into one
+    outcome and destroy the very distinction #218 adds.
+    """
+
+    def test_measure_script_still_exits_zero_on_partial(self):
+        # Comments are stripped first: the file deliberately QUOTES the reverted form
+        # inside the note explaining why it must not come back, and a naive substring
+        # search flags that explanation as the thing it warns against.
+        code = "\n".join(
+            line for line in MEASURE.read_text().splitlines()
+            if not line.lstrip().startswith(("//", "*", "/*"))
+        )
+        assert "process.exitCode = 0;" in code
+        assert "exit(errors.length" not in code, "the vetoed exit-code change was re-added"
+
+    def test_measure_script_emits_the_outcome_field(self):
+        src = MEASURE.read_text()
+        assert "breakpoints_measured" in src
+        assert '"PARTIAL"' in src

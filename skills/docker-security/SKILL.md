@@ -1,6 +1,8 @@
 ---
 name: docker-security
 description: Use when hardening Docker deployments — image scanning (Trivy, Scout, Snyk), rootless Docker, user namespaces, seccomp profiles, AppArmor/SELinux integration, image signing (Sigstore cosign, Notation — Docker Content Trust retired 2025), secrets management, read-only containers, Linux capability dropping, CIS Docker Benchmark, supply chain security, and runtime security monitoring. Part of the docker-* skill family. OS-agnostic.
+family: docker
+disambiguation: Hardening a deployment — image scanning, rootless, user namespaces, seccomp, AppArmor/SELinux. Pipeline build mechanics are docker-cicd.
 ---
 
 # Docker Security

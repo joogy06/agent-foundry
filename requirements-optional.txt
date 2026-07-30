@@ -1,0 +1,131 @@
+# =============================================================================
+# requirements-optional.txt — S075 (#240)
+#
+# EVERY LINE IN THIS FILE IS OPTIONAL. The harness runs stdlib-only: 225 skills,
+# the gates, the installer and the session hooks all work with none of it
+# installed. This file exists so that "what am I missing, and what does it cost
+# me?" has an answer, instead of being discovered one skill at a time.
+#
+#   pip install -r requirements-optional.txt                  # everything
+#   python3 install.py --with-extras=documents,spreadsheets   # one capability
+#   python3 skills/_meta/python_deps.py report                # what's missing
+#
+# NEVER install this silently and never make it a hard requirement. A locked-down
+# enterprise box where `pip install` is refused must still get a working harness —
+# turning "this skill cannot extract a PDF" into "the installer failed" is a
+# strictly worse outcome.
+#
+# FLOORS, NOT PINS. `>=` states the version a skill was written against. Exact
+# pins rot, and they fight with whatever else lives in the user's environment;
+# these libraries are leaves, not a dependency tree we control. Run
+# `dep-currency-check` to see what has moved.
+#
+# FORMAT. Ordinary pip syntax plus structured comments pip ignores:
+#   @capability  the group name, used by --with-extras
+#   @unlocks     what becomes possible
+#   @skills      which skills are affected
+#   @without     what actually happens when it is absent — the honest cost
+#   # import:    the MODULE name, where it differs from the package name
+# =============================================================================
+
+
+# @capability: documents
+# @unlocks: PDF bank/card statements, purchase and sales invoices, receipts
+# @skills: financial-document-ingestion, pdf-processing, accounting-uk-ltd
+# @without: PDF extraction is unavailable. CSV bank exports still work and are the
+#   better source anyway — financial-document-ingestion §2 says to ask for the CSV
+#   first. Scanned documents have no route at all without OCR.
+pdfplumber>=0.11.4
+pypdf>=5.1.0
+
+
+# @capability: spreadsheets
+# @unlocks: .xlsx read/write — client workbooks, accountant schedules, exports
+# @skills: ms-office-excel-python, structure-recovery, financial-document-ingestion
+# @without: the .xlsx route is a DEAD END. financial-document-ingestion §2 routes
+#   spreadsheets to ms-office-excel-python, and that skill cannot run. Note xlrd is
+#   NOT a substitute: it dropped .xlsx support at 2.0 and reads only legacy .xls.
+openpyxl>=3.1.5
+
+
+# @capability: office-docs
+# @unlocks: .docx and .pptx generation and inspection
+# @skills: ms-office-word-python, ms-office-powerpoint-python, presentation-builder
+# @without: those skills can describe the API but cannot execute it. Markdown and
+#   HTML output paths are unaffected.
+python-docx>=1.1.2          # import: docx
+python-pptx>=1.0.2          # import: pptx
+
+
+# @capability: reporting
+# @unlocks: HTML report rendering from templates
+# @skills: lineage-extract-static, legacy-code-intel
+# @without: render_report.py raises ImportError. This is the cause of 11 test
+#   failures in lineage-extract-static (#236) — which should skip rather than fail,
+#   because a missing optional dependency is a known state, not a defect.
+jinja2>=3.1.4
+
+
+# @capability: lineage-sql
+# @unlocks: SQL dialect parsing and graph analysis for mainframe lineage
+# @skills: mainframe-lineage-parsers
+# @without: nothing breaks — the skill was deliberately designed stdlib-first with
+#   sqlglot as an optional accelerator (design decision D1). Coverage of exotic SQL
+#   dialects is narrower.
+sqlglot>=25.0.0
+networkx>=3.4.0
+
+
+# @capability: hardening
+# @unlocks: XML parsing that refuses external entities (XXE)
+# @skills: _meta/trusted_runner, and the 6 XML-adjacent skills carrying the S038
+#   defusedxml HARD-RULE (confluence-rest-api, confluence-content-creator,
+#   jira-rest-api, cognos-admin, datastage-developer, lineage-extract-static)
+# @without: trusted_runner falls back to stdlib ElementTree, which is SAFE HERE for
+#   a documented reason — it parses only pytest's own JUnit XML from a private temp
+#   file it created, and stdlib ElementTree does not resolve external entities. The
+#   skills that PARSE UNTRUSTED XML are the ones that need this installed.
+defusedxml>=0.7.1
+
+
+# @capability: llm-clients
+# @unlocks: direct API calls to Anthropic and Google models from skill scripts
+# @skills: intent-extract, vertex-banana
+# @without: intent-extract's two-arm verification cannot call a model; vertex-banana
+#   cannot generate images. Everything routed through the CLIs (claude, codex, agy)
+#   is unaffected — that is the normal path.
+anthropic>=0.40.0
+google-genai>=2.8.0         # import: google.genai
+
+
+# @capability: load-testing
+# @unlocks: executable load scenarios
+# @skills: performance
+# @without: the skill's k6 and Playwright paths still work; only the locust runner
+#   is unavailable.
+locust>=2.32.0
+
+
+# @capability: dataframes
+# @unlocks: tabular analysis at a scale where stdlib csv becomes awkward
+# @skills: python-data-engineer, market-data-engineering, seo-data-analyst
+# @without: stdlib csv covers every accounting-scale volume we actually have, and
+#   large-file-analysis exists precisely for the cases that do not fit in memory.
+#   This is the heaviest install here and the least often load-bearing — take it
+#   last, and only if something concrete needs it.
+pandas>=2.2.3
+
+
+# -----------------------------------------------------------------------------
+# DELIBERATELY NOT LISTED
+#
+#   tomli      — a backport of stdlib tomllib for Python < 3.11. The harness
+#                targets 3.11+; ms-office-security-python already guards the
+#                import and falls through to tomllib.
+#   fastapi    — wiring-extract-static's FastAPI plug-in analyses a TARGET
+#                project. The dependency belongs to that project, not to us.
+#   puppeteer / node_modules — not Python. The geometry lane's node dependency is
+#                a separate reproducibility gap (#13) and needs its own answer.
+#   pytest-json-report — trusted_runner deliberately stopped depending on it and
+#                uses pytest's built-in JUnit XML instead (S071).
+# -----------------------------------------------------------------------------

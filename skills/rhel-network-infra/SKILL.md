@@ -1,6 +1,8 @@
 ---
 name: rhel-network-infra
 description: Use when configuring network infrastructure services on RHEL 9 (and AlmaLinux/Rocky 9) — BIND DNS server, dnsmasq, Kea/ISC DHCP server, chrony NTP, VLAN routing with nmcli, IP forwarding, NAT with nftables/firewalld, and network troubleshooting tools. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # Red Hat Enterprise Linux 9 — Network Infrastructure Services

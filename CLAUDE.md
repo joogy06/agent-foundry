@@ -212,6 +212,19 @@ second-opinion / challenger / research work on this host.
 > talks to it directly via `VERTEX_API_KEY` with no CLI dependency, and is the sole image skill.
 > Retiring the *CLI* did not retire the *API*. Likewise `~/.gemini/` is **agy's** config home
 > (`agy.md`, `antigravity-cli/`, OAuth creds) despite the directory name — never delete it.
+>
+> **Nor with the gemini CLI as a SKILLS TARGET, which is also alive** (clarified 2026-07-29, and the
+> ambiguity above is what made it need clarifying). Two different scopes:
+>
+> | Scope | gemini CLI | Meaning |
+> |---|---|---|
+> | **Skills consumer** — a tool that READS the skill library | **YES, live** | `install.py` mirrors skills to `~/.gemini/skills/` so **legacy enterprise systems** can use them. `--target g` is a supported install target. |
+> | **Delegate** — a tool the harness CALLS OUT TO | **NO** | agy replaced it. **foundry passes gemini no work.** No `gemini -p`, no `mcp__gemini-cli__*`, in any skill. |
+>
+> "gemini is retired" and "install the skills for gemini" are both true because they are statements
+> about different scopes. The retirement above is entirely about the second column. The matrix in
+> `install.py` (`SKILL_CONSUMERS` / `DELEGATES`, previewable with `install.py --preview`) declares
+> which scopes each tool participates in, so this cannot be misread again.
 
 When delegating a headless prompt on this host, use ONE of two patterns by whether
 agy needs to USE TOOLS (read files, run commands, search) or only reason:

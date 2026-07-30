@@ -1,6 +1,7 @@
 ---
 name: wiring-query
 description: Thin deterministic Python skill that reads `.wiring/latest.json` and returns narrow slices for agent consumption. Four operations — `impact(symbol)` and `subgraph_for_llm(anchors)` (v1), plus `intent_of(component)` and `flow_intent(flow_id)` (v1.1, S032). No LLM calls anywhere. Snapshot is cached in-process for subsequent calls within a single subprocess. Deterministic BFS with cycle detection; anchor fuzzy-match suggestions when not found; token/edge-budget truncation. Invoked by bob, by evo (DRIFT_SURFACED phase), by integration-flow-testing@1.1, or directly from CLI.
+family: wiring
 ---
 
 # wiring-query (v1.1 thin)

@@ -207,11 +207,23 @@ Entered only for an `alf --sweep <tier>` invocation. **Binding: Step 2g selects 
 1. Read `_meta/sweep-cadence.md` and look up the tier's row → its `scope` (which targets), `feeds` (which JSON to load), and `budget note`.
 2. Pre-load the named feeds as Step-2a-style structured data (read-only):
    - `version` → `inventory-history.jsonl` tail (the named delta) + `drift-report.json`.
-   - `freshness` → `rot-report.json` (RED/YELLOW/UNANNOTATED) + `freshness/index.json` `by_deadline`.
+   - `freshness` → `rot-report.json` (RED/YELLOW/UNANNOTATED) + `freshness/index.json` `by_deadline` + `skill-overlap.json` `new_pairs[]`.
    - `flow-pulse` → `process-observation/scripts/query.py rollup` (reuse Step 2f's exact call path) + open flow tasks.
    - `full` → all feeds + run Steps 2a-2f per target.
    - `flow-review` → rollup + `identity-report.json` + the review-doc deadline anchor.
 3. Fall into the existing Steps 2a-2f for the in-scope targets (skipping any re-derivation HR5 forbids — if a feed already names the bump, do NOT re-`--version` it), then Step 3.
+
+**Skill-overlap feed (S074, #217).** `state/skill-overlap.json` carries `new_pairs[]` — description
+collisions that are NOT in the accepted baseline. Each is a selection-quality finding: two skills the
+selector cannot tell apart, so the wrong one can be chosen silently. Cite the pair and its score as
+the feed record, and propose the remedy the collision KIND calls for — `applies_when:` when the
+discriminator is a host fact (rhel/ubuntu are near-identical by design and no prose fixes that), a
+`disambiguation:` sentence naming the neighbour when they are semantic neighbours.
+
+Two limits to respect rather than paper over: the scanner reads only `description:`, so **adding a
+disambiguation does not lower a pair's score** — the pair leaves the report by being accepted into the
+baseline, which is a deliberate human act. And the scanner can verify a boundary EXISTS, never that it
+is any good. Report `new_pairs[]`; do not silence them (HR7 — surface, never fix).
 
 Feeds are produced by the evergreening bus, never by alf. Every finding cites its feed record (HR6).
 

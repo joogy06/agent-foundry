@@ -1,6 +1,7 @@
 ---
 name: ever-test-gen
 description: "Use during evo's TESTED phase (modes b/c only) to generate characterization tests by composing integration-flow-testing — never extends or forks it. Three test types — regression-replay (existing pytest/jest baseline), migration-confirmation (api_delta-aware, validates legacy oracle preserved per HARD-RULE 2 bug-for-bug), CVE proof-of-fix (mode-c minimal vuln replay). Every generated test file gets a mandatory header `# CONFIDENCE — characterization-aid | requires-user-review` and pytest.mark.evo_generated / describe.skipIf metadata. Never overwrites existing user tests; only writes to tests/test_evo_<mode>_<component>__<symbol>.py|js paths. Requires a bob-issued claim token, heartbeats every 60s, emits transition requests for TESTED. Skill writes test FILES only; bob's trusted_runner executes them (CB3 provenance)."
+disambiguation: evo's TESTED phase only — characterization tests over EXISTING legacy behaviour, composed from integration-flow-testing. Contract-driven tests for new components are integration-flow-testing; fixtures are sample-data-scaffolding.
 ---
 
 # ever-test-gen (v1)

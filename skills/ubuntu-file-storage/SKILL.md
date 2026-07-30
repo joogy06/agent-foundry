@@ -1,6 +1,8 @@
 ---
 name: ubuntu-file-storage
 description: Use when configuring file sharing and advanced storage on Ubuntu 24.04 LTS — NFS server/client, Samba/CIFS shares, ZFS pools and datasets, disk quotas, POSIX ACLs, snapshots, and storage monitoring. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — File Sharing & Advanced Storage

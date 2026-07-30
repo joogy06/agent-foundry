@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foundry-lab.local/schemas/document-index.v1.json",
+  "title": "document-index.v1",
+  "description": "S075 (#227). The index of a financial document store. Identity is the sha256, COMPUTED on arrival and never accepted from input — the same rule accounting-tracker.v1 applies to a due date. `posted_ref` is what closes document -> validated rows -> posted entry; an entry without one is an OPEN ITEM, derived rather than flagged, so no caller can mark a document closed without naming what it became. Corrections are new entries with `superseded_by` on the old one: the original was the basis of a filed return and is replaced in the books, not removed from the record.",
+  "type": "object",
+  "required": ["schema_version", "documents"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "document-index.v1" },
+    "generated_at": { "type": "string" },
+    "note": { "type": "string" },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sha256", "original_filename", "stored_path", "doc_type", "period"],
+        "additionalProperties": true,
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "IDENTITY. Computed from the stored bytes. Detects duplicates, makes re-ingestion idempotent, and proves the file behind a figure has not changed."
+          },
+          "original_filename": {
+            "type": "string",
+            "description": "What the sender called it — often the only clue when a reference is missing."
+          },
+          "stored_path": {
+            "type": "string",
+            "description": "Relative to the store root. COMPUTED from doc_type and period, so the tree stays period-first."
+          },
+          "doc_type": {
+            "enum": ["statement", "purchase_invoice", "sales_invoice", "settlement", "payroll", "filing"]
+          },
+          "period": {
+            "type": "string",
+            "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+            "description": "The period the document BELONGS to — not the date it arrived."
+          },
+          "source": {
+            "enum": ["email", "download", "woocommerce", "bank_export", "scan", "portal", "post", null]
+          },
+          "received_at": { "type": ["string", "null"], "description": "Arrival." },
+          "tax_point": {
+            "type": ["string", "null"],
+            "description": "The date that drives VAT — the SUPPLY, not arrival and not payment. Null means not established, which is different from same-as-received."
+          },
+          "extracted": {
+            "enum": ["none", "pending", "validated", "failed"],
+            "description": "Whether rows were extracted and whether they passed the §4 validation contract. `failed` means the figures are a query, not a transaction."
+          },
+          "posted_ref": {
+            "type": ["string", "null"],
+            "description": "The journal or transaction it became. Null is an OPEN ITEM and belongs in the period-end review."
+          },
+          "superseded_by": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 of the document that replaced this one. The superseded entry is never deleted."
+          }
+        }
+      }
+    }
+  }
+}

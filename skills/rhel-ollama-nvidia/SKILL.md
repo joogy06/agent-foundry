@@ -1,6 +1,8 @@
 ---
 name: rhel-ollama-nvidia
 description: Use when setting up NVIDIA GPUs, CUDA, container toolkit, or Ollama on RHEL 9 (and AlmaLinux/Rocky 9) — driver installation via NVIDIA repo or ELRepo, CUDA toolkit, cuDNN, NVIDIA Container Toolkit for Podman and Docker, Ollama installation and model management, GPU monitoring (nvidia-smi), vGPU basics, multi-GPU configuration, SELinux considerations, and troubleshooting. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # RHEL 9 -- NVIDIA GPU & Ollama Administration

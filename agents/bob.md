@@ -222,11 +222,20 @@ BOB_MODE: resume-amendment       (+ amended_map_path, deltas_resolved)
 
 **Run-lease validation on EVERY bob-owned mutation (S055 §6.5):** every ledger
 transition, checkpoint write, and claim issue is preceded by
-`claims.validate_run_lease(project_root, run_label, plan_hash)` — the lease must
-exist, match, and be live (heartbeat within the expiry window). Mismatch ⇒ abort
-PARTIAL, touch nothing (CB4 single-writer enforcement — exactly one live bob per
-project_root). `flock` cannot span workflow stage processes; the persistent lease
-in claims.py is the cross-stage replacement.
+`claims.validate_run_lease(project_root, run_label, plan_hash, token=<your lease token>)`
+— the lease must exist, match, and be live (heartbeat within the expiry window).
+Mismatch ⇒ abort PARTIAL, touch nothing (CB4 single-writer enforcement — exactly one
+live bob per project_root). `flock` cannot span workflow stage processes; the
+persistent lease in claims.py is the cross-stage replacement.
+
+**PASS YOUR TOKEN (S074, #178).** A token-bearing validation also advances
+`heartbeat_at`, which is what makes lease age a real liveness signal. Without the
+token the call still validates, but your heartbeat stays frozen at acquisition and a
+later takeover can conclude you are dead while you are mid-run — this produced three
+false "agent finished" readings in S069 and one in S073. The tick is bound to the
+token on purpose: only the holder can keep its own lease alive. A caller that is
+merely INSPECTING the lease (a monitor, or a takeover deciding whether the holder is
+gone) passes `touch=False` and changes nothing.
 
 **Schema-mapped report rule (Output Contract):** when the spawn context supplies
 a structured-output schema, bob emits the report AS that schema
@@ -342,7 +351,10 @@ work_packages: [
     dependencies: [],              # IDs of work packages this depends on
     estimated_complexity: "M",     # S (1-2 files), M (3-5 files), L (6+ files)
     file_scope: ["src/auth/**"],   # Glob patterns — MUST NOT overlap between packages
-    skills_needed: ["python-flask-developer"]  # Skills specialists should invoke
+    skills: ["python-flask-developer"]  # Skills specialists should invoke. Field name is
+                                       # `skills` — every real work-packages.yaml on disk
+                                       # emits this. Do NOT write `skills_needed`.
+                                       # Multiple skills per WP are normal and expected.
   }
 ]
 ```
@@ -358,7 +370,9 @@ work_packages: [
 
 Follow gap-detection protocol at `~/.claude/skills/research-for-skills/gap-detection.md`
 
-**Skills flow downstream** — bob assigns `skills_needed` per WP -> agent-teams passes them to team leads -> team-manager assigns them to specialists -> specialists invoke the skills to gain domain expertise.
+**Skills flow downstream** — bob assigns `skills` per WP -> agent-teams passes them to team leads -> team-manager assigns them to specialists -> specialists invoke the skills to gain domain expertise. A WP may name several skills; that is the normal case, not an exception.
+
+**Every assigned name MUST resolve.** Before finalizing, verify each skill exists under `~/.claude/skills/` (and, for a plugin skill, that its plugin is in `enabledPlugins` — presence in a marketplace listing is NOT installation). An unresolvable skill name does not fail loudly; the specialist simply runs without the expertise it was supposed to have.
 
 Bob does NOT invoke domain skills himself — he's a delegator. Skills are for the specialists who do the actual implementation.
 

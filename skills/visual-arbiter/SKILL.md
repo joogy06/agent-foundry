@@ -1,6 +1,8 @@
 ---
 name: visual-arbiter
 description: "Use when bob needs a mechanical verdict on whether a built UI product satisfies a frozen design-skeleton as part of the UI-INTEGRATED → UI-VERIFIED transition. Invoked as a subprocess (not a Claude Code Agent). Renders the built product with puppeteer at each required breakpoint, measures bbox / computed styles / interaction wiring against the skeleton, and emits ONE JSON visual-verdict.v1 object on stdout. Pure-Python decision path — NO LLM subprocess (CB4: bob is sole writer of .design-ledger/visual-verdicts/)."
+family: visual
+disambiguation: Mechanical built-UI-vs-frozen-skeleton verdict for the UI-VERIFIED transition. Evidence-bundle scoring is verification-arbiter; classifying a reject as drift is design-drift-arbiter.
 ---
 
 # visual-arbiter
@@ -49,9 +51,11 @@ Tuple mismatch on any field → bob's `claims.consume_visual_verdict` returns `r
 One JSON object matching `visual-verdict.v1` (design §2.9). Top-level `verdict`:
 
 - `pass` — every element at every required breakpoint verified; no fail-status element verdicts; no blocker concerns
-- `warn` — all elements verified but ≥1 warning-severity concern (e.g. fonts.ready >2s)
+- `warn` — every element that WAS measured verified, but ≥1 warning-severity concern (e.g. fonts.ready >2s, or a **partial measurement** — see `measurement.outcome`)
 - `reject` — ≥1 element_verdict has `status: fail` (missing_from_dom, bbox_drift beyond tolerance, token_mismatch, or dead_handler)
 - `AUDIT_UNAVAILABLE` — reserved for the spawn script on environmental failure (chrome crash, schema violation). Bob MUST escalate to user; NEVER auto-approve.
+
+**`measurement` block (v1.1.0).** Every verdict now carries `measurement: {outcome, breakpoints_expected, breakpoints_measured, errors[]}`, with `outcome` one of `MEASURED` / `PARTIAL` / `INCONCLUSIVE`. Read it before trusting `coverage`: coverage counts DECLARED elements, `measurement` states how much of the page was actually reachable. A `pass` over a `PARTIAL` measurement is the one claim this block exists to prevent, and the arbiter will not emit it.
 
 Element verdict fields (§2.6):
 
@@ -62,9 +66,9 @@ Element verdict fields (§2.6):
 - `interactions_ok: [{event, binds_to, status}]` — per-interaction success
 
 Overall:
-- pass iff every element verdict is `pass` AND no blocker concerns
-- reject iff any element verdict is `fail`
-- warn iff all pass but warnings exist
+- pass iff every element verdict is `pass` AND no blocker concerns AND `measurement.outcome == MEASURED`
+- reject iff any element verdict is `fail` — a real failure outranks an incomplete measurement
+- warn iff all pass but warnings exist, **including a `partial_measurement` concern**
 
 ## Exit codes
 
@@ -76,9 +80,13 @@ Overall:
 
 Design §2.6 / §5.6: arbiter **never writes** `.design-ledger/visual-verdicts/`. Bob is the sole ledger writer (CB4 preserved).
 
-## Decision rubric (v1.0.0 — pure-Python, no LLM)
+## Decision rubric (v1.1.0 — pure-Python, no LLM)
 
-**Source of truth: this SKILL.md plus `visual_arbiter_spawn.py`, both hashed.** Bump the rubric version (semver) when changes affect verdict semantics. v1.0.0 rules:
+**Source of truth: this SKILL.md plus `visual_arbiter_spawn.py`, both hashed.** Bump the rubric version (semver) when changes affect verdict semantics.
+
+**v1.1.0 (S074, #218) — partial measurement can no longer read as clean.** `visual_arbiter_measure.mjs` now emits `outcome` / `breakpoints_expected` / `breakpoints_measured`; the arbiter carries them into `verdict.measurement` and, when the outcome is not `MEASURED`, adds a `partial_measurement` warning concern that downgrades `pass` to `warn`. Previously the degradation was recorded only as telemetry, so a verdict built from 1 of 4 breakpoints was byte-identical to one built on all 4. **The measure script's exit code is deliberately unchanged** — `visual_arbiter_spawn.py` maps any non-zero to `AUDIT_UNAVAILABLE`, which would flatten "chrome crashed" and "3 of 4 breakpoints measured" into one outcome. The payload is the right lever; the exit code is not.
+
+v1.0.0 rules:
 
 1. **Per-element at every required breakpoint.** For each element in each screen's `elements[]`, iterate `must_satisfy.required_breakpoints`. If the element declares `null` at a breakpoint, it is correctly hidden there — no verification needed. Otherwise:
 

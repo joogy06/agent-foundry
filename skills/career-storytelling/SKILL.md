@@ -14,6 +14,8 @@ triggers:
   - promotion case
   - self-assessment writing
   - quantifying impact
+family: career
+disambiguation: Backward-looking narrative — achievement bank, STAR answers, promotion cases. Setting future milestones and development paths is career-planning.
 ---
 
 # Career Storytelling
@@ -235,6 +237,10 @@ Common banking case study themes:
 ---
 
 ## Framework 7: AI-Interview & One-Way-Screen Prep
+
+> **Funnel context:** this framework covers the interview stage. The stages BEFORE it — semantic
+> ATS, conversational pre-screens, footprint screening — and the candidate-rights position are in
+> `career-coach/references/ai-hiring-funnel.md`.
 
 AI / one-way video interviews have risen sharply and agentic screeners now sit early in many funnels (qualitative trend; figures in `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md`). Preparing your STAR delivery for a machine-mediated first round:
 

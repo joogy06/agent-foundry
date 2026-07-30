@@ -346,6 +346,12 @@ do_check() {
     # History writer: merges plugins/mcp into inventory.json + appends change-records.
     if command -v python3 >/dev/null 2>&1; then
       timeout 5 python3 "$HOME/.claude/skills/env-adoption/scripts/inventory_history.py" >/dev/null 2>&1 || true
+      # Optional-dependency readiness (#240) — pip + npm capabilities folded into the
+      # SAME manifest, so "what is this machine missing" has one surface rather than
+      # two. Same contract as the history writer above: it runs AFTER the wholesale
+      # inventory write (which would otherwise clobber it), it is time-boxed, and its
+      # exit code is ignored — a readiness failure must never break the probe.
+      timeout 10 python3 "$HOME/.claude/skills/_meta/optional_deps.py" merge-inventory --quiet >/dev/null 2>&1 || true
     fi
   fi
 

@@ -1,6 +1,7 @@
 ---
 name: seo-authority-builder
 description: Use when building E-E-A-T signals, brand authority, Knowledge Panel optimization, author entity building, trust signals, social media SEO strategy, or managing online reputation. Covers brand mentions, reviews, digital PR, social signals, and content freshness as authority maintenance.
+family: seo
 ---
 
 # SEO Authority Builder

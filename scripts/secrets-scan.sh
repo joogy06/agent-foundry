@@ -92,7 +92,8 @@ EXCLUDES_DIR=(
 
 # Skills directories whose SKILL.md / references are themselves the
 # detector documentation (they contain pattern strings as content).
-DETECTOR_DOCS_RE='(skills/publish-to-github|docs/plans/_review|scripts/secrets-scan\.sh|\.git/hooks/pre-push)'
+# tests/lineage-extract-static/unit/test_redact.py: a redaction unit test must contain secret-SHAPED literals to prove the redactor removes them; same category as the scanner's own source
+DETECTOR_DOCS_RE='(skills/publish-to-github|docs/plans/_review|scripts/secrets-scan\.sh|\.git/hooks/pre-push|tests/lineage-extract-static/unit/test_redact\.py|tests/secrets-scan/|lineage-extract-static/scripts/redact\.py)'
 
 # ----- Findings trackers --------------------------------------------------
 
@@ -131,6 +132,30 @@ filter_detector_docs() {
     qgrep -vE "$DETECTOR_DOCS_RE"
 }
 
+# --- content-only allowlist (S074, #210) --------------------------------------
+# grep emits `./path:12:content`, so `grep -vE` against that stream matches the PATH
+# as well as the content. Two consequences, both verified rather than reasoned about:
+#
+#   1. FALSE NEGATIVE (the security hole): a real credential in a file under tests/
+#      satisfied an allowlist rule meant for the word "test" appearing in code, and was
+#      silently dropped. One secret in src/settings.py and tests/settings.py -> bash
+#      reported 1 hit, secrets-scan.py reported 2. The pre-push hook runs THIS scanner.
+#   2. INERT ANCHORS: every ^-anchored allowlist arm (`^\s*#`, `^\s*//`) could never
+#      match, because the line starts with "./path:12:" and not with whitespace. A
+#      commented-out credential was reported by bash and correctly exempted by python.
+#
+# exclude_content strips the `path:line:` prefix, applies the allowlist to the content
+# alone, and re-emits the ORIGINAL line so reporting is unchanged. This is what the
+# file's own "MUST stay in lockstep with secrets-scan.py" comment always intended.
+exclude_content() {
+    local pat="$1" line content
+    while IFS= read -r line; do
+        content=${line#*:}       # drop "./path:"
+        content=${content#*:}    # drop "12:"
+        printf '%s' "$content" | grep -qE "$pat" || printf '%s\n' "$line"
+    done
+}
+
 # ===========================================================================
 # CRITICAL
 # ===========================================================================
@@ -139,7 +164,7 @@ filter_detector_docs() {
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "(sk-[a-zA-Z0-9]{20}|sk-(proj|svcacct|ant|live|test)-[a-zA-Z0-9_-]{20}|ghp_[a-zA-Z0-9]{20}|gho_[a-zA-Z0-9]{20}|ghs_[a-zA-Z0-9]{20}|ghu_[a-zA-Z0-9]{20}|github_pat_[a-zA-Z0-9_]{20}|xox[abprs]-[a-zA-Z0-9-]{20}|AIza[A-Za-z0-9_-]{30}|sk_live_[a-zA-Z0-9]{20}|pk_live_[a-zA-Z0-9]{20}|rk_live_[a-zA-Z0-9]{20}|sk_test_[a-zA-Z0-9]{20,}|whsec_[a-zA-Z0-9]{20}|nrak-[a-zA-Z0-9]{20}|hf_[a-zA-Z0-9]{20})" . \
     | filter_detector_docs \
-    | qgrep -vE "(<|>|example|placeholder|YOUR_|YOURKEY|EXAMPLE|REDACTED|XXX|\.\.\.|fake|TEST_|DUMMY|sample|abcdef|012345|deadbeef)" )
+    | exclude_content "(<|>|example|placeholder|YOUR_|YOURKEY|EXAMPLE|REDACTED|XXX|\.\.\.|fake|TEST_|DUMMY|sample|abcdef|012345|deadbeef)" )
 report CRITICAL "live API key shapes" "$hits"
 
 # --- PEM private-key headers (5-dash framing at column 0) ---
@@ -152,7 +177,7 @@ report CRITICAL "PEM private-key headers" "$hits"
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "(\bAKIA[0-9A-Z]{16}\b|aws_secret_access_key\s*=\s*[\"']?[A-Za-z0-9/+=]{30,}[\"']?)" . \
     | filter_detector_docs \
-    | qgrep -vE "(example|placeholder|YOUR_|REDACTED|XXX|AKIAEXAMPLE|AKIAIOSFODNN7|AKIA[X]{16})" )
+    | exclude_content "(example|placeholder|YOUR_|REDACTED|XXX|AKIAEXAMPLE|AKIAIOSFODNN7|AKIA[X]{16})" )
 report CRITICAL "AWS credentials" "$hits"
 
 # --- JWTs (3-segment eyJ...) ---
@@ -160,6 +185,39 @@ hits=$(qgrep -rEon "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "\beyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\b" . \
     | filter_detector_docs )
 report CRITICAL "JWT shapes" "$hits"
+
+# --- WooCommerce REST consumer key/secret ---
+# PORTED FROM THE PYTHON SCANNER 2026-07-30 (#239). It had existed only there
+# since 2026-07-25, and pre-commit runs python while PRE-PUSH RUNS THIS FILE —
+# so the rule did not run at push time in any repo on this host. A credential
+# committed with --no-verify, or committed before the rule was written, reached
+# a remote through a gate that reported PASS.
+#
+# Bitterly apt: the python rule's own comment records that it was added after
+# the same consumer key turned up in two repos having "sailed through every
+# scan". On this arm it still was.
+#
+# ck_/cs_ are 40-hex WooCommerce REST credentials. Pattern and allowlist are
+# byte-for-byte the python ones; test_scanner_parity.py asserts the rule-name
+# sets match, because a corpus comparison cannot see a rule neither side runs.
+hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
+    "\b(ck|cs)_[0-9a-fA-F]{32,}\b" . \
+    | filter_detector_docs \
+    | exclude_content "(example|placeholder|YOUR_|REDACTED|XXX|sample|0{32}|x{32}|f{32})" )
+report CRITICAL "WooCommerce REST consumer key/secret" "$hits"
+
+# --- PostgreSQL password exposure ---
+# Ported alongside the WooCommerce rule (#239) — same gap, same reason.
+#
+# The allowlist is deliberately generous about well-known FAKE passwords
+# (hunter2, changeme, devpass …). Without them the check fires on its own test
+# fixtures and on docker-compose docs, and a CRITICAL that cries wolf trains
+# people to reach for --no-verify — strictly worse than no check at all.
+hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
+    "(PGPASSWORD\s*[:=]\s*[\"']?[^[:space:]\"'#\`]{6,}|postgres(ql)?://[^:[:space:]]+:[^@[:space:]]{6,}@)" . \
+    | filter_detector_docs \
+    | exclude_content "(example|placeholder|YOUR_|REDACTED|XXX|CHANGEME|<[^>]*>|\\\$\{|\\\$[A-Z_]+|password@|:password|sample|dummy|hunter2|devpass|mypgpass|testpass|secret123|changeme|letmein|passw0rd|@(db|database|postgres|localhost|127\.0\.0\.1|host\.docker\.internal):|localhost:5432/postgres\b)" )
+report CRITICAL "PostgreSQL password exposure" "$hits"
 
 # ===========================================================================
 # HIGH
@@ -175,20 +233,20 @@ report CRITICAL "JWT shapes" "$hits"
 # the constant's own DEFINITION line is what the checks must catch). Parity with the
 # same arm in secrets-scan.py; the two implementations MUST stay in lockstep.
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
-    "(password|passwd|pwd|secret|token|api_key)\s*[:=]\s*[\"']?[a-zA-Z0-9._/-]{12,}[\"']?" . \
+    "(password|passwd|pwd|secret|token|api_key)\s*[:=]\s*[\"']?[A-Za-z0-9._/@!#\$%^&*+=~:?|-]{12,}[\"']?" . \
     | filter_detector_docs \
-    | qgrep -vE "(example|test|fake|REDACTED|<.*>|placeholder|your-|YOUR_|MY_|TODO|XXX|\.\.\.|=\s*\"\"|=\s*''|=\s*\\\$\{|=\s*\\\$[A-Z]|os\.environ|os\.getenv|getenv\(|environ\[|process\.env|EXAMPLE|PLACEHOLDER|description:|^\s*#|^\s*//|FOO|BAR|BAZ|password=password|password=passwd|password=user|password=pass$|kwargs|: str$|: str =|: Optional|password_field|password_hash|token_env|token_name|token_field|password_policy|password_minimum|secret_name|secret_key:|secret_id:|hashed_password|password_required|password_required_actions|change_password|reset_password|require_password|password_expiry|password_strength|encrypt_password|password_validator|secret_word|secret_phrase|FIXME|REPLACE-WITH)" \
-    | qgrep -vE "(token://|changeme|Welcome1|keystorePass|secret_value_here|password-here|app-password-here|=\s*os\.environ|=\s*os\.getenv|getAccessToken\(|authService\.|token_resp\.|\.access_token|\.getToken\(|tokens?\s+(are|will be|should|must|stored|read|comes|never)|password\s+(is|will|should|must|requires|stored|read|never)|^\s*\#\s|secret:\s*foundry|secret:\s*test|secret_key:\s*'?(test|example|<|YOUR)|access_token\s*=\s*[a-zA-Z_].*\.json|access_token\s*=\s*token_|hash:\s*['\"]\$2[aby]\$|argon2id|bcrypt|scrypt)" \
-    | qgrep -vE "([:=]\s*passwordPrompt\(|[:=]\s*secrets\.token_(urlsafe|hex|bytes)\(|[:=]\s*secrets\.choice|[:=]\s*[a-zA-Z_][a-zA-Z0-9_.]*\([^)]*\)\s*[,;]?\s*$|[:=]\s*[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z0-9_]+\(|[:=]\s*_[a-z_]+\.|[:=]\s*request\.|[:=]\s*self\.|--secret=[a-z][a-z0-9_-]+|--password=[a-z][a-z0-9_-]+|StrongAdm1n|P@ss|Pa55|admin123|test123|password123|qwerty|hunter2|letmein|client_id|client_secret\s*=\s*\\\$|access_key\s*=\s*\\\$|[:=]\s*input\(|[:=]\s*getpass\(|password_prompt|prompt_password|encrypt\(|hash_password|verify_password|check_password)" \
-    | qgrep -vE "([:=]\s*[A-Z][A-Z0-9_]{2,}\b(\s*(if|else)\b|\s*$|\s*[,)\]]))" \
-    | qgrep -vE "(token:\s*vscode\.|token:\s*CancellationToken|:\s*CancellationToken|:\s*[A-Z][a-zA-Z0-9_]*Token\b|:\s*Token\s*[,;)]|:\s*Promise<|:\s*string\b|:\s*number\b|:\s*boolean\b|:\s*any\b|:\s*[A-Z][a-zA-Z0-9_]*\s*\||:\s*Optional\[|:\s*Awaitable\[|param\s+token\b|@param\s+\{|^\s*\*\s*@param)" )
+    | exclude_content "(example|test|fake|REDACTED|<.*>|placeholder|your-|YOUR_|MY_|TODO|XXX|\.\.\.|=\s*\"\"|=\s*''|=\s*\\\$\{|[:=]\s*\\\$[A-Za-z_]|os\.environ|os\.getenv|getenv\(|environ\[|process\.env|EXAMPLE|PLACEHOLDER|description:|^\s*#|^\s*//|FOO|BAR|BAZ|password=password|password=passwd|password=user|password=pass$|kwargs|: str$|: str =|: Optional|password_field|password_hash|token_env|token_name|token_field|password_policy|password_minimum|secret_name|secret_key:|secret_id:|hashed_password|password_required|password_required_actions|change_password|reset_password|require_password|password_expiry|password_strength|encrypt_password|password_validator|secret_word|secret_phrase|FIXME|REPLACE-WITH)" \
+    | exclude_content "(token://|changeme|Welcome1|keystorePass|secret_value_here|password-here|app-password-here|=\s*os\.environ|=\s*os\.getenv|getAccessToken\(|authService\.|token_resp\.|\.access_token|\.getToken\(|tokens?\s+(are|will be|should|must|stored|read|comes|never)|password\s+(is|will|should|must|requires|stored|read|never)|^\s*\#\s|secret:\s*foundry|secret:\s*test|secret_key:\s*'?(test|example|<|YOUR)|access_token\s*=\s*[a-zA-Z_].*\.json|access_token\s*=\s*token_|hash:\s*['\"]\$2[aby]\$|argon2id|bcrypt|scrypt)" \
+    | exclude_content "([:=]\s*passwordPrompt\(|[:=]\s*secrets\.token_(urlsafe|hex|bytes)\(|[:=]\s*secrets\.choice|[:=]\s*[a-zA-Z_][a-zA-Z0-9_.]*\([^)]*\)\s*[,;]?\s*$|[:=]\s*[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z0-9_]+\(|[:=]\s*_[a-z_]+\.|[:=]\s*request\.|[:=]\s*self\.|--secret=[a-z][a-z0-9_-]+|--password=[a-z][a-z0-9_-]+|StrongAdm1n|P@ss|Pa55|admin123|test123|password123|qwerty|hunter2|letmein|client_id|client_secret\s*=\s*\\\$|access_key\s*=\s*\\\$|[:=]\s*input\(|[:=]\s*getpass\(|password_prompt|prompt_password|encrypt\(|hash_password|verify_password|check_password)" \
+    | exclude_content "([:=]\s*[A-Z][A-Z0-9_]{2,}\b(\s*(if|else)\b|\s*$|\s*[,)\]]))" \
+    | exclude_content "(token:\s*vscode\.|token:\s*CancellationToken|:\s*CancellationToken|:\s*[A-Z][a-zA-Z0-9_]*Token\b|:\s*Token\s*[,;)]|:\s*Promise<|:\s*string\b|:\s*number\b|:\s*boolean\b|:\s*any\b|:\s*[A-Z][a-zA-Z0-9_]*\s*\||:\s*Optional\[|:\s*Awaitable\[|param\s+token\b|@param\s+\{|^\s*\*\s*@param)" )
 report HIGH "inline password/token assignments" "$hits"
 
 # --- Bearer tokens ---
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "[Bb]earer\s+[A-Za-z0-9_.-]{20,}" . \
     | filter_detector_docs \
-    | qgrep -vE "(example|<token>|<TOKEN>|YOUR_TOKEN|REDACTED|\.\.\.|XXX|placeholder|EXAMPLE|description|Bearer\s+\\\$|Bearer\s+\{|Authorization:\s+Bearer\s+\\\$|Bearer\s+<)" )
+    | exclude_content "(example|<token>|<TOKEN>|YOUR_TOKEN|REDACTED|\.\.\.|XXX|placeholder|EXAMPLE|description|Bearer\s+\\\$|Bearer\s+\{|Authorization:\s+Bearer\s+\\\$|Bearer\s+<)" )
 report HIGH "bearer tokens" "$hits"
 
 # ===========================================================================
@@ -199,8 +257,8 @@ report HIGH "bearer tokens" "$hits"
 hits=$(qgrep -rEon "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|net|org|io|co|app|dev|ai|me|us|gov|edu|cloud)" . \
     | filter_detector_docs \
-    | qgrep -vE "(@example\.|@test\.|@domain\.|@yourdomain|@company\.|@contoso\.|@acme\.|@my-?org|@your-?org|@placeholder|noreply@|users\.noreply\.github\.com|git@github\.com|GIT_TOKEN@|@localhost|@yourcompany|@gmail\.com.*Co-Authored|john@|jane@|alice@|bob@|admin@example|admin@yourdomain|admin@localhost|root@localhost|user@example|foo@|bar@|baz@|@\.\.\.|smtp\.|imap\.|user@host|user@server|@anthropic\.com|noreply@anthropic|@local\.dev|@\\\$|me@me|test@|email@|dev@local|@youruser|@you\.|@unique-)" \
-    | qgrep -vE "\.example\.(com|org|net)\b|prod\.db\.com|@forestb\.example|@proxy\.example|@server\.example|@corp\.example|@host\.example" )
+    | exclude_content "(@example\.|@test\.|@domain\.|@yourdomain|@company\.|@contoso\.|@acme\.|@my-?org|@your-?org|@placeholder|noreply@|users\.noreply\.github\.com|git@github\.com|GIT_TOKEN@|@localhost|@yourcompany|@gmail\.com.*Co-Authored|john@|jane@|alice@|bob@|admin@example|admin@yourdomain|admin@localhost|root@localhost|user@example|foo@|bar@|baz@|@\.\.\.|smtp\.|imap\.|user@host|user@server|@anthropic\.com|noreply@anthropic|@local\.dev|@\\\$|me@me|test@|email@|dev@local|@youruser|@you\.|@unique-)" \
+    | exclude_content "\.example\.(com|org|net)\b|prod\.db\.com|@forestb\.example|@proxy\.example|@server\.example|@corp\.example|@host\.example" )
 report MEDIUM "real-looking emails" "$hits"
 
 # --- Internal hostnames ---
@@ -209,7 +267,7 @@ report MEDIUM "real-looking emails" "$hits"
 hits=$(qgrep -rEn "${INCLUDES[@]}" "${EXCLUDES_DIR[@]}" \
     "\b[a-z0-9][a-z0-9-]{2,}\.(internal|corp|intranet)\b" . \
     | filter_detector_docs \
-    | qgrep -vE "(example|placeholder|your-|<host>|REPLACE|host\.docker\.internal|\.corp\.local\b|\.corp\.net\b|\.corp\.example|(payment-gateway|grafana|api|wiki|idp|sso|dc01|cognos|tenant|portal|registry)\.(internal|corp))" )
+    | exclude_content "(example|placeholder|your-|<host>|REPLACE|host\.docker\.internal|\.corp\.local\b|\.corp\.net\b|\.corp\.example|(payment-gateway|grafana|api|wiki|idp|sso|dc01|cognos|tenant|portal|registry)\.(internal|corp))" )
 report MEDIUM "internal hostnames" "$hits"
 
 # ===========================================================================

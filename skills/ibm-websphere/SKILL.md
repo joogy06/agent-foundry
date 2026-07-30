@@ -1,6 +1,8 @@
 ---
 name: ibm-websphere
 description: Use when installing, configuring, or managing IBM WebSphere Application Server on RHEL 9 — WAS traditional (8.5.5/9.0) profiles and deployment, WebSphere Liberty/Open Liberty configuration and development, application deployment (WAR/EAR), security (SSL/TLS, LTPA, LDAP/AD integration, SAML/OIDC), JVM tuning (heap, GC policies), clustering and ND topology, JDBC data sources, JMS/MQ integration, wsadmin scripting (Jython), systemd services, SELinux contexts, and firewalld rules. Part of the ibm-* skill family.
+family: ibm
+disambiguation: WebSphere Application Server — profiles, deployment, Liberty, JVM tuning. Message queuing is ibm-mq, a separate product.
 ---
 
 # IBM WebSphere Application Server — RHEL 9 Administration & Development

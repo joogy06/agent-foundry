@@ -1,6 +1,7 @@
 ---
 name: career-application-writer
 description: "Use when the user wants to write, draft, tailor, or review a CV, resume, cover letter, or job-application package — generates truthful, human-voiced application documents from the user's verified achievements, tailored to a specific posting, with semantic-ATS alignment (2026), a humanization pass against AI-slop patterns, and cross-document consistency checks (CV, cover letter, LinkedIn must agree). Trigger on - write my CV, tailor my resume, cover letter, application package, adapt my CV for this job, resume bullets, ATS check. Part of the career-* skill family; positioning strategy lives in career-positioning; raw achievement stories live in career-storytelling."
+family: career
 ---
 
 # Career Application Writer

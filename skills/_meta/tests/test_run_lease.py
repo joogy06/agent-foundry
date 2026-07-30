@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -141,3 +142,53 @@ class RunLease(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHeartbeatAdvancesOnValidation(unittest.TestCase):
+    """S074 (#178) — lease age must become a real liveness signal.
+
+    heartbeat_run_lease existed and was called from nowhere, so a live bob's heartbeat_at
+    stayed pinned at acquisition and any stale-lease reclaim keyed on it would seize the
+    lease from a RUNNING bob.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def _acquire(self):
+        return claims.acquire_run_lease(self.tmp, run_label="r1", plan_hash="h1")
+
+    def _hb(self):
+        return json.loads((claims._run_lease_path(self.tmp)).read_text())["heartbeat_at"]
+
+    def test_token_bearing_validation_advances_the_heartbeat(self):
+        res = self._acquire()
+        token = res["token"] if isinstance(res, dict) else res
+        before = self._hb()
+        time.sleep(1.05)
+        self.assertTrue(claims.validate_run_lease(self.tmp, "r1", "h1", token=token))
+        self.assertNotEqual(self._hb(), before, "a live holder's heartbeat must advance")
+
+    def test_validation_without_a_token_does_not_advance(self):
+        """A bystander naming the right run_label must not keep a dead lease alive."""
+        res = self._acquire()
+        before = self._hb()
+        time.sleep(1.05)
+        self.assertTrue(claims.validate_run_lease(self.tmp, "r1", "h1"))
+        self.assertEqual(self._hb(), before)
+
+    def test_touch_false_is_a_pure_read(self):
+        """The takeover path must be able to ask 'is the holder gone' without answering yes."""
+        res = self._acquire()
+        token = res["token"] if isinstance(res, dict) else res
+        before = self._hb()
+        time.sleep(1.05)
+        self.assertTrue(claims.validate_run_lease(self.tmp, "r1", "h1", token=token, touch=False))
+        self.assertEqual(self._hb(), before)
+
+    def test_a_wrong_token_neither_validates_nor_ticks(self):
+        self._acquire()
+        before = self._hb()
+        time.sleep(1.05)
+        self.assertFalse(claims.validate_run_lease(self.tmp, "r1", "h1", token="wrong"))
+        self.assertEqual(self._hb(), before)

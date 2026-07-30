@@ -4,7 +4,11 @@
 name: review
 description: Review a diff for correctness, security, and test coverage (read + test only).
 tools: [codebase, search, problems, testFailure, runTests]   # NO edit / arbitrary terminal
-model: [gpt-5, claude-sonnet-4-6]                              # prioritized fallback
+# model: RESOLVE, do not copy. `model:` takes one id or a prioritised fallback list.
+#   python3 vs-code/scripts/detect_models.py     # what this machine can actually reach
+# Omit the key entirely to inherit the picker's current selection — the safest default,
+# and the reason this template ships without one.
+# model: [<preferred-id>, <fallback-id>]
 user-invocable: true
 target: vscode
 # handoffs:                                                   # optional: chain to another agent

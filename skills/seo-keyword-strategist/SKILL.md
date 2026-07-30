@@ -1,6 +1,7 @@
 ---
 name: seo-keyword-strategist
 description: Use when researching keywords, mapping search intent, building topic clusters, detecting keyword cannibalization, or optimizing content for entity-based search. Covers keyword strategy, intent classification, clustering, and cannibalization diagnosis.
+family: seo
 ---
 
 # SEO Keyword Strategist

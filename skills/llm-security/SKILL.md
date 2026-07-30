@@ -331,3 +331,12 @@ Items to verify on every LLM-backed component design:
 - Significant new attack pattern in the wild (e.g. a successful Dual LLM bypass)
 - New OS-level sandboxing / capability-containment primitive that materially changes tool-scoping options
 - Annual review on 2027-05-23
+
+## See also
+
+- `rag-architecture` — the retrieval system this skill defends: chunk-level access control, why
+  retrieved text is untrusted input, and where poisoning enters the corpus.
+- `mcp-integration` — third-party MCP servers as untrusted code, and tool descriptions as an
+  injection surface.
+- `agentic-architecture` — where approval gates, permission scoping and termination bounds belong in
+  an agent's control flow.

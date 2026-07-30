@@ -1,6 +1,8 @@
 ---
 name: windows-sso
 description: Use when configuring Single Sign-On (SSO) on Windows — Active Directory Federation Services (AD FS), Azure AD / Entra ID SSO, SAML 2.0, OAuth 2.0/OIDC, Kerberos delegation, Windows Integrated Authentication (WIA/SPNEGO), claims-based authentication, Web Application Proxy (WAP), conditional access policies, MFA integration, certificate-based auth, SSO troubleshooting, and hybrid identity (AD Connect). Part of the windows-* skill family.
+family: windows
+disambiguation: Configuring SSO INFRASTRUCTURE on Windows — AD FS, Entra ID, SAML and OIDC federation. Core directory administration is windows-ad-admin; authenticating a Python client is ms-office-enterprise-sso-python.
 ---
 
 # Windows Single Sign-On (SSO) Administration

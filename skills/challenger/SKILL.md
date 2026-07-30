@@ -1,6 +1,7 @@
 ---
 name: challenger
 description: Use when assigned as a challenger, devil's advocate, or critic role in a forge brainstorm team, design review, or implementation QA. Provides systematic frameworks for finding flaws, questioning assumptions, stress-testing proposals, and reviewing AI-generated code.
+disambiguation: Attacks the PROPOSAL — assumptions, alternatives, failure modes — usually before it is built. Reviewing built code is qa-reviewer; reviewing the built interface is ux-reviewer.
 ---
 
 # Challenger / Devil's Advocate

@@ -809,9 +809,42 @@ def main(argv: Optional[List[str]] = None) -> None:
             fingerprint="per-bp-error",
             severity="degraded",
         )
-        # Non-fatal — we still build a verdict against whatever was measured.
 
     verdict = build_verdict(skeleton, measurements, tuple_inputs, project_root)
+
+    # S074 (#218), rubric v1.1.0 — carry measurement completeness INTO the verdict.
+    #
+    # Until now the degradation reached telemetry (`claude_observe` above) and stopped
+    # there, so a verdict built from 1 of 4 breakpoints was byte-indistinguishable, to bob
+    # and to G_V, from one built on all 4. The information existed and was discarded at the
+    # one boundary that decides anything.
+    #
+    # Mapped as a warning-severity CONCERN rather than as a new verdict value or a
+    # `reject`, for three reasons: `reject` means "measured and failed" and conflating that
+    # with "not measured" loses the distinction the exit-code fix was vetoed for losing;
+    # the concerns machinery already exists and already downgrades `pass`; and the change
+    # can only ever make the gate STRICTER, never looser.
+    verdict["measurement"] = {
+        "outcome": parsed.get("outcome", "MEASURED"),
+        "breakpoints_expected": parsed.get("breakpoints_expected"),
+        "breakpoints_measured": parsed.get("breakpoints_measured"),
+        "errors": measure_errors,
+    }
+    if verdict["measurement"]["outcome"] != "MEASURED":
+        verdict.setdefault("concerns", []).append({
+            "kind": "partial_measurement",
+            "severity": "warning",
+            "detail": (
+                f"measurement outcome {verdict['measurement']['outcome']}: "
+                f"{verdict['measurement']['breakpoints_measured']} of "
+                f"{verdict['measurement']['breakpoints_expected']} breakpoint(s) measured"
+            ),
+        })
+        # A clean run over an incomplete measurement is the claim that must not be made.
+        # `reject` is left untouched: a real failure outranks an incomplete one.
+        if verdict.get("verdict") == "pass":
+            verdict["verdict"] = "warn"
+
     _emit_and_exit(verdict, exit_code=0)
 
 

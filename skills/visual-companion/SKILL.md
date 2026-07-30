@@ -7,6 +7,7 @@ description: >
   the user opens in their browser. Server-less local replacement for the
   superpowers brainstorming visual companion. Trigger phrases: "show me a mockup",
   "render this diagram", "visual companion", "compare these layouts visually".
+family: visual
 ---
 
 # Visual Companion (local, server-less)

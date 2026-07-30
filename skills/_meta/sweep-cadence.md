@@ -14,7 +14,7 @@ never FIX (HR7) — the only path to a change is a user-approved bob handoff.
 | Tier | Scope (which targets) | Feeds consumed | Cadence | Budget note | Nudge-eligible |
 |---|---|---|---|---|---|
 | **version** | only skills whose anchors/index reference the changed tool (2-5 typical) | `inventory-history.jsonl` delta + `drift-report.json` | event-driven (a cli/plugin version bump) | small (~20-40k tokens) | YES |
-| **freshness** | RED/YELLOW rot findings + deadlines in horizon + UNANNOTATED count | `rot-report.json` + `freshness/index.json` `by_deadline` | monthly-ish | small-medium | YES |
+| **freshness** | RED/YELLOW rot findings + deadlines in horizon + UNANNOTATED count + NEW skill-description collisions | `rot-report.json` + `freshness/index.json` `by_deadline` + `skill-overlap.json` `new_pairs[]` | monthly-ish | small-medium | YES |
 | **flow-pulse** | efficacy-rollup thresholds + open flow tasks (#115-#129 status) | `process-observation query.py rollup` + `tasks.md` | monthly | small (Step 2f already exists) | only on threshold breach (e.g. disagreement > 0.40) |
 | **full** | whole library or a named family | all feeds + Steps 2a-2f per target | quarterly / post-batch | high | NO (calendar) |
 | **flow-review** | `bob.md` / `alf.md` / forge / pa / `_meta` — the 2026-05-23 review, recurring | rollup + `identity-report.json` + the review-doc deadline anchor | quarterly | high | NO (deadline anchor on the review doc fires it) |
@@ -30,6 +30,7 @@ review doc carries a `FRESHNESS:v1 date_review` anchor (`review_by: 2026-08-23`)
 | inventory + plugins/mcp | `~/.claude/state/inventory.json` | `env-adoption/scripts/probe.sh` |
 | version change-records | `~/.claude/state/inventory-history.jsonl` | `env-adoption/scripts/inventory_history.py` |
 | rot report | `~/.claude/state/freshness/rot-report.json` | `_meta/rot_scan.py` |
+| skill overlap | `~/.claude/state/skill-overlap.json` | `_meta/skill_overlap.py --json` |
 | deadline / by_tool index | `~/.claude/state/freshness/index.json` | `_meta/freshness.py reindex` |
 | drift report | `~/.claude/state/freshness/drift-report.json` | `affordance-advisor/scripts/drift_runner.py` |
 | identity (3-tree) | `~/.claude/state/freshness/identity-report.json` | `_meta/identity_check.py` |
@@ -41,7 +42,7 @@ A sweep consumes feeds; if a feed is stale the launcher refreshes it FIRST (thes
 the only "compute" steps — the sweep itself does no re-derivation):
 
 - **version**: `probe.sh check --force` (appends the change-record) → `drift_runner.py` for the changed CLI only.
-- **freshness**: `rot_scan.py --refresh` (if `rot-report.json` mtime > 7 days) → `freshness.py reindex`.
+- **freshness**: `rot_scan.py --refresh` (if `rot-report.json` mtime > 7 days) → `freshness.py reindex` → `skill_overlap.py --json`.
 - **flow-pulse**: nothing to refresh — `query.py rollup` is computed live.
 - **full**: `probe.sh check --force` + `rot_scan.py --refresh` + `freshness.py reindex` + `identity_check.py`.
 - **flow-review**: `identity_check.py` + `query.py rollup`.

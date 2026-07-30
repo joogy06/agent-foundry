@@ -1,6 +1,8 @@
 ---
 name: windows-ad-admin
 description: Use when administering Windows Active Directory — AD DS architecture (domains, forests, trusts, sites/services), FSMO roles (Schema Master, Domain Naming, RID, PDC, Infrastructure), replication (intra-site/inter-site, DFSR/SYSVOL, replication topology), Group Policy (GPO design, precedence, WMI filters, security filtering, ADMX templates), organizational unit design, DNS integration (AD-integrated zones, SRV records), AD Certificate Services (PKI, certificate templates, auto-enrollment), AD DS monitoring and troubleshooting (dcdiag, repadmin, Event Viewer), and hybrid identity (Entra Connect, cloud sync). Complements windows-ps-server-admin and windows-sso. Part of the windows-* skill family.
+family: windows
+disambiguation: Active Directory ITSELF — forests, trusts, FSMO, replication, GPO design. General server administration via PowerShell is windows-ps-server-admin; federation and SSO are windows-sso.
 ---
 
 # Windows Active Directory Administration

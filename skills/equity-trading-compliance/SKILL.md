@@ -1,6 +1,7 @@
 ---
 name: equity-trading-compliance
 description: Use when checking whether a US equity day trade is permitted, counting day trades, or handling trader tax mechanics — per-account broker-regime detection (legacy PDT vs FINRA risk-based intraday margin, transition window through 2027-10-20), day-trade counting and round-trip identification with broker reconciliation, the day_trade_permitted pre-trade guard contract with a liquidation-only carve-out, wash-sale (section 1091) accounting, section 475(f) mark-to-market election, short-locate and Reg SHO Rule 201 rule models, and 1099-B/cost-basis reconciliation. Trigger on - PDT, pattern day trader, day trade count, intraday margin, wash sale, 475(f), mark to market, trader tax status, short locate, SSR, 1099-B, cost basis. Kill-switch machinery lives in trading-risk-management (this skill registers its guard there); order-time enforcement lives in equity-broker-execution. Educational reference, not tax or legal advice - elections and filings belong to the user and their tax professional.
+family: equity
 ---
 
 # Equity Trading Compliance

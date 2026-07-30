@@ -1,6 +1,7 @@
 ---
 name: obsidian
 description: "Obsidian knowledge management reference. Use when setting up Obsidian vaults, configuring plugins (Dataview, Templater, Web Clipper, Marp, Excalidraw), writing wikilinks and frontmatter, using Dataview queries, configuring graph view, adding CSS snippets/themes, or building obsidian:// deep links. Covers vault structure, daily notes, community plugins, CSS customization, and URI schemes. Useful as a standalone skill OR as a companion to the wiki skill family. Trigger on: Obsidian, vault, dataview, templater, wikilink, frontmatter, graph view, markdown vault, second brain, Zettelkasten tool."
+disambiguation: The Obsidian APPLICATION — vaults, plugins, themes, sync. Building and maintaining wiki CONTENT, in any editor, is wiki.
 ---
 
 # Obsidian — Vault, Plugins, and Knowledge Management

@@ -14,6 +14,7 @@ triggers:
   - render slides
   - export to PowerPoint
   - build the deck file
+family: presentation
 ---
 
 # Presentation Renderer

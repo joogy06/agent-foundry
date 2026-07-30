@@ -1,6 +1,7 @@
 ---
 name: cognos-admin
 description: Use when administering IBM Cognos Analytics or using its APIs — installation and configuration, security (namespaces/roles/capabilities), content administration, report management, Framework Manager modeling, REST API (session/content/reports/dashboards), data source connections, scheduling and bursting, performance tuning, and Cognos on Cloud Pak for Data. Covers Cognos Analytics 12.x (11.2.x legacy — out of standard support 2026-04).
+disambiguation: Runs the Cognos SERVER — install, security namespaces, capabilities, content store, admin APIs. Authoring and consuming reports as an end user is cognos-user.
 ---
 
 # IBM Cognos Analytics — Administration & API

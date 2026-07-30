@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Adversarial layout corpus — every construct here is CORRECT</title>
+<!--
+  S073 false-positive corpus.
+
+  Every layout on this page is legitimate and MUST produce ZERO findings. These are the
+  constructs a naive geometric check flags, and a check that cries wolf gets ignored
+  inside one session — which reproduces the exact failure the geometry rules exist to fix.
+
+  Rendered through a real browser deliberately: hand-written JSON fixtures only prove the
+  rules match the author's mental model, whereas Chrome's layout engine is where the
+  surprises actually live.
+-->
+<style>
+  body { margin: 0; font: 16px/1.4 system-ui, sans-serif; }
+  section { margin: 24px; padding: 12px; border: 1px solid #ddd; }
+  h2 { font-size: 14px; margin: 0 0 8px; color: #555; }
+
+  /* 1. Sticky header — legitimately overlaps content once scrolled. */
+  .sticky-wrap { height: 120px; overflow-y: auto; }
+  .sticky-hdr { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #ccc; }
+
+  /* 2. Screen-reader-only text — clipped to 1x1 by design, must not read as clipped content. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    clip-path: inset(50%); clip: rect(0 0 0 0);
+    overflow: hidden; white-space: nowrap;
+  }
+
+  /* 3. Absolutely-positioned badge — escapes its parent by design. */
+  .card { position: relative; width: 160px; height: 60px; border: 1px solid #bbb; }
+  .badge { position: absolute; top: -10px; right: -10px; background: #e33; color: #fff;
+           border-radius: 10px; padding: 2px 8px; font-size: 12px; }
+
+  /* 4. CSS transform — getBoundingClientRect reflects it, so overlap must be judged on
+        the transformed box, not the untransformed one. */
+  .rotated { transform: rotate(8deg); width: 120px; height: 40px; background: #eef; }
+
+  /* 5. Negative margin — deliberate overlap between siblings. */
+  .stack > div { width: 120px; height: 40px; background: #efe; border: 1px solid #9c9; }
+  .stack > div + div { margin-top: -12px; }
+
+  /* 6. overflow:hidden used for intentional image cropping, not accidental loss. */
+  .crop { width: 100px; height: 60px; overflow: hidden; }
+  .crop > div { width: 300px; height: 60px; background: linear-gradient(90deg,#fca,#acf); }
+
+  /* 7. Subpixel widths — fractional geometry must sit under tolerance. */
+  .subpixel { width: 200.4px; border: 1px solid #ccc; }
+  .subpixel > p { margin: 0; width: 200.3px; }
+
+  /* 8. A normal bordered box: its own top+bottom border is a BOX, not two rules. */
+  .plain-box { width: 200px; height: 22px; border: 1px solid #eee; }
+
+  /* 9. Well-spaced dividers — far enough apart to be intentional. */
+  .spaced > div { border-top: 1px solid #ddd; height: 80px; }
+
+  /* 10. display:none and visibility:hidden must be skipped, not measured. */
+  .gone { display: none; }
+  .invisible { visibility: hidden; height: 4px; line-height: 40px; }
+</style>
+</head>
+<body>
+
+<section id="s-sticky"><h2>1. Sticky header</h2>
+  <div class="sticky-wrap">
+    <div class="sticky-hdr">Sticky heading</div>
+    <p>Scrolling content one.</p><p>Scrolling content two.</p><p>Scrolling content three.</p>
+  </div>
+</section>
+
+<section id="s-sronly"><h2>2. Screen-reader-only text</h2>
+  <button>Save<span class="sr-only">your changes to this document</span></button>
+</section>
+
+<section id="s-badge"><h2>3. Absolutely-positioned badge</h2>
+  <div class="card">Card body<span class="badge">NEW</span></div>
+</section>
+
+<section id="s-transform"><h2>4. CSS transform</h2>
+  <div class="rotated">Rotated block</div>
+</section>
+
+<section id="s-negative"><h2>5. Negative margins</h2>
+  <div class="stack"><div>Layer A</div><div>Layer B</div></div>
+</section>
+
+<section id="s-crop"><h2>6. Intentional crop</h2>
+  <div class="crop"><div></div></div>
+</section>
+
+<section id="s-subpixel"><h2>7. Subpixel</h2>
+  <div class="subpixel"><p>Fractional width text</p></div>
+</section>
+
+<section id="s-plainbox"><h2>8. Plain bordered box</h2>
+  <div class="plain-box"></div>
+</section>
+
+<section id="s-spaced"><h2>9. Well-spaced dividers</h2>
+  <div class="spaced"><div>One</div><div>Two</div><div>Three</div></div>
+</section>
+
+<section id="s-hidden"><h2>10. Hidden elements</h2>
+  <div class="gone">Never rendered</div>
+  <div class="invisible">Invisible</div>
+</section>
+
+</body>
+</html>

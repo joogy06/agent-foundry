@@ -1,6 +1,7 @@
 ---
 name: team-manager
 description: Use when assigned as implementation team manager or coordinator. Provides methodology for task decomposition, dependency management, specialist assignment, and team coordination.
+disambiguation: COORDINATES the team — decomposition, dependencies, specialist assignment. Reviewing the resulting code is qa-reviewer; reviewing the built interface is ux-reviewer.
 ---
 
 # Team Manager
@@ -109,11 +110,20 @@ Read the task requirements, then match to the right subagent type. Scan availabl
 | Task Involves | Assign To | How to Find Skills |
 |---------------|-----------|-------------------|
 | Domain-specific code | `general-purpose` + domain skill | Scan `~/.claude/skills/` for matching domain |
-| Frontend/UI | `general-purpose` + `frontend-design:frontend-design` | Plugin skill |
+| Frontend/UI | `general-purpose` + `modern-frontend` | Custom skill |
 | UX decisions | `general-purpose` + `ux-reviewer` | Custom skill |
 | Mixed/unclear scope | `general-purpose` | No specific skill needed |
 
 Do NOT hardcode skill lists — discover dynamically from what's available.
+
+**Verify every subagent_type and skill name exists before spawning.** A nonexistent
+`subagent_type` or an uninstalled plugin skill does NOT fail loudly — the specialist
+silently spawns without its intended role or expertise. Check the available agent-type
+list and `~/.claude/skills/`; for plugin skills also check that the plugin is in
+`enabledPlugins` (in `~/.claude/settings.json`), not merely present in a marketplace
+listing. (S073: this table routed all Frontend/UI work to `frontend-design:frontend-design`
+and the standing UX seat to `multi-platform-apps:ui-ux-designer`; neither was ever
+installed, so both had been degrading silently.)
 
 ### Spawn Prompt Checklist
 
@@ -136,7 +146,7 @@ When spawning a specialist, ALWAYS include:
 Always spawn these alongside specialists:
 
 1. **Challenger/QA** (`general-purpose`) - tell them to invoke the `qa-reviewer` skill
-2. **UX Reviewer** (`multi-platform-apps:ui-ux-designer`) - tell them to invoke the `ux-reviewer` skill (for UI-facing work)
+2. **UX Reviewer** (`general-purpose`) - tell them to invoke the `ux-reviewer` skill (for UI-facing work)
 
 ## Coordination Workflow
 

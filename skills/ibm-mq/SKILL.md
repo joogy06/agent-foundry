@@ -1,6 +1,8 @@
 ---
 name: ibm-mq
 description: Use when installing, configuring, or managing IBM MQ on RHEL 9 — queue manager creation and administration, queues (local/remote/alias/model), channels (sender/receiver/server-conn/client-conn), listeners, triggers, clustering, publish/subscribe, MQ security (TLS, channel auth rules, OAM), dead-letter queue handling, MQ Explorer, runmqsc commands, MQ developer patterns (JMS, MQI, Python/pymqi, .NET), performance tuning, systemd services, SELinux contexts, and firewalld rules. Part of the ibm-* skill family.
+family: ibm
+disambiguation: MQ messaging — queue managers, queues, channels, triggers. The application server is ibm-websphere; DB2 LUW is db2-rhel.
 ---
 
 # IBM MQ on Red Hat Enterprise Linux 9

@@ -1,6 +1,8 @@
 ---
 name: python-flask-developer
 description: Use when building Flask web applications, REST APIs, or microservices. Covers Flask 3.x patterns, application factory, blueprints, extensions, deployment, testing, database sessions, and production configuration. Also covers when to choose Flask vs FastAPI vs Django.
+family: python
+disambiguation: Building Flask applications — factories, blueprints, extensions, deployment. Auth and security patterns are python-auth-security.
 ---
 
 # Python Flask Developer

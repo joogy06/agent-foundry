@@ -1,6 +1,7 @@
 ---
 name: windows-ps-security
 description: Use when hardening Windows systems via PowerShell — Windows Firewall (NetSecurity), Windows Defender/Microsoft Defender, BitLocker drive encryption, audit policy and event log analysis, local security policy, credential management (SecureString, Windows Credential Manager), AppLocker, Windows Update management, and security compliance scanning. Part of the windows-ps-* skill family.
+family: windows
 ---
 
 # Windows Security Administration via PowerShell

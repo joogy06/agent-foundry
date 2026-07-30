@@ -1,6 +1,7 @@
 ---
 name: jira-rest-api
 description: Use when interacting with Jira programmatically via REST API — API v2 and v3 endpoints, authentication (API tokens, OAuth, PAT), issue CRUD (search via JQL — /rest/api/3/search/jql on Cloud, /rest/api/2/search on Data Center), status category mapping, sprint/board queries (Agile API), comments, attachments, labels, pagination (nextPageToken cursor on Cloud, startAt + maxResults on Data Center), rate limiting, error handling, and webhooks. Works with both Jira Cloud and Data Center.
+disambiguation: Jira's own REST surface — issues, JQL, workflows, transitions. Confluence spaces and pages are confluence-rest-api.
 ---
 
 # Jira REST API

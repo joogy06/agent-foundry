@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foundry-lab.local/schemas/ux-review-plan.v1.json",
+  "title": "ux-review-plan.v1",
+  "description": "S073. PROJECT-OWNED declaration of what a UX review must cover. This is the load-bearing half of the evidence contract: the expected fixture matrix comes from HERE, never from the reviewer's own output. A reviewer willing to skip the work is equally willing to write 'matrix: n=0,1,2,3' — so the reviewer reports only what it OBSERVED, and the validator computes expected minus observed. Lives at the project root (conventionally .ux-review.yaml or .ux-review.json) and is authored by the project, not by an agent mid-review.",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "surfaces", "viewports"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "ux-review-plan.v1" },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+
+    "viewports": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Every surface is measured at every viewport unless it narrows the list. The incident shipped a 74px card-number field at 390px because mobile was never exercised.",
+      "items": {
+        "type": "object",
+        "required": ["id", "width", "height"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "width": { "type": "integer", "minimum": 200 },
+          "height": { "type": "integer", "minimum": 200 },
+          "device_pixel_ratio": { "type": "number", "minimum": 1 }
+        }
+      }
+    },
+
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "url", "fixtures"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 },
+          "hot_spot": {
+            "type": "boolean",
+            "description": "Hot spots require the FULL fixture matrix. Everything else may use the reduced matrix. A requirement so heavy it is always waived is worthless, so cost is tiered deliberately rather than by omission."
+          },
+          "viewport_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Narrow to a subset of the declared viewports. Absent = all of them."
+          },
+          "fixtures": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The collection-cardinality states this surface must be reviewed in. The generalised invariant behind 'cart with 0/1/2/3+ line items' — it applies equally to a search-results page, a dashboard table, or an empty inbox.",
+            "items": {
+              "type": "object",
+              "required": ["id", "expected_cardinality"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "description": { "type": "string" },
+                "expected_cardinality": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "How many items the collection should hold in this state. The driver reports what it OBSERVED; a mismatch fails, because a fixture that did not actually materialise cannot support a verdict."
+                },
+                "min_item_quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "At least one item at this quantity (e.g. qty>=2). Quantity-dependent layout defects hide behind qty=1."
+                },
+                "setup": {
+                  "type": "object",
+                  "description": "How the state is reached. Replayed, never invented by the reviewer.",
+                  "additionalProperties": true,
+                  "properties": {
+                    "kind": { "enum": ["url", "script", "api", "manual"] },
+                    "ref": { "type": "string" }
+                  }
+                },
+                "collection_selector": {
+                  "type": "string",
+                  "description": "Selector whose match count IS the observed cardinality. Without it the count cannot be verified and the cell is UNVERIFIED, not passed."
+                }
+              }
+            }
+          },
+          "required_capabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Integrations that must be PRESENT for this surface to be reviewable at all — e.g. a payment gateway. The incident's dev environment had no gateways installed, so the entire checkout payment block did not exist there and a full local pass returned clean on a surface that was not rendered. A missing capability makes the surface UNMEASURED, never PASS."
+          },
+          "relations": {
+            "type": "array",
+            "description": "Tier B declared relations. Optional — Tier A runs with no declaration at all.",
+            "items": {
+              "type": "object",
+              "required": ["id", "kind"],
+              "additionalProperties": true,
+              "properties": {
+                "id": { "type": "string" },
+                "kind": {
+                  "enum": ["repeat", "owned_by", "contain", "collision_free", "align", "must_not_occlude", "paint_within"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "severity_floor": {
+      "enum": ["critical", "major", "minor", "info"],
+      "description": "Findings below this are recorded but do not fail the gate."
+    },
+    "environment": {
+      "type": "object",
+      "description": "What the review environment must satisfy. Recorded into evidence so a pass cannot be transplanted from a materially different environment.",
+      "additionalProperties": true,
+      "properties": {
+        "must_match_production": { "type": "boolean" },
+        "declared_versions": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}

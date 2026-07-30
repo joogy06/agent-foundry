@@ -1,6 +1,7 @@
 ---
 name: java-frontend
 description: Use for enterprise Java-shop web front-ends and legacy enterprise single-page apps — Angular (standalone components, signals, RxJS, NgRx state management), OAuth2/OIDC-with-PKCE authentication flows, Nx monorepos, and the browser tier of a Java or Spring enterprise estate. Part of the java-* skill family, companion to java-backend. Trigger on - Angular, NgRx, RxJS, Nx monorepo, OIDC PKCE, enterprise SPA, Java enterprise frontend, JEE or Spring front-end tier.
+disambiguation: Compatibility stub kept only for older references. New front-end work belongs in modern-frontend, which supersedes this skill.
 ---
 
 # Enterprise Java Frontend — compatibility stub

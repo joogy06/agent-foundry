@@ -53,6 +53,10 @@ MAX_FILE_BYTES = 5 * 1024 * 1024  # skip files > 5 MB (likely binary/data dumps)
 # pattern strings as part of their content. Skip during scan.
 DETECTOR_DOCS_RE = re.compile(
     r"(skills/publish-to-github|docs/plans/_review|"
+    # a redaction unit test must contain secret-SHAPED literals to prove the redactor removes them; same category as the scanner's own source
+    # tests/secrets-scan: the scanner-parity suite must contain credential-SHAPED literals to test the scanner
+    r"tests/lineage-extract-static/unit/test_redact\.py|tests/secrets-scan/|"
+    r"lineage-extract-static/scripts/redact\.py|"
     r"scripts/secrets[-_]scan|\.git/hooks/pre-push)"
 )
 
@@ -164,12 +168,12 @@ CHECKS: tuple[Check, ...] = (
         "HIGH", "inline password/token assignments",
         _re(
             r"(password|passwd|pwd|secret|token|api_key)\s*[:=]\s*"
-            r"[\"']?[a-zA-Z0-9._/-]{12,}[\"']?"
+            r"[\"']?" + r"[A-Za-z0-9._/@!#$%^&*+=~:?|-]{12,}" + r"[\"']?"
         ),
         _allow(
             # Doc/placeholder values
             r"(example|test|fake|REDACTED|<.*>|placeholder|your-|YOUR_|MY_|TODO|XXX|"
-            r"\.\.\.|=\s*\"\"|=\s*''|=\s*\$\{|=\s*\$[A-Z]|EXAMPLE|PLACEHOLDER|"
+            r"\.\.\.|=\s*\"\"|=\s*''|=\s*\$\{|[:=]\s*\$[A-Za-z_]|EXAMPLE|PLACEHOLDER|"
             r"description:|^\s*#|^\s*//|FOO|BAR|BAZ|"
             r"password=password|password=passwd|password=user|password=pass$|"
             r"kwargs|: str$|: str =|: Optional|"
@@ -292,9 +296,23 @@ CHECKS: tuple[Check, ...] = (
 
 
 def should_scan(path: Path) -> bool:
+    """Which files are opened at all.
+
+    #239: this diverged from the bash scanner in a way no output comparison could
+    show. bash passes `--include='*.env*'` to grep — a TRAILING wildcard, so it
+    reads `creds.env.txt` and `.env.local`. This matched `*.env` suffix-exactly and
+    skipped both, while the bash arm scanned them. A file one scanner never opens
+    cannot produce a finding to compare.
+
+    Reconciled toward the WIDER behaviour deliberately: for a secrets scanner,
+    reading a file that turns out to be clean costs a few milliseconds, while
+    skipping one that is not costs a leaked credential.
+    """
     if path.suffix.lower() in INCLUDE_EXTS:
         return True
     name = path.name
+    if ".env" in name:                     # matches bash's --include='*.env*'
+        return True
     for pat in INCLUDE_GLOBS:
         if path.match(pat) or name.endswith(pat.lstrip("*")):
             return True

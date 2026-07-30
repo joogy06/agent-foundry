@@ -1,6 +1,8 @@
 ---
 name: wiring-reconcile
 description: Merge per-run source artifacts (`static.jsonl` + per-agent `asserted/<agent_id>.jsonl` + optional `manual.jsonl`) into a run-scoped `snapshot.json` conforming to `wiring-snapshot.v1` (v1.1 adds per-component `intent` blocks via `intent_merge`). Single writer of reconciled snapshots. Does NOT promote to `latest.json` — bob does, atomically under flock. Deterministic Python, no LLM calls. Invoked by bob with a claim UUID; heartbeats every 60s via `_meta/claims.py`.
+family: wiring
+disambiguation: MERGES per-run artefacts into a signed snapshot and promotes it. Producing the static edges in the first place is wiring-extract-static.
 ---
 
 # wiring-reconcile (v1.1)

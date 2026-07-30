@@ -1,6 +1,8 @@
 ---
 name: python-auth-security
 description: Use when implementing authentication (OAuth, OIDC, SAML, JWT, sessions), authorization (RBAC, ABAC), user management, multi-tenant isolation, API security, or applying OWASP security patterns in Python web applications. Covers Flask and FastAPI security patterns.
+family: python
+disambiguation: Auth and security patterns across Flask and FastAPI — OAuth/OIDC/SAML/JWT, RBAC, tenant isolation, OWASP. General Flask application structure is python-flask-developer.
 ---
 
 # Python Auth & Security

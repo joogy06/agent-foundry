@@ -44,8 +44,30 @@ Before designing anything, decide whether a classical A/B test can reach signifi
   2. **Test a bigger change / larger MDE**, or switch the primary to a **higher-frequency proximal metric** (add-to-cart rate) with revenue guardrails.
   3. **Pre/post with guardrail metrics** — a weaker causal claim; control for seasonality and confounds.
   4. **Adopt a well-evidenced best practice without testing** (from `ecommerce-growth` / `conversion-psychology`) and monitor guardrails.
+  5. **Time-boxed readout — work with the data actually available.** Run for the window the operator
+     *has*, then report what that data supports, at the confidence it supports, and state what a
+     longer window would add. This is the default when the operator needs a decision now; the others
+     are refinements on it.
 
-**Never run a classical conversion test whose computed horizon exceeds ~8-12 weeks — the store will have changed underneath it before it concludes.**
+**Under-powered never means "no answer".** A horizon that does not fit is a statement about
+*certainty*, not about *usefulness* — the operator still has to decide something this quarter, and
+"come back in 49 months" is not a decision aid. Always deliver the best available read, labelled:
+
+```
+DIRECTIONAL (under-powered) — 6 weeks, n≈1,180 units/arm
+  observed:     +14% add-to-cart (95% CI −3% to +31%)
+  supports:     ship it if the change is cheap and guardrails hold — the downside case is small
+  does NOT support: a revenue-per-visitor claim, or attributing a specific lift figure
+  a further 10 weeks would: narrow the CI to roughly ±8% and separate +14% from zero
+```
+
+State the direction, the interval, what it does and does not license, and the cost of more
+certainty. Then let the operator choose. An honest wide interval is worth more than silence, and far
+more than a confident number the data cannot carry.
+
+**Still never run a classical fixed-horizon test whose computed horizon exceeds ~8-12 weeks** — the
+store will have changed underneath it before it concludes. That is a constraint on the *test design*,
+not permission to withhold the analysis.
 
 ## Hypothesis Framing
 

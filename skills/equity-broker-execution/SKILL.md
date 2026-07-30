@@ -1,6 +1,7 @@
 ---
 name: equity-broker-execution
 description: Use when placing, managing, or reconciling US equity orders through real broker APIs (Alpaca, Tradier, IBKR stocks, Schwab) — equity order types (market/limit/marketable-limit, bracket/OCO, trailing stop, time-in-force and extended-hours flags), order lifecycle state machine with partial-fill reconciliation, per-broker idempotency and cancel/replace semantics, slippage handling, reject/disconnect recovery, liquidation-only flatten procedure, SSR (Reg SHO) and LULD-halt handling at order time, and realtime equity data acceptance criteria (NBBO/SIP semantics, Level 2 order book, halt processing). Trigger on - place stock order, bracket order, OCO, trailing stop, partial fill, order reconciliation, broker API equities, LULD halt, short sale restriction, flatten position, paper trading. Crypto exchange orders live in crypto-exchange-integration; position sizing and kill-switch live in trading-risk-management; day-trade permission and locate rules live in equity-trading-compliance.
+family: equity
 ---
 
 # Equity Broker Execution

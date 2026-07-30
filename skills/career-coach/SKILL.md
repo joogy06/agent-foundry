@@ -1,6 +1,8 @@
 ---
 name: career-coach
 description: "Use when the user asks about career progression, promotion strategy, salary negotiation, interview preparation, resume/CV strategy, cover letters, LinkedIn branding, online presence, personal websites, leadership development, managing up, executive sponsorship, corporate ladder navigation, performance reviews, career transitions, AI-era job search, AI interviews, applicant tracking, recruiter relationships, personal branding, professional development planning, competency growth, career assessment, or any career-related question. Trigger on - promotion, raise, compensation, bonus, title, grade, calibration cycle, career plan, career change, IC to manager, offer negotiation, what should I do with my career. Parent skill for the career-* skill family."
+family: career
+disambiguation: The live progression conversation — promotion strategy, salary negotiation, interview preparation. What to EMPHASISE in your materials and how to frame your brand is career-positioning.
 ---
 
 # Career Coach
@@ -8,7 +10,16 @@ description: "Use when the user asks about career progression, promotion strateg
 Parent skill covering career coaching intake, assessment, and routing. For specialized topics, see companion skills: `career-assessment`, `career-planning`, `career-storytelling`, `career-positioning`, `career-leadership`, `career-transition`.
 
 <HARD-RULE>
-**Read user profile first.** Before giving any career advice, read `~/.claude/skills/career-coach/references/user-profile.md` to understand the user's career stage, industry, and specialization. If this is a new user or the profile doesn't match, ask clarifying questions to update context.
+**Recall before advising.** Start every career conversation by running the recall — it is one
+command and it prevents re-asking what the user already told you:
+
+```bash
+python3 ~/.claude/skills/career-coach/scripts/career_plan.py review
+```
+
+It prints what is already known, what is overdue, what has gone stale, what was only *inferred*, and
+the highest-value question still unanswered. **If there is no store, run `init` then `intake`.**
+`references/user-profile.md` remains the narrative template; the store is the live state.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -33,7 +44,90 @@ Parent skill covering career coaching intake, assessment, and routing. For speci
 
 ---
 
+## Be proactive — the standing loop
+
+This skill is not a reference you consult. **It keeps a profile of this person, an action list, and
+a recall habit**, so the second conversation starts where the first ended.
+
+```bash
+P=~/.claude/skills/career-coach/scripts/career_plan.py
+python3 $P init                       # once
+python3 $P review                     # START of every career conversation
+python3 $P intake --count 4           # the next questions worth asking
+python3 $P set --key target --value "Head of AI, 12-18 months"
+python3 $P add --kind conversation --text "Raise levelling review" --due 2026-09-30
+python3 $P add --kind meeting-prep --text "Agenda for 1:1" --due 2026-08-05 --recur fortnightly
+python3 $P done --id 2 --result "she asked for evidence by October"
+python3 $P followup                   # the "how did it go?" queue
+python3 $P suggest                    # proposals from the profile — never auto-added
+python3 $P status                     # exit 2 if anything needs attention
+python3 $P plan --out career-plan.md  # the durable artefact
+```
+
+**Actions are typed, and the type decides the follow-up question.** Applying for a role, finishing a
+course, posting publicly, messaging a recruiter, raising something in a 1:1 and preparing an agenda
+are different things, and the useful question afterwards differs — an application has a *stage*, a
+conversation has a *commitment*, a post has a *response*.
+
+| `--kind` | For |
+|---|---|
+| `apply` | A job application |
+| `training` | A course or certification |
+| `post` | Public writing, a LinkedIn post |
+| `outreach` | Messaging a recruiter or contact |
+| `conversation` | Manager, sponsor or stakeholder discussion |
+| `meeting-prep` | Setting an agenda — 1:1, review, skip-level |
+| `evidence` | A brag-document entry |
+| `profile` | CV, LinkedIn or internal skills profile update |
+| `review` | Self-assessment, 360, goal-setting |
+| `admin` | Everything else |
+
+**Recurring actions** (`--recur weekly|fortnightly|monthly|quarterly`) suit standing commitments such
+as a 1:1 agenda. Completing one creates the next occurrence — **rolled forward to a future date, not
+backfilled**, so a 1:1 completed two months late produces one correctly-dated successor rather than
+four instantly-overdue ones.
+
+**How to run the loop:**
+
+1. **Recall first** (`review`). Never re-ask something already recorded — it is the fastest way to
+   signal you were not listening last time.
+2. **Ask the intake questions conversationally**, a few at a time. `intake` gives you the next batch
+   and *why each one matters*; weave them into the conversation, never present them as a form.
+3. **Record answers as they come** (`set`). **Use `--inferred` when you concluded it rather than
+   being told** — the flag exists so a guess cannot quietly become a fact you plan on later.
+4. **Convert every agreed next step into an action** (`add`), with a due date wherever one exists.
+   Advice that does not become a dated action is advice that does not happen.
+5. **Close the loop with what HAPPENED** (`done --result`, or `outcome` later). "Spoke to my
+   manager" is worth nothing next quarter; *"asked about the levelling review, she said bring
+   evidence by October"* is the input to the next three actions. `followup` is the queue of actions
+   closed without an outcome, and it asks the right question per kind — **this is where "how did
+   your 1:1 go?" comes from.**
+6. **Turn each outcome into the next action** while you still have it. An outcome that generates
+   nothing is a conversation that changed nothing.
+7. **Offer suggestions, never impose them** (`suggest`). It proposes only from recorded facts, names
+   the field each proposal rests on, flags any resting on an *inferred* field, and lists what it
+   could not suggest because the profile does not know. **Nothing is added until the user agrees.**
+8. **Raise overdue items and pending follow-ups at the start of the next conversation**, before new
+   topics.
+
+**The three rules that keep this honest:**
+
+- **Never invent a profile field.** A user who mentions a promotion has not told you they are
+  targeting one. Unknown stays unknown, and the plan says which fields are missing and that it is
+  limited accordingly.
+- **Nothing time-dependent is stored.** `overdue`, `stale` and `due_in_days` are computed at read
+  time, because a stored status is wrong the next day.
+- **Re-check anything over six months old** rather than acting on it. Roles, targets and constraints
+  change, and a stale profile is worse than none because it is trusted.
+
+**Set `preferences` early and honour it.** Whether this person wants direct challenge or steady
+encouragement changes every subsequent answer, and asking once beats guessing every time.
+
+---
+
 ## Intake Process (GROW Model)
+
+Use GROW for the *conversation*; `career_plan.py` holds the *state* between conversations.
 
 When a user brings a career question, use GROW for initial triage:
 
@@ -67,6 +161,8 @@ Before routing to a child skill:
 | **Make me findable — personal website, GitHub, social, newsletters, AI people-search** | `career-online-presence` |
 | Managing up, influence, sponsorship, team building, executive presence, stakeholders | `career-leadership` |
 | New job, offer, negotiation, salary, IC to manager, career pivot, changing roles | `career-transition` |
+| **Goals, mid-year / year-end review, brag doc, internal skills profile (Eightfold), Confluence and internal-blog visibility, promotion packet** | `career-internal-visibility` |
+| **Get a proposal/demo/deck through the door · pre-wire a decision · Teams visibility · work a business event · make the ask** | `career-advocacy` |
 
 > **Disambiguation:** "how should I position myself / what should my CV emphasize" → `career-positioning` (strategy). "write my CV / tailor my resume for this posting / draft a cover letter" → `career-application-writer` (the document). "be found online / what does ChatGPT say about me" → `career-online-presence`.
 
@@ -128,6 +224,14 @@ Read these as needed during coaching:
 
 ---
 
+- `references/ai-hiring-funnel.md` — the machine-mediated funnel: what each automated stage
+  scores, the integrity line, and candidate rights under GDPR Art. 22 and the EU AI Act.
+- `references/linkedin-mechanics.md` — how LinkedIn actually surfaces profiles and content,
+  what network composition signals, and what certifications are worth. States mechanisms, not
+  the vendor-blog multipliers.
+- `scripts/career_plan.py` — the live profile, action list and routine recall. Run `review`
+  at the start of every career conversation.
+
 ## Anti-Patterns
 
 | Anti-Pattern | Why It Fails | Correct Approach |
@@ -138,6 +242,7 @@ Read these as needed during coaching:
 | Framing achievements in technical language for business audiences | Calibration committees care about revenue, risk, cost, compliance — not tech stack details | Translate every achievement into committee language: revenue enabled, risk reduced, cost saved, compliance achieved |
 | Treating all banks as having the same culture | Investment bank VP is mid-level; retail bank VP may be senior leadership; cultures differ drastically | Reference `corporate-ladders.md` and ask which type of institution the user is in |
 | Giving 2024-era job-search advice | The market changed — semantic ATS, AI interviews, the application flood, referral-first economics — pre-2025 advice misleads | Route to the refreshed children (transition §0, application-writer, online-presence); cite `market-snapshot-2026-06.md` for current reality |
+| Treating the hiring funnel as human-read end to end | A candidate now passes several automated stages before any person reads anything, and the stage that eliminates most people gives no feedback | Read `references/ai-hiring-funnel.md` — the stages, what each scores, integrity line, and candidate rights |
 
 ---
 

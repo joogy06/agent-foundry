@@ -50,3 +50,6 @@ skills/.pytest_cache/
 **/.pytest_cache/
 **/__pycache__/
 **/*.pyc/
+**/.pytest_cache/**/
+skills/_meta/cache/
+skills/_meta/cache/

@@ -1,6 +1,8 @@
 ---
 name: ms-office-python
 description: Use when working with Microsoft Office or Microsoft 365 from Python — reading/writing Excel (.xlsx), Word (.docx), PowerPoint (.pptx); calling Microsoft Graph for mail/calendar/Teams/SharePoint/OneDrive; authenticating to Entra ID via MSAL/WAM broker, SAML, or Kerberos; or hardening any of the above. Parent skill for the ms-office-python-* family. Routes to ms-office-excel-python, ms-office-word-python, ms-office-powerpoint-python, ms-office-graph-python, ms-office-enterprise-sso-python, ms-office-security-python.
+family: ms-office
+disambiguation: The FAMILY entry point — routes to the per-format and per-API siblings. Microsoft Graph calls specifically are ms-office-graph-python.
 ---
 
 # Microsoft Office + Microsoft 365 — Python Family (parent)
@@ -152,6 +154,25 @@ winget install --id Python.Python.3.12 -e --silent
 # pymsalruntime ships its own DLLs; verify with:
 #   python -c "import pymsalruntime; print(pymsalruntime.__file__)"
 ```
+
+### macOS 14+ (Sonoma / Sequoia / Tahoe)
+
+```bash
+xcode-select --install                      # REQUIRED to build appscript (xlwings on macOS)
+brew install python@3.12
+# Optional, per-skill:
+#   brew install --cask libreoffice          # headless conversion — the portable route
+#   brew install pandoc                      # pypandoc backend
+```
+
+**On macOS, driving installed Office goes through Apple Events, not COM** — `xlwings` and
+`docx2pdf` use the AppleScript bridge (`appscript`), and the first call raises a TCC consent dialog
+that **cannot be answered headlessly**. That makes macOS live-automation unavailable on CI runners
+and `launchd` jobs for the same practical reason COM is unavailable on Linux.
+
+**Read `references/macos-automation.md` before writing any macOS automation path** — it covers the
+Apple Events grant, Office's App Sandbox containers, the Apple-silicon Homebrew prefix, and the
+cross-platform routes (Graph, Office Scripts, LibreOffice headless) that avoid the problem entirely.
 
 **Office installation is NOT a family-wide prerequisite.** Only `xlwings`, `docx2pdf`, and explicit COM-automation patterns require local Office. The defaults (`openpyxl`, `python-docx`, `python-pptx`, `msgraph-sdk`) do not. Each child skill flags Office-dependent libraries in its Library Selection table.
 

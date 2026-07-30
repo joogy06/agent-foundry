@@ -1,6 +1,7 @@
 ---
 name: skeleton-extractor
 description: "Use when transforming an HTML mockup into a draft design-skeleton.v1 YAML. Walks the DOM via puppeteer-core at 3 breakpoints, extracts bboxes + computed styles (resolved back to declared tokens) + wired interaction handlers, and emits one draft ready for visual-architect review. Runs the Node subprocess under trusted_runner discipline (CB3-compliant: trusted runner owns execution, skill only generates draft). Invoked by visual-architect at design-phase freeze; NEVER writes the frozen skeleton itself."
+disambiguation: Turns an HTML mockup into a DRAFT skeleton by measuring the DOM. Reviewing and FREEZING that skeleton at design time is visual-architect.
 ---
 
 # skeleton-extractor

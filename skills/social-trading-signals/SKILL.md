@@ -1,6 +1,7 @@
 ---
 name: social-trading-signals
 description: Use when extracting trading signals from X/Twitter, Reddit, or Telegram, detecting pump-and-dump patterns, identifying bot activity, building sentiment aggregation from social media, or modelling signal decay from social sources
+disambiguation: Signals from SOCIAL platforms — X, Reddit, Telegram — including pump-and-dump and bot detection. General financial-text sentiment scoring is financial-sentiment-analysis.
 ---
 
 # Social Trading Signals

@@ -1,6 +1,7 @@
 ---
 name: intent-extract
 description: Use during bob's Step 4.5 (after UNIT_TESTED) or evo's INTENT_MAPPED phase (per design §6 state machine) to extract per-component functional intent from a project's source code. Anchor-and-expand on contract-map components plus 1-hop call-graph neighbourhoods; per-component LLM pass at temperature=0; structured YAML output conforming to functional-intent.v1 with closed-set function_class enum, REQUIRED evidence_edges that resolve in static.jsonl, two-arm verification on prose claims; content-hash cached. Requires a bob-issued claim token, heartbeats it every 60s, emits transition requests for INTENT_MAPPED. Skill NEVER writes claim files, NEVER writes the integration ledger, NEVER traverses the call graph beyond 1-hop. CB4-compliant.
+disambiguation: Extracts what a component MEANS to do — functional intent, per component. Generating tests is integration-flow-testing; generating fixtures is sample-data-scaffolding.
 ---
 
 # intent-extract (v1)

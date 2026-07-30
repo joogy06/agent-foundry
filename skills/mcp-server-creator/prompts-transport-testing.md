@@ -1,6 +1,14 @@
 # Prompts, Transport, Error Handling, and Testing
 
-Reference file for the `mcp-server-creator` skill. Covers prompts, transport layers (stdio, SSE, streamable HTTP), error handling patterns, and testing strategies.
+Reference file for the `mcp-server-creator` skill. Covers prompts, transport layers, error
+handling patterns, and testing strategies.
+
+<!-- REVIEW-BY: 2027-01-31 -->
+**Transport and handshake sections reconciled 2026-07-29 against the 2026-07-28 specification
+release announcement.** Prompts, error handling and testing below are unaffected by that revision
+and remain current. **SDK code for the new revision is not reproduced here** — it has not been
+verified against the SDKs from this machine, and inventing it would be worse than pointing at the
+source. See `mcp-integration` §1.
 
 ## Prompts
 
@@ -113,9 +121,12 @@ mcp.run()  # uses stdio by default
 # or explicitly: mcp.run(transport="stdio")
 ```
 
-### SSE (Server-Sent Events)
+### SSE (Server-Sent Events) — **DEPRECATED as of the 2026-07-28 revision**
 
-Best for: remote servers accessible over HTTP, servers shared across multiple clients.
+> **Do not build new servers on this transport.** The 2026-07-28 specification deprecates the
+> legacy HTTP+SSE transport. A 12-month minimum sunset applies, so existing servers keep working —
+> the code below is retained for **maintaining** one, not for starting one. New remote servers use
+> Streamable HTTP.
 
 ```typescript
 // TypeScript — SSE server
@@ -143,7 +154,19 @@ app.listen(3001, () => console.error("SSE MCP server on port 3001"));
 
 ### Streamable HTTP
 
-Best for: production deployments, stateless servers, serverless environments. This is the modern replacement for SSE that supports both streaming and non-streaming use cases.
+Best for: **all remote servers.** Supports streaming and non-streaming use cases.
+
+> **The 2026-07-28 revision made the PROTOCOL stateless**, not just this transport. There is no
+> `initialize`/`initialized` handshake and no `Mcp-Session-Id` header; protocol version, client
+> identity and capabilities travel in `_meta` on every request. Requests carry `Mcp-Method` and
+> `Mcp-Name` headers so gateways can route and authorise without parsing the body, and list
+> results carry `ttlMs`/`cacheScope`.
+>
+> **The SDK example below predates that revision.** `sessionIdGenerator` belongs to the session
+> model the revision removed. The shape is still instructive; the specifics are not current. See
+> `mcp-integration` §1 for the full change list, and the specification and your SDK's migration
+> notes for the code — **those are deliberately not reproduced here, because they have not been
+> verified against the SDKs from this machine.**
 
 ```typescript
 // TypeScript — Streamable HTTP server
@@ -170,11 +193,11 @@ app.listen(3001, () => console.error("Streamable HTTP MCP server on port 3001"))
 
 ### Choosing the Right Transport
 
-| Transport | Use Case | Pros | Cons |
-|-----------|----------|------|------|
-| **stdio** | Local CLI, Claude Desktop/Code | Simplest, no networking | Local only |
-| **SSE** | Remote HTTP server | Works over network, streaming | Requires persistent connection |
-| **Streamable HTTP** | Production, serverless | Stateless, scalable, modern | Slightly more complex setup |
+| Transport | Use Case | Status |
+|-----------|----------|--------|
+| **stdio** | Local, client-launched | **Current.** Simplest and most reliable — no ports, no CORS, no auth layer |
+| **Streamable HTTP** | All remote servers | **Current.** The only remote transport for new work |
+| ~~**SSE**~~ | — | **Deprecated 2026-07-28**, 12-month sunset. Maintain, do not adopt |
 
 ---
 
@@ -324,6 +347,8 @@ You can pipe JSON-RPC messages directly to test a stdio server:
 
 ```bash
 # Send initialize + tool call manually
+# NOTE: `initialize` was REMOVED in the 2026-07-28 revision — there is no handshake.
+# This probe therefore only exercises a server on an older protocol era.
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | node dist/index.js
 ```
 

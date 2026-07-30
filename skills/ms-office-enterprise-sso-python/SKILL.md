@@ -1,6 +1,8 @@
 ---
 name: ms-office-enterprise-sso-python
 description: Use when authenticating a Python client to Microsoft Entra ID / Azure AD / on-prem AD FS — covering the four enterprise auth topologies (Windows brokered interactive via msal[broker]/pymsalruntime, Linux brokered interactive via azure-identity-broker on Intune-managed Linux, headless / daemon with client credentials + certs + Managed Identity + Workload Identity Federation, and legacy on-prem via pyspnego / requests-gssapi / requests-negotiate-sspi). Plus SAML 2.0 SPs (pysaml2, python3-saml), JWT validation (pyjwt[crypto]), encrypted token cache (msal-extensions), hardware keys (fido2, pyscard). Covers Conditional Access claim semantics, MFA step-up, national clouds, device join state (dsregcmd matrix), and the WAM broker DLL load path. Part of the ms-office-python-* skill family.
+family: ms-office
+disambiguation: Authenticating a PYTHON CLIENT to Entra ID or AD FS — the auth topologies and their libraries. Configuring the SSO infrastructure itself on Windows is windows-sso.
 ---
 
 # Microsoft Enterprise SSO — Python

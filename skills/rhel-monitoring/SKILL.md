@@ -1,6 +1,8 @@
 ---
 name: rhel-monitoring
 description: Use when setting up monitoring and logging on RHEL 9 (and AlmaLinux/Rocky 9) — Prometheus and node_exporter, Grafana dashboards, Loki/Promtail log aggregation, ELK stack, Alertmanager, Performance Co-Pilot (PCP), rsyslog, systemd journal management, Cockpit monitoring, and health check patterns. Part of the rhel-* skill family.
+family: rhel
+applies_when: os_family == rhel
 ---
 
 # Red Hat Enterprise Linux 9 — Monitoring and Logging

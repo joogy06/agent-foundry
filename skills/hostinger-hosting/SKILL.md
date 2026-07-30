@@ -1,6 +1,7 @@
 ---
 name: hostinger-hosting
 description: Use when managing websites on Hostinger hosting — hPanel navigation, WordPress staging environment, LiteSpeed Cache configuration, PHP version management, SSH access (port 65002), DNS zone editor, SSL/TLS certificates, email setup (IMAP/SMTP settings, SPF/DKIM/DMARC), backup and restore, Hostinger CDN, Node.js deployment, cron jobs, Git integration, file manager, database management, migration to/from Hostinger, or troubleshooting Hostinger-specific errors (500, SSL loops, upload limits).
+disambiguation: The Hostinger PLATFORM — hPanel, staging, LiteSpeed, PHP versions, host-level limits. Administering the WordPress application itself, on any host, is wordpress-admin.
 ---
 
 # Hostinger Hosting

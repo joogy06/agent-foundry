@@ -1,6 +1,8 @@
 ---
 name: docker-networking
 description: Use when configuring Docker container networking — bridge networks, overlay networks, macvlan, host networking, DNS resolution between containers, published ports, network isolation, container-to-container communication, load balancing with Docker, IPv6, custom network drivers, and network troubleshooting. Part of the docker-* skill family. OS-agnostic.
+family: docker
+disambiguation: Container networking itself on any host — bridge, overlay, macvlan, DNS, port publishing. Installing and running the daemon on a distro is ubuntu-docker-host or rhel-docker-host.
 ---
 
 # Docker Networking

@@ -18,10 +18,22 @@ Host (Claude Desktop / Claude Code / IDE)
 
 ### Protocol Lifecycle
 
+> **Superseded by the 2026-07-28 revision, which removed the handshake.** Protocol version,
+> client identity and capabilities now travel in `_meta` on **every request**, so there is no
+> connection to establish and no session to track — any instance can answer any request. The
+> sequence below describes the PREVIOUS era, which a 12-month sunset keeps alive for existing
+> clients. Know which era you are targeting before writing either. See `mcp-integration` §1.
+
+**Previous era (pre-2026-07-28):**
+
 1. **Initialize** — Client sends `initialize` with its protocol version and capabilities. Server responds with its own capabilities (tools, resources, prompts it supports).
 2. **Initialized** — Client sends `initialized` notification. The connection is now active.
 3. **Ongoing Communication** — Client calls tools, reads resources, gets prompts. Server can send notifications (resource changes, progress updates, log messages).
 4. **Shutdown** — Either side closes the transport. Servers should clean up resources gracefully.
+
+**Current era:** every request is self-describing and independent. Capability declaration still
+exists — the table below remains accurate for what a server advertises — but it is no longer
+negotiated once at connection time.
 
 ### Capability Negotiation
 

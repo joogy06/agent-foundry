@@ -1,6 +1,9 @@
 ---
 name: ubuntu-docker-host
 description: Use when setting up and managing Docker CE on Ubuntu 24.04 LTS — installation from official repo, storage drivers (overlay2), daemon.json configuration, networking (bridge, macvlan, host), Docker Compose V2, container logging, private registry, resource limits, rootless mode, and security best practices. Part of the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
+disambiguation: Standing up and running the Docker daemon on Ubuntu — install, storage driver, daemon.json, systemd. Network topology itself is docker-networking.
 ---
 
 # Docker CE on Ubuntu Server 24.04 LTS

@@ -1,6 +1,8 @@
 ---
 name: ms-office-powerpoint-python
 description: Use when reading, writing, transforming, or converting PowerPoint files from Python — .pptx (python-pptx), generating decks from data / Markdown (python-pptx + pypandoc), converting to PDF or image previews (LibreOffice headless), or Markdown-to-slides flows. Covers OOXML XXE defence, image embedding, slide-layout reuse, and the python-pptx maintenance-mode caveat. Part of the ms-office-python-* skill family.
+family: ms-office
+disambiguation: PowerPoint decks from Python. Word documents are ms-office-word-python; spreadsheets are ms-office-excel-python.
 ---
 
 # Microsoft PowerPoint — Python
@@ -176,6 +178,22 @@ See `ms-office-security-python` for the consolidated checklist. Area-specific it
 - Speaker notes silently inherit theme fonts; setting `notes.text_frame.text = ...` strips font / colour. Use `notes.text_frame.paragraphs[0].add_run(...)` for styled notes.
 - `prs.save(path)` overwrites without warning. Layer file-existence checks if overwrite is undesirable.
 - `python-pptx` cannot edit `.ppt` (legacy Office 97-2003 PowerPoint format). Convert through LibreOffice first.
+
+### Platform routing — rendering is the only OS-dependent step
+
+`python-pptx` itself is pure Python and behaves identically on Windows, macOS and Linux. **The
+split appears the moment you need a PDF or a thumbnail**, because `python-pptx` renders nothing:
+
+| Rendering route | Windows | macOS | Linux / CI |
+|---|---|---|---|
+| **LibreOffice headless** (`soffice --headless --convert-to pdf`) | ✅ | ✅ | ✅ |
+| PowerPoint via COM (`pywin32`) | ✅ | ❌ **no COM on macOS** | ❌ |
+| PowerPoint via Apple Events (`xlwings`-style / AppleScript) | ❌ | ⚠️ needs Office **and** a TCC grant **and** a logged-in user | ❌ |
+
+**LibreOffice headless is the only row that is green everywhere**, which makes it the default for
+any pipeline that has to run on more than one machine. There is **no COM on macOS** — the Mac path
+is Apple Events, and it cannot be granted headlessly, so it is unavailable on CI exactly as COM is
+on Linux. See `ms-office-python/references/macos-automation.md`.
 
 ## Update Triggers (per Codex M-1 — alf will scan these)
 

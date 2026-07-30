@@ -1,6 +1,8 @@
 ---
 name: ubuntu-server-admin
 description: Use when administering Ubuntu Server 24.04 LTS systems — package management, user/group management, SSH hardening, systemd services, UFW/nftables firewall, netplan networking, LVM/disk management, kernel tuning, security hardening (CIS, AppArmor, fail2ban), backup/restore, and on-prem VM guest tools (Proxmox, VMware, Hyper-V). Parent skill for the ubuntu-* skill family.
+family: ubuntu
+applies_when: os_family == debian
 ---
 
 # Ubuntu Server 24.04 LTS — Core Administration

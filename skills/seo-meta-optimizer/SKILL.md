@@ -1,6 +1,7 @@
 ---
 name: seo-meta-optimizer
 description: Use when creating or optimizing title tags, meta descriptions, Open Graph tags, Twitter Cards, URL structures, or any SERP-facing metadata. Covers character limits, pixel widths, CTR optimization, and AI Overview impact on click-through rates.
+family: seo
 ---
 
 # SEO Meta Optimizer

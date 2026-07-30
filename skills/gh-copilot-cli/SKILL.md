@@ -1,6 +1,7 @@
 ---
 name: gh-copilot-cli
 description: Use when working with GitHub Copilot CLI (`copilot`) — headless and interactive modes, permission flags, AGENTS.md and `.github/copilot-instructions.md`, MCP servers, custom agents, plugins, OAuth device-flow auth, and the bridge to VS Code Copilot Chat. Covers `@github/copilot@1.0.21`. Verified locally on 2026-04-08 against the actual `copilot --help`.
+disambiguation: The `copilot` CLI binary in a terminal. Agentic flows INSIDE the VS Code editor are vscode-agents; the `claude` binary is claude-code-cli.
 ---
 
 # GitHub Copilot CLI

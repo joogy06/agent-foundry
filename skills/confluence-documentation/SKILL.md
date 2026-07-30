@@ -1,6 +1,8 @@
 ---
 name: confluence-documentation
 description: Use when project-documentation preferences indicate Confluence export is needed, or when creating Confluence-formatted documentation pages. Covers XHTML storage format, macros (TOC, children, search, panels, code blocks, status badges), REST API page creation, and keeping repo markdown in sync with Confluence.
+family: confluence
+disambiguation: The project-documentation EXPORT path — when and how project docs become Confluence pages. General page authoring syntax and macros is confluence-content-creator.
 ---
 
 # Confluence Documentation

@@ -373,11 +373,31 @@ def validate_run_lease(
     run_label: str,
     plan_hash: Optional[str] = None,
     token: Optional[str] = None,
+    touch: bool = True,
 ) -> bool:
     """Validate the lease on EVERY bob-owned mutation (ledger transition,
     checkpoint write, claim issue). The lease MUST exist, match run_label
     (and plan_hash/token when supplied), and be live. Mismatch => the caller
-    aborts PARTIAL and touches nothing (CB4 single-writer enforcement)."""
+    aborts PARTIAL and touches nothing (CB4 single-writer enforcement).
+
+    S074 (#178) — a successful TOKEN-BEARING validation also advances the heartbeat.
+
+    `heartbeat_run_lease` was defined and called from nowhere, so a fully live bob's
+    `heartbeat_at` stayed pinned at acquisition forever. Lease age was therefore not a
+    liveness signal, and any stale-lease reclaim keyed on it would have seized the lease
+    from a RUNNING bob — a direct CB4 single-writer violation vector. It also produced
+    three false "agent is dead" readings in S069 alone, and one more in S073.
+
+    The tick is deliberately bound to the TOKEN, not to a successful validation. Only the
+    holder knows the token, so only the holder can keep the lease alive; advancing it for
+    any caller that merely names the right `run_label` would let a bystander preserve a
+    dead lease indefinitely, which is worse than the original bug. A caller that wants a
+    pure read — a monitor, a takeover deciding whether the holder is gone — passes
+    `touch=False` and changes nothing.
+
+    Wiring it here rather than asking bob to call it is the point: the previous design
+    depended on an agent remembering a step, and prose enforcement is exactly what failed.
+    """
     lease = _read_run_lease(project_root)
     if not lease:
         return False
@@ -389,6 +409,14 @@ def validate_run_lease(
         return False
     if token is not None and lease.get("token") != token:
         return False
+
+    if token is not None and touch:
+        # Best-effort: the validation verdict is already decided and must not change
+        # because a heartbeat write failed.
+        try:
+            heartbeat_run_lease(project_root, token)
+        except OSError:
+            pass
     return True
 
 

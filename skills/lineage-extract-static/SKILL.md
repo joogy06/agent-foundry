@@ -1,6 +1,7 @@
 ---
 name: lineage-extract-static
 description: "Use when extracting data/process lineage from a codebase or file tree — Python/Java/SQL/DSX/Control-M/dbt/COBOL/Pick-MultiValue-BASIC/scheduler configs/log files into spec-correct OpenLineage 2.0.2 JobEvent + DatasetEvent ndjson plus dual visual report (HTML Cytoscape DAG + Mermaid markdown + CSV). Skill is a framework — model-neutral prompts the in-session AI CLI (Claude Code, Codex CLI, Antigravity CLI (agy), Copilot CLI) uses to analyse chunks via its own LLM context, NOT per-format parser plug-ins. Static analysis only (v1); runtime producers in v2. Also trigger on \"lineage report\", \"data flow extraction\", \"openlineage\", \"trace data through the codebase\", \"where does this dataset come from\", \"Java lineage\", \"JDBC/JPA lineage\", \"Pick/MultiValue lineage\"."
+disambiguation: LLM-driven lineage across many stacks — Python, Java, SQL, DSX, scheduler configs. Deterministic no-LLM COBOL/JCL/EXEC-SQL parsing is mainframe-lineage-parsers.
 ---
 
 # lineage-extract-static — Cross-System Data/Process Lineage Skill
