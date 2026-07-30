@@ -1,0 +1,43 @@
+// Template → copy to <workspace>/.vscode/tasks.json
+// `runOn: folderOpen` is the ONLY automatic trigger VS Code offers that resembles a
+// SessionStart hook. It writes the state file; it cannot make the model read it.
+// See vs-code/docs/startup.md for what each layer does and does not guarantee.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "foundry: session prime",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "py" },
+      "args": ["${workspaceFolder}/vs-code/scripts/session_prime.py", "--root", "${workspaceFolder}"],
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "silent", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "foundry: detect models",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "py" },
+      "args": ["${workspaceFolder}/vs-code/scripts/detect_models.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "foundry: gates",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "py" },
+      "args": ["${userHome}/.claude/skills/_meta/gates.py", "${input:gate}", "${workspaceFolder}"],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "gate",
+      "type": "pickString",
+      "description": "Which gate?",
+      "options": ["G1", "G2", "G_CLASSIFY", "G_SECRETS_SCAN", "G_CONTRACT_SCOPE", "G_UX_EVIDENCE"]
+    }
+  ]
+}

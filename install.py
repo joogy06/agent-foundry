@@ -3565,6 +3565,13 @@ def install_vscode_workspace(repo_root: Path, workspace: Path, force: bool = Fal
     Idempotency mirrors install_agy: create-if-absent, and leave a customised file alone
     unless --force. A workspace file the user has edited is theirs.
     """
+    # Coerce here rather than at the call site: argparse hands us a str, and this
+    # function had NEVER ONCE EXECUTED (the --vscode-workspace flag was never
+    # registered, S075 #245), so the `str / str` TypeError below sat undiscovered.
+    # Accepting either type keeps every caller correct.
+    repo_root = Path(repo_root)
+    workspace = Path(workspace).expanduser()
+
     src = repo_root / "vs-code"
     if not src.is_dir():
         print(f"    ⚠ {src} not found — skipping VS Code workspace setup")
@@ -4148,6 +4155,12 @@ def main() -> int:
                         help="pre-authorize the --mode mc cleanup. REQUIRED for a "
                              "destructive prune under --noninteractive; without it "
                              "such a run fails before writing anything.")
+    parser.add_argument("--vscode-workspace", metavar="PATH", default=None,
+                        help="place the VS Code / Copilot workspace files into PATH: "
+                             "AGENTS.md, .vscode/tasks.json + mcp.json, the VSPrime "
+                             "agent and the /prime command. Skills need no bridge — "
+                             "VS Code auto-discovers ~/.claude/skills — but startup, "
+                             "agents and MCP wiring do. Implies the copilot target.")
     parser.add_argument("--preview", action="store_true",
                         help="print the OS x tool install matrix and exit — where each "
                              "tool's files go, which shell its hooks run in, what it "
