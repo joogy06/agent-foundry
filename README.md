@@ -14,7 +14,9 @@ A curated collection of skills and agents for [Claude Code CLI](https://claude.a
 - **8 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
-Skills are auto-discovered by Claude Code from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
+Skills are auto-discovered from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
+
+**`~/.claude/skills/` is the shared location all of these tools read** — Claude Code, Copilot CLI and VS Code alike. Install the `claude` target even if Claude Code is not the tool you use; see the note under [Quick Start](#quick-start).
 
 ---
 
@@ -31,6 +33,21 @@ python3 bootstrap-environment.py
 ```
 
 The bootstrap orchestrator runs `install.py` plus a series of idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
+
+> ### ⚠ `~/.claude/` is required — even if you never install Claude Code
+>
+> **`~/.claude/skills/` is the canonical skill library, not a Claude-only directory.** Copilot CLI and VS Code both **auto-discover it** as a user-level skill location; that is why installing skills for them needs no bridge. The directory name reflects where the convention started, not who may use it.
+>
+> **So always install the `claude` target**, whichever tool you actually work in:
+>
+> ```bash
+> python3 install.py --target claude,copilot      # Copilot user
+> python3 install.py --target claude              # VS Code user — nothing else needed for skills
+> ```
+>
+> `--target copilot` **on its own writes only `~/.copilot/copilot-instructions.md`** — no skills, no agents. It is an *add-on* to the claude target, not a replacement for it.
+>
+> The same applies to the machinery: the gates, hooks and shared tooling live in `~/.claude/skills/_meta/`, and skills that call into them break if that tree is absent.
 
 **Look before you install.** `install.py --preview` prints exactly what will be placed, where, for every tool it supports — and `--os` lets you inspect a machine you are not sitting at:
 
