@@ -796,22 +796,36 @@ def resolve_mode(cli_mode: str) -> "tuple[str, bool]":
 def normalize_mode_for_other_targets(cli_mode: str, targets: "list[str]") -> "list[str]":
     """Return the human-readable normalization notes for non-Claude targets.
 
-    `mc` is Claude-only. Every other target silently degrades to plain `copy`
-    placement — and 'silently' is the part worth fixing: a user who asked for
-    "copy and clean" and got a copy-and-clean of ~/.claude plus an unannounced
-    copy-only of ~/.gemini has been told nothing about the difference. So the
-    normalization is PRINTED rather than merely applied.
+    HISTORY (S075): `mc` used to be Claude-only, and this function existed to
+    ANNOUNCE that degradation rather than let it happen silently — a user who
+    asked for "copy and clean" got a cleaned ~/.claude and an unannounced
+    copy-only mirror, so a skill deleted from source lingered in every mirror
+    forever.
+
+    Cleanup now runs at every skills-mirror root under the same provenance rule,
+    so the announcement changed from a limitation to a scope statement. What the
+    user still needs told is WHICH roots will be cleaned and what authorizes it,
+    because a destructive step should never be inferred.
 
     Pure: returns the lines, does not print them."""
     others = [t for t in targets if t != "claude"]
     if cli_mode != "mc" or not others:
         return []
-    return [
-        f"note: --mode mc is Claude-only. {', '.join(others)} will use `copy` "
-        f"placement with NO cleanup.",
-        "      Cleanup requires the provenance manifest, which only the Claude "
-        "target maintains.",
+    mirrors = [t for t in others if t in ("copilot", "gemini")]
+    lines = [
+        f"note: --mode mc = copy + CLEAN. {', '.join(others)} use `copy` placement.",
     ]
+    if mirrors:
+        lines += [
+            f"      {', '.join(mirrors)} are cleaned too, each against its own "
+            f".install-manifest.json:",
+            "      only an entry this installer placed AND no longer ships can be "
+            "removed, and it is archived first.",
+            "      A root with no manifest yet defers and writes a baseline instead.",
+        ]
+    if "agy" in others:
+        lines.append("      agy places a single host directive and has nothing to clean.")
+    return lines
 
 
 def reject_incompatible_flags(cli_mode: "str | None", skip_existing: bool) -> "str | None":
@@ -1155,6 +1169,126 @@ def compute_prune_candidates(previous_manifest: "dict | None",
 
     candidates.sort(key=lambda c: (c["category"], c["name"]))
     return candidates
+
+
+def _shipped_skill_names(repo_root: Path) -> "list[str]":
+    """The skill leaf-names this run ships — the same filter every mirror uses.
+
+    Derived from source rather than from a mirror's own contents, because it is
+    condition 2 of the prune rule ("absent from what this run shipped"). Reading
+    it from the mirror would make the mirror vouch for itself.
+    """
+    src = Path(repo_root) / "skills"
+    if not src.is_dir():
+        return []
+    return sorted(d.name for d in src.iterdir()
+                  if d.is_dir() and (d / "SKILL.md").is_file())
+
+
+def _report_mirror_prune(label: str, result: dict) -> None:
+    """One honest line per mirror. Silence would make 'cleaned' and 'could not
+    prove ownership yet' look identical, which is the confusion the Claude
+    target's baseline-only message already exists to prevent."""
+    if result.get("baseline_only"):
+        print(f"  {label} cleanup: DEFERRED — no ownership record existed here yet. "
+              f"A baseline was written; the next run can clean.")
+        return
+    n = result.get("pruned", 0)
+    cands = len(result.get("candidates") or [])
+    if n:
+        print(f"  {label} cleanup: {n} orphan(s) removed (archived first"
+              + (f" to {result['archive']}" if result.get("archive") else "") + ")")
+    elif cands:
+        print(f"  {label} cleanup: {cands} candidate(s) identified, none removed "
+              f"(not authorized, or a dry run)")
+
+
+def prune_mirror_root(root: Path, subdir: str, shipped_names: "list[str]", *,
+                      enabled: bool, dry_run: bool = False, authorized: bool = True,
+                      archive=None, mode: "str | None" = None,
+                      source_rev: "str | None" = None,
+                      run_id: "str | None" = None) -> dict:
+    """`--mode mc` for a skills-MIRROR root (~/.codex, ~/.copilot, ~/.gemini).
+
+    S075. Cleanup used to be Claude-only, announced but not implemented
+    elsewhere: a user who asked for "copy and clean" got a cleaned ~/.claude and
+    an unannounced copy-only mirror, so a skill deleted from source lingered in
+    every mirror forever. Same method everywhere now.
+
+    Deliberately NO new prune logic. It reuses `compute_prune_candidates`
+    unchanged, which is what keeps the safety invariant identical across roots:
+    a candidate must be BOTH in the previous manifest AND absent from this run,
+    so anything the installer did not place is never even considered. A
+    hand-authored skill in a mirror is structurally safe, exactly as in
+    ~/.claude.
+
+    PER-ROOT provenance, not one central manifest. `<root>/.install-manifest.json`
+    means a copilot-only or codex-only install is self-describing — there may be
+    no ~/.claude on the machine at all — and it keeps each root's blast radius
+    bounded by its own record.
+
+    ARCHIVE-BEFORE-DELETE, per root. The Claude target's ArchiveSession refuses
+    any path outside its own `claude_home` — deliberately, since `--rollback`
+    restores by writing back into that tree — so a mirror cannot reuse it. Each
+    mirror therefore gets its OWN session anchored at its own root, archiving to
+    `<root>/.agent-foundry-archive/<run-id>/`. Nothing is ever deleted
+    unpreserved, which is S069's R10 rule applied at every root instead of one.
+
+    KNOWN LIMIT, stated rather than discovered: `--rollback <run-id>` restores
+    the CLAUDE root only. A mirror's archive is written and complete, but there
+    is no CLI to replay it yet; a wrongly-pruned mirror entry is also recoverable
+    by simply re-running the install, since a mirror's content is by definition
+    reproducible from source.
+
+    Returns {"pruned", "candidates", "baseline_only", "manifest_written", "archive"}.
+    Never raises: a provenance failure must not fail an otherwise-good install.
+    """
+    out = {"pruned": 0, "candidates": [], "baseline_only": False,
+           "manifest_written": False, "archive": None}
+    try:
+        shipped = {"skills": [{"name": n} for n in sorted(set(shipped_names))]}
+        previous = read_manifest(root)
+
+        if enabled:
+            # No previous manifest ⇒ no proven ownership ⇒ remove nothing, and
+            # say so. Identical to the Claude target's first-run behaviour.
+            if previous is None:
+                out["baseline_only"] = True
+            else:
+                candidates = compute_prune_candidates(previous, shipped)
+                out["candidates"] = candidates
+                if candidates and authorized and not dry_run:
+                    session = None
+                    for cand in candidates:
+                        victim = root / subdir / cand["name"]
+                        if not (victim.exists() or victim.is_symlink()):
+                            continue
+                        try:
+                            if session is None:
+                                session = ArchiveSession.create(
+                                    root, run_id or _new_run_id(), mode=mode,
+                                    source_rev=source_rev, old_manifest=previous)
+                                out["archive"] = str(session.root)
+                            # Archive FIRST. before_replace raises rather than
+                            # returning on failure, so an object we could not
+                            # preserve is never removed.
+                            session.before_replace(victim)
+                            _replace_existing(victim)
+                            out["pruned"] += 1
+                        except (OSError, ArchiveError) as exc:
+                            print(f"    ⚠ kept {victim.name} — could not archive it first: {exc}")
+                    if session is not None:
+                        # finalize() never raises by contract — the prune has
+                        # already happened, and failing here would report a good
+                        # cleanup as a bad one.
+                        session.finalize()
+
+        if not dry_run:
+            doc = build_manifest(shipped, source_rev=source_rev, run_id=run_id, mode=mode)
+            out["manifest_written"] = write_manifest(root, doc)
+    except Exception as exc:                       # never fail the install
+        print(f"    ⚠ mirror cleanup skipped for {root}: {exc}")
+    return out
 
 
 def build_manifest(placed: dict, *, source_rev: "str | None" = None,
@@ -3386,7 +3520,13 @@ def install_copilot(repo_root: Path, force: bool = False,
     if target.exists() and not force:
         print(f"    ⚠ {target} already exists — leaving as-is (use --force to overwrite)")
     else:
-        target.write_text(COPILOT_AGENTS_MD)
+        # encoding="utf-8" is REQUIRED, not tidiness. COPILOT_AGENTS_MD contains
+        # `←` (U+2190) and other non-Latin-1 glyphs; without an explicit encoding
+        # Python uses the LOCALE codec, which on a Windows console is cp1252 and
+        # raises `'charmap' codec can't encode character '←'`. Reported from
+        # a real enterprise-laptop run, 2026-07-30. _force_utf8_streams() does not
+        # help here — it reconfigures stdout/stderr, not file writes.
+        target.write_text(COPILOT_AGENTS_MD, encoding="utf-8")
         print(f"    + wrote {target}")
 
     has_copilot = shutil.which("copilot") is not None or any(
@@ -4610,14 +4750,33 @@ def _run(args) -> int:
                   f"are missing under {claude_home/'skills'} — inert until installed:")
             for cmd in missing:
                 print(f"        {cmd}")
-    # Non-Claude targets receive placement_mode, NEVER the raw `mode`. That one
-    # substitution is what keeps `mc` from carrying its cleanup meaning into
-    # ~/.copilot and ~/.gemini, where there is no provenance manifest and so no
-    # way to prove ownership of anything.
+    # Non-Claude targets receive placement_mode, NEVER the raw `mode` — the
+    # cleanup decision is made here, per root, rather than carried inside a
+    # string. Each skills MIRROR now gets the same provenance-gated cleanup the
+    # Claude target has (S075): `<root>/.install-manifest.json` records what the
+    # installer placed, and only something in that record AND absent from this
+    # run can be removed. Before this, `mc` cleaned ~/.claude and silently left
+    # every mirror to accumulate deleted skills forever.
+    shipped_skills = _shipped_skill_names(REPO_ROOT)
+    source_rev = _git_sha(REPO_ROOT) or "unknown"
+    # `mc` now means cleanup at EVERY root, so this is the raw flag rather than
+    # the Claude-scoped one.
+    clean_mirrors = resolve_mode(mode)[1]
+    # Authorization is NOT re-asked per root. A mirror prunes only if the user
+    # said yes explicitly (--yes-prune) or already authorized this run's cleanup
+    # interactively. Under --noninteractive without --yes-prune, prune_authorized
+    # is empty and mirrors clean nothing — the same fail-safe the Claude target
+    # applies, and the reason a scripted run cannot destroy a mirror by accident.
+    prune_ok = bool(getattr(args, "yes_prune", False)) or bool(prune_authorized)
     if "copilot" in targets:
         print("[Copilot / VS Code]")
         install_copilot(REPO_ROOT, force=force, mirror_skills=args.mirror_copilot_skills,
                         mode=placement_mode)
+        if args.mirror_copilot_skills:
+            _report_mirror_prune("Copilot", prune_mirror_root(
+                DEFAULT_COPILOT_HOME, "skills", shipped_skills,
+                enabled=clean_mirrors, dry_run=args.dry_run,
+                authorized=prune_ok, mode=mode, source_rev=source_rev, run_id=run_id))
 
         if getattr(args, "vscode_workspace", None):
             install_vscode_workspace(REPO_ROOT, args.vscode_workspace,
@@ -4632,6 +4791,10 @@ def _run(args) -> int:
         if not used_cli:
             print(f"  ⚠ `gemini` CLI not found on PATH; used direct {mode} fallback")
         print(f"  ✓ {n} skills (skipped {sk}) — skills only; foundry passes gemini no work")
+        _report_mirror_prune("Gemini", prune_mirror_root(
+            gemini_home, "skills", shipped_skills,
+            enabled=clean_mirrors, dry_run=args.dry_run,
+            authorized=prune_ok, mode=mode, source_rev=source_rev, run_id=run_id))
 
     # ---- Provenance manifest (§11 A2) ----
     #
