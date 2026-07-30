@@ -1,0 +1,15 @@
+// Template → copy to <workspace>/.vscode/mcp.json
+// MCP is the one surface with a direct equivalent on both sides. Servers declared here are
+// reachable from agent mode; the same servers the Claude arm uses will generally work.
+// SECURITY: an MCP server is code you are granting tool access. Add only servers you trust,
+// and read vscode-agents §SECURITY before adding one you did not write.
+{
+  "servers": {
+    // Example — replace. Never commit a real token; reference an env var.
+    // "quickbooks": {
+    //   "command": "node",
+    //   "args": ["${workspaceFolder}/../quickbooks-online-mcp-server/dist/index.js"],
+    //   "env": { "QUICKBOOKS_ENVIRONMENT": "sandbox" }
+    // }
+  }
+}
