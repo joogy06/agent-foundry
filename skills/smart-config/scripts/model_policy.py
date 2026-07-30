@@ -250,7 +250,12 @@ def _observe_failopen(kind, detail):
     """claude-observe friction event on fail-open (design §6.2). Best-effort, never-raise."""
     try:
         sys.path.insert(0, os.path.expanduser("~/.claude/skills/process-observation/scripts"))
-        from observe import claude_observe  # type: ignore
+        # The module is write.py, not observe.py. This read `from observe import`
+        # and therefore ALWAYS raised ImportError, swallowed by the bare `except`
+        # below — so this fail-open telemetry never emitted one event since S059.
+        # Found by wiring_sweep's deps arm (#248, 2026-07-30). The working form is
+        # the one skeleton-extractor/scripts/extract.py has always used.
+        from write import claude_observe  # type: ignore
         claude_observe(category="config_drift", summary=f"model-policy fail-open: {kind}", detail=detail)
     except Exception:
         pass  # observation is best-effort; never perturb resolve

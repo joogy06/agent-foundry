@@ -91,19 +91,23 @@ python3 scripts/install-pre-push-hook.py --target-repo /path/to/repo
 
 The pre-push hook runs a secrets scanner (live API keys, PEM private keys, AWS credentials, JWTs, inline tokens, etc.) before every `git push`. Critical/high findings block the push; medium/low advisory hits print but don't block. Override per-push with `git push --no-verify`.
 
-### Optional libraries — nothing here is required
+### Optional libraries — installed by default, and never fatal
 
-Everything ships **stdlib-only**: all 225 skills, the gates, the hooks and the installer work with no third-party Python and no Node. A handful of capabilities need a library, so the installer *reports* what is missing and what that actually costs you, and installs only when asked.
+The installer **installs these for you by default**. Everything else ships stdlib-only — all 225 skills, the gates and the hooks work with no third-party Python and no Node — so a failed optional install is *reported*, never fatal. On a locked-down or offline machine you still get a working harness with those capabilities simply unavailable.
 
 ```bash
-python3 install.py --extras-report                    # what's missing, and what stops working
-python3 install.py --with-extras=documents,spreadsheets
-python3 install.py --with-extras                      # everything
+python3 install.py                                    # installs extras by default
+python3 install.py --no-extras                        # skip them entirely
+python3 install.py --with-extras=documents,spreadsheets   # narrow the set
+python3 install.py --extras-report                    # what's missing, and what it costs
 python3 skills/_meta/optional_deps.py doctor          # which package managers work here
 ```
 
+**One group is not optional.** `core` (`pyyaml`, `jsonschema`) is needed by the harness itself — a SessionStart hook imports pyyaml on every session, and the gates use jsonschema for schema validation, which fails toward *"not checked"* rather than *"checked and passed"*. If it is missing you get a banner, not a footnote.
+
 | Capability | Unlocks | Without it |
 |---|---|---|
+| **`core`** | **the harness itself** — a SessionStart hook + gate schema validation | **not optional; the harness misbehaves** |
 | `documents` | PDF statements, invoices, receipts | CSV import still works, and is the better source anyway |
 | `spreadsheets` | `.xlsx` read/write | the spreadsheet route is unavailable |
 | `office-docs` | `.docx` / `.pptx` | Markdown and HTML output unaffected |
@@ -113,7 +117,7 @@ python3 skills/_meta/optional_deps.py doctor          # which package managers w
 | `llm-clients` | direct Anthropic / Google API calls | CLI-routed work is unaffected |
 | `browser-measurement` (npm) | real-browser DOM geometry | the UI-verification lane cannot run |
 
-A failed optional install is a **reported outcome, not an installer failure** — on a locked-down machine where `pip install` is refused, you still get a working harness.
+A failed optional install is a **reported outcome, not an installer failure** — on a locked-down machine where `pip install` is refused, you still get a working harness. Readiness is announced *before* placement, so you learn what is missing up front rather than at the end.
 
 Two traps it handles for you, because both produce a *silent* wrong result:
 
@@ -459,9 +463,17 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 
 ## Changelog
 
+### 1.6.1 — 2026-07-30
+- **Optional libraries install by DEFAULT** (`--no-extras` opts out). A failed optional install is still reported rather than fatal, so a locked-down machine gets a working harness either way. Readiness is announced *before* placement, not after.
+- **A `core` tier that is genuinely required** — `pyyaml` and `jsonschema` were imported by a SessionStart hook and 26 skills between them, and declared nowhere. They are usually present already, which is exactly why nobody noticed.
+- **`--mode mc` now cleans every root**, not just `~/.claude`. Each skills mirror is pruned against its own `.install-manifest.json`, archived before deletion; anything you hand-authored is never a candidate.
+- **Windows fix:** the Copilot instructions file was written with the locale codec, so a `←` in its content killed the install on a Windows console (`'charmap' codec can't encode character`). Now UTF-8, with a test guarding every text read/write in the installer.
+- **`--vscode-workspace` now exists.** The installer printed that command while never registering the flag, so the VSPrime agent, `/prime`, `tasks.json` and `mcp.json` were never placed by anything. The `vs-code/` directory now ships too, so the flag has something to copy.
+- **Secret scanners reconciled:** the push-time scanner was two CRITICAL rules short of the commit-time one. Both now carry the same 11, with a guard asserting the rule inventories match.
+
 ### 1.6.0 — 2026-07-29
 - **Skills 197 → 225.** Largest additions: the **UK small-company accounting family** (`accounting-uk-ltd`, `bookkeeping-double-entry`, `financial-document-ingestion`, `uk-vat`, `uk-corporation-tax`, `uk-statutory-accounts`, `uk-payroll` — every rate in ONE reference with a review date and a primary-source URL per figure, because process is durable and figures rot); the **LLM-application quartet** (`rag-architecture`, `llm-api-optimization`, `agentic-architecture`, `mcp-integration`); the **career family** (`career-coach`, `career-advocacy`, `career-internal-visibility` and siblings); plus `pdf-processing`, `macos-cheatsheet`, `business-writing`, `react-developer`, `nextjs-developer`, `skill-intake`, `project-profile`, `session-continuity`.
-- **Optional dependencies, declared and reported** — `requirements-optional.txt` + `package-optional.json` group libraries **by capability**, so the answer to "what am I missing?" says what *stops working*, not just which module is absent. `install.py --extras-report` / `--with-extras`. Covers pip **and** npm; nothing is required, nothing installs silently, and a failed optional install never fails the install.
+- **Optional dependencies, declared and reported** — `requirements-optional.txt` + `package-optional.json` group libraries **by capability**, so the answer to "what am I missing?" says what *stops working*, not just which module is absent. Installed by DEFAULT (`--no-extras` opts out), covering pip **and** npm. A failed optional install is reported and never fails the install, so a locked-down box still ends up with a working harness. One group, `core`, is genuinely required and is banner-warned rather than listed quietly.
 - **`install.py --preview`** — the OS × tool install matrix, declared rather than scattered across inline platform checks, and inspectable for a machine you are not on (`--os windows` from Linux). Per-OS traps are stated: PowerShell hook shell and absent `python3` on Windows, BSD coreutils and `code`-not-on-PATH on macOS.
 - **Windows session-start hooks actually work.** The six canonical hooks were `python3 ~/…` / `bash ~/…`; on Windows all three assumptions fail and hooks fail *silently*, so the layer was inert while looking configured. Windows installs now get absolute, quoted paths with a detected interpreter, and the one bash hook has a Python twin. POSIX command strings are byte-identical to before, so existing installs see no churn.
 - **Six protocols became commands:** `frontmatter_lint.py` (wired into the pre-commit hook), `wiki_lint.py`, `reconcile.py`, `career_plan.py`, `settlement_reconcile.py`, and `doc_store.py` (the document store: content-addressed, refuses to overwrite, and derives open items rather than trusting a flag).
