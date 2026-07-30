@@ -4176,11 +4176,14 @@ def main() -> int:
                         help="preview a single tool's cell instead of all of them")
     parser.add_argument("--with-extras", metavar="GROUPS", default=None,
                         const="__ALL__", nargs="?",
-                        help="install OPTIONAL libraries for one or more capabilities "
-                             "(comma-separated, or bare for all). Covers both pip and npm. "
-                             "Nothing here is required — the harness runs stdlib-only — so "
-                             "this is opt-in and a failure to install never fails the "
-                             "install. See requirements-optional.txt / package-optional.json.")
+                        help="install optional libraries for specific capabilities "
+                             "(comma-separated). Extras are installed by DEFAULT; use this "
+                             "only to narrow the set, or --no-extras to skip entirely. "
+                             "Covers both pip and npm.")
+    parser.add_argument("--no-extras", action="store_true",
+                        help="do NOT install optional libraries. The harness is stdlib-only "
+                             "and works without them; capabilities that need one report it "
+                             "as unavailable. Use on locked-down or offline machines.")
     parser.add_argument("--extras-report", action="store_true",
                         help="report optional-capability readiness and exit. Says what is "
                              "missing, what stops working without it, and the exact install "
@@ -4283,6 +4286,55 @@ def _load_optional_deps():
         return None
 
 
+def _extras_preflight(args) -> None:
+    """Say what is missing BEFORE placing anything. Never fails the install."""
+    mod = _load_optional_deps()
+    if mod is None:
+        return
+    try:
+        import io as _io
+        import contextlib as _ctx
+        buf = _io.StringIO()
+        with _ctx.redirect_stdout(buf):
+            mod.main(["report", "--json"])
+        data = json.loads(buf.getvalue())
+    except Exception:
+        return
+
+    crit = data.get("critical_missing") or []
+    gaps = [g["capability"] for g in data.get("groups", []) if g.get("state") != "ready"]
+    skipping = bool(getattr(args, "no_extras", False))
+
+    if crit:
+        print("=" * 60)
+        print("⚠  REQUIRED libraries are missing — this is not the optional set")
+        print("=" * 60)
+        print(f"   {', '.join(crit)}")
+        print("   A SessionStart hook imports pyyaml on EVERY session, and the gates")
+        print("   use jsonschema for validation — which fails toward 'not checked',")
+        print("   not toward 'checked and passed'.")
+        print("   These are usually already present, which is exactly why the")
+        print("   dependency went undeclared until 2026-07-30. Being lucky is not")
+        print("   the same as being declared.")
+        if skipping:
+            print("   --no-extras is set, so NOTHING will be installed. Install them")
+            print("   yourself, or the harness will misbehave.")
+        else:
+            print("   They will be installed after placement.")
+        print("=" * 60)
+        print()
+    elif gaps and not skipping:
+        print(f"Optional libraries: {len(gaps)} capabilit"
+              f"{'y' if len(gaps) == 1 else 'ies'} unavailable "
+              f"({', '.join(gaps)}) — will install after placement.")
+        print("  --no-extras skips it; --extras-report explains what each one costs.")
+        print()
+    elif gaps and skipping:
+        print(f"Optional libraries: {len(gaps)} unavailable and --no-extras is set. "
+              f"Skills needing them will report the capability as unavailable.")
+        print()
+
+
 def extras_report() -> int:
     """`--extras-report`: what is missing, what it costs, how to get it."""
     mod = _load_optional_deps()
@@ -4309,16 +4361,24 @@ def run_extras(args) -> None:
     if mod is None:
         return
 
+    # S075: extras now install BY DEFAULT. Reporting-only left every fresh box a
+    # step short of working — a user ran the installer, saw "9 capabilities
+    # unavailable", and had to run a second command to get what they had just
+    # asked for. Defaulting to install is the behaviour people expect from an
+    # installer.
+    #
+    # What has NOT changed is the property that made opt-in defensible: a failed
+    # optional install is REPORTED, never fatal. On a locked-down or offline
+    # machine the install still succeeds and the capabilities simply stay
+    # unavailable — `--no-extras` skips the attempt entirely.
     groups = getattr(args, "with_extras", None)
+    if getattr(args, "no_extras", False):
+        print()
+        mod.main(["report", "--digest"])
+        print("  (--no-extras: nothing installed. `--extras-report` for what that costs)")
+        return
     try:
-        if not groups:
-            print()
-            mod.main(["report", "--digest"])
-            print("  (`install.py --extras-report` for detail, "
-                  "`--with-extras=<capability>` to install)")
-            return
-
-        only = None if groups == "__ALL__" else groups
+        only = None if (not groups or groups == "__ALL__") else groups
         print()
         print("=" * 60)
         print("Optional dependencies" + (f" — {only}" if only else " — all capabilities"))
@@ -4417,6 +4477,20 @@ def _run(args) -> int:
         print("  (or see https://docs.claude.com/en/docs/claude-code/setup)")
         print("  Continuing — files will land at ~/.claude/ and be picked up once `claude` is installed.")
         print()
+
+    # ---- Optional-library readiness, ANNOUNCED UP FRONT (S075) ----
+    #
+    # Placement itself needs none of this: install.py is stdlib-only, pinned by
+    # test_standalone. So extras are still installed AFTER placement — a long
+    # network operation must never jeopardise the installer's actual job, and a
+    # Ctrl-C during pip should leave a complete, usable install behind.
+    #
+    # But the ORDER OF INFORMATION is a separate question from the order of work,
+    # and reporting only at the end meant you learned what was missing after
+    # everything had already happened. The `core` group in particular is not
+    # optional at all — a SessionStart hook imports pyyaml on every session — so
+    # it is said before, not after.
+    _extras_preflight(args)
 
     if args.scan_only:
         return 0

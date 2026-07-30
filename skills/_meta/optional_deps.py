@@ -57,7 +57,7 @@ from pathlib import Path
 SCHEMA_VERSION = "optional-deps.v1"
 
 _CAP_RE = re.compile(r"^#\s*@capability:\s*(?P<v>.+?)\s*$")
-_META_RE = re.compile(r"^#\s*@(?P<k>unlocks|skills|without):\s*(?P<v>.+?)\s*$")
+_META_RE = re.compile(r"^#\s*@(?P<k>unlocks|skills|without|critical):\s*(?P<v>.+?)\s*$")
 _CONT_RE = re.compile(r"^#\s{3,}(?P<v>\S.*?)\s*$")
 _IMPORT_RE = re.compile(r"#\s*import:\s*(?P<v>[A-Za-z0-9_.]+)")
 _NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
@@ -97,7 +97,7 @@ def parse_python(path: Path) -> list[dict]:
         m = _CAP_RE.match(raw)
         if m:
             cur = {"ecosystem": "python", "capability": m.group("v"), "unlocks": "",
-                   "skills": "", "without": "", "requirements": []}
+                   "skills": "", "without": "", "critical": "", "requirements": []}
             groups.append(cur)
             last_key = None
             continue
@@ -186,8 +186,8 @@ def probe(groups: list[dict], node_root: Path, only: set[str] | None = None) -> 
                        else node_package_present(r["probe"], node_root))
             reqs.append({**r, "present": present})
         missing = [r for r in reqs if not r["present"]]
-        out.append({**{k: g[k] for k in ("ecosystem", "capability", "unlocks",
-                                         "skills", "without")},
+        out.append({**{k: g.get(k, "") for k in ("ecosystem", "capability", "unlocks",
+                                                 "skills", "without", "critical")},
                     "requirements": reqs,
                     "missing": [r["name"] for r in missing],
                     "state": "ready" if not missing
@@ -203,6 +203,13 @@ def probe(groups: list[dict], node_root: Path, only: set[str] | None = None) -> 
         # it is the same rule as UNMEASURED in the UX evidence contract and
         # SEARCHED_NOT_FOUND in the probe ledger.
         "manifests_found": bool(out),
+        # A CRITICAL group missing is categorically different from an optional one
+        # missing: the harness itself misbehaves rather than a capability being
+        # unavailable. Consumers must be able to tell those apart without parsing
+        # prose.
+        "critical_missing": [g["capability"] for g in out
+                             if str(g.get("critical", "")).lower() == "true"
+                             and g["state"] != "ready"],
         "groups": out,
     }
 
@@ -420,6 +427,14 @@ def render(result: dict, node_root: Path, verbose: bool = False) -> str:
             L.append("")
         L.append("")
 
+    if result.get("critical_missing"):
+        L.append("  " + "!" * 66)
+        L.append(f"  ! REQUIRED, not optional: {', '.join(result['critical_missing'])}")
+        L.append("  ! These are not a capability you can do without — a SessionStart hook")
+        L.append("  ! imports one of them on every session, and the gates use the other for")
+        L.append("  ! schema validation, which fails toward 'not checked'.")
+        L.append("  " + "!" * 66)
+        L.append("")
     gaps = [g for g in result["groups"] if g["state"] != "ready"]
     if not gaps:
         L.append("  every optional capability is available.")
@@ -454,6 +469,11 @@ def digest_line(result: dict) -> str:
     a session banner has no room to be a package manager."""
     if not result.get("manifests_found"):
         return "[extras] readiness UNKNOWN — no optional-dependency manifest found"
+    crit = result.get("critical_missing") or []
+    if crit:
+        return (f"[extras] ⚠ REQUIRED libraries missing: {', '.join(crit)} — the harness "
+                f"will misbehave (a SessionStart hook and the gates need these). "
+                f"Run `install.py --with-extras=core`.")
     gaps = [g["capability"] for g in result["groups"] if g["state"] != "ready"]
     if not gaps:
         return f"[extras] all {result['capabilities_total']} optional capabilities ready"

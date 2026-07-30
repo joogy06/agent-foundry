@@ -29,6 +29,22 @@
 # =============================================================================
 
 
+# @capability: core
+# @critical: true
+# @unlocks: the harness itself — gates, schema validation, and a SessionStart hook
+# @skills: 18 skills import yaml, 8 import jsonschema, and _meta/freshness_nudge.py
+#   (a SessionStart hook) imports yaml directly
+# @without: this is the ONE group that is not really optional. A missing pyyaml
+#   breaks a session-start hook on every single session, and 18 skills lose their
+#   config parsing; a missing jsonschema disables schema validation in the gates,
+#   which fails toward "not checked" rather than toward "checked and passed".
+#   Both are usually present already — they ship with many base images — which is
+#   precisely why the dependency went undeclared until 2026-07-30 and why nobody
+#   noticed. Being lucky is not the same as being declared.
+pyyaml>=6.0.2               # import: yaml
+jsonschema>=4.23.0
+
+
 # @capability: documents
 # @unlocks: PDF bank/card statements, purchase and sales invoices, receipts
 # @skills: financial-document-ingestion, pdf-processing, accounting-uk-ltd
