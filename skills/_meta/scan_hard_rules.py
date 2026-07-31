@@ -617,4 +617,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # #251: prints U+2192. In --hook mode the failure degraded to a 44-byte fallback,
+    # which is why a hook test showed it "OK" while the real output was gone.
+    from portable_cli import run_cli
+    sys.exit(run_cli(main))

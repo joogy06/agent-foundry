@@ -6,7 +6,7 @@ Subcommands:
     apply           Insert directives under '## Project HARD-RULEs' in a
                     project's CLAUDE.md. Idempotent, dedupes by canonical
                     text, atomic write (symlink-aware), CRLF-preserving,
-                    code-fence-aware section editor, fcntl LOCK_EX.
+                    code-fence-aware section editor, portable_lock exclusive.
 
     suppress        Add directive hashes to
                     ~/.claude/state/hard-rules-suppressed.json under the
@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
-import fcntl
 import json
 import os
 import re
@@ -44,6 +43,10 @@ from hard_rules_common import (  # noqa: E402
     canonical_directive_text,
     directive_hash,
 )
+# Cross-platform advisory locking (#249). NOTE the shared lock below becomes an
+# exclusive one on Windows -- msvcrt has no shared mode. It costs reader
+# concurrency on a small state file and buys nothing away from correctness.
+from portable_lock import lock_exclusive, lock_shared, unlock  # noqa: E402
 
 HOME = Path.home()
 STATE_DIR = HOME / ".claude" / "state"
@@ -352,7 +355,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
     try:
         try:
-            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+            lock_exclusive(lock_fd)
         except OSError as exc:
             sys.stderr.write(
                 f"apply: flock(LOCK_EX) failed on {real}: {exc}\n"
@@ -458,7 +461,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         return 0
     finally:
         try:
-            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+            unlock(lock_fd)
         except OSError:
             pass
         try:
@@ -560,7 +563,7 @@ def _write_state_atomic(data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def _open_state_for_rw_locked():
-    """Open the state file in a way that supports fcntl.LOCK_EX over a
+    """Open the state file in a way that supports an exclusive lock over a
     read-modify-write sequence. Creates the file lazily."""
     _ensure_state_dir()
     if not STATE_FILE.exists():
@@ -578,7 +581,7 @@ def _open_state_for_rw_locked():
         except OSError:
             pass
     fd = open(STATE_FILE, "r+", encoding="utf-8")
-    fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+    lock_exclusive(fd)
     return fd
 
 
@@ -630,7 +633,7 @@ def cmd_suppress(args: argparse.Namespace) -> int:
         return 0
     finally:
         try:
-            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+            unlock(fd)
         except OSError:
             pass
         fd.close()
@@ -642,12 +645,12 @@ def cmd_list_suppressed(args: argparse.Namespace) -> int:
         return 0
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as fp:
-            fcntl.flock(fp.fileno(), fcntl.LOCK_SH)
+            lock_shared(fp)
             try:
                 raw = fp.read()
             finally:
                 try:
-                    fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+                    unlock(fp)
                 except OSError:
                     pass
     except OSError as exc:
@@ -715,7 +718,7 @@ def cmd_unsuppress(args: argparse.Namespace) -> int:
         return 0
     finally:
         try:
-            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+            unlock(fd)
         except OSError:
             pass
         fd.close()

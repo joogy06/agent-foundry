@@ -41,8 +41,23 @@ INCLUDE_EXTS = {
     ".md", ".py", ".sh", ".bash", ".json", ".yaml", ".yml", ".toml",
     ".ini", ".cfg", ".conf", ".ps1", ".cmd", ".bat",
     ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs",
+    # Credential-bearing file types. Their absence meant the CRITICAL
+    # "PEM private-key headers" rule could not fire on the file types private
+    # keys actually use — the rule was aimed exclusively at keys PASTED INTO
+    # source, and blind to the committed key file itself. Found while freezing
+    # the hook contract for #250: the fixture staged a .pem and nothing blocked.
+    ".pem", ".key", ".crt", ".cer", ".der", ".p12", ".pfx", ".jks", ".keystore",
+    ".ppk", ".pub", ".asc", ".gpg", ".kdbx", ".ovpn", ".netrc", ".htpasswd",
 }
 INCLUDE_GLOBS = ("*.env", "*.env.example", "*.env.template", "*.example", "*.template")
+
+# Extensionless credential filenames. `should_scan` keys on the suffix, so these
+# are invisible to it — `id_rsa` is the single most likely name for a leaked
+# private key and has no extension at all.
+INCLUDE_NAMES = {
+    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+    ".netrc", "_netrc", ".pgpass", ".htpasswd", "credentials", "authorized_keys",
+}
 EXCLUDE_DIRS = {
     ".git", "node_modules", "__pycache__", ".pytest_cache",
     "dist", "build", ".venv", "venv", ".env.d",
@@ -311,6 +326,8 @@ def should_scan(path: Path) -> bool:
     if path.suffix.lower() in INCLUDE_EXTS:
         return True
     name = path.name
+    if name in INCLUDE_NAMES or name.lower() in INCLUDE_NAMES:
+        return True                        # extensionless credential filenames
     if ".env" in name:                     # matches bash's --include='*.env*'
         return True
     for pat in INCLUDE_GLOBS:
@@ -387,7 +404,17 @@ def scan(root: Path, source=None):
                 continue
 
             if check.line_anchor == "file":
-                if check.pattern.search(content, re.MULTILINE):
+                # `Pattern.search(string[, pos[, endpos]])` — the second argument is
+                # POS, not flags. This read `search(content, re.MULTILINE)`, and
+                # re.MULTILINE is the integer 8, so it started at offset 8 AND never
+                # applied MULTILINE. A `^`-anchored pattern can then never match:
+                # the only file-anchored rule, CRITICAL "PEM private-key headers",
+                # was INERT and could not fire on any file, ever. The bash scanner
+                # caught the same content via grep, so the two disagreed in the
+                # opposite direction from #239 — and the rule-name parity guard
+                # could not see it, because the rule was PRESENT, just dead.
+                # Scan line by line with the anchor doing its job.
+                if any(check.pattern.search(line) for line in content.splitlines()):
                     if not any(a.search(content) for a in check.allowlist):
                         hits.append((rel_str, 0, "<file contains pattern>"))
                 continue

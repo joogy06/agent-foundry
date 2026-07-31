@@ -1,0 +1,163 @@
+# Declared model roster for the VS Code consultation handles (#259, #274).
+#
+# WHY A ROSTER FILE AND NOT IDS IN THE AGENT FILES
+# ------------------------------------------------
+# A stale model id fails SILENTLY as a permissions error, not as "no such model".
+# The vs-code-foundry agents archived in S076 pinned `Claude Opus 4.8` / `Claude
+# Sonnet 4.6` — already behind the Opus 5 / Sonnet 4.8 actually in use — and
+# nothing announced it. So ids live in exactly ONE place, are rendered from here,
+# and carry their provenance into the generated file.
+#
+# POLICY vs ROSTER — two truths, do not collapse them (#259):
+#   POLICY  ~/.claude/model-policy.yaml — durable human intent, portable, rarely changes
+#   ROSTER  this file — volatile per machine: plan, org, region, model releases
+#
+# WHY `source: declared` AND NOT `detected`
+# -----------------------------------------
+# The enterprise laptop can detect nothing: `detect_models.py` reports "no models
+# detected", `%APPDATA%\Code\User\chatLanguageModels.json` is literally `[]`, and
+# Copilot CLI has no `models` subcommand. The declared path is the ONLY path there.
+#
+# `model` IS A LIST ON PURPOSE — VS Code treats it as a PRIORITISED FALLBACK, so a
+# candidate that does not exist on this tenant falls through to the next instead of
+# erroring. That is what makes a partly-wrong roster degrade instead of breaking.
+
+version: 1
+source: declared
+declared_on: "2026-07-31"
+declared_by: user
+os_key: windows          # Windows/VS-Code specific. Does NOT generalise to Linux
+                         # or Claude Code, where smart-config resolves at spawn time.
+
+# The provider of the model DRIVING the session these handles are consulted from.
+# Declared, never assumed: the diversity note rendered into each handle is computed
+# against this. The first version of the renderer hardcoded "anthropic", which would
+# have quietly lied the moment someone drove a session from a GPT model — a handle
+# claiming independence it does not have is worse than no handle, because the whole
+# point is knowing whether a second opinion is genuinely second.
+session_provider: anthropic
+
+# ===========================================================================
+# THE MATRIX — three houses, two purposes
+# ===========================================================================
+#
+#              | REVIEW (frontier)      | CHEAP (light/mid)
+#   -----------+------------------------+--------------------------
+#   anthropic  | @opus                  | @sonnet, @haiku
+#   openai     | @sol                   | @sol-mini
+#   google     | @gem-pro               | @gem-flash
+#
+# Review handles carry the full two-gate protocol; cheap handles carry none of it,
+# because routing a simple task is not a deliberation. Every handle states its own
+# provider and whether it is independent of `session_provider`, so a same-vendor
+# review can never be logged as an independent confirmation.
+
+handles:
+
+  # --- REVIEW: frontier tier, provider diversity is the point ---------------
+
+  - name: sol
+    class: review
+    provider: openai
+    tier: frontier
+    model:
+      - "PENDING-VERIFICATION: GPT-5.6 display string, exactly as the VS Code picker shows it"
+    purpose: >
+      Independent OpenAI review — the analogue of `codex exec` on the Linux host.
+      A different vendor's training and habits, so disagreement carries information
+      rather than echoing the author.
+
+  - name: gem
+    class: review
+    provider: google
+    tier: flash
+    model:
+      - "PENDING-VERIFICATION: Gemini 3.6 Flash display string, exactly as the picker shows it"
+    purpose: >
+      Independent Google review — the analogue of `agy`, and the third provider that
+      stops a two-arm check collapsing into one vendor's worldview plus a nod.
+      Flash 3.6 rather than Pro 3.1 on the MERITS (user, 2026-07-31): capable enough
+      to mount a real challenge and materially faster, and review latency is what
+      decides whether a second opinion actually gets asked for.
+
+  - name: opus
+    class: review
+    provider: anthropic
+    tier: frontier
+    model:
+      - "PENDING-VERIFICATION: Claude Opus 5 display string, exactly as the picker shows it"
+    purpose: >
+      Frontier-tier Anthropic depth. With `session_provider: anthropic` this is NOT
+      provider diversity and the handle says so itself — useful for a second pass on
+      hard reasoning, useless as independent confirmation. It stops being redundant
+      the moment a session is driven by another house, and because the independence
+      claim is computed rather than hardcoded, it flips automatically.
+
+  # --- CHEAP: light/mid tier, cost discipline, no deliberation machinery ----
+
+  - name: sonnet
+    class: cheap
+    provider: anthropic
+    tier: mid
+    model:
+      - "PENDING-VERIFICATION: Claude Sonnet 4.8 display string, exactly as the picker shows it"
+    purpose: >
+      Mid-tier execution for well-specified work: mechanical refactors, boilerplate,
+      summarisation, test scaffolding.
+
+  - name: haiku
+    class: cheap
+    provider: anthropic
+    tier: light
+    model:
+      - "PENDING-VERIFICATION: Claude Haiku display string, exactly as the picker shows it"
+    purpose: >
+      Light-tier execution for the genuinely trivial: renames, lookups, one-line
+      answers where a frontier model is pure cost.
+
+  - name: sol-mini
+    class: cheap
+    provider: openai
+    tier: light
+    model:
+      - "PENDING-VERIFICATION: the light OpenAI tier in the picker (GPT-5.6-mini or equivalent)"
+    purpose: >
+      Light-tier execution, OpenAI side. Same scope as @haiku; which you reach for is
+      a cost and availability question, not a correctness one.
+
+  - name: gem-flash
+    class: cheap
+    provider: google
+    tier: light
+    model:
+      - "PENDING-VERIFICATION: Gemini 3.6 Flash display string, exactly as the picker shows it"
+    purpose: >
+      Light-tier execution, Google side. Fast and cheap for bulk mechanical passes.
+
+# ---------------------------------------------------------------------------
+# RECORDED — flash was chosen on the MERITS, which is not the same as compliance
+# ---------------------------------------------------------------------------
+#
+# An earlier revision of this file carried @gem-pro (Gemini 3.1 Pro) plus a
+# recorded decision that CLAUDE.md's flash-only rule was scoped to the agy CLI and
+# did not bind this surface. The user then chose Flash 3.6 anyway, on capability
+# and latency grounds: clever enough for a real challenge, and faster.
+#
+# THE OUTCOME NOW MATCHES THE FLASH-ONLY RULE, AND THE REASONING IS INDEPENDENT OF
+# IT. That distinction is the reason this note exists. A later reader who sees
+# "google = flash" and assumes rule compliance would conclude that pro is forbidden
+# here and that changing it requires overturning a CLAUDE.md directive. It does
+# not: this surface is not bound by that rule, and pro is available if a future
+# review arm ever needs depth more than speed. The decision is a judgement about
+# models, and it can be revisited as a judgement about models.
+#
+# What DOES bind here, and is pinned by a test: the provider-diversity half. A
+# Google handle may never be repointed at a Claude or GPT model, because agy holds
+# the third slot BECAUSE it is neither Anthropic nor OpenAI, and collapsing the
+# third arm into an existing one turns the cross-check into theatre.
+#
+# NOTE on @gem and @gem-flash: same model, two instruments. A handle defines the
+# PROTOCOL as much as the model — consulting Flash for an adversarial review and
+# dispatching Flash a mechanical edit are different asks, and only the first should
+# carry the two-gate machinery. If the duplicate picker entry is not worth it,
+# delete @gem-flash and route cheap Google work through @gem; nothing else changes.

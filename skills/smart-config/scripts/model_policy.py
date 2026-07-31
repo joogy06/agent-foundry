@@ -231,14 +231,21 @@ def _append_log(project_root, record, warnings):
 
 
 def _rotate_log(path):
-    import fcntl
+    # The 1 latent case of #249, as distinct from the 9 import-fatal ones: the
+    # import was INSIDE this function, so the module loaded fine on Windows and
+    # only raised when rotation actually ran -- next to an `except Exception`
+    # that would have swallowed it. Same fix, different severity.
+    _meta = str(Path(__file__).resolve().parents[2] / "_meta")
+    if _meta not in sys.path:
+        sys.path.insert(0, _meta)
+    from portable_lock import lock_exclusive
     try:
         fd = os.open(str(path), os.O_RDWR)
     except OSError:
         return
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # skip if not acquired (no race)
+            lock_exclusive(fd, blocking=False)  # skip if not acquired (no race)
         except OSError:
             return
         os.replace(str(path), str(path) + ".1")  # Windows-safe; one generation kept

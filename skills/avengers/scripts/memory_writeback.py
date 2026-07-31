@@ -24,14 +24,13 @@ OUT OF SCOPE for v1 (design §14 — enforced by ABSENCE, not by a flag): there 
 NO global-memory-tier loader branch anywhere in this module. Only the project
 tier exists. Global/cross-project memory is designed-for, not built.
 
-Dependencies: Python stdlib only (json, os, fcntl, hashlib, shutil, tempfile).
+Dependencies: Python stdlib only (json, os, hashlib, shutil, tempfile).
 PyYAML is NOT used here — all memory state is machine JSON. No network, executes
 nothing from inputs.
 """
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -41,6 +40,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Cross-platform advisory locking (#249). `import fcntl` at module level made
+# this module unimportable on Windows -- it died at IMPORT, not at use.
+_META_DIR = Path(__file__).resolve().parents[2] / "_meta"
+if str(_META_DIR) not in sys.path:
+    sys.path.insert(0, str(_META_DIR))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
+
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
@@ -361,13 +368,13 @@ def persist_proposals(
 
 
 def _lock_dir(project_root: Path):
-    """Per-project advisory lock (fcntl.flock) held for the commit critical
+    """Per-project advisory lock (portable_lock) held for the commit critical
     section. Returns an open fd; caller closes it (which releases the lock)."""
     tier = project_tier_dir(project_root)
     tier.mkdir(parents=True, exist_ok=True)
     lock_path = tier / ".memory.lock"
     fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
-    fcntl.flock(fd, fcntl.LOCK_EX)
+    lock_exclusive(fd)
     return fd
 
 

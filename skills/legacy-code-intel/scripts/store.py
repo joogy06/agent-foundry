@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import argparse
 import errno
-import fcntl
 import json
 import os
 import sys
@@ -52,6 +51,14 @@ import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# Cross-platform advisory locking (#249). `import fcntl` at module level made
+# this module unimportable on Windows -- it died at IMPORT, not at use.
+_META_DIR = Path(__file__).resolve().parents[2] / "_meta"
+if str(_META_DIR) not in sys.path:
+    sys.path.insert(0, str(_META_DIR))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
+
 
 try:
     from jsonschema import Draft7Validator
@@ -153,21 +160,22 @@ class _PromoteLock:
     def __enter__(self) -> "_PromoteLock":
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         self._fh = open(self.lock_path, "a+")
-        flags = fcntl.LOCK_EX if self.blocking else (fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            fcntl.flock(self._fh.fileno(), flags)
-        except OSError as e:
+            lock_exclusive(self._fh, blocking=self.blocking)
+        except BlockingIOError:
             self._fh.close()
             self._fh = None
-            if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-                raise BlockingIOError("promote lock held") from e
+            raise BlockingIOError("promote lock held")
+        except OSError:
+            self._fh.close()
+            self._fh = None
             raise
         return self
 
     def __exit__(self, *exc) -> None:
         if self._fh is not None:
             try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+                unlock(self._fh)
             finally:
                 self._fh.close()
 

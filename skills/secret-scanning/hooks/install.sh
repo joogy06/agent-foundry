@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# SUPERSEDED (#250) -- prefer `python3 install.py --git-hooks <repo>`, which places
+# the Python hooks (pre_commit.py / pre_push.py), bakes an absolute interpreter
+# rather than hoping PATH has python3, honours core.hooksPath, and runs BY DEFAULT
+# so a fresh box is gated without anyone remembering to ask.
+#
+# KEPT, not deleted, for one reason: tests/hooks/ runs every contract scenario
+# against BOTH implementations, and this file is the reference the Python port is
+# measured against. Deleting it would delete the equivalence proof. Retiring it is
+# a separate decision, in the shape of #256 for gates.sh.
 # Install the secrets pre-commit hook into the current repo.
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)

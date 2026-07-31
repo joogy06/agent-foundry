@@ -140,4 +140,5 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from portable_cli import run_cli          # #251 — see portable_cli.py
+    sys.exit(run_cli(main))

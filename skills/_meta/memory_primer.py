@@ -36,7 +36,7 @@ def _pref_domains(store: Path) -> list[str]:
     if store.is_dir():
         for p in sorted(store.glob("*.md")):
             try:
-                txt = p.read_text()
+                txt = p.read_text(encoding="utf-8")
                 m = re.match(r"^---\n(.*?)\n---", txt, re.DOTALL)
                 keys = [l for l in (m.group(1).splitlines() if m else [])
                         if ":" in l and l.split(":")[0].strip() not in ("domain", "updated")
@@ -66,7 +66,8 @@ def _counts() -> dict:
     try:
         gp = CLAUDE / "skills" / "_meta" / "gates.py"
         if gp.is_file():
-            names = set(re.findall(r"\bG_[A-Z][A-Z0-9_]+\b", gp.read_text()))
+            names = set(re.findall(r"\bG_[A-Z][A-Z0-9_]+\b",
+                                   gp.read_text(encoding="utf-8")))
             if names:
                 c["gates"] = len(names)
     except Exception:
@@ -105,4 +106,9 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # #251: this hook prints emoji, and on a cp1252 Windows console that raised
+    # UnicodeEncodeError — so the digest EXITED 0 WITH NO OUTPUT and looked exactly
+    # like a session with nothing to report. Its own error handler printed an emoji
+    # too, so even the failure message failed.
+    from portable_cli import run_cli
+    raise SystemExit(run_cli(main))
