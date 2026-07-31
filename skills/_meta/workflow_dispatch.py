@@ -29,7 +29,6 @@ the clock — W-A); if omitted the CLI stamps it as a convenience for human use.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import sys
@@ -37,6 +36,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Cross-platform advisory locking (#249) -- see portable_lock's docstring.
+_META = Path(__file__).resolve().parent
+if str(_META) not in sys.path:
+    sys.path.insert(0, str(_META))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
 
 LIVE_STATES = ("claimed", "executing")
 TERMINAL_STATES = ("complete", "failed")
@@ -91,13 +96,13 @@ class _DispatchLock:
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.fh = open(self.path, "w")
-        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        self.fh = open(self.path, "a+")  # never "w" -- see claims._bob_claim_lock
+        lock_exclusive(self.fh)
         return self
 
     def __exit__(self, *exc):
         try:
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+            unlock(self.fh)
         finally:
             self.fh.close()
 

@@ -82,6 +82,18 @@ INCLUDES=(
     --include='*.js' --include='*.ts' --include='*.tsx' --include='*.jsx'
     --include='*.mjs' --include='*.cjs'
     --include='*.env*' --include='*.example' --include='*.template'
+    # Credential-bearing file types, kept in lockstep with INCLUDE_EXTS /
+    # INCLUDE_NAMES in secrets-scan.py. Without these the CRITICAL PEM rule can
+    # only catch a key PASTED INTO source and never the committed key file --
+    # the likelier leak by far. id_rsa and friends carry no extension at all.
+    --include='*.pem' --include='*.key' --include='*.crt' --include='*.cer'
+    --include='*.der' --include='*.p12' --include='*.pfx' --include='*.jks'
+    --include='*.keystore' --include='*.ppk' --include='*.pub' --include='*.asc'
+    --include='*.gpg' --include='*.kdbx' --include='*.ovpn' --include='*.netrc'
+    --include='*.htpasswd'
+    --include='id_rsa' --include='id_dsa' --include='id_ecdsa' --include='id_ed25519'
+    --include='_netrc' --include='.pgpass' --include='credentials'
+    --include='authorized_keys'
 )
 EXCLUDES_DIR=(
     --exclude-dir='.git' --exclude-dir='node_modules'

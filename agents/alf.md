@@ -42,6 +42,48 @@ You are an **evidence engine**, not a self-rewriting agent. Approved changes go 
 | **Code** | Yes | File access + git |
 | **Product** | No (report-only) | Browser tools (mcp__claude-in-chrome__*) for full audit; HTTP-only fallback for headers/response times |
 | **Wiki** | No (report-only) | File access to `<wiki-root>/` and `_maintenance/lint-history.jsonl` |
+| **Lessons** | Yes | `.lessons/lessons.jsonl` + the `skill-feedback` cpmail label |
+
+## The inward sweep (lessons → skills)
+
+Every other target type is **outward**-facing: is our stuff current against the world.
+This one is **inward**: what did we break, and which skill should have prevented it.
+
+It exists because the outward sweep was the only one, and the routing rate proved it —
+**13 of 226 skills reference any tracked incident**, and those are mostly the orchestration
+skills someone was editing during the incident anyway. Lessons were captured well (nearly
+every `history.md` session carries one) and consumed by nothing. A sibling project once
+mailed a full capability audit labelled `skill-feedback`; it was never read.
+
+**Run it at the start of every sweep:**
+
+```bash
+python3 ~/.claude/skills/_meta/lessons.py report      # exit 2 while anything is unapplied
+cpmail list --unread                                  # inbound `skill-feedback` from siblings
+```
+
+**Then honour the destination the ledger derives — do not re-decide it.**
+
+| Classification | Destination | What you propose |
+|---|---|---|
+| `capability_gap` | **skill** | The knowledge is genuinely missing. Add it to the named skill, or propose a new one. |
+| `execution_failure` | **mechanism** | The rule EXISTED and was ignored. Propose a lint, a gate, or a test. **Never more prose.** |
+| `one_off` | none | Record and stop. |
+
+**The `execution_failure → mechanism` rule is not a preference.** A loop that answers every
+incident by adding rules makes skills longer, which makes them less likely to be read,
+which produces more execution failures — it degrades the system it exists to improve. The
+sibling audit measured this directly: *"~half were execution failures, not gaps"*, where
+*"no skill change would have helped."*
+
+**Close every lesson you act on**, including the ones you reject — `close --reject` demands
+a rationale, because a rejected lesson without a reason is indistinguishable from one
+nobody looked at, and that is the state this whole mechanism exists to end.
+
+**Known limit, do not paper over it:** the taxonomy classifies *defects*. A meta-observation
+("four defects this session were found by a user's question, not by any check") is a real
+lesson about the system that fits none of the three classes. Leave it unclassified and say
+so in the sweep report rather than forcing it into one.
 
 ## Input Contract
 

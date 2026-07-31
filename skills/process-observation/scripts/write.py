@@ -26,7 +26,6 @@ Design refs:
 """
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -37,6 +36,14 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Cross-platform advisory locking (#249). `import fcntl` at module level made
+# this module unimportable on Windows -- it died at IMPORT, not at use.
+_META_DIR = Path(__file__).resolve().parents[2] / "_meta"
+if str(_META_DIR) not in sys.path:
+    sys.path.insert(0, str(_META_DIR))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
+
 
 # Package-local import of trusted_runner.atomic_write_bytes. The skill is
 # installed at ~/.claude/skills/process-observation/scripts/write.py; the
@@ -243,14 +250,14 @@ class _FlockCtx:
 
     def __enter__(self) -> "_FlockCtx":
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.fh = open(self.path, "w")
-        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        self.fh = open(self.path, "a+")  # never "w" -- truncates before locking
+        lock_exclusive(self.fh)
         return self
 
     def __exit__(self, *exc):
         try:
             if self.fh is not None:
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                unlock(self.fh)
         finally:
             if self.fh is not None:
                 self.fh.close()

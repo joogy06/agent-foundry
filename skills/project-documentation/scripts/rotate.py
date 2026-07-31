@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import dataclasses
 import errno
-import fcntl
 import hashlib
 import io
 import os
@@ -52,6 +51,14 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import _boundary_detect as bd  # noqa: E402
+
+# Cross-platform advisory locking (#249). `import fcntl` at module level made
+# this module unimportable on Windows -- it died at IMPORT, not at use.
+_META_DIR = Path(__file__).resolve().parents[2] / "_meta"
+if str(_META_DIR) not in sys.path:
+    sys.path.insert(0, str(_META_DIR))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -125,7 +132,7 @@ class _FileLock:
         deadline = time.monotonic() + self.timeout_s
         while True:
             try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_exclusive(self._fh, blocking=False)
                 return True
             except BlockingIOError:
                 if time.monotonic() >= deadline:
@@ -135,7 +142,7 @@ class _FileLock:
     def release(self) -> None:
         if self._fh is not None:
             try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+                unlock(self._fh)
             except OSError:
                 pass
             try:

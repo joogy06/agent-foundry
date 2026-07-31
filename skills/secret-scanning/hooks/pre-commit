@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SUPERSEDED by pre_commit.py (#250). Kept as the reference implementation the
+# port is measured against -- tests/hooks/ runs every scenario against both.
 # pre-commit — refuse a commit that stages secret-looking values.
 #
 # Delegates to scripts/secrets-scan.py --staged, which reads content from the GIT
@@ -50,6 +52,39 @@ if [ -f "$linter" ]; then
       exit 1
     fi
     printf '%s' "$fm_out" | grep -qE '^  W[0-9]' && echo "$fm_out" >&2
+  fi
+fi
+# -----------------------------------------------------------------------------
+# Portability lint (#249/#251) — staged .py only.
+#
+# `check` deliberately sees ONLY staged files. A tree-wide gate would block every
+# commit on the ~600 pre-existing W002 sites, and a check that fires on work you
+# did not do is how people learn to reach for --no-verify. This stops the bleeding
+# instead: a NEW unguarded platform-only import, or a NEW entrypoint that emits
+# non-ASCII without hardening its streams, does not enter the tree.
+#
+# E blocks, W is printed and allowed. The nine known import-fatal modules (#249)
+# will block a commit that touches them — that is deliberate, and clearing it is
+# what #249 is for.
+# -----------------------------------------------------------------------------
+plint="$repo_root/skills/_meta/portability_lint.py"
+[ -f "$plint" ] || plint="$HOME/.claude/skills/_meta/portability_lint.py"
+if [ -f "$plint" ]; then
+  staged_py=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)
+  if [ -n "$staged_py" ]; then
+    # shellcheck disable=SC2086
+    pl_out=$("$py" "$plint" check $staged_py 2>&1)
+    if printf '%s' "$pl_out" | grep -qE '^E[0-9]'; then
+      echo "$pl_out" >&2
+      echo "" >&2
+      echo "pre-commit: BLOCKED — a staged .py breaks on another platform." >&2
+      echo "  E001: guard the import (try/except ImportError), defer it into the" >&2
+      echo "  function, or branch on sys.platform. An unguarded platform-only import" >&2
+      echo "  fails at IMPORT, so it takes down every caller, not just the code path." >&2
+      echo "  Bypass deliberately with: git commit --no-verify" >&2
+      exit 1
+    fi
+    printf '%s' "$pl_out" | grep -qE '^W[0-9]' && echo "$pl_out" >&2
   fi
 fi
 # -----------------------------------------------------------------------------

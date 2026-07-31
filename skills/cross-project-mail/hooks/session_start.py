@@ -59,6 +59,16 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # #251: harden stdout before main() prints. This hook lives outside _meta, so
+    # portable_cli is reached by path rather than by import — and its absence is not
+    # allowed to break session start any more than a mail failure is.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_meta"))
+        from portable_cli import make_streams_utf8
+        make_streams_utf8()
+    except Exception:
+        pass
+
     try:
         sys.exit(main())
     except Exception:

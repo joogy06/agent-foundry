@@ -37,7 +37,6 @@ helpers; existing call sites are untouched (signatures preserved).
 """
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -47,6 +46,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Cross-platform advisory locking (#249). This module used to `import fcntl` at
+# module level; fcntl is POSIX-only, so claims.py raised ModuleNotFoundError at
+# IMPORT on Windows -- which is the specific reason bob could not run there in
+# any host. portable_lock owns the platform choice; nothing else here needs to.
+_META = Path(__file__).resolve().parent
+if str(_META) not in sys.path:
+    sys.path.insert(0, str(_META))
+from portable_lock import lock_exclusive, unlock  # noqa: E402
 
 try:
     import yaml
@@ -202,13 +210,17 @@ def _bob_claim_lock(project_root: Path):
 
         def __enter__(self) -> "_Lock":
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.fh = open(self.path, "w")
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+            # "a+" not "w": on Windows the lock is MANDATORY, so a truncating
+            # open fails against a range another process holds -- and it
+            # truncates BEFORE any lock is taken, so "w" is also a lost-content
+            # window on every platform.
+            self.fh = open(self.path, "a+")
+            lock_exclusive(self.fh)
             return self
 
         def __exit__(self, *exc) -> None:
             try:
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                unlock(self.fh)
             finally:
                 self.fh.close()
 

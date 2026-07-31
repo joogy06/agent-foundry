@@ -2585,6 +2585,34 @@ def _content_differs(target: Path, expected: str) -> bool:
         return True
 
 
+def _is_effectively_absent(path: Path) -> bool:
+    """True if `path` is missing OR present-but-empty (whitespace-only counts).
+
+    A zero-byte file is NOT a customisation — it is the residue of a write that
+    opened the file (truncating it) and then raised. #244 was exactly that:
+    `write_text` without an explicit encoding fell back to the LOCALE codec on a
+    Windows console and died on U+2190, leaving ~/.copilot/copilot-instructions.md
+    at 0 bytes. Every placement guard here is `exists() and not force`, so the
+    empty file then reads as "the user already has one" and is NEVER repaired by
+    a re-run — the layer looks configured and is inert. That is the #246
+    "looks wired, isn't" class, one level up: the file is present, so a
+    reference sweep cannot see it either.
+
+    Whitespace-only counts as absent because a file holding one newline carries
+    no instruction, no directive and no agent, and nobody authored it on purpose.
+
+    Unreadable is treated as PRESENT (returns False): refusing to guess is safer
+    than overwriting a file we could not inspect. A directory on the path lands
+    here too, via IsADirectoryError.
+    """
+    if not path.exists():
+        return True
+    try:
+        return not path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return False
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write `text` to `path` atomically (temp file in the same dir + fsync +
     os.replace).
@@ -2653,7 +2681,10 @@ def install_agy(gemini_home: Path, force: bool = False, dry_run: bool = False) -
     target = gemini_home / "agy.md"
     expected = _agy_template_text()
 
-    if not target.exists():
+    # `_is_effectively_absent`, not `.exists()`: a 0-byte agy.md is a failed
+    # write, not a customisation, and the "present+differs" branch below would
+    # otherwise protect it forever as if the user had authored it.
+    if _is_effectively_absent(target):
         if dry_run:
             print(f"    would write {target} (create-if-absent)")
             return True
@@ -3517,7 +3548,7 @@ def install_copilot(repo_root: Path, force: bool = False,
     copilot_home.mkdir(parents=True, exist_ok=True)
     target = copilot_home / "copilot-instructions.md"
 
-    if target.exists() and not force:
+    if not _is_effectively_absent(target) and not force:
         print(f"    ⚠ {target} already exists — leaving as-is (use --force to overwrite)")
     else:
         # encoding="utf-8" is REQUIRED, not tidiness. COPILOT_AGENTS_MD contains
@@ -3528,6 +3559,69 @@ def install_copilot(repo_root: Path, force: bool = False,
         # help here — it reconfigures stdout/stderr, not file writes.
         target.write_text(COPILOT_AGENTS_MD, encoding="utf-8")
         print(f"    + wrote {target}")
+
+    # VSPrime at USER scope, so it is in the agent picker in every project
+    # rather than only where someone remembered to run --vscode-workspace.
+    #
+    # `~/.copilot/agents/` is the documented user-profile location for custom
+    # agents (vscode-agents/references/custom-agents.md) and is read by both
+    # Copilot CLI and VS Code. The workspace copy that --vscode-workspace
+    # places is unchanged and still wins, because workspace scope is checked
+    # first — a project that wants its own VSPrime keeps it.
+    #
+    # THE ASYMMETRY IS THE WHOLE POINT, so do not "tidy" this into
+    # ~/.claude/agents/. VS Code reads BOTH trees at user scope (verified on
+    # 1.131, 2026-07-30 — the doc table dated 2026-06-24 lists only the
+    # workspace .claude/agents/ and is stale). Claude Code reads only its own.
+    # So ~/.copilot/agents/ is the one-way home: VS Code and Copilot see
+    # VSPrime, Claude Code never does.
+    #
+    # That matters because VSPrime exists to substitute for the SessionStart
+    # hooks VS Code does not have — hooks Claude Code DOES have. In the Claude
+    # Code picker it would be a redundant agent offering to do, worse, a job
+    # already done before the first turn. Put it in the shared tree and every
+    # Claude Code session gets that confusion permanently.
+    #
+    # Placed by the INSTALLER on purpose. Hand-dropping it into ~/.copilot
+    # would leave a file no installer owns, reinstalls never refresh and
+    # `--mode mc` never prunes — the same shape as scout.md living only in
+    # ~/.claude (#208) and VSPrime's own flag never being registered (#245).
+    # Every *.agent.md in vs-code/agents/, not just VSPrime. The filename used to
+    # be hardcoded, so the consultation handles (#274) would have shipped in the
+    # repo and been placed by nothing — the "looks wired, isn't" class that has
+    # already cost this project four defects (#245 chief among them).
+    #
+    # OWNERSHIP SPLIT, and it is not cosmetic:
+    #   * GENERATED files (they carry the render marker) are DERIVED artifacts and
+    #     are always refreshed. A handle carrying a stale model id fails SILENTLY
+    #     as a permissions error, so "leave as-is" is the wrong default for
+    #     anything the renderer owns.
+    #   * Hand-authored files (VSPrime) keep the previous skip-if-present
+    #     behaviour. #270 — that they are in no manifest and so can never be
+    #     pruned — is untouched here and still open.
+    agents_src = repo_root / "vs-code" / "agents"
+    if agents_src.is_dir():
+        for src_file in sorted(agents_src.glob("*.agent.md")):
+            dst = copilot_home / "agents" / src_file.name
+            content = src_file.read_text(encoding="utf-8")
+            is_generated = "generated by vs-code/scripts/render_handles.py" in content
+            existing_is_ours = False
+            if dst.is_file():
+                try:
+                    existing_is_ours = (
+                        "generated by vs-code/scripts/render_handles.py"
+                        in dst.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
+            if (not _is_effectively_absent(dst) and not force
+                    and not (is_generated and existing_is_ours)):
+                print(f"    ⚠ {dst} already exists — leaving as-is (use --force)")
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+            label = "refreshed, generated" if is_generated else "user scope — all projects"
+            handle_name = src_file.name[:-len(".agent.md")]
+            print(f"    + wrote {dst} (@{handle_name}, {label})")
 
     has_copilot = shutil.which("copilot") is not None or any(
         loc.exists() for loc in _known_locations("copilot"))
@@ -3552,6 +3646,138 @@ def install_copilot(repo_root: Path, force: bool = False,
     print(f"      places AGENTS.md, .vscode/tasks.json + mcp.json, the VSPrime agent and")
     print(f"      the /prime command. Skills need no bridge; startup and agents do.")
     return True
+
+
+GIT_HOOK_MARKER = "# managed-by: foundry-lab/skills/secret-scanning/hooks"
+
+GIT_HOOKS = (
+    ("pre-commit", "pre_commit.py"),
+    ("pre-push", "pre_push.py"),
+)
+
+
+def _hook_shebang() -> str:
+    """Bake the interpreter we are running under, rather than hoping for PATH.
+
+    `writing-portable-python` rule 7. `#!/usr/bin/env python3` fails on exactly the
+    machine this work exists for: enterprise Windows commonly has `py` or `python`
+    and no `python3` at all, and a hook that cannot launch is a gate that does not
+    exist -- which is #250 all over again.
+
+    HONEST LIMIT: on Windows, Git runs hooks through its bundled MSYS shell, which
+    wants `/c/Users/...` rather than `C:\\Users\\...`, so the drive letter is
+    rewritten here. That conversion has NOT been executed on a Windows machine. It
+    is the first thing to check when this reaches the laptop, and the failure would
+    be loud (git reports a bad interpreter), not silent.
+    """
+    exe = Path(sys.executable).resolve()
+    if os.name == "nt":
+        text = str(exe).replace("\\", "/")
+        if len(text) > 2 and text[1] == ":":
+            text = "/" + text[0].lower() + text[2:]
+        return "#!" + text
+    return "#!" + str(exe)
+
+
+def install_git_hooks(repo_root: Path, target_repo: Path, *, force: bool = False,
+                      dry_run: bool = False) -> bool:
+    """Install the Python pre-commit and pre-push hooks into `target_repo`.
+
+    Wired into the installer because of #250: on the Windows laptop `.git/hooks/`
+    held ONLY `.sample` files and `core.hooksPath` was unset, so every commit and
+    push was unscanned -- including the commit made while diagnosing it. All of
+    #239's rule-parity work is moot in a repo where no scanner runs at all, and
+    nothing in the install path had ever placed a hook.
+
+    Runs by DEFAULT rather than behind an opt-in flag. An opt-in security gate is
+    how this hole existed, and #240's extras were made default-on for the same
+    reason. `--no-git-hooks` opts out.
+
+    REFUSES to install an inert hook, exactly as the bash installer it replaces
+    did: a hook that cannot find a scanner advertises protection it does not
+    provide, which is worse than no hook at all.
+    """
+    repo_root = Path(repo_root)
+    target_repo = Path(target_repo).expanduser()
+
+    git_dir = target_repo / ".git"
+    if not git_dir.exists():
+        print(f"  = {target_repo} is not a git repo — no hooks placed")
+        return False
+
+    # A worktree/submodule .git is a FILE pointing at the real dir.
+    if git_dir.is_file():
+        try:
+            pointer = git_dir.read_text(encoding="utf-8").strip()
+            if pointer.startswith("gitdir:"):
+                git_dir = (target_repo / pointer.split(":", 1)[1].strip()).resolve()
+        except OSError:
+            print(f"  ⚠ cannot read {git_dir} — no hooks placed")
+            return False
+
+    # core.hooksPath wins over .git/hooks when set; writing to the wrong one
+    # places a file git will never run, which looks exactly like success.
+    hooks_dir = git_dir / "hooks"
+    rc, out = run_probe(["git", "-C", str(target_repo), "config", "--get", "core.hooksPath"])
+    if rc == 0 and out.strip():
+        configured = Path(out.strip()).expanduser()
+        hooks_dir = configured if configured.is_absolute() else (target_repo / configured)
+        print(f"  i core.hooksPath is set — installing into {hooks_dir}")
+
+    src_dir = repo_root / "skills" / "secret-scanning" / "hooks"
+    scanner_repo = target_repo / "scripts" / "secrets-scan.py"
+    scanner_home = Path.home() / ".claude" / "skills" / "secret-scanning" / "scripts" / "secrets-scan.py"
+    if not scanner_repo.is_file() and not scanner_home.is_file():
+        print("  ⚠ REFUSING to install git hooks: no secrets-scan.py resolves")
+        print(f"      looked in: {scanner_repo}")
+        print(f"                 {scanner_home}")
+        print("      An inert hook would claim protection it cannot provide.")
+        return False
+
+    shebang = _hook_shebang()
+    placed = 0
+    for hook_name, src_name in GIT_HOOKS:
+        src = src_dir / src_name
+        if not src.is_file():
+            print(f"  ⚠ {src_name} missing from the repo — {hook_name} not placed")
+            continue
+        dst = hooks_dir / hook_name
+
+        if dst.exists():
+            existing = ""
+            try:
+                existing = dst.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+            if GIT_HOOK_MARKER not in existing and "secrets-scan" not in existing:
+                # Somebody else's hook. Never clobber it silently.
+                backup = dst.with_name(f"{hook_name}.bak-{_utc_stamp()}")
+                if not dry_run:
+                    shutil.copy2(dst, backup)
+                print(f"  i existing unmanaged {hook_name} backed up to {backup.name}")
+
+        body = src.read_text(encoding="utf-8")
+        if body.startswith("#!"):
+            body = body.split("\n", 1)[1] if "\n" in body else ""
+        content = shebang + "\n" + GIT_HOOK_MARKER + "\n" + body
+
+        if dry_run:
+            print(f"  + {hook_name} → {dst} (dry run)")
+            placed += 1
+            continue
+
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        dst.write_text(content, encoding="utf-8")
+        try:
+            dst.chmod(0o755)
+        except OSError:
+            pass  # no exec bit on Windows; git runs it via its shell regardless
+        print(f"  ✓ {hook_name} → {dst}")
+        placed += 1
+
+    if placed:
+        print(f"  interpreter baked into the hooks: {shebang[2:]}")
+    return placed > 0
 
 
 def install_vscode_workspace(repo_root: Path, workspace: Path, force: bool = False,
@@ -3590,7 +3816,7 @@ def install_vscode_workspace(repo_root: Path, workspace: Path, force: bool = Fal
     for s, d in placements:
         if not s.is_file():
             continue
-        if d.exists() and not force:
+        if not _is_effectively_absent(d) and not force:
             print(f"    ⚠ {d} exists — leaving as-is (use --force to overwrite)")
             skipped += 1
             continue
@@ -4147,6 +4373,15 @@ def main() -> int:
                         help="run the environment scan, print the findings report, and exit")
     parser.add_argument("--mirror-copilot-skills", action="store_true",
                         help="also mirror skills into ~/.copilot/skills/ (opt-in; additive)")
+    parser.add_argument("--git-hooks", metavar="PATH", default=None,
+                        help="install the secrets pre-commit/pre-push hooks into this "
+                             "repo (default: the repo install.py is run from). #250 — "
+                             "the Windows laptop had NO hooks, so every commit and push "
+                             "was unscanned.")
+    parser.add_argument("--no-git-hooks", action="store_true",
+                        help="skip git-hook installation. The hooks are placed by "
+                             "DEFAULT because an opt-in security gate is exactly how "
+                             "the unscanned-repo hole (#250) happened.")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the exact create / overwrite / prune sets and "
                              "exit WITHOUT touching anything. Recommended before "
@@ -4738,6 +4973,15 @@ def _run(args) -> int:
             if target in targets:
                 print(f"[{target}] — dry run not modelled for this target; it would "
                       "be installed as described in the plan above.")
+        # Modelled here rather than left out: git hooks are placed by DEFAULT, and a
+        # preview that omits a default action is a preview that misleads. The real
+        # call sits after this early return, so without this the only way to learn
+        # the installer touches .git/hooks was to run it for real.
+        if not getattr(args, "no_git_hooks", False):
+            print("[git hooks]")
+            install_git_hooks(REPO_ROOT,
+                              Path(getattr(args, "git_hooks", None) or REPO_ROOT),
+                              force=bool(args.force), dry_run=True)
         print()
         print("dry run complete — nothing was changed.")
         return 0
@@ -4868,6 +5112,18 @@ def _run(args) -> int:
         if getattr(args, "vscode_workspace", None):
             install_vscode_workspace(REPO_ROOT, args.vscode_workspace,
                                      force=force, dry_run=args.dry_run)
+
+    # ---- git hooks (#250) ----
+    #
+    # OUTSIDE the target loop on purpose. The hooks gate a git repo, not a CLI's
+    # config home, so making them conditional on `claude` being in --target would
+    # reproduce #271 exactly: a payload that is fine and a routing rule that
+    # silently does nothing. They are placed on every run unless --no-git-hooks.
+    if not getattr(args, "no_git_hooks", False):
+        hook_target = Path(getattr(args, "git_hooks", None) or REPO_ROOT)
+        print("[git hooks]")
+        install_git_hooks(REPO_ROOT, hook_target,
+                          force=force, dry_run=args.dry_run)
     if "agy" in targets:
         print("[agy]")
         install_agy(gemini_home, force=force)
