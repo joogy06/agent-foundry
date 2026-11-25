@@ -29,8 +29,20 @@ cd <repo-name>
 
 # 2. Bootstrap a full environment (recommended for first-time setup)
 python3 bootstrap-environment.py
-# or, on Windows:  pwsh -NoProfile -NonInteractive -File bootstrap-environment.ps1
+# or, on Windows (Python launcher):  py -3 bootstrap-environment.py
 ```
+
+**Windows + VS Code (GitHub Copilot):** the installer is pure Python, so the same scripts run on Windows
+through the `py` launcher (no PowerShell script needed):
+
+```powershell
+py -3 install.py --preview --os windows --tool vscode   # see what will be placed, changes nothing
+py -3 bootstrap-environment.py                          # skills, agents and global rules into %USERPROFILE%\.claude
+py -3 install.py --vscode-workspace C:\path\to\project  # AGENTS.md, .vscode\tasks.json + mcp.json, .github\agents, /prime
+```
+
+VS Code 1.123+ discovers `%USERPROFILE%\.claude\skills` itself, and reads `CLAUDE.md` when
+`chat.useClaudeMdFile` is on. See [`vs-code/README.md`](vs-code/README.md) for what maps and what differs.
 
 The bootstrap orchestrator runs `install.py` plus a series of idempotent post-install steps so a fresh machine reaches a complete Claude Code environment in one command. Re-run any time — every step skips work already done.
 
@@ -153,9 +165,8 @@ python3 install.py --help                                # all flags
 
 ### Windows enterprise notes
 
-- `bootstrap-environment.ps1` is enterprise-hardened — `#Requires -Version 5.1`, `[CmdletBinding()]` with named switch parameters, **no** `-ExecutionPolicy Bypass`, no dot-source, no `-Command`. Invoke with `pwsh -NoProfile -NonInteractive -File bootstrap-environment.ps1`.
-- The bootstrap script probes `py` (PEP-397 launcher) → `python3` → `python` in that order and runs the orchestrator with whichever resolves first.
-- For backward compatibility, the older `install.cmd` / `install.ps1` entry points are still present. They use `-ExecutionPolicy Bypass` for compatibility with very locked-down machines; prefer `bootstrap-environment.ps1` on modern setups.
+- There are no PowerShell or batch entry points: run `bootstrap-environment.py` and `install.py` with the `py` launcher (`py -3 …`). This works where script execution policy blocks `.ps1` files, and needs no `-ExecutionPolicy Bypass`.
+- `python3` is often missing on Windows or is a Microsoft Store stub; use `py -3`. On Windows the installer writes the SessionStart hook commands with `py -3` and absolute paths, because `python3`, `bash` and `~` cannot be relied on there.
 - Symbolic links on Windows require **admin** or **Developer Mode**. If symlinks fail, the bootstrap falls back to copy and prints a warning (drift risk if you later edit `CLAUDE.md` — the `AGENTS.md` copy won't update).
 
 ### Manual install (alternative)
