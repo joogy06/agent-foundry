@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:bea52468588e489f181457601ac94e306b24e66811b5d8826a3934bfc03a930a",
+  "generated_by": "sample-data-scaffolding",
+  "note": "Every input and output in the contract map is kind opaque, so fixtures are written as-is, not generated. Each stage appends its component.",
+  "components": {
+    "harness-rules": {
+      "inputs": {
+        "file_set": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/inventory-sample.json",
+              "hash": "sha256:7ee8de04b708a3973fd95cfbe7ccdbb41faed8e93c1184b6a9e6a77d3f5354e8"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "findings": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/findings-sample.json",
+              "hash": "sha256:0d0e123db4d9fe9a725e3af2760a7fdc31722b484c2e1d3145406f33761ee146"
+            }
+          ]
+        }
+      }
+    },
+    "intake-fetch": {
+      "inputs": {
+        "target_ref": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/target-ref-sample.json",
+              "hash": "sha256:1797759bb3913f357e2fc9484550148de88208edde7f94e2f3727ecb0956aaeb"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "quarantine_bundle": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/inventory-sample.json",
+              "hash": "sha256:7ee8de04b708a3973fd95cfbe7ccdbb41faed8e93c1184b6a9e6a77d3f5354e8"
+            }
+          ]
+        }
+      }
+    },
+    "scan-sandbox": {
+      "inputs": {
+        "sandbox_request": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/sandbox-request-sample.json",
+              "hash": "sha256:824393cd0be2b34ff69b0e0ba054e58acfbca64358c9c41d4bc61d3ff5766ff1"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "sandbox_result": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/sandbox-result-sample.json",
+              "hash": "sha256:13193931163cdc79b77608eeee97af7c01510e503376cd3d8a0ecc86835d9cfd"
+            }
+          ]
+        }
+      }
+    },
+    "scanner-adapters": {
+      "inputs": {
+        "scan_target": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/inventory-sample.json",
+              "hash": "sha256:7ee8de04b708a3973fd95cfbe7ccdbb41faed8e93c1184b6a9e6a77d3f5354e8"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "adapter_report": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/adapter-report-sample.json",
+              "hash": "sha256:193ca3c1442a1f3deb45329c32c8b65d3b56c536c9fb9c0ef2ff1f2d5e4d40ba"
+            }
+          ]
+        }
+      }
+    },
+    "intake-ledger": {
+      "inputs": {
+        "ledger_request": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/ledger-request-sample.json",
+              "hash": "sha256:63cb35b65b61bd176d1794a1f52020f8a06fbf5ad70d9bfb078e648815ee214c"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "ledger_state": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/ledger-sample.json",
+              "hash": "sha256:cdb3e820eebd257f821c2e57d0d42debbe6ee37eeabdb86ada060ac6f1023da2"
+            }
+          ]
+        }
+      }
+    },
+    "intake-policy": {
+      "inputs": {
+        "scan_evidence": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/scan-evidence-sample.json",
+              "hash": "sha256:ac8c5732947fa149ec3de802828c32b434a0996453a9b97544dadc34642feab3"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "verdict_record": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/verdict-record-sample.json",
+              "hash": "sha256:b8b8bbf9a66e2345cc2f8913d3899a6aff16c74bf4780463701100b2fb3895f6"
+            }
+          ]
+        }
+      }
+    },
+    "intake-cli": {
+      "inputs": {
+        "scan_request": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/scan-request-sample.json",
+              "hash": "sha256:966f0f4495950c53c62a7e9a78f7ae1eb2c2013bb026894188ffeeda6b921009"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "cli_stdout": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/cli-stdout-sample.txt",
+              "hash": "sha256:ff4f4f604bb0da98a1ad0a0addc33522d3737fc65de31043429f72e895946fcd"
+            }
+          ]
+        },
+        "exit_code": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/exit-code-samples.jsonl",
+              "hash": "sha256:46da06ff11ce976526e5124c83e908a686a0f0be6f3a26b95caa5d2241e19ae8"
+            }
+          ]
+        }
+      }
+    },
+    "intake-wiring": {
+      "inputs": {
+        "ledger_snapshot": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/ledger-sample.json",
+              "hash": "sha256:cdb3e820eebd257f821c2e57d0d42debbe6ee37eeabdb86ada060ac6f1023da2"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "digest_lines": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/digest-sample.txt",
+              "hash": "sha256:4cb6de6a3710d6c7fb040eab4c7ccab667c6fb19e3e2ec1b41dc6fa8d3340812"
+            }
+          ]
+        }
+      }
+    },
+    "precommit-intake-arm": {
+      "inputs": {
+        "staged_change": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/staged-change-sample.json",
+              "hash": "sha256:7ab34e976f33cec447830eb515f5979ffd14ff12ff8a25a39942a813abb6fdd4"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "hook_exit_code": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/exit-code-samples.jsonl",
+              "hash": "sha256:46da06ff11ce976526e5124c83e908a686a0f0be6f3a26b95caa5d2241e19ae8"
+            }
+          ]
+        }
+      }
+    },
+    "install-intake-check": {
+      "inputs": {
+        "install_source": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/install-source-sample.json",
+              "hash": "sha256:eb282064325d459685774e6842f08ed90369b185725f95adef3189e821fd1e1e"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "install_exit_code": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/intake-scan/tests/fixtures/exit-code-samples.jsonl",
+              "hash": "sha256:46da06ff11ce976526e5124c83e908a686a0f0be6f3a26b95caa5d2241e19ae8"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

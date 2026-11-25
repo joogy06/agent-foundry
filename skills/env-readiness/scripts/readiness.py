@@ -80,6 +80,35 @@ def _safe(fn, section: Section):
 # --------------------------------------------------------------------------- #
 # checks
 # --------------------------------------------------------------------------- #
+# A project CLAUDE.md that only points at the global rules says so in this
+# sentence (foundry-lab's, #318; the same marker as _meta/scan_hard_rules.py).
+PROJECT_POINTER_MARKER = "The global rules are not in this file."
+
+
+def check_global_claude_md(s: Section, home: Path, repo: Optional[Path]):
+    """Presence is not enough (#318): a project file installed at home passes a
+    presence check while every global rule is missing."""
+    md = home / "CLAUDE.md"
+    fix = "run: python3 install.py --target c --force-global-config"
+    if not md.is_file():
+        s.add(FAIL, "CLAUDE.md MISSING", fix)
+        return
+    data = md.read_bytes()
+    if PROJECT_POINTER_MARKER.encode("utf-8") in data:
+        s.add(FAIL, "CLAUDE.md is a project pointer file, not the global rules", fix)
+        return
+    source = repo / "global" / "CLAUDE.md" if repo else None
+    if source is not None and source.is_file():
+        # Line endings normalised: a Windows checkout or copy may hold CRLF.
+        if data.replace(b"\r\n", b"\n") == source.read_bytes().replace(b"\r\n", b"\n"):
+            s.add(PASS, "CLAUDE.md matches the repo's global/CLAUDE.md")
+        else:
+            s.add(WARN, "CLAUDE.md differs from the repo's global/CLAUDE.md (customised or stale)",
+                  "compare them; " + fix + " to replace")
+        return
+    s.add(PASS, "CLAUDE.md present")
+
+
 def check_install(s: Section, home: Path, repo: Optional[Path]):
     n_skills = len(list((home / "skills").glob("*/"))) if (home / "skills").is_dir() else 0
     n_agents = len(list((home / "agents").glob("*.md"))) if (home / "agents").is_dir() else 0
@@ -96,9 +125,7 @@ def check_install(s: Section, home: Path, repo: Optional[Path]):
           "key agents present" if not missing_ag else f"MISSING key agents: {missing_ag}",
           "" if not missing_ag else "run: python3 installer/install.py")
     # CLAUDE.md + AGENTS.md symlink + pa-server + claude-observe
-    s.add(PASS if (home / "CLAUDE.md").is_file() else FAIL,
-          "CLAUDE.md present" if (home / "CLAUDE.md").is_file() else "CLAUDE.md MISSING",
-          "" if (home / "CLAUDE.md").is_file() else "run: python3 installer/bootstrap-environment.py")
+    check_global_claude_md(s, home, repo)
     ag = home / "AGENTS.md"
     ag_ok = ag.is_symlink() or ag.is_file()
     s.add(PASS if ag_ok else WARN, "AGENTS.md present" if ag_ok else "AGENTS.md missing",
@@ -226,6 +253,25 @@ def check_tooling(s: Section, home: Path):
     else:
         s.add(WARN, "knowledge-grounding sources.json absent",
               "run: bash ~/.claude/skills/knowledge-grounding/scripts/discover.sh discover")
+    check_agy_settings(s, home)
+
+
+def check_agy_settings(s: Section, home: Path):
+    """#366: an advisory agy call stays out of home and repos only with this setting off. Nothing
+    in the installer manages agy's settings file, so a new machine is covered by this warning."""
+    cfg = home.parent / ".gemini" / "antigravity-cli" / "settings.json"
+    if not cfg.is_file():
+        return
+    fix = f"remove allowNonWorkspaceAccess from {cfg} (see the antigravity-cli skill)"
+    try:
+        d = json.loads(cfg.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        s.add(WARN, f"agy settings unreadable ({e}): allowNonWorkspaceAccess not checkable", fix)
+        return
+    if not isinstance(d, dict) or d.get("allowNonWorkspaceAccess", False) is not False:
+        s.add(WARN, "agy allowNonWorkspaceAccess is not off: an advisory call can read any file you can", fix)
+    else:
+        s.add(PASS, "agy allowNonWorkspaceAccess off")
 
 
 def check_project(s: Section, project: Path):

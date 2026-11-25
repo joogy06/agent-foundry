@@ -259,6 +259,19 @@ python3 ~/.claude/skills/business-edge/scripts/claims_lint.py drift --show-dupli
 python3 ~/.claude/skills/_meta/gates.py G_CLAIM_FRESHNESS --claim-mode strict   # exit 2 on drift
 ```
 
+Contradiction checking misses the other decay: the **same unsourced number copied into several
+skills** agrees with itself, so `drift` reports it clean. `unsourced` warns on any percentage or
+multiplier with no URL, source-like date, `[V]`/`[I]` label or `heuristic` marker on its line.
+`ecommerce-growth` is in scope because its CRO figures reach the same retailer:
+
+```bash
+python3 ~/.claude/skills/business-edge/scripts/claims_lint.py \
+  --skills ai-search-optimizer,agentic-commerce-readiness,ai-assistant-referrals,ecommerce-growth \
+  unsourced --family seo --fail-on-warn
+```
+
+Fix a flagged figure by sourcing it or deleting it; never keep it unsourced.
+
 Duplication alone is reported, never blocking; **contradiction blocks in strict mode**. Run it after
 any change to a fast-moving claim. A contested fact needs **one owner**; the rest point at it.
 

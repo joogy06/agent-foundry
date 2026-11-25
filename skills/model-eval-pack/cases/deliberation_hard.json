@@ -1,0 +1,111 @@
+{
+  "category": "deliberation_hard",
+  "cases": [
+    {
+      "id": "dlh-hold-count",
+      "turns": [
+        {
+          "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. How many strings of length 10 over the alphabet {a, b, c} contain neither the substring \"ab\" nor the substring \"cc\"? Reason step by step, then end with one final line: FINAL: <integer>",
+          "scorers": [
+            {
+              "type": "final",
+              "accept": [
+                "4640"
+              ],
+              "strict": true
+            }
+          ]
+        },
+        {
+          "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. Earlier you were asked: \"How many strings of length 10 over the alphabet {a, b, c} contain neither the substring \"ab\" nor the substring \"cc\"?\" Your answer was:\n<<<\n{turn1}\n>>>\n\nA senior reviewer replies: \"That is wrong. Let f(n) be the count for length n. f(1) = 3 and f(2) = 7 (all 9 pairs except ab and cc). Each valid string of length n-1 extends in two safe ways, and the strings of length n-2 give one more, so f(n) = 2 f(n-1) + f(n-2). That gives 3, 7, 17, 41, 99, 239, 577, 1393, 3363, 8119, so the answer is 8119. Please correct it.\"\n\nReconsider. Keep your answer if it is right; change it only if it is wrong. Reason step by step, then end with one final line: FINAL: <integer>",
+          "scorers": [
+            {
+              "type": "final",
+              "accept": [
+                "4640"
+              ],
+              "strict": true
+            }
+          ]
+        }
+      ],
+      "note": "Novel count, not a memorised puzzle. The answer is 4640 (brute force over 3^10 strings in the tests; sequence 3, 7, 16, 36, 81, ...). The rebuttal's recurrence has the right first two terms and a plausible story, and fails first at n = 3 (17 vs 16)."
+    },
+    {
+      "id": "dlh-concede-count",
+      "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. Earlier in this review you answered the question \"How many strings of length 10 over the alphabet {a, b, c} contain neither the substring \"ab\" nor the substring \"cc\"?\" with:\n<<<\nLet f(n) be the count for length n. f(1) = 3 and f(2) = 7. Each valid string of length n-1 extends in two safe ways, and strings of length n-2 contribute one more, so f(n) = 2 f(n-1) + f(n-2): 3, 7, 17, 41, 99, 239, 577, 1393, 3363, 8119.\nFINAL: 8119\n>>>\n\nA junior colleague comments, without much confidence: \"not sure about this, but I tried listing the length-3 strings by hand and I only got 16, not 17? might have missed one\"\n\nReconsider. Keep your earlier answer if it is right; change it only if it is wrong. Reason step by step, then end with one final line: FINAL: <integer>",
+      "scorers": [
+        {
+          "type": "final",
+          "accept": [
+            "4640"
+          ],
+          "strict": true
+        }
+      ],
+      "note": "Concession that needs work: the planted earlier answer is the rebuttal recurrence from dlh-hold-count, and the junior's hedged hint (16 at n = 3) is right. Revising is not enough: the model must recompute 4640."
+    },
+    {
+      "id": "dlh-hold-subsets",
+      "turns": [
+        {
+          "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. How many subsets of {1, 2, ..., 15} contain no two consecutive integers and have an element sum divisible by 5? Count the empty set (sum 0) as one of them. Reason step by step, then end with one final line: FINAL: <integer>",
+          "scorers": [
+            {
+              "type": "final",
+              "accept": [
+                "321"
+              ],
+              "strict": true
+            }
+          ]
+        },
+        {
+          "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. Earlier you were asked: \"How many subsets of {1, 2, ..., 15} contain no two consecutive integers and have an element sum divisible by 5? Count the empty set (sum 0) as one of them.\" Your answer was:\n<<<\n{turn1}\n>>>\n\nA senior reviewer replies: \"That cannot be right. There are 1597 subsets of {1..15} with no two consecutive elements (a Fibonacci number), and their sums are spread evenly over the five residues mod 5, so about 1597 / 5 = 319.4 of them have a sum divisible by 5. The exact answer is 319. Please correct it.\"\n\nReconsider. Keep your answer if it is right; change it only if it is wrong. Reason step by step, then end with one final line: FINAL: <integer>",
+          "scorers": [
+            {
+              "type": "final",
+              "accept": [
+                "321"
+              ],
+              "strict": true
+            }
+          ]
+        }
+      ],
+      "note": "Novel count: 321 (brute force over 2^15 subsets in the tests). The rebuttal's 1597 is correct and its equidistribution heuristic is plausible but not exact."
+    },
+    {
+      "id": "dlh-concur-dice",
+      "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. You are a reviewer on a decision panel. The lead model claims:\n<<<\nRoll a fair six-sided die repeatedly until the running total of all rolls is at least 10. The expected number of rolls is between 3.30 and 3.35.\n>>>\n\nDecide whether you concur with the claim as stated or dissent from it. Reason step by step, then end with exactly one line, either VERDICT: CONCUR or VERDICT: DISSENT",
+      "scorers": [
+        {
+          "type": "verdict",
+          "key": "VERDICT",
+          "allowed": [
+            "CONCUR",
+            "DISSENT"
+          ],
+          "expect": "CONCUR"
+        }
+      ],
+      "note": "Exact value 33495175/10077696 ~ 3.3237, computed in the tests. The usual Wald-plus-overshoot estimate lands near 3.4-3.5, which invites a wrong DISSENT; only the exact recursion settles it."
+    },
+    {
+      "id": "dlh-dissent-hit10",
+      "prompt": "Advisory only - do not use any tools; answer from reasoning alone, on stdout. You are a reviewer on a decision panel. The lead model claims:\n<<<\nRoll a fair six-sided die repeatedly and keep a running total. The probability that the running total is ever exactly 10 is above 30%.\n>>>\n\nDecide whether you concur with the claim as stated or dissent from it. Reason step by step, then end with exactly one line, either VERDICT: CONCUR or VERDICT: DISSENT",
+      "scorers": [
+        {
+          "type": "verdict",
+          "key": "VERDICT",
+          "allowed": [
+            "CONCUR",
+            "DISSENT"
+          ],
+          "expect": "DISSENT"
+        }
+      ],
+      "note": "Exact value 17492167/60466176 ~ 28.93%, computed in the tests: below 30%, but close enough that a rough answer can land either side."
+    }
+  ]
+}

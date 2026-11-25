@@ -33,6 +33,12 @@ convene = importlib.util.module_from_spec(_cspec)
 sys.modules["avengers_convene_pb"] = convene
 _cspec.loader.exec_module(convene)
 
+# #282 H2 (live-HOME tests): every test reaching convene runs under an EMPTY temp HOME with a stub
+# `codex` PREPENDED to PATH (conftest.py's `empty_live_home`). Here only the overlay-lint test reaches
+# build_session_plan, and it fails closed BEFORE any seat resolves - so nothing is written today; the
+# isolation keeps it that way if the lint ever moves after seat resolution.
+pytestmark = pytest.mark.usefixtures("empty_live_home")
+
 _FIX = Path(__file__).resolve().parent / "fixtures"
 _ROSTER = Path(__file__).resolve().parent.parent / "roster" / "skeptic.yaml"
 

@@ -1,0 +1,39 @@
+{
+  "schema": "intake-ledger.v1",
+  "note": "Benign shape sample of the ledger: one entry per unit, per-hit exceptions inside the entry, and a top-level list for exceptions on paths that belong to no unit. Digests are placeholders.",
+  "entries": [
+    {
+      "unit": "agents/sample-agent.md",
+      "kind": "skill",
+      "record_id": "q20261011T120000Z-0a0b0c0d",
+      "digest": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+      "verdict": "pass",
+      "unsigned_caution": false,
+      "origin": "adopt",
+      "time": "2026-10-11T12:00:00Z",
+      "exceptions": []
+    },
+    {
+      "unit": "skills/sample-skill",
+      "kind": "skill",
+      "record_id": "l20261011T120500Z-1a1b1c1d",
+      "digest": "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+      "verdict": "caution",
+      "unsigned_caution": true,
+      "origin": "local",
+      "time": "2026-10-11T12:05:00Z",
+      "exceptions": [
+        {
+          "rule": "H9",
+          "path": "skills/sample-skill/references/keys.md",
+          "sha256": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "reason": "documented example value, not a live credential",
+          "time": "2026-10-11T12:06:00Z",
+          "origin": "except",
+          "record_id": "l20261011T120500Z-1a1b1c1d"
+        }
+      ]
+    }
+  ],
+  "exceptions": []
+}

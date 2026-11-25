@@ -2,34 +2,48 @@
 
 These are the cross-tool portability mistakes that bite even experienced skill authors. Each is documented with symptom, cause, and fix.
 
+## Contents
+
+- #1: Non-standard frontmatter keys
+- #2: Uppercase/underscores in `name`
+- #3: Assuming Copilot auto-discovers skills
+- #4: SKILL.md body over 500 lines
+- #5: Assuming hooks port to other CLIs
+- Bonus mistakes
+- Anti-patterns
+
 ## #1: Non-standard frontmatter keys
 
-**Mistake**: Adding fields like `allowed-tools`, `model`, `tools`, `tags`, `context`, `version`, `author` to the YAML frontmatter.
+**Mistake**: Adding top-level fields that are neither specification keys nor Claude Code keys, such as `tools`, `tags`, `version`, `author`.
 
 ```yaml
 ---
 name: my-skill
-description: Use when ...
-allowed-tools: [Bash, Read]   # ❌ BREAKS STRICT LOADERS
-model: claude-opus            # ❌ BREAKS STRICT LOADERS
-tags: [api, rest]             # ❌ BREAKS STRICT LOADERS
+description: "REST API integration: ... Use when ..."
+tools: [Bash, Read]           # ❌ not a key any loader reads
+tags: [api, rest]             # ❌ custom data at the top level
+version: 1.2.0                # ❌ custom data at the top level
 ---
 ```
 
-**Symptom**: Skill works on Claude. On a strict-loading tool, the skill listing doesn't show it. Trying to use it fails silently — the model never knows it exists.
+**Symptom**: The audit fails the skill (A1). claude.ai upload and the Skills API reject it with "Unexpected key(s) in SKILL.md frontmatter".
 
-**Cause**: The skill-creator convention's hard rule: *"Do not include any other fields in YAML frontmatter."* Extra fields are silently rejected by strict loaders.
+**Cause**: Top-level keys are a closed set: the specification keys plus the keys Claude Code reads (the list is in `_meta/skill_audit.py`).
 
 **Fix**:
 
 ```yaml
 ---
 name: my-skill
-description: Use when ...
+description: "REST API integration: ... Use when ..."
+allowed-tools: Bash Read
+metadata:
+  tags: "api, rest"
+  version: "1.2.0"
 ---
 ```
 
-Move tool/model/tag info into the body (a `## Permissions` section, `## Model` section, etc.) or out of the skill entirely (track tags in `~/.claude/skills/_meta/inventory.json`).
+Custom data moves under `metadata:` as quoted strings. A Claude Code key such as `model` or `context` is legal in Claude Code, but a skill bound for claude.ai upload or the Skills API keeps to the six specification keys.
 
 ## #2: Uppercase/underscores in `name`
 
@@ -179,14 +193,18 @@ ln -sfn "$HOME/.claude/skills/$SKILL_NAME" "$TARGET"
 
 Precedent: S022 lost all 12 new/modified files mid-session to this bug; recovered by rewriting verbatim from prior writes. Don't repeat.
 
-### Description that doesn't lead with a trigger
+### Description that hides the subject or the trigger
 
 ```yaml
-description: A skill for working with REST APIs.   # ❌ vague
+description: A skill for working with REST APIs.   # ❌ vague, no trigger
 ```
 
 ```yaml
-description: Use when integrating with REST APIs — HTTP methods, status codes, content negotiation.   # ✅ trigger-led
+description: Use when integrating with REST APIs.   # ❌ opens with "Use when"; fails the audit
+```
+
+```yaml
+description: "REST API integration: HTTP methods, status codes, content negotiation. Use when calling or designing an HTTP API."   # ✅ subject, what, when
 ```
 
 The model decides whether to load the skill based on the description. Vague descriptions = skill never triggers.
@@ -215,7 +233,7 @@ grep -oE 'references/[a-z0-9-]+\.md' "$SKILL_DIR/SKILL.md" \
 
 | Don't | Why |
 |---|---|
-| Add `allowed-tools` to frontmatter for "convenience" | Breaks strict loaders. The whole skill becomes invisible there. |
+| Add a top-level key that is on neither list (`tags`, `version`, `tools`) | Fails the audit (A1); claude.ai upload and the Skills API reject the skill. Custom data goes under `metadata:` |
 | Use uppercase or underscores in `name` | Rejected by validator |
 | Symlink skills to a non-existent Copilot skills directory | Copilot doesn't have one. Use AGENTS.md instead. |
 | Inline 1000 lines in SKILL.md | Strict loaders truncate; Claude wastes context |

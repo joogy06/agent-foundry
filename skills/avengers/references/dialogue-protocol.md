@@ -10,6 +10,22 @@ CONVENE → BLIND_DIVERGE → DOCKET → CROSS_EXAM (1..2 cycles) → CONVERGE �
                                                                        side exits: ABORTED, LOW_QUORUM  (never silently converted to success)
 ```
 
+## Contents
+
+- Roles
+- CONVENE
+- BLIND_DIVERGE
+- DOCKET
+- CROSS_EXAM (1..2 cycles; budgeted by `max_cycles`)
+- CONVERGE — task-family-dependent semantics
+- ARBITER
+- ROUTE
+- WRITEBACK_PROPOSE
+- CLOSED
+- Side exits — never silently converted to success
+- User interjections (first-class, non-blocking)
+- Anti-sycophancy invariants (design §2/§3, inherited from cross-cli-deliberation)
+
 ## Roles
 
 - **Member seats** — the deliberators. Each carries a role card with an INCENTIVE
@@ -119,14 +135,50 @@ ballots and adjudicates** (the participant-judge violation is gone). Its provide
 
 - **CLEAN path** — a provider used by **no** deliberation seat: genuinely external,
   authorship linkage total-excluded, **no residual**.
-- **FALLBACK path** — all providers deliberated (`coding-ratification` pins all three
-  families, so it **always** lands here): the strongest-adjudication-prior
-  **non-adversarial** provider, cold-context. Authorship is anonymized, but
-  style-recognition self-preference is an **ACCEPTED, DOCUMENTED residual**, flagged
-  `fallback_arbiter_residual: true` in `run-record.json` (§6a).
-- **ALL-ADVERSARIAL** — every provider deliberated **and** every one is adversarial:
-  no non-adversarial arbiter exists → **fail CLOSED** (`ConveneError`). The only
+- **FALLBACK path** — no eligible provider is free of deliberation: the
+  strongest-adjudication-prior **non-adversarial** provider, cold-context. Authorship is
+  anonymized, but style-recognition self-preference is an **ACCEPTED, DOCUMENTED residual**,
+  flagged `fallback_arbiter_residual: true` in `run-record.json` (§6a).
+- **ALL-ADVERSARIAL** — every eligible provider deliberated **and** every one is
+  adversarial: no non-adversarial arbiter exists → **fail CLOSED** (`ConveneError`). The only
   unsatisfiable arbiter case; it never hangs.
+
+**agy never arbitrates a healthy session (S081 revision 4, amendment 3 D25 + D23, scoped by
+D29), and it is barred from SELECTION in code** (`convene.ARBITER_INELIGIBLE_PROVIDERS`,
+applied in `_select_arbiter_provider`), not merely absent by accident. This is the half of D25
+that is easy to miss: D25 removed agy's *seats* from every profile but `research-synthesis`,
+and a provider with no seat is precisely what qualifies for the CLEAN path — so the seat
+removal, left alone, would have **promoted agy from member to arbiter**. Measured before the
+bar was added: `coding-ratification` resolved agy (the agy family of the day), path clean, in the
+one profile whose arbiter the amendment says is Claude (the Claude main tier). #368 seated agy
+again in every profile, so agy is no longer a clean-path candidate; the bar still keeps agy, a
+non-adversarial seat, off the fallback path, and the healthy arbiter stays Claude.
+
+**The bar is scoped (D29, user-approved 2026-09-19).** It applies only while no provider is
+excluded. A session that has already lost a provider — codex unavailable at plan build, a codex
+seat substituted (an admission refusal included), or codex excluded after the arbiter pin found
+no eligible model — keeps agy as the **last-resort arbiter** rather than failing closed: on any
+codex refusal `coding-ratification` resolves `agy gemini-4-argon-high, path fallback` (path clean
+before #368 seated agy there). (Barring
+agy unconditionally made 32 substitution paths fail closed, `coding-ratification` among them.)
+A declared arbiter is not selection and does not consult the bar; no shipped profile declares agy.
+
+The consequence is stated plainly rather than presented as equivalence. **Since #368 every
+profile is a three-provider deliberation (Claude + codex + agy), and every healthy-session
+arbiter is Claude** — D25 had made the four profiles other than `research-synthesis` two-provider
+(Claude + codex); #368 added ONE agy (Gemini 4 Argon) seat to each, on the main weight, keeping
+every existing seat (business-ideation `user-advocate`, website-ux `operator`, writing-cv
+`architect`, coding-ratification `user-advocate`). Every profile seats agy, so the clean path is
+unreachable while codex serves, and each arbiter is either **DECLARED** (`business-ideation`,
+`research-synthesis`, `website-ux`, `writing-cv`: the Claude support tier through the protected
+`consultant_support` row, `arbiter_independence: separate-session`, context independence standing in
+for provider independence) or a **recorded FALLBACK residual** (`coding-ratification`: the selected
+Claude `arbiter` row, the Claude main tier, `fallback_arbiter_residual`). agy is a *seat* everywhere,
+never an arbiter of a healthy session. A session whose codex arm is refused (every codex seat
+re-seated on the Claude main tier) no longer has a Claude-only deliberation: every profile's codex
+outage still leaves a Claude + Google round, and its dissent record must name the OpenAI gap (jc10).
+The four declaring profiles keep their Claude support-tier arbiter, while `coding-ratification`'s
+recomputed arbiter is agy, on the fallback path.
 
 `can_arbitrate` on the seats is **inert** under v2. The adjudication prior comes from the
 editable `capability-priors.yaml` DATA (fail-open to built-ins). The arbiter runs the

@@ -2,6 +2,18 @@
 
 Issues raised by the Wave 1 challenger review of the cross-tool design that the original spec didn't fully address. Each is documented with the concern, the current state, and the mitigation (or open question).
 
+## Contents
+
+- Concern 1: Skill name collisions across tools
+- Concern 2: Hook re-entrancy across CLIs
+- Concern 3: Multi-user auth on a shared workstation
+- Concern 4: Symlink / import currency
+- Concern 5: AGENTS.md not natively read by Claude Code
+- Concern 6: First-boot verification depends on a tool that doesn't yet exist
+- Concern 7: Description budget
+- Open backlog items
+- Anti-patterns
+
 ## Concern 1: Skill name collisions across tools
 
 **Concern**: A skill named `my-skill` could collide with a built-in skill of the same name on another tool, or a Copilot agent of the same name.

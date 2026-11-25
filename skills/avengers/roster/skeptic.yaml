@@ -33,10 +33,12 @@ divergence_overlay:
     partial failure, ordering, the case everyone assumes cannot happen — before the
     obvious ones, so the docket surfaces failure modes a consensus reading would miss.
 
+seat_weight: main             # S081 §4.8 main seat (top-level, never under provider:): a claude/agy placement resolves seat_model consultant_main (the Claude main tier / agy TOP-argon-high); codex is consultant_main at any weight
+
 provider:
-  affinity: codex             # gpt-5.6-sol; challenger seat
+  affinity: codex             # the codex std tier via seat_model consultant_main (the std literal since the astra reserve, roster rev 4); challenger seat
   fallback_ok: true
-  effort: xhigh               # pinned; challenger/ballot floor. 'high' is RETIRED and MUST be rejected by convene.py (WP-2).
+  effort: challenger_floor    # seat-class, resolved per provider by convene SEAT_CLASS_TABLE: codex -> xhigh (measured on gpt-5.6-sol, provisional on other models); claude/agy -> default + anti-sycophancy note
 
 speak_when: "always — files a blind position, challenges peers in cross-exam, casts a Gate-1 ballot"
 

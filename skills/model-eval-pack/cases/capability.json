@@ -1,0 +1,123 @@
+{
+  "category": "capability",
+  "cases": [
+    {
+      "id": "cap-smoke",
+      "prompt": "Reply with exactly the two characters OK and nothing else.",
+      "scorers": [
+        {
+          "type": "exact",
+          "value": "OK"
+        }
+      ]
+    },
+    {
+      "id": "cap-logic",
+      "prompt": "Advisory only - answer on stdout, do not use tools. Seats 1-6 in a row. People P,Q,R,S,T,U. Q is in seat 3. P is immediately left of R. P is not in seat 1. S is not adjacent to Q. T is in a higher-numbered seat than U. U is not in seat 1. R is not in seat 6. S is not in seat 6. Give the unique order seat1..seat6. Final line: FINAL: <six letters>",
+      "scorers": [
+        {
+          "type": "final",
+          "accept": [
+            "SUQPRT"
+          ]
+        }
+      ],
+      "note": "Unique answer verified by brute force over all 720 orders."
+    },
+    {
+      "id": "cap-codefix",
+      "prompt": "Advisory only - do not use tools. Find the bug in this Python and give the one-line fix. Final line: FIX: <line>\n\ndef moving_avg(xs, k):\n    out=[]\n    for i in range(len(xs)-k):\n        out.append(sum(xs[i:i+k])/k)\n    return out\n",
+      "scorers": [
+        {
+          "type": "regex",
+          "pattern": "FIX:.*range\\(\\s*(0\\s*,\\s*)?len\\(xs\\)\\s*(-\\s*k\\s*\\+\\s*1|\\+\\s*1\\s*-\\s*k)\\s*\\)"
+        }
+      ]
+    },
+    {
+      "id": "cap-json",
+      "prompt": "Advisory only - do not use tools. Output ONLY a JSON object, no prose, no code fences, with keys \"primes\" (list of the primes between 80 and 110) and \"count\" (integer).",
+      "scorers": [
+        {
+          "type": "json_equals",
+          "value": {
+            "primes": [
+              83,
+              89,
+              97,
+              101,
+              103,
+              107,
+              109
+            ],
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "cap-math",
+      "prompt": "Advisory only - do not use tools. How many positive integers n <= 1000 satisfy gcd(n, 30) = 1? Show brief working, final line: FINAL: <number>",
+      "scorers": [
+        {
+          "type": "final",
+          "accept": [
+            "266"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cap-trap",
+      "prompt": "Advisory only - do not use tools. A bat and a ball cost 1.10 in total; the bat costs 1.00 more than the ball. A second purchase: 3 bats and 2 balls. Then a 10% discount is applied to the second purchase only. What does the second purchase cost after discount? Final line: FINAL: <number with 3 decimals>",
+      "scorers": [
+        {
+          "type": "final",
+          "accept": [
+            "2.925"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cap-needle",
+      "prompt": "Advisory only - do not use tools. Below is a long document. What is the vault combination and who owns it? Answer in one line.\n{haystack}",
+      "scorers": [
+        {
+          "type": "contains_all",
+          "patterns": [
+            "48-15-93",
+            "Marguerite"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cap-critique",
+      "prompt": "Advisory only - do not use tools. A team proposes: 'cache LLM responses keyed by sha256(prompt) forever, shared across all users, to cut cost'. List the three most serious problems in at most 60 words total.",
+      "scorers": [
+        {
+          "type": "contains_all",
+          "patterns": [
+            "leak|tenant|privacy|cross-user|other users|pii",
+            "system prompt|temperature|model version|parameters|sampling|context|history",
+            "stale|ttl|poison|invalidat|expir|outdated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cap-review",
+      "prompt": "Advisory only - do not use tools. Review this Python for correctness; list every real bug, one line each, prefix BUG:.\n\nimport threading\ncache = {}\ndef get(key, loader):\n    if key in cache:\n        return cache[key]\n    lock = threading.Lock()\n    with lock:\n        if key not in cache:\n            cache[key] = loader(key)\n    return cache[key]\n\ndef chunks(xs, n):\n    return [xs[i:i+n] for i in range(0, len(xs), n-1)]\n",
+      "scorers": [
+        {
+          "type": "contains_all",
+          "patterns": [
+            "BUG:.*((new|local|fresh|per[- ]call|each call|every call|per invocation|inside the function).*lock|lock.*(new|local|fresh|shared|not shared|each call|every call|per invocation|inside the function))",
+            "BUG:.*(n-1|n - 1|step|overlap)"
+          ]
+        }
+      ]
+    }
+  ]
+}

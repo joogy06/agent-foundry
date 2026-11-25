@@ -6,6 +6,12 @@ disambiguation: macOS — the console, the desktop, and the managed-device layer
 
 # macOS cheat sheet
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: macos-release-facts
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29. Current release: macOS 26 "Tahoe", latest 26.6 (27 July 2026).**
 

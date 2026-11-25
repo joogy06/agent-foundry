@@ -32,6 +32,16 @@ def _mkskill(root: Path, name: str, description: str = "A skill.", family: str |
     (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n{fam}{bnd}---\n\n# {name}\n")
 
 
+def _mkskill_meta(root: Path, name: str, description: str = "A skill.", **metadata: str) -> None:
+    """The twin of `_mkskill` in the standard layout (#344): custom keys under `metadata:`
+    as quoted single-line strings."""
+    d = root / name
+    d.mkdir(parents=True, exist_ok=True)
+    block = "".join(f'  {k}: "{v}"\n' for k, v in metadata.items())
+    meta = f"metadata:\n{block}" if block else ""
+    (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n{meta}---\n\n# {name}\n")
+
+
 class ResolveCase(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -97,6 +107,20 @@ class ResolveCase(unittest.TestCase):
         r = skill_resolve.resolve(["family:rhel"], self.index, self.enabled)
         self.assertEqual(r["unresolved"], [])
         self.assertEqual(sorted(r["resolved"]), ["rhel-databases", "rhel-monitoring"])
+
+    def test_family_expands_to_members_metadata_twin(self):
+        """The same index and the same expansion when `family` sits under `metadata:` (#344)."""
+        twin = self.home / "skills-metadata"
+        twin.mkdir()
+        for name, desc, fam in (("ux-reviewer", "Reviews UX.", None), ("challenger", "Challenges designs.", None),
+                                ("rhel-databases", "Databases on RHEL.", "rhel"),
+                                ("rhel-monitoring", "Monitoring on RHEL.", "rhel")):
+            _mkskill_meta(twin, name, desc, **({"family": fam} if fam else {}))
+        index = skill_resolve.build_index(twin)
+        self.assertEqual(index["families"], self.index["families"])
+        r = skill_resolve.resolve(["family:rhel"], index, self.enabled)
+        self.assertEqual(r["expanded"]["family:rhel"], ["rhel-databases", "rhel-monitoring"])
+        self.assertEqual(r, skill_resolve.resolve(["family:rhel"], self.index, self.enabled))
 
     def test_empty_family_is_an_error_not_empty_success(self):
         r = skill_resolve.resolve(["family:nonexistent"], self.index, self.enabled)
@@ -200,6 +224,39 @@ class OverlapCase(unittest.TestCase):
         rc = skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--update-baseline"])
         self.assertEqual(rc, 0)
         self.assertTrue(base.exists())
+
+    # --- twins of the fixtures above, with the custom key under `metadata:` (#344) ---
+
+    def test_baseline_suppresses_known_pair_metadata_twin(self):
+        _mkskill_meta(self.skills, "rhel-web", "Configure nginx apache web servers tuning tls on RHEL hosts",
+                      applies_when="os_family == rhel")
+        _mkskill_meta(self.skills, "ubuntu-web", "Configure nginx apache web servers tuning tls on Ubuntu hosts",
+                      applies_when="os_family == ubuntu")
+        base = Path(self.tmp.name) / "baseline.json"
+        rc_before = skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--json"])
+        self.assertEqual(rc_before, 2, "a fresh collision must fail")
+        skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--update-baseline"])
+        rc_after = skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--json"])
+        self.assertEqual(rc_after, 0, "accepted pair must not re-flag")
+
+    def test_update_baseline_accepts_a_metadata_boundary_twin(self):
+        _mkskill_meta(self.skills, "alpha-thing", "Manage widget inventory levels and widget stock counts")
+        _mkskill_meta(self.skills, "beta-thing", "Manage widget inventory levels and widget stock counts",
+                      disambiguation="Counts stock. Inventory levels are alpha-thing.")
+        base = Path(self.tmp.name) / "accepted.json"
+        rc = skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--update-baseline"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(base.exists())
+
+    def test_update_baseline_still_refuses_when_metadata_holds_no_boundary(self):
+        _mkskill_meta(self.skills, "alpha-thing", "Manage widget inventory levels and widget stock counts",
+                      version="1.0.0")
+        _mkskill_meta(self.skills, "beta-thing", "Manage widget inventory levels and widget stock counts",
+                      version="1.0.0")
+        base = Path(self.tmp.name) / "refused.json"
+        rc = skill_overlap.main(["--skills-root", str(self.skills), "--baseline", str(base), "--update-baseline"])
+        self.assertEqual(rc, 2, "an unrelated metadata key is not a boundary")
+        self.assertFalse(base.exists())
 
     def test_unreadable_baseline_fails_closed(self):
         _mkskill(self.skills, "a", "one two three four five six")

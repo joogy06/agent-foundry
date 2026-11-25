@@ -1,0 +1,668 @@
+{
+  "schema": "split-manifest.v1",
+  "skill": "codex-orchestration",
+  "extra_files": [
+    "_meta/codex_top_seat.sh"
+  ],
+  "adds": [
+    {
+      "text": "metadata:",
+      "reason": "#344 WP-2: parent key for custom frontmatter data; the skill standard keeps custom keys under metadata as strings"
+    },
+    {
+      "lines": [
+        ". \"$HOME/.claude/skills/_meta/codex_top_seat.sh\" 2>/dev/null",
+        "if ! declare -F codex_top_seat >/dev/null; then",
+        "  echo \"CODEX_GAP: codex_top_seat.sh missing or unreadable; no codex seat was started\" >&2",
+        "  exit 1",
+        "fi"
+      ],
+      "count": 1,
+      "reason": "#344 WP-3: the source-and-guard preamble that replaces the pasted codex_top_seat function at a call site; the guard stops the Bash call before any seat starts when the script is missing. The function itself is not deleted from this corpus: its one copy moved byte-for-byte from Seat Models into skills/_meta/codex_top_seat.sh (extra_files)"
+    },
+    {
+      "lines": [
+        "# codex_top_seat.sh -- SOURCED, never executed. It defines the one function below and nothing else:",
+        "# no top-level command, no `set`, no trap, no `cd`. A call site sources it and checks that the function",
+        "# exists, in the SAME Bash call that runs its seats (shell functions do not survive between calls); the",
+        "# source-and-guard preamble is in the codex-orchestration skill, \"Seat Models\".",
+        "#",
+        "# codex_top_seat NAME ROLE USE SIZE KEY BRIEF_FILE OUT_FILE [codex exec flags...] -- one budgeted codex seat."
+      ],
+      "count": 1,
+      "reason": "#344 WP-3: header comment of the new sourced script skills/_meta/codex_top_seat.sh (what the file is, that it is sourced and never executed, the call signature)"
+    },
+    {
+      "lines": [
+        "The HARD-RULE \"Always create a unique session directory before any Codex delegation\" is above, with the opening hard rules. This is its recipe:",
+        "The HARD-RULE \"Never use `--dangerously-bypass-approvals-and-sandbox` or `danger-full-access` unless the environment is externally sandboxed\" is above, with the opening hard rules."
+      ],
+      "reason": "#344 WP-5: pointer line at the original position of each hoisted HARD-RULE block (Session Directory; Sandbox Modes): it names the rule and says the block is now with the opening hard rules"
+    },
+    {
+      "lines": [
+        "## Antigravity CLI (`agy`)",
+        "Read `references/agy-patterns.md` before any headless `agy` call: the stdin, flag-order, sandbox and model rules, the `agy -p` invocation patterns and the availability check. The FLASH-ONLY hard rule is above, with the opening hard rules.",
+        "## Reasoning-Effort Tiers",
+        "Read `references/effort-tiers.md` when choosing or questioning a tier: the 2026-07-11 benchmark, the `high` policy finding, per-model tier support, the one owner of the timeouts, and the tier table (use, typical wall-clock, runaway cap).",
+        "## Current State",
+        "Read `references/current-state.md` for what is installed, configured and verified on this host: the CLI versions and per-role pins, the `config.toml` snapshot, why the model is pinned and never inherited, the Claude and Codex strengths table, the subcommands added since 0.118, and the verified-facts table (versions, the codex roster).",
+        "## `codex exec` recipes",
+        "Read `references/codex-exec.md` before writing a raw `codex exec` call. It holds the \"Core Integration\" section (the command shape and its critical flags), the basic delegation pattern, and the full availability check (`check_codex`).",
+        "The full check (`check_codex`: the CLI is on PATH, a seat pin resolves, a pinned 10-second probe call answers) is in `references/codex-exec.md`."
+      ],
+      "reason": "#344 WP-5: SKILL.md entry text where a section moved to a reference: a short heading and one `Read references/...` pointer line at the section's old position (agy, effort tiers, current state, codex exec recipes), and one pointer line under Session-Scoped Availability for the full check"
+    },
+    {
+      "lines": [
+        "- **`references/agy-patterns.md`** — the Antigravity CLI: headless `agy -p` rules (stdin, flag order, sandbox, model pin), invocation patterns, availability check",
+        "- **`references/effort-tiers.md`** — reasoning-effort tiers: benchmark, per-model tier support, timeout owner, tier table",
+        "- **`references/current-state.md`** — versions and pins on this host, `config.toml`, model override, cross-model strengths, newer subcommands, verified facts",
+        "- **`references/codex-exec.md`** — `codex exec` command shape and flags, basic delegation pattern, full availability check"
+      ],
+      "reason": "#344 WP-5: the existing \"Reference Files\" list names the four new references (audit rule A7)"
+    },
+    {
+      "lines": [
+        "# Codex Orchestration — the Antigravity CLI (`agy`)",
+        "Read this file before any headless `agy` call. When it is read, return to SKILL.md.",
+        "\"Seat Models\", which this file names for the `codex_top_seat` preamble, is a section of SKILL.md.",
+        "# Codex Orchestration — reasoning-effort tiers",
+        "Read this file when choosing or questioning a `model_reasoning_effort` tier. When it is read, return to SKILL.md.",
+        "The challenger call, the delta-seeking challenger prompt and the operational notes that followed this section are in SKILL.md, under \"Reasoning-Effort Tiers\".",
+        "# Codex Orchestration — current state and verified facts",
+        "Read this file for what is installed, configured and verified on this host. When it is read, return to SKILL.md.",
+        "\"Seat Models\" is a section of SKILL.md. The \"Reasoning-Effort Tiers\" detail is in `references/effort-tiers.md`.",
+        "# Codex Orchestration — `codex exec` recipes",
+        "Read this file before writing a raw `codex exec` call. When it is read, return to SKILL.md.",
+        "\"HARD-RULE at top\" and \"Seat Models\" mean SKILL.md: its opening hard rules and its \"Seat Models\" section. The session directory rule and its recipe (`CODEX_WORK`) are in SKILL.md, under \"Session Directory (REQUIRED)\"; create that directory before running the patterns below."
+      ],
+      "reason": "#344 WP-5: headers of the four new references: title, when to read the file and the return to SKILL.md, and where a section the moved text names now lives"
+    },
+    {
+      "lines": [
+        "- **FLASH-ONLY:** agy runs gemini flash models only. The hard rule, with the forbidden models and its reasons, is in SKILL.md with the opening hard rules; it binds every call in this file."
+      ],
+      "reason": "#344 WP-5: pointer line at the original position of the FLASH-ONLY HARD-RULE bullet in the agy rule list (the bullet itself stays in SKILL.md with the opening hard rules; the list would read as if agy had no model restriction without it)"
+    },
+    {
+      "text": "## Contents",
+      "count": 2,
+      "reason": "#344 WP-5: existing references patterns.md and templates.md: a contents list (audit rule A8)"
+    },
+    {
+      "lines": [
+        "- Handover Patterns via Session-Scoped Temp Directories: Pattern 1 (simple), Pattern 2 (structured handover), Pattern 3 (parallel tasks)",
+        "- Progress Tracking: long-running tasks, the progress file convention",
+        "- Skill Injection Pattern: when to inject or let Codex discover, multi-skill injection",
+        "- Codex as MCP Server",
+        "- Temp File Naming Convention, cleanup"
+      ],
+      "reason": "#344 WP-5: existing reference patterns.md: the contents list entries (audit rule A8)"
+    },
+    {
+      "lines": [
+        "- Challenger Review Brief",
+        "- Approach Explorer Brief",
+        "- Research Brief",
+        "- Escalation Brief (When Claude Is Stuck)",
+        "- Prototyping Brief",
+        "- Code Review Brief",
+        "- Structured Output Brief"
+      ],
+      "reason": "#344 WP-5: existing reference templates.md: the contents list entries (audit rule A8)"
+    },
+    {
+      "lines": [
+        "**A missing seat script is a gap for every seat of the call.** When the Bash call exits non-zero with the stderr line `CODEX_GAP: codex_top_seat.sh missing or unreadable; no codex seat was started`, the guard stopped it before any seat ran and no seat output file was written: every seat of that call is a gap, to be handled exactly as if `$OUT_FILE` opened with `CODEX_GAP:`."
+      ],
+      "reason": "#344 fix round 1 (m3): one sentence at the codex-orchestration seat site, mirroring forge: the guard's non-zero exit with the stderr CODEX_GAP line writes no seat output file, so every seat of that call is a gap"
+    },
+    {
+      "lines": [
+        "(`model_roster.AGY_FAMILY`, rev 6: `argon`, so the agy column reads TOP-argon); within it the VERSION auto-follows. To change which model"
+      ],
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "lines": [
+        "`timeout … agy --sandbox --mode plan … -p … < /dev/null` pattern, its mandatory closed stdin, its flag order and the",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"<prompt>\" < /dev/null)",
+        "  input (`cat file | agy --sandbox --mode plan --model <slug> -p \"…\"`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same",
+        "  re-testing the broken command. Correct: `agy --sandbox --mode plan [--print-timeout 15m] --model <slug> -p \"…\"`.",
+        "- **SANDBOX RULE (mandatory for analyst/read-only delegation, #157, #366):** every call that",
+        "  should only READ is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline or piped,",
+        "  no `--add-dir`. Un-sandboxed, agy has write/shell/git tools and an \"analyst\" can author and",
+        "  git-commit code (S052 rogue auto-commit incident). Measured 2026-11-01 on 1.4.12: `--sandbox`",
+        "  restricts only the shell, so native writes and reads work under it; `--mode plan` removes native",
+        "  writes and the shell; the cwd is the workspace, so a call from a repo can read that repo. Open the",
+        "  prompt with \"Advisory only — do not modify any files; answer on stdout\". The table and its limits",
+        "  are in the `antigravity-cli` skill.",
+        "- **PATTERN 2 (`--dangerously-skip-permissions`) has no containment:** full shell and git, reads home",
+        "  and repos. Throwaway directory only, never a live repo as cwd or `--add-dir`; afterwards run",
+        "  `git status --short` and compare `git log -1 --oneline` with the start, since status cannot see a",
+        "  commit.",
+        "- For long-running prompts raise the wait timeout: `agy --sandbox --mode plan --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+        "(cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Review this code for security issues\" < /dev/null)",
+        "cat src/main.py | (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Find N+1 query problems\")",
+        "# A project review: pipe its files in. Never --add-dir or cd into a live repo: agy could read all of it.",
+        "(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1) | (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout. Review the files on stdin for security issues\")",
+        "(cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately.\" < /dev/null)",
+        "(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1) \\",
+        "  | (cd \"$AGY_WORK\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Review the files on stdin for security issues\" > review.txt) &"
+      ],
+      "count": 1,
+      "reason": "#366: agy rule rewritten from the 1.4.12 measurements; advisory recipes run --sandbox --mode plan from an empty cwd"
+    },
+    {
+      "lines": [
+        "- For long-running prompts raise the wait timeout: `(cd \"$(mktemp -d)\" && agy --sandbox --mode plan --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null)` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135)."
+      ],
+      "count": 1,
+      "reason": "#366 fix round 1: recipe gains an empty cwd"
+    },
+    {
+      "lines": [
+        "- **STDIN RULE (mandatory, #135):** `< /dev/null` on every headless agy call — agy waits on",
+        "  input never reaches the model (2026-11-01, 1.4.12, rc 0): read content into a variable before the",
+        "  subshell and inline it, at most 100 KB per call (one argument cannot pass 128 KB). Always wrap in shell `timeout`. Same",
+        "  should only READ is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline in `-p`,",
+        "# With file content: read it first, then inline it. Piped stdin never reaches the model.",
+        "C=\"$(cat src/main.py)\" && (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Find N+1 query problems:",
+        "$C\" < /dev/null)",
+        "$C\" < /dev/null)",
+        "# A project review: inline its files, at most 100 KB per call. Never --add-dir or cd into a live repo.",
+        "C=\"$(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1)\" && (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout. Review these files for security issues:",
+        "C=\"$(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1)\"",
+        "(cd \"$AGY_WORK\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Review these files for security issues:",
+        "$C\" > review.txt < /dev/null) &"
+      ],
+      "count": 1,
+      "reason": "#366 fix round 2: piped stdin never reaches the model, so content is inlined"
+    },
+    {
+      "lines": [
+        "  && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"<prompt>\" < /dev/null)",
+        "- For long-running prompts raise the wait timeout: `(d=\"$(mktemp -d)\" && cd \"$d\" && agy --sandbox --mode plan --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null)` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+        "(d=\"$(mktemp -d)\" && cd \"$d\" && agy --sandbox --mode plan $AGY_MODEL -p \"Review this code for security issues\" < /dev/null)",
+        "C=\"$(cat src/main.py)\" && (d=\"$(mktemp -d)\" && cd \"$d\" && agy --sandbox --mode plan $AGY_MODEL -p \"Find N+1 query problems:",
+        "C=\"$(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1)\" && (d=\"$(mktemp -d)\" && cd \"$d\" && agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout. Review these files for security issues:",
+        "(d=\"$(mktemp -d)\" && cd \"$d\" && agy --sandbox --mode plan $AGY_MODEL -p \"Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately.\" < /dev/null)",
+        "AGY_WORK=$(mktemp -d /tmp/agy-XXXXXXXXXX) || exit 1"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C1: the empty-cwd allocation is checked before the cd"
+    },
+    {
+      "lines": [
+        "  and repos. For work that needs tools, never a way to give a reviewer context. Throwaway directory only, never a live repo as cwd or `--add-dir`; afterwards run"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C2: Pattern 2 is no route to context"
+    },
+    {
+      "lines": [
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "1. CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "# CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1"
+      ],
+      "count": 1,
+      "reason": "Codex re-review: every mktemp allocation is checked"
+    }
+  ],
+  "changes": [
+    {
+      "old": "disambiguation: Delegation STRATEGY across external CLIs — when to ask a second model, how to frame the task, how to weigh the answer. The `agy` binary's own flags and failure modes are antigravity-cli.",
+      "new": "  disambiguation: \"Delegation STRATEGY across external CLIs — when to ask a second model, how to frame the task, how to weigh the answer. The `agy` binary's own flags and failure modes are antigravity-cli.\"",
+      "reason": "#344 WP-2: the custom key `disambiguation` moved from the top level to `metadata.disambiguation` as a quoted single-line string; the value is unchanged"
+    },
+    {
+      "old": "# A repo-exploring -C call is a budgeted `consult`. codex_top_seat is the function in \"Seat Models\": paste it into this",
+      "new": "# A repo-exploring -C call is a budgeted `consult`. codex_top_seat is the function in \"Seat Models\": paste its preamble into this",
+      "reason": "#344 WP-3: the Seat Models block no longer holds the function to paste; it holds the preamble that sources it"
+    },
+    {
+      "old": "This applies to every prose codex call site — the `codex_top_seat` block below and all four of its copies,",
+      "new": "This applies to every prose codex call site — the `codex_top_seat` block below, the script it sources and its two pasted copies,",
+      "reason": "#344 WP-3: the function is no longer pasted four times; it is one script plus two pasted copies (adversarial-team-brainstorm, cross-cli-deliberation)"
+    },
+    {
+      "old": "The budgeted-seat shape every consultancy site uses (forge, adversarial-team-brainstorm and cross-cli-deliberation each carry a copy with their own gap line; the copies are identical apart from that line, and `skills/forge/tests/test_codex_top_seat_block.py` holds them to it). The name is historical: since the astra reserve it serves the std-tier seats too, and it carries the ONE Sol → TOP capability retry (U2) between the classify loop and the substitution. Its cap comes from `seat_model.py timeout --role R --provider codex` (the table's Codex timeout column: 2400s at `xhigh`, 3600s at `max`), asked only after the admit, and never from a literal — and it reaches `codex exec` as `codex_watch.py --hard-cap`, so the call is stopped by silence rather than by the clock. Define it in the same Bash call that runs the seat, because shell functions do not survive between calls, **and run that Bash call in the background** (see \"Never run a codex call in a foreground Bash tool call\" below):",
+      "new": "The budgeted-seat shape every consultancy site uses. The function lives in ONE script, `~/.claude/skills/_meta/codex_top_seat.sh`, which this skill and forge source behind a guard (adversarial-team-brainstorm and cross-cli-deliberation each still carry a pasted copy with their own gap line; the copies are identical to the script apart from that line, and `skills/forge/tests/test_codex_top_seat_block.py` holds them to it). The name is historical: since the astra reserve it serves the std-tier seats too, and it carries the ONE Sol → TOP capability retry (U2) between the classify loop and the substitution. Its cap comes from `seat_model.py timeout --role R --provider codex` (the table's Codex timeout column: 2400s at `xhigh`, 3600s at `max`), asked only after the admit, and never from a literal — and it reaches `codex exec` as `codex_watch.py --hard-cap`, so the call is stopped by silence rather than by the clock. Source it in the same Bash call that runs the seat, because shell functions do not survive between calls — the guard stops the call before any seat starts when the script is missing — **and run that Bash call in the background** (see \"Never run a codex call in a foreground Bash tool call\" below):",
+      "reason": "#344 WP-3: the paragraph that introduces the Seat Models block said forge carried a pasted copy and told the reader to DEFINE the function; forge and this skill now SOURCE one script behind a guard. Every other sentence of the paragraph is unchanged"
+    },
+    {
+      "old": "# \"Seat Models\" (paste it into this Bash call); on astra unavailable challenge.md gets a",
+      "new": "# \"Seat Models\" (paste its preamble into this Bash call); on astra unavailable challenge.md gets a",
+      "reason": "#344 WP-3: the Seat Models block no longer holds the function to paste; it holds the preamble that sources it"
+    },
+    {
+      "old": "description: \"Use when delegating tasks to Codex CLI (OpenAI, model pinned per role via seat_model) or Antigravity CLI (agy) from Claude Code — research tasks, challenger/devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers codex exec with a per-call model + reasoning-effort pin, the codex_quota admit gate, agy -p headless mode, and the Codex plugin commands (not installed here — dead path). Triple-model orchestration for Claude + Codex + Antigravity (agy).\"",
+      "new": "description: \"Codex CLI and Antigravity CLI (agy) delegation from Claude Code: research tasks, challenger or devil's advocate reviews, prototyping, idea generation, code review, second-opinion analysis. Covers codex exec with a per-role model and reasoning-effort pin (seat_model), the codex_quota admit gate and agy -p headless mode. Use when a task goes to a second or third model.\"",
+      "reason": "#344 WP-6: the description is rewritten subject first, third person and within its limit (audit rules A4/A5); no body line changes"
+    },
+    {
+      "old": "# RUN THE BASH TOOL CALL THAT DEFINES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on",
+      "new": "# RUN THE BASH TOOL CALL THAT SOURCES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on",
+      "reason": "#344 fix round 1 (m4): the call site sources codex_top_seat.sh since WP-3 and no longer defines the function; the comment says SOURCES AND RUNS"
+    },
+    {
+      "old": "- **FLASH-ONLY HARD-RULE (user directive 2026-07-24): agy runs gemini flash models ONLY — now enforced in code as well as stated.** `seat_model` accepts only `^gemini-\\d+(\\.\\d+)*-flash-(high|medium|low)$` on every agy path (roster, freeze pin, env, harness literal). ✅ Listed on 2026-09-14 (`~/.claude/state/agy-models.json`, agy 1.2.2): `gemini-3.8-flash-{high,medium,low}` (newest), `gemini-3.7-flash-*`, `gemini-3.6-flash-*`. `gemini-3.5-flash-*` is no longer listed. ❌ FORBIDDEN with no carve-out, although agy lists them: `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`, **and `gemini-3.1-pro-{high,low}`**. Reasons: (1) **provider diversity**, unchanged and fully binding — agy holds the third-model slot because it is neither Anthropic nor OpenAI; repointing it at `claude-sonnet-4-6` (the tempting \"fix\" for an agy no-show) collapses the cross-check into an echo, and `gpt-oss-*` collapses into the Codex arm; (2) **flash is Google's leading line**. This second reason has INVERTED. It used to read \"flash-tier discipline — agy is advisory-tier, so don't reach for pro\", which assumed pro > flash. That no longer holds: the pro line is stuck at `gemini-3.1-pro` while flash has reached 3.8, so `gemini-3.8-flash` is the smartest Google model on this account, and reaching for pro would buy an OLDER generation at higher latency. The rule stands; only its justification changed. On a no-show: retry under the STDIN/FLAG-ORDER/Pattern-2 rules, then record the provider gap honestly — there is no gemini fallback (retired 2026-07-25). Escalate to another arm rather than repointing agy.",
+      "new": "- **AGY FAMILY HARD-RULE (user directive; roster rev 6, 2026-10-21): agy serves ONE Gemini family, the one named by `model_roster.AGY_FAMILY` — enforced in code as well as stated.** Currently **Gemini 4 Argon**: `gemini-4-argon-{high,medium,low}` (listed 2026-10-20 in `~/.claude/state/agy-models.json`, agy 1.4.3). It replaced flash 3.8 on eval evidence (#365: argon 63/63, flash 3.8 53/63, its losses all tool-reaching no-shows), and with it the FLASH-ONLY rule of 2026-07-24. `seat_model` accepts only `seat_model.AGY_FAMILY_PATTERN`, `^gemini-\\d{1,9}(\\.\\d{1,9})*-<family>-(high|medium|low)$`, the family read from the roster, on every agy path (roster, freeze pin, env, harness literal); a family swap is a roster revision (`docs/model-roster-swap.md`). ❌ FORBIDDEN with no role-based carve-out, although agy lists them: every other family — flash and any pro line included — and every non-Google slug (`claude-*`, `gpt-oss-120b-medium`). Reasons: (1) **provider diversity**, fully binding — agy holds the third-model slot because it is neither Anthropic nor OpenAI; repointing it at a `claude-*` model (the tempting \"fix\" for an agy no-show) collapses the cross-check into an echo, and `gpt-oss-*` collapses into the Codex arm; (2) **one family, the strongest Google line the account serves, chosen on evidence** — reaching for an older or different line buys nothing. Every agy call pins `--model` through `seat_model.py argv --role <role> --provider agy` (research and operational calls use `consultant_support`); the account default may still be flash, so an unpinned call rides a forbidden line. The one exception is measurement: the `model-eval-pack` skill may name any model agy lists, literally, only to measure it — never for a seat or delegated work. On a no-show: retry under the STDIN/FLAG-ORDER/Pattern-2 rules, then record the provider gap honestly — there is no gemini fallback (retired 2026-07-25). Escalate to another arm rather than repointing agy.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged; this was the #344 WP-5 reviewed reorder of old SKILL.md line 79 (hoisted verbatim above Seat Models); the line is now changed in place, so that reorder entry is retired"
+    },
+    {
+      "old": "Read `references/agy-patterns.md` before any headless `agy` call: the stdin, flag-order, sandbox and model rules, the `agy -p` invocation patterns and the availability check. The FLASH-ONLY hard rule is above, with the opening hard rules.",
+      "new": "Read `references/agy-patterns.md` before any headless `agy` call: the stdin, flag-order, sandbox and model rules, the `agy -p` invocation patterns and the availability check. The AGY FAMILY hard rule is above, with the opening hard rules.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "FLASH-ONLY rule exactly as the host directive states them.",
+      "new": "agy family rule exactly as the host directive states them.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| Role | Codex (model @ effort) | agy | Claude tier | Currently (roster rev 5) | Codex timeout | `--ephemeral` | Budget gate (`seat_model.py argv --use`) · when codex cannot serve it |",
+      "new": "| Role | Codex (model @ effort) | agy | Claude tier | Currently (roster rev 7) | Codex timeout | `--ephemeral` | Budget gate (`seat_model.py argv --use`) · when codex cannot serve it |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| `consultant_main` | std @ `xhigh` at every size (TOP only on `--user-request`) | TOP-flash `-high` | main | claude `opus` · codex std `gpt-6.1-sol` | 2400s | no | `consult` (the round's repo-exploring `-C` call) · `challenger` — std budget 2 per cycle each · the ONE Sol → TOP retry on a capability failure (`top_retry`), then a fresh Claude main-tier agent with the same brief |",
+      "new": "| `consultant_main` | std @ `xhigh` at every size (TOP only on `--user-request`) | TOP-argon `-high`; sized: light `-low`, medium `-medium`, complex `-high` | main | claude `opus` · codex std `gpt-6.1-sol` | 2400s | no | `consult` (the round's repo-exploring `-C` call) · `challenger` — std budget 2 per cycle each · the ONE Sol → TOP retry on a capability failure (`top_retry`), then a fresh Claude main-tier agent with the same brief |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| `consultant_support` | support @ `medium` | TOP-flash `-medium` | support | claude `sonnet` · codex support `gpt-5.6-terra` | 1200s | no | none (not astra) · never substituted: a failure is a gap |",
+      "new": "| `consultant_support` | support @ `medium` | TOP-argon `-medium`; sized: light `-low`, medium `-medium`, complex `-high` | support | claude `sonnet` · codex support `gpt-5.6-terra` | 1200s | no | none (not astra) · never substituted: a failure is a gap |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| `arbiter` | std @ `xhigh` at every size | TOP-flash `-high` | main | claude `opus` · codex std `gpt-6.1-sol` | 2400s | no | `ballot` / `deliberation` (std) · the ONE Sol → TOP retry (recipe seats), then the Claude main tier; avengers `convene` seats a codex member on the Claude main tier at plan time and recomputes the arbiter without codex. Avengers' `ratification_arbiter` seat class keeps `max` |",
+      "new": "| `arbiter` | std @ `xhigh` at every size | TOP-argon `-high`; sized: light `-low`, medium `-medium`, complex `-high` | main | claude `opus` · codex std `gpt-6.1-sol` | 2400s | no | `ballot` / `deliberation` (std) · the ONE Sol → TOP retry (recipe seats), then the Claude main tier; avengers `convene` seats a codex member on the Claude main tier at plan time and recomputes the arbiter without codex. Avengers' `ratification_arbiter` seat class keeps `max` |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "**Codex std tier** — codex std `gpt-6.1-sol` (roster rev 5). It serves `consultant_main` and `arbiter` at every size,",
+      "new": "**Codex std tier** — codex std `gpt-6.1-sol` (roster rev 7). It serves `consultant_main` and `arbiter` at every size,",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "- **Auto-follow, with provenance.** A TOP role follows the vendor's top listed model at call time, and the last resolved TOP per provider is recorded in `~/.claude/state/seat-model-tops.json`. A roster older than 7 days keeps the last recorded TOP (flagged stale). With no roster at all the resolver falls back to a harness literal (`gpt-6-astra` / `gemini-3.8-flash-<level>`), recorded as such.",
+      "new": "- **Auto-follow, with provenance.** A TOP role follows the vendor's top listed model at call time, and the last resolved TOP per provider is recorded in `~/.claude/state/seat-model-tops.json`. A roster older than 7 days keeps the last recorded TOP (flagged stale). With no roster at all the resolver falls back to a harness literal (`gpt-6-astra` / `gemini-<AGY_HARNESS_VERSION>-<AGY_FAMILY>-<level>`, today `gemini-4-argon-<level>`), recorded as such.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| Antigravity (`agy`, newest flash, role-pinned) | Third main deliberation provider, analyst, research | Independent Google perspective, headless `agy -p` delegation, brainstorming |",
+      "new": "| Antigravity (`agy`, newest roster-family model, role-pinned) | Third main deliberation provider, analyst, research | Independent Google perspective, headless `agy -p` delegation, brainstorming |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "  input (`cat file | agy -p`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same",
+      "new": "  input (`cat file | agy --sandbox --model <slug> -p \"…\"`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "  re-testing the broken command. Correct: `agy --sandbox [--add-dir D] [--print-timeout 15m] -p \"…\"`.",
+      "new": "  re-testing the broken command. Correct: `agy --sandbox [--add-dir D] [--print-timeout 15m] --model <slug> -p \"…\"`.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "- **MODEL RULE — pin it through `seat_model`; never ride the account default.** `agy` (current **1.2.2**) has a `--model` flag and an `agy models` subcommand; there is no short `-m` alias. `python3 ~/.claude/skills/_meta/seat_model.py argv --role <role> --provider agy` prints `--model <slug>`; place it before `-p` like every other flag. The resolver takes the newest listed flash version and the role supplies the level: `consultant_main` and `arbiter` get `-high`, `consultant_support` gets `-medium` (`gemini-3.8-flash-high` / `gemini-3.8-flash-medium` on the 2026-09-14 roster). A home-tier freeze in `~/.claude/state/seat-model-pins.json` can hold the version; `seat_model.py emit --json` shows what actually resolves. The account default appears to be **`gemini-3.6-flash`** (self-reported 2026-09-09, so indicative rather than verified), two generations behind 3.8: omitting `--model` silently seats a deliberation on an older line.",
+      "new": "- **MODEL RULE — pin it through `seat_model`; never ride the account default.** `agy` (current **1.4.3**) has a `--model` flag and an `agy models` subcommand; there is no short `-m` alias. `python3 ~/.claude/skills/_meta/seat_model.py argv --role <role> --provider agy` prints `--model <slug>`; place it before `-p` like every other flag. The resolver takes the newest listed version of the roster family (`model_roster.AGY_FAMILY`) and the role supplies the level: `consultant_main` and `arbiter` get `-high`, `consultant_support` gets `-medium` (`gemini-4-argon-high` / `gemini-4-argon-medium` on the 2026-10-20 roster); with `--size light|medium|complex` every role gets `-low` / `-medium` / `-high` instead (roster rev 7, `model_roster.AGY_LEVEL_BY_SIZE`). EVERY agy call pins it — deliberative seats `consultant_main`, research and operational calls `consultant_support`; the `model-eval-pack` skill alone passes `--model` literally, because choosing the model under test is its purpose. A home-tier freeze in `~/.claude/state/seat-model-pins.json` can hold the version; `seat_model.py emit --json` shows what actually resolves. The account default was self-reported as an older Gemini model (2026-09-09, indicative rather than verified) of a family the roster now forbids: omitting `--model` silently seats the call on a forbidden line.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "- **FLASH-ONLY:** agy runs gemini flash models only. The hard rule, with the forbidden models and its reasons, is in SKILL.md with the opening hard rules; it binds every call in this file.",
+      "new": "- **AGY FAMILY:** agy serves the one Gemini family named by `model_roster.AGY_FAMILY` (rev 6: Gemini 4 Argon; flash is now forbidden). The hard rule, with the forbidden models and its reasons, is in SKILL.md with the opening hard rules; it binds every call in this file.",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| Antigravity CLI | v1.2.2 (`agy`; `~/.claude/state/inventory.json`, and `agy --version` agrees) — headless `agy -p`, self-authenticating, no MCP wrapper |",
+      "new": "| Antigravity CLI | v1.4.3 (`agy`; `~/.claude/state/inventory.json`, and `agy --version` agrees) — headless `agy -p`, self-authenticating, no MCP wrapper |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| agy model | **Pinned per role** by `seat_model.py argv --provider agy` — the newest listed flash (`gemini-3.8-flash-high` / `-medium`). The account default (≈ `gemini-3.6-flash`, self-reported) is never relied on |",
+      "new": "| agy model | **Pinned per role** by `seat_model.py argv --provider agy` — the newest listed version of the roster family, `model_roster.AGY_FAMILY` (rev 6: `gemini-4-argon-high` / `-medium`; with `--size` the level follows the task size, rev 7: light `-low`, medium `-medium`, complex `-high`). The account default (an older Gemini model, self-reported, of a now-forbidden family) is never relied on |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "| agy version | 1.2.2 (`~/.claude/state/inventory.json`; `agy --version` agrees) |",
+      "new": "| agy version | 1.4.3 (`~/.claude/state/agy-models.json` 2026-10-20; `agy --version` agrees) |",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "listed model, so their served model is read from `emit --json`, never from this table. To change which model",
+      "new": "listed model, so their served model is read from `emit --json`, never from this table. agy's FAMILY is roster data",
+      "reason": "#367 (roster rev 6, agy family flash -> Gemini 4 Argon; every agy call pinned through seat_model): line updated to the agy family rule, otherwise unchanged"
+    },
+    {
+      "old": "(`model_roster.AGY_FAMILY`, rev 6: `argon`, so the agy column reads TOP-argon); within it the VERSION auto-follows. To change which model",
+      "new": "(`model_roster.AGY_FAMILY`, rev 6: `argon`, so the agy column reads TOP-argon); within it the VERSION auto-follows, and the LEVEL follows the task size (`model_roster.AGY_LEVEL_BY_SIZE`, rev 7: `argv --provider agy --size light|medium|complex` serves `-low` / `-medium` / `-high`; no size keeps the role's level). To change which model",
+      "reason": "#367 WP-C (roster rev 7 agy level by size; agy flash slugs removed; agy recipes pinned through seat_model): line updated, otherwise unchanged"
+    },
+    {
+      "old": "- For long-running prompts raise the wait timeout: `agy --sandbox $AGY_MODEL --print-timeout 15m -p \"<prompt>\" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+      "new": "- For long-running prompts raise the wait timeout: `agy --sandbox --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+      "reason": "#367 WP-C (roster rev 7 agy level by size; agy flash slugs removed; agy recipes pinned through seat_model): line updated, otherwise unchanged"
+    }
+  ],
+  "reorders": [
+    {
+      "old_lines": [
+        568,
+        572
+      ],
+      "file": "SKILL.md",
+      "reason": "#344 WP-5: reviewed reorder (two-block hoist, 1 of 2): the Session Directory HARD-RULE block sat past byte 20,000; it is hoisted verbatim to join the opening hard rules above Seat Models (audit rule A11)"
+    },
+    {
+      "old_lines": [
+        648,
+        650
+      ],
+      "file": "SKILL.md",
+      "reason": "#344 WP-5: reviewed reorder (two-block hoist, 2 of 2): the Sandbox Modes HARD-RULE block sat past byte 20,000; it is hoisted verbatim to join the opening hard rules above Seat Models (audit rule A11)"
+    }
+  ],
+  "span_map": {
+    "note": "#344 WP-5 (JC-3): old SKILL.md line ranges at a8f17a2 -> the file that holds them now. Blank lines and horizontal rules between spans are not listed. Not read by `conserve`; a record for review.",
+    "spans": [
+      {
+        "old_lines": [
+          1,
+          28
+        ],
+        "file": "SKILL.md",
+        "what": "frontmatter, intro, the five opening HARD-RULE blocks"
+      },
+      {
+        "old_lines": [
+          568,
+          572
+        ],
+        "file": "SKILL.md",
+        "what": "HOISTED: Session Directory HARD-RULE block, after the five opening blocks"
+      },
+      {
+        "old_lines": [
+          648,
+          650
+        ],
+        "file": "SKILL.md",
+        "what": "HOISTED: Sandbox Modes HARD-RULE block, after the Session Directory block"
+      },
+      {
+        "old_lines": [
+          79,
+          79
+        ],
+        "file": "SKILL.md",
+        "what": "REORDERED: the FLASH-ONLY HARD-RULE bullet, after the hoisted blocks"
+      },
+      {
+        "old_lines": [
+          32,
+          44
+        ],
+        "file": "SKILL.md",
+        "what": "Codex Plugin Commands — DEAD PATH"
+      },
+      {
+        "old_lines": [
+          48,
+          78
+        ],
+        "file": "references/agy-patterns.md",
+        "what": "Antigravity CLI section up to and including the MODEL RULE bullet"
+      },
+      {
+        "old_lines": [
+          80,
+          131
+        ],
+        "file": "references/agy-patterns.md",
+        "what": "rest of the agy section: remaining bullets, use cases, invocation patterns, availability check"
+      },
+      {
+        "old_lines": [
+          135,
+          164
+        ],
+        "file": "SKILL.md",
+        "what": "Never run a codex call in a foreground Bash tool call (D24)"
+      },
+      {
+        "old_lines": [
+          168,
+          368
+        ],
+        "file": "SKILL.md",
+        "what": "Seat Models, whole"
+      },
+      {
+        "old_lines": [
+          370,
+          414
+        ],
+        "file": "references/effort-tiers.md",
+        "what": "Reasoning-Effort Tiers: benchmark, high policy finding, tier support, timeout owner, tier table"
+      },
+      {
+        "old_lines": [
+          416,
+          447
+        ],
+        "file": "SKILL.md",
+        "what": "challenger call, delta-seeking challenger prompt (spawn-brief anchor), operational notes"
+      },
+      {
+        "old_lines": [
+          451,
+          465
+        ],
+        "file": "SKILL.md",
+        "what": "Three-Model Validation Pattern"
+      },
+      {
+        "old_lines": [
+          469,
+          532
+        ],
+        "file": "references/current-state.md",
+        "what": "Current State with its subsections"
+      },
+      {
+        "old_lines": [
+          536,
+          564
+        ],
+        "file": "references/codex-exec.md",
+        "what": "Core Integration: codex exec, command shape and flags"
+      },
+      {
+        "old_lines": [
+          566,
+          566
+        ],
+        "file": "SKILL.md",
+        "what": "Session Directory (REQUIRED) heading; its block is hoisted, a pointer line stands here"
+      },
+      {
+        "old_lines": [
+          574,
+          580
+        ],
+        "file": "SKILL.md",
+        "what": "session directory recipe"
+      },
+      {
+        "old_lines": [
+          582,
+          597
+        ],
+        "file": "references/codex-exec.md",
+        "what": "Basic Delegation Pattern"
+      },
+      {
+        "old_lines": [
+          601,
+          609
+        ],
+        "file": "SKILL.md",
+        "what": "Session-Scoped Availability"
+      },
+      {
+        "old_lines": [
+          611,
+          635
+        ],
+        "file": "references/codex-exec.md",
+        "what": "Full Availability Check (When Needed)"
+      },
+      {
+        "old_lines": [
+          639,
+          646
+        ],
+        "file": "SKILL.md",
+        "what": "Sandbox Modes table; its block is hoisted, a pointer line stands here"
+      },
+      {
+        "old_lines": [
+          654,
+          728
+        ],
+        "file": "SKILL.md",
+        "what": "When to Delegate, Shared Skill Library, Reference Files, Anti-Patterns, Related Skills"
+      },
+      {
+        "old_lines": [
+          732,
+          740
+        ],
+        "file": "references/current-state.md",
+        "what": "Verified facts"
+      },
+      {
+        "old_lines": [
+          742,
+          765
+        ],
+        "file": "SKILL.md",
+        "what": "Gotchas, FRESHNESS block"
+      }
+    ]
+  },
+  "deletes": [
+    {
+      "lines": [
+        "`timeout … agy --sandbox … -p … < /dev/null` pattern, its mandatory closed stdin, its flag order and the",
+        "  && timeout 600 agy --sandbox $AGY_MODEL -p \"<prompt>\" < /dev/null",
+        "  input (`cat file | agy --sandbox --model <slug> -p \"…\"`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same",
+        "  re-testing the broken command. Correct: `agy --sandbox [--add-dir D] [--print-timeout 15m] --model <slug> -p \"…\"`.",
+        "- **SANDBOX RULE (mandatory for analyst/read-only delegation, #157):** `--sandbox` on every agy",
+        "  call that should only READ — agy has write/shell/git tools by default, and an un-sandboxed",
+        "  \"analyst\" can author and git-commit code (S052 rogue auto-commit incident). Scope caveat",
+        "  (verified 2026-07-02, 1.0.15): `--sandbox` constrains shell/git commands only, NOT agy's",
+        "  native file writes — do not `--add-dir` a writable live repo for consultancy (pipe content",
+        "  instead), open the prompt with \"Advisory only — do not modify any files; answer on stdout\",",
+        "  and run `git status --short` afterwards if a repo was exposed. Omit `--sandbox`",
+        "  only when the task explicitly requires writes, and say so in the prompt.",
+        "- For long-running prompts raise the wait timeout: `agy --sandbox --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+        "agy --sandbox $AGY_MODEL -p \"Review this code for security issues\" < /dev/null",
+        "cat src/main.py | agy --sandbox $AGY_MODEL -p \"Find N+1 query problems\"",
+        "# Reference a workspace directory instead of piping (repeatable)",
+        "# CAUTION: --sandbox does NOT gate native file writes into --add-dir trees — prefer piping;",
+        "# if you must --add-dir a writable repo, run `git status --short` afterwards and revert strays.",
+        "agy --sandbox $AGY_MODEL --add-dir \"$PROJECT_DIR\" -p \"Advisory only — do not modify any files; answer on stdout. Review for security issues in this project\" < /dev/null",
+        "agy --sandbox $AGY_MODEL -p \"Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately.\" < /dev/null",
+        "timeout 600 agy --sandbox $AGY_MODEL --add-dir \"$PROJECT_DIR\" -p \"Review for security issues in this project\" \\",
+        "  > \"$AGY_WORK/review.txt\" < /dev/null &"
+      ],
+      "count": 1,
+      "reason": "#366: agy rule rewritten from the 1.4.12 measurements; advisory recipes run --sandbox --mode plan from an empty cwd"
+    },
+    {
+      "lines": [
+        "- For long-running prompts raise the wait timeout: `agy --sandbox --mode plan --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135)."
+      ],
+      "count": 1,
+      "reason": "#366 fix round 1: recipe gains an empty cwd"
+    },
+    {
+      "lines": [
+        "- **STDIN RULE (mandatory, #135):** `< /dev/null` on every headless agy call — agy reads",
+        "  input (`cat file | agy --sandbox --mode plan --model <slug> -p \"…\"`) is safe (the pipe EOFs). Always wrap in shell `timeout`. Same",
+        "  should only READ is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline or piped,",
+        "# With piped context",
+        "cat src/main.py | (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Find N+1 query problems\")",
+        "# A project review: pipe its files in. Never --add-dir or cd into a live repo: agy could read all of it.",
+        "(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1) | (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout. Review the files on stdin for security issues\")",
+        "(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1) \\",
+        "  | (cd \"$AGY_WORK\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Review the files on stdin for security issues\" > review.txt) &"
+      ],
+      "count": 1,
+      "reason": "#366 fix round 2: piped stdin never reaches the model, so content is inlined"
+    },
+    {
+      "lines": [
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"<prompt>\" < /dev/null)",
+        "- For long-running prompts raise the wait timeout: `(cd \"$(mktemp -d)\" && agy --sandbox --mode plan --model <slug> --print-timeout 15m -p \"<prompt>\" < /dev/null)` (default `5m0s`). Keep `< /dev/null` even here — `--print-timeout` only guards the print phase, NOT the stdin read, so omitting it still hangs to the shell `timeout` (#135).",
+        "(cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Review this code for security issues\" < /dev/null)",
+        "C=\"$(cat src/main.py)\" && (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Find N+1 query problems:",
+        "C=\"$(cd \"$PROJECT_DIR\" && git ls-files -z '*.py' | xargs -0 tail -n +1)\" && (cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout. Review these files for security issues:",
+        "(cd \"$(mktemp -d)\" && agy --sandbox --mode plan $AGY_MODEL -p \"Use SCAMPER to generate ideas for reducing checkout abandonment. List each lens separately.\" < /dev/null)",
+        "AGY_WORK=$(mktemp -d /tmp/agy-XXXXXXXXXX)"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C1: the empty-cwd allocation is checked before the cd"
+    },
+    {
+      "lines": [
+        "  and repos. Throwaway directory only, never a live repo as cwd or `--add-dir`; afterwards run"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C2: Pattern 2 is no route to context"
+    },
+    {
+      "lines": [
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "1. CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "# CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)"
+      ],
+      "count": 1,
+      "reason": "Codex re-review: every mktemp allocation is checked"
+    }
+  ]
+}

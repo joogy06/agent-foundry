@@ -10,34 +10,49 @@ description: >
   adversary (skeptic) tries to falsify the proposal on its own terms; the
   architect and operator supply the countervailing incentives; the steward
   (principal-proxy) holds the outcome to the requester's stated intent and
-  pushes on drift (design §5); the EXTERNAL cold-context arbiter (never a
+  pushes on drift (design §5); the user-advocate (agy) holds the experience of
+  whoever uses or maintains the result; the EXTERNAL cold-context arbiter (never a
   deliberation-seat provider on the clean path) synthesizes a single decision
   plus a mandatory attributed dissent record with actionable trip-wires.
-  Four deliberation seats + the external arbiter (within the 4-6 evidence band).
+  Five deliberation seats + the external arbiter (within the 4-6 evidence band; #368 added the agy seat).
 
 # --- Roster resolution (refs into roster/<seat_id>.yaml) ---
 # Per-seat provider/effort overrides are permitted only WITHIN policy
-# (convene.py rejects retired tiers such as 'high'). >=1 seat MUST resolve
+# (convene.py fails closed on an unknown tier/seat-class or an un-pinned codex seat). >=1 seat MUST resolve
 # adversarial_role: true. The EXTERNAL seatless arbiter's provider MUST differ
 # from every DELIBERATION seat's provider on the clean path (widened from
-# adversarial-only, design §4); coding-ratification pins all three families so
-# it always lands on the fallback path -> the strongest non-adversarial provider
-# (claude), authorship anonymized with an accepted, flagged residual (§6a).
+# adversarial-only, design §4); coding-ratification seats ALL THREE families (codex, claude,
+# and agy again since #368 — agy left at AMENDMENT 3 D25 and returned as an added seat). In a
+# healthy session coding-ratification lands on the fallback path -> the strongest
+# non-adversarial provider (claude), authorship anonymized with an accepted, flagged residual
+# (§6a). agy is barred from a healthy session's selection (convene.ARBITER_INELIGIBLE_PROVIDERS,
+# scoped by D29, D23 "never agy as arbiter") — with agy seated it is no longer the clean-path
+# candidate either, so the bar now guards a fallback choice (agy is non-adversarial) rather than
+# a clean one. The healthy arbiter did not move: claude, fallback, residual flagged.
+# Under any codex refusal its arbiter is agy on the fallback path: codex is excluded, the skeptic
+# is re-seated on an adversarial claude, and agy (agy's last-resort role) deliberates since #368,
+# where before #368 it was the clean path; the residual is flagged.
 seats:
   - ref: skeptic
     provider: codex
-    effort: xhigh            # pinned challenger floor; NEVER 'high'
+    effort: challenger_floor # seat-class challenger floor (codex -> xhigh via SEAT_CLASS_TABLE)
     adversarial_role: true   # explicit; also declared on the identity card
   - ref: architect
     provider: claude
     effort: default
   - ref: operator
-    provider: agy
-    effort: default
+    provider: codex          # AMENDMENT 3 (D25) moved this seat from agy to codex; #368 restored agy as an ADDED seat (user-advocate below), so this stays codex. Support weight -> seat_model consultant_support -> the codex support-tier literal (model_roster CODEX_SUPPORT), beside the codex std skeptic.
+    effort: medium           # the consultant_support codex effort; the support tier @ medium (ceiling 1200)
+    seat_weight: support     # EXPLICIT: a codex seat defaults to the main row (consultant_main, the codex std tier); this is the seat that takes the SUPPORTING model class
   - ref: steward
-    provider: agy            # design §5: affinity agy keeps the fallback arbiter on
-    effort: default          # claude sharing a provider with only ONE ideator (architect)
+    provider: claude         # AMENDMENT 3 (D26/jc9): the other agy seat becomes a Claude support-tier seat, NOT a third codex seat — three codex seats would make this the most expensive profile in the harness, and the steward is procedural, not contending. No seat_weight, so support -> the Claude support tier.
+    effort: default          # no seat_weight on the card -> support -> the Claude support tier. The arbiter stays claude `arbiter` (the Claude main tier) by SELECTION, on the fallback path with the residual flagged
     adversarial_role: false  # principal-proxy: pushes on drift, does NOT decide/arbitrate
+  - ref: user-advocate
+    provider: agy            # #368: agy (Gemini 4 Argon) returns as an ADDED deliberation seat — the voice of whoever uses the result (the API caller, the operator at the CLI, the next maintainer), the one lens this profile lacked. Pattern 1 (--sandbox, inline brief, < /dev/null). Never the arbiter (ARBITER_INELIGIBLE_PROVIDERS, D23).
+    effort: default
+    adversarial_role: false
+    seat_weight: main        # #368: a deliberating seat -> seat_model consultant_main -> agy -high unsized; a sized convene serves model_roster.AGY_LEVEL_BY_SIZE (light -low, medium -medium, complex -high)
 
 arbiter:
   # v2 (design §4): the arbiter is an EXTERNAL, SEATLESS, cold-context CALL — a
@@ -46,7 +61,7 @@ arbiter:
   # violation gone). The resolver SELECTS the provider (never inherits it from a
   # seat): a provider used by no deliberation seat = CLEAN path (no residual),
   # else the strongest adjudication-prior NON-adversarial provider cold-context =
-  # FALLBACK path. Here {codex,claude,agy} all deliberate -> fallback -> claude,
+  # FALLBACK path. Here {codex,claude,agy} all deliberate (agy is barred anyway) -> fallback -> claude,
   # and run-record.json sets fallback_arbiter_residual: true. All-adversarial is
   # the ONLY unsatisfiable case -> fail CLOSED (ConveneError, no run, no spend).
   # `can_arbitrate` on the seats is INERT under v2. The old `prefer` /
@@ -90,9 +105,20 @@ memory:
 
 # --- Budgets (design §4/§7) ---
 budgets:
-  # WP-3: 4 deliberation seats (skeptic + architect + operator + steward) + external
-  # arbiter -> ~13 = 4 diverge + 4 cross-exam + 4 converge + 1 arbiter, so no phase is
-  # truncated by the cap (design §7). WP-5 does the final dry-run-clean capstone.
-  max_seat_calls: 13
-  wall_clock_s: 900           # target <10 min
+  # WP-3: N deliberation seats + external arbiter -> N diverge + N cross-exam + N converge
+  # + 1 arbiter, so no phase is truncated by the cap (design §7). #368 re-derived it for 5 seats
+  # (skeptic + architect + operator + steward + the agy user-advocate): 5 + 5 + 5 + 1 = 16 (was 13).
+  max_seat_calls: 16
+  # wall_clock_s is the convene.wall_clock_budget floor (S081 I12, plan L2), derived by WP-D3 AFTER
+  # AMENDMENT 3's composition settled, under the D24 raised codex caps. This profile does NOT declare a D23
+  # arbiter: it keeps the SELECTED claude `arbiter` row (the Claude main tier, 1200) on the FALLBACK path, with the
+  # style-recognition residual flagged as before — selection permits the architect to share that model, which
+  # is why no declaration is possible here (both Claude models are already seated). Floor = arbiter timeout
+  # + 2 x the slowest external (codex/agy) member seat = claude `arbiter` (the Claude main tier) 1200 + 2 x 2400 (the slowest
+  # external is the codex skeptic at challenger_floor -> xhigh: codex_model.timeout_for -> 2400; the codex
+  # operator at consultant_support/medium is 1200 and the #368 agy user-advocate 600, and the formula takes the slowest,
+  # not the sum) = 6000. #368 RE-DERIVED it: the added agy seat is not the slowest and the arbiter did not move.
+  # It shipped 900 until WP-D3 — below the floor, so convene raised it with a note on every single run.
+  # Re-derive it if a seat's provider or effort, the arbiter, or a role timeout changes.
+  wall_clock_s: 6000
   max_cycles: 1

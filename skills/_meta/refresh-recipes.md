@@ -60,7 +60,7 @@ Code wrapper → `cpmail send --to vs-code-foundry` notification. The edge is
 ## Recipe (3) — `knowledge-snapshot`
 
 **When:** a dated knowledge snapshot is in horizon (e.g. `market-snapshot-2026-06.md`
-REVIEW-BY 2027-01; the OWASP/NIST freshness anchors).
+REVIEW-BY 2027-01; the OWASP/NIST freshness anchors). <!-- review-by: mention -->
 
 **Steps:** This is the **S040 market-snapshot pattern** — reference it, do NOT redesign.
 1. Web-refresh each `[AS_OF: <date>]` row (per the snapshot's own protocol).

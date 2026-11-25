@@ -614,7 +614,7 @@ test('UserForm is accessible', async () => {
 | Focus indicators | Visible focus ring on all focusable elements | Manual |
 | Headings | One h1 per page, logical h1-h6 order | axe-core |
 | Forms | Every input has visible label, errors linked via aria-describedby | jest-axe |
-| Images | Alt text on all informative images, aria-hidden on decorative | axe-core |
+| Images | Alt text on all informative images, aria-hidden on decorative (wording and audit rubric: the `image-alt-text` skill) | axe-core |
 | Live regions | aria-live="polite" for async status updates | Screen reader |
 | Modals | Focus trapped, Escape closes, focus restored on close | Manual + Playwright |
 | Skip links | "Skip to main content" link as first focusable element | Manual |

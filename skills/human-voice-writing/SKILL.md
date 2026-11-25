@@ -24,6 +24,17 @@ A thin entry point for "humanize this / does this read as AI?" on writing the us
 
 Full focal-word table, structural-tell fixes, before/after examples, and the voice-capture protocol: `~/.claude/skills/career-coach/references/ai-tells-catalog.md`.
 
+## The Pattern Probe
+
+`scripts/pattern_probe.py DRAFT [--json]` lists where the catalogue's patterns sit in an English draft. Each row is a place and a category: the line, the heading it is under, the paragraph number, and one of `focal-word-cluster`, `dash-density`, `not-only-but`, `inverted-contrast`, `list-of-three`, `even-rhythm`, `stock-opener`, `stock-closer`, `bold-lead-bullets`, `hedge-stack`, `self-answered-question`.
+
+- **A pointer for a reader, never a target to optimise against.** HARD RULE 2 covers the probe. Its report has no score, no total and no pass or fail, and its exit code is 0 whenever it ran, so nothing can be read from it but where to look. Read each place it names, then decide against the author's own voice whether anything should change.
+- **Never** edit a draft until its report is empty, compare drafts by how many rows they have, or state a row count as a result. That is detector-gaming with a local detector, and mechanical removal is the first anti-pattern below.
+- A row may be exactly what the author meant, and an empty report says nothing about how the text reads. Steps 1 and 5 of the pass still decide.
+- English only. Other text gives `not_run: language` and no rows.
+- `creative-studio` files the report beside each written draft as evidence for its critic. No value of it enters a verdict.
+- Where the probe and its categories come from: `references/ATTRIBUTION.md`.
+
 ## Route-Outs
 
 - Writing or tailoring a CV / cover letter / application package → `career-application-writer` (full gated pipeline).

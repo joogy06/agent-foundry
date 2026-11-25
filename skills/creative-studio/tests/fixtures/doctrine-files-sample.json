@@ -1,0 +1,18 @@
+{
+  "note": "Input of visual-doctrines (kind opaque): the two doctrine files as shipped, by path. test_doctrine_distance.py reads them from the tree.",
+  "doctrines": [
+    {
+      "skill": "web-craft-restrained",
+      "family": "visual-craft-restrained",
+      "entry": "skills/web-craft-restrained/SKILL.md",
+      "doctrine": "skills/web-craft-restrained/references/doctrine.md"
+    },
+    {
+      "skill": "web-craft-expressive",
+      "family": "visual-craft-expressive",
+      "entry": "skills/web-craft-expressive/SKILL.md",
+      "doctrine": "skills/web-craft-expressive/references/doctrine.md"
+    }
+  ],
+  "attribution": "skills/web-craft-restrained/references/ATTRIBUTION.md"
+}

@@ -107,5 +107,15 @@ class TestGradingPrimitives(unittest.TestCase):
         self.assertFalse(any(f["verdict"] == "RED" for f in findings))
 
 
+class TestUsageDocstring(unittest.TestCase):
+    """Post-convergence minor 4: the usage names --no-write and says the overrides need it."""
+
+    def test_usage_lists_no_write_and_the_override_rule(self):
+        usage = rs.__doc__.split("CLI:", 1)[1]
+        self.assertIn("[--no-write]", usage)
+        flat = " ".join(usage.split())
+        self.assertRegex(flat, r"--root, --agents, --inventory, --today\) require it")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

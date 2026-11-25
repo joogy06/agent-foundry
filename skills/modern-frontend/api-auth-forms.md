@@ -189,6 +189,10 @@ export const apolloClient = new ApolloClient({
 
 ### OpenAPI Code Generation
 
+> `openapi-typescript-codegen` is no longer maintained; for new work use `@hey-api/openapi-ts`
+> (or `openapi-typescript` + `openapi-fetch`). Current config, plugin names and the CI sync check
+> are in [vite-behind-api.md](vite-behind-api.md) §7–§8.
+
 ```bash
 # Generate TypeScript API client from OpenAPI spec
 npx openapi-typescript-codegen \

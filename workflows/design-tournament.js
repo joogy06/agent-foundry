@@ -1,7 +1,7 @@
 // WORKFLOW: design-tournament v1.0.0
 // OWNER: forge
 // PROVENANCE: hand-authored, reviewed, committed — never agent-emitted (S052)
-// FALLBACK: forge SKILL.md "Step 6B design exploration team (portable, canonical)"
+// FALLBACK: forge references/02-design-team.md "Step 6B: Design exploration team (portable, canonical)"
 // MIN-CLAUDE: 2.1.154
 // NESTING: none
 // PROHIBITED: shedding the Claude challenger or UX-when-ui_facing; removing entries from unresolved[]; the signing-key string in any prompt (W-KEY)
@@ -141,11 +141,17 @@ export default async function designTournament({ args, agent, parallel, budget }
   const challengeResults = await parallel(challengeStages);
 
   // ── converge (script computes the matrix; synthesis stage is judgment-limited) ──
+  // A chosen direction follows CONV-1 (skills/_meta/convergence-rule.md): the rule is
+  // defined there and only cited here. It changes the instruction text, not the control flow.
   const matrix = computeDisagreementMatrix(challengeResults);
   const synthesis = await agent(
     "Emit a design-synthesis.v1 DRAFT. You MAY choose a direction and rationale, " +
       "but you receive the disagreement_matrix as FIXED input — copy it through " +
       "unchanged and you may only ADD to unresolved[], never remove. " +
+      "If you choose a direction, choose it under convergence rule CONV-1 " +
+      "(~/.claude/skills/_meta/convergence-rule.md — read it; if its applicability test fails, " +
+      "follow its exclusion table and say which row applied): name the winning approach and " +
+      "each borrowed part with the approach it came from, in chosen_direction and rationale. " +
       `Approaches: ${JSON.stringify(divergeResults)}. ` +
       `Disagreement matrix (FIXED): ${JSON.stringify(matrix)}.`,
     { agentType: "claude", schema: SYNTHESIS_SCHEMA },

@@ -1,0 +1,683 @@
+{
+  "schema": "ai-surfaces.v1",
+  "version": "1.1.0",
+  "owner": "ai-search-optimizer",
+  "as_of": "2026-09-27",
+  "max_age_days": 90,
+  "research_base": "docs/reviews/2026-09-27-search-ai-visibility-review.md",
+  "note": "The single owner of AI and search SURFACE facts: what each surface is, whether it is available in Great Britain, how a merchant enters it, which crawlers serve it, and where it is measured. Skills link rows here instead of restating availability or share statistics. Evidence: V = the primary page was fetched on as_of and says this; I = inferred (secondary source, snippet or reasoning). gb_availability 'unknown' means the primary source does not list GB: say 'not listed for GB', never 'available'. FORECAST rows also carry forecast_due. A null gb_evidence_url is allowed only for 'unknown'; a null source_url only for an inferred row whose notes say it could not be verified. Render and check with scripts/surfaces.py.",
+  "enums": {
+    "surface_type": [
+      "index",
+      "answer",
+      "shopping",
+      "checkout",
+      "app"
+    ],
+    "channel": [
+      "organic",
+      "paid"
+    ],
+    "gb_availability": [
+      "live",
+      "beta",
+      "us_only",
+      "not_available",
+      "unknown"
+    ],
+    "status": [
+      "SHIPPED",
+      "BETA",
+      "DEPRECATED",
+      "FORECAST"
+    ],
+    "evidence": [
+      "V",
+      "I"
+    ]
+  },
+  "required_fields": [
+    "id",
+    "surface",
+    "vendor",
+    "surface_type",
+    "channel",
+    "status",
+    "gb_availability",
+    "gb_evidence_url",
+    "evidence",
+    "feed_or_protocol",
+    "crawler_ua",
+    "measurement",
+    "as_of",
+    "review_after",
+    "source_url"
+  ],
+  "surfaces": [
+    {
+      "id": "google-search",
+      "surface": "Google Search (web and Shopping results)",
+      "vendor": "Google",
+      "surface_type": "index",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "91.75% of UK search",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "feed_or_protocol": "Crawl plus Merchant Center (Merchant API; the Content API for Shopping sunset 2026-08-18)",
+      "crawler_ua": [
+        "Googlebot",
+        "Storebot-Google",
+        "Google-InspectionTool"
+      ],
+      "measurement": "ai-assistant-referrals (citation level: Search Console Performance) and seo-data-analyst",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers"
+    },
+    {
+      "id": "google-ai-overviews",
+      "surface": "Google AI Overviews",
+      "vendor": "Google",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://support.google.com/webmasters/answer/16984139",
+      "evidence": "V",
+      "feed_or_protocol": "Search index; controls are the Search Console 'Search generative AI' setting and nosnippet / max-snippet / data-nosnippet / noindex",
+      "crawler_ua": [
+        "Googlebot"
+      ],
+      "measurement": "ai-assistant-referrals (citation level: Search Console Generative AI report, impressions only; clicks stay in Organic)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.google.com/search/docs/appearance/ai-features"
+    },
+    {
+      "id": "google-ai-mode",
+      "surface": "Google AI Mode",
+      "vendor": "Google",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://support.google.com/webmasters/answer/16984139",
+      "evidence": "I",
+      "notes": "UK launch late Jul 2025 is inferred (Google post not fetched); the Search Console Generative AI report covering AI Mode reached UK sites in June 2026 (V).",
+      "feed_or_protocol": "Search index plus Merchant Center conversational attributes",
+      "crawler_ua": [
+        "Googlebot",
+        "Storebot-Google"
+      ],
+      "measurement": "ai-assistant-referrals (citation level: Search Console Generative AI report; GA4 counts AI Mode clicks as Organic)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.google.com/search/blog/2026/06/gen-ai-performance-reports"
+    },
+    {
+      "id": "google-ucp-checkout",
+      "surface": "Agentic checkout in AI Mode and Gemini (UCP)",
+      "vendor": "Google",
+      "surface_type": "checkout",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "not_available",
+      "gb_evidence_url": "https://support.google.com/merchants/answer/16837055",
+      "evidence": "V",
+      "notes": "US, Canada and Australia, select merchants. Universal Cart is US summer 2026, UK 'later' (FORECAST).",
+      "feed_or_protocol": "UCP (Universal Commerce Protocol) via Merchant Center",
+      "crawler_ua": [
+        "Google-Agent"
+      ],
+      "measurement": "ai-assistant-referrals (order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://support.google.com/merchants/answer/16837055"
+    },
+    {
+      "id": "google-ai-mode-ads",
+      "surface": "AI Mode ad formats (Conversational Discovery ads, Highlighted Answers, Direct Offers)",
+      "vendor": "Google",
+      "surface_type": "answer",
+      "channel": "paid",
+      "status": "BETA",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://blog.google/products/ads-commerce/google-marketing-live-search-ads/",
+      "evidence": "V",
+      "notes": "UK not stated on the announcement.",
+      "feed_or_protocol": "Google Ads plus Merchant Center",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (paid traffic is tagged by the ad platform; never count it as organic AI referral)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://blog.google/products/ads-commerce/google-marketing-live-search-ads/"
+    },
+    {
+      "id": "gemini",
+      "surface": "Gemini app (answers)",
+      "vendor": "Google",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "9.28% of UK AI chatbot use",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "The app is used in the UK (share data). Shopping is a separate row: gemini-shopping.",
+      "feed_or_protocol": "Web and Google index grounding",
+      "crawler_ua": [
+        "Google-Extended (robots token only; Gemini training and Gemini-app grounding; allowed or refused by the owner's training answer, crawlers.md)"
+      ],
+      "measurement": "ai-assistant-referrals (session level: GA4 AI Assistant channel; referrer gemini.google.com)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers"
+    },
+    {
+      "id": "gemini-shopping",
+      "surface": "Gemini app shopping (Shopping Graph listings and comparisons)",
+      "vendor": "Google",
+      "surface_type": "shopping",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": null,
+      "evidence": "I",
+      "notes": "Shipped in the US on 2025-11-13 (V). Could not verify UK availability: not listed for GB.",
+      "feed_or_protocol": "Merchant Center and the Shopping Graph (I)",
+      "crawler_ua": [
+        "Storebot-Google"
+      ],
+      "measurement": "ai-assistant-referrals (session level: gemini.google.com referrer)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://blog.google/products-and-platforms/products/shopping/agentic-checkout-holiday-ai-shopping/"
+    },
+    {
+      "id": "gemini-in-chrome-auto-browse",
+      "surface": "Gemini in Chrome auto browse (agent)",
+      "vendor": "Google",
+      "surface_type": "app",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "us_only",
+      "gb_evidence_url": "https://gemini.google/overview/gemini-in-chrome/",
+      "evidence": "V",
+      "notes": "Chat is live in the UK; the agentic auto browse is US AI Pro/Ultra only.",
+      "feed_or_protocol": "Renders the live page (accessible HTML matters)",
+      "crawler_ua": [
+        "Google-Agent"
+      ],
+      "measurement": "ai-assistant-referrals (server-log level: user-triggered agents)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers"
+    },
+    {
+      "id": "chatgpt-search",
+      "surface": "ChatGPT search",
+      "vendor": "OpenAI",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "77.44% of UK AI chatbot use",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "feed_or_protocol": "Crawl (OAI-SearchBot); a robots-disallowed page can still appear as link and title, use noindex to prevent that",
+      "crawler_ua": [
+        "OAI-SearchBot",
+        "ChatGPT-User"
+      ],
+      "measurement": "ai-assistant-referrals (session level: utm_source=chatgpt.com, verified; order level: WooCommerce Order Attribution)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://help.openai.com/en/articles/12627856-publishers-and-developers-faq"
+    },
+    {
+      "id": "chatgpt-shopping",
+      "surface": "ChatGPT shopping product results",
+      "vendor": "OpenAI",
+      "surface_type": "shopping",
+      "channel": "organic",
+      "status": "BETA",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://developers.openai.com/commerce/guides/get-started",
+      "evidence": "V",
+      "notes": "Product results 'are not ads'; ranking uses availability, price and quality. Direct feeds are by application for approved partners with no country list; whether UK/GBP merchants are accepted could not be verified. Shopify catalogues flow in only for stores selling to US customers.",
+      "feed_or_protocol": "OpenAI Product Feed Spec (ACP discovery feed), by application; also via Salesforce or Stripe",
+      "crawler_ua": [
+        "OAI-SearchBot"
+      ],
+      "measurement": "ai-assistant-referrals (session and order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://help.openai.com/en/articles/11128490-shopping-with-chatgpt-search"
+    },
+    {
+      "id": "chatgpt-instant-checkout",
+      "surface": "ChatGPT Instant Checkout",
+      "vendor": "OpenAI",
+      "surface_type": "checkout",
+      "channel": "organic",
+      "status": "BETA",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://openai.com/index/powering-product-discovery-in-chatgpt/",
+      "evidence": "V",
+      "notes": "Narrowed on 2026-03-24, not shut down: merchants now use their own checkout; it remains 'in beta' for 'select marketplace partners'. Not listed for GB.",
+      "feed_or_protocol": "ACP (Agentic Commerce Protocol)",
+      "crawler_ua": [
+        "ChatGPT-User"
+      ],
+      "measurement": "ai-assistant-referrals (order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://openai.com/index/powering-product-discovery-in-chatgpt/"
+    },
+    {
+      "id": "chatgpt-apps",
+      "surface": "ChatGPT apps (Apps SDK)",
+      "vendor": "OpenAI",
+      "surface_type": "app",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://developers.openai.com/apps-sdk/app-submission-guidelines",
+      "evidence": "V",
+      "notes": "Physical goods only, with external checkout on the merchant's domain. Country availability is set per submission, so GB depends on the app's own submission.",
+      "feed_or_protocol": "Apps SDK (MCP)",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (session level: tag app links with your own UTM)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.openai.com/apps-sdk/app-submission-guidelines"
+    },
+    {
+      "id": "chatgpt-ads",
+      "surface": "ChatGPT Ads",
+      "vendor": "OpenAI",
+      "surface_type": "answer",
+      "channel": "paid",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://openai.com/index/chatgpt-ads-expands-across-europe/",
+      "evidence": "I",
+      "notes": "Self-serve Ads Manager in 31 European markets from 2026-08-31 (V), shown to Free/Go users, with the OpenAI Pixel and Conversions API. The UK start date (about 2026-06-06) is inferred.",
+      "feed_or_protocol": "OpenAI Ads Manager; OAI-AdsBot checks landing pages",
+      "crawler_ua": [
+        "OAI-AdsBot"
+      ],
+      "measurement": "ai-assistant-referrals (paid: keep separate from organic ChatGPT referrals)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://openai.com/index/chatgpt-ads-expands-across-europe/"
+    },
+    {
+      "id": "copilot",
+      "surface": "Microsoft Copilot (app, Bing AI answers, Edge Journeys)",
+      "vendor": "Microsoft",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://support.microsoft.com/en-us/topic/supported-regions-and-languages-in-microsoft-copilot-26de43a1-c176-4908-bef7-29c8c37ac7ce",
+      "evidence": "V",
+      "gb_share": {
+        "value": "6.47% of UK AI chatbot use",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "en-GB supported. Edge Journeys is on Edge desktop in en-GB; 'Browse with Copilot' (Actions) is US Microsoft 365 Premium only. Copilot Mode in Edge was retired into Edge on 2026-05-13.",
+      "feed_or_protocol": "Bing index plus Microsoft Merchant Center feed (informs organic Copilot shopping); IndexNow",
+      "crawler_ua": [
+        "bingbot"
+      ],
+      "measurement": "ai-assistant-referrals (citation level: Bing Webmaster AI Performance; session level: copilot.microsoft.com / copilot.com referrers)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://about.ads.microsoft.com/en/blog/post/january-2026/conversations-that-convert-copilot-checkout-and-brand-agents"
+    },
+    {
+      "id": "copilot-checkout",
+      "surface": "Copilot Checkout",
+      "vendor": "Microsoft",
+      "surface_type": "checkout",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "us_only",
+      "gb_evidence_url": "https://about.ads.microsoft.com/en/solutions/technology/agentic-commerce",
+      "evidence": "V",
+      "notes": "English-language merchants selling to US buyers in USD. Needs Microsoft Merchant Center and a UCP-compliant feed. Microsoft 'cannot provide a timeline' for other markets.",
+      "feed_or_protocol": "UCP feed in Microsoft Merchant Center",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://about.ads.microsoft.com/en/solutions/technology/agentic-commerce"
+    },
+    {
+      "id": "microsoft-offer-highlights",
+      "surface": "Microsoft Offer Highlights ads",
+      "vendor": "Microsoft",
+      "surface_type": "answer",
+      "channel": "paid",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://about.ads.microsoft.com/en/blog/post/april-2026/win-across-all-three-eras-of-the-web",
+      "evidence": "V",
+      "notes": "Announced for 'English-speaking markets'; the UK is not named.",
+      "feed_or_protocol": "Microsoft Advertising plus Microsoft Merchant Center",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (paid: keep separate from organic)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://about.ads.microsoft.com/en/blog/post/april-2026/win-across-all-three-eras-of-the-web"
+    },
+    {
+      "id": "bing",
+      "surface": "Bing search",
+      "vendor": "Microsoft",
+      "surface_type": "index",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "5.67% of UK search",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "Also the main link source for DuckDuckGo. AI controls are meta tags (NOARCHIVE, NOCACHE, data-nosnippet); a robots.txt training opt-out for bingbot is a FORECAST for early 2027.",
+      "feed_or_protocol": "Crawl plus IndexNow; Microsoft Merchant Center",
+      "crawler_ua": [
+        "bingbot"
+      ],
+      "measurement": "ai-assistant-referrals (citation level: Bing Webmaster AI Performance) and seo-data-analyst",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://blogs.bing.com/webmaster/February-2026/Introducing-AI-Performance-in-Bing-Webmaster-Tools-Public-Preview"
+    },
+    {
+      "id": "perplexity",
+      "surface": "Perplexity answers and Comet browser",
+      "vendor": "Perplexity",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "2.81% of UK AI chatbot use (below Claude)",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "feed_or_protocol": "Crawl (PerplexityBot)",
+      "crawler_ua": [
+        "PerplexityBot",
+        "Perplexity-User"
+      ],
+      "measurement": "ai-assistant-referrals (session level: perplexity.ai referrer, no UTM)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://docs.perplexity.ai/guides/bots"
+    },
+    {
+      "id": "perplexity-instant-buy",
+      "surface": "Perplexity Instant Buy (replaced 'Buy with Pro')",
+      "vendor": "Perplexity",
+      "surface_type": "checkout",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "us_only",
+      "gb_evidence_url": "https://www.perplexity.ai/help-center/en/articles/12932923-instant-buy-buy-with-paypal",
+      "evidence": "V",
+      "notes": "US users including Free; merchants on PayPal, BigCommerce, Shopware and Wix.",
+      "feed_or_protocol": "PayPal",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://newsroom.paypal-corp.com/2025-11-PayPal-and-Perplexity-Launch-Instant-Buy"
+    },
+    {
+      "id": "perplexity-merchant-program",
+      "surface": "Perplexity Merchant Program",
+      "vendor": "Perplexity",
+      "surface_type": "shopping",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": null,
+      "evidence": "I",
+      "notes": "Free, but reportedly requires US selling and shipping (perplexity.ai/hub returned 403; inferred). Not listed for GB.",
+      "feed_or_protocol": "Merchant feed by application",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (session level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://www.perplexity.ai/help-center/en/articles/12932923-instant-buy-buy-with-paypal"
+    },
+    {
+      "id": "duckduckgo",
+      "surface": "DuckDuckGo search",
+      "vendor": "DuckDuckGo",
+      "surface_type": "index",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "0.71% of UK search",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/search-engine-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "Links are 'largely sourced from Bing'. How a merchant enters DuckDuckGo shopping results could not be verified.",
+      "feed_or_protocol": "Bing index plus DuckDuckBot",
+      "crawler_ua": [
+        "DuckDuckBot"
+      ],
+      "measurement": "ai-assistant-referrals (session level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://duckduckgo.com/duckduckgo-help-pages/results/sources"
+    },
+    {
+      "id": "duckduckgo-search-assist",
+      "surface": "DuckDuckGo Search Assist (formerly DuckAssist) and Duck.ai",
+      "vendor": "DuckDuckGo",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": "https://duckduckgo.com/duckduckgo-help-pages/results/ai-assisted-answers",
+      "evidence": "V",
+      "notes": "Always cites 1-2 sources. The help page lists no countries. DuckAssistBot fetches in real time, is not used for training and respects robots.txt within 72 h.",
+      "feed_or_protocol": "Real-time fetch",
+      "crawler_ua": [
+        "DuckAssistBot"
+      ],
+      "measurement": "ai-assistant-referrals (session level: duck.ai referrer is a practitioner claim, unverified)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot"
+    },
+    {
+      "id": "apple-siri-ai",
+      "surface": "Apple Siri AI (iOS 27, built with Google Gemini models)",
+      "vendor": "Apple",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "BETA",
+      "gb_availability": "beta",
+      "gb_evidence_url": "https://www.apple.com/uk/apple-intelligence/",
+      "evidence": "V",
+      "notes": "Beta in English from 2026-09-14; available in the UK, not initially in the EU. The ChatGPT hand-off in Siri is no longer mentioned by Apple (I).",
+      "feed_or_protocol": "Web answers; Applebot index",
+      "crawler_ua": [
+        "Applebot",
+        "Applebot-Extended (robots token only; training)"
+      ],
+      "measurement": "ai-assistant-referrals (session level: referrer behaviour unverified; often arrives as Direct)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://www.apple.com/newsroom/2026/09/siri-ai-a-profoundly-more-capable-and-personal-assistant-is-here/"
+    },
+    {
+      "id": "apple-safari-spotlight",
+      "surface": "Apple Safari search, Spotlight and Safari 'Notify Me' alerts",
+      "vendor": "Apple",
+      "surface_type": "index",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/browser-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "28.64% of UK browser use (Safari)",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/browser-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "Applebot falls back to Googlebot rules when none are set. Safari 'Notify Me' (iOS 27) alerts on page changes such as price drops and restocks, so on-page price and stock must be accurate. Apple Business (formerly Business Connect) UK scope not stated.",
+      "feed_or_protocol": "Crawl (Applebot); Apple Business listing",
+      "crawler_ua": [
+        "Applebot"
+      ],
+      "measurement": "ai-assistant-referrals (session level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://support.apple.com/en-us/119829"
+    },
+    {
+      "id": "claude",
+      "surface": "Claude (web search and Claude in Chrome)",
+      "vendor": "Anthropic",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "live",
+      "gb_evidence_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+      "evidence": "V",
+      "gb_share": {
+        "value": "3.99% of UK AI chatbot use",
+        "as_of": "2026-08",
+        "source_url": "https://gs.statcounter.com/ai-chatbot-market-share/all/united-kingdom",
+        "evidence": "V"
+      },
+      "notes": "All three Anthropic crawlers honour robots.txt. Claude in Chrome stops before purchases for user approval; there is no Claude shopping product.",
+      "feed_or_protocol": "Crawl (Claude-SearchBot)",
+      "crawler_ua": [
+        "Claude-SearchBot",
+        "Claude-User"
+      ],
+      "measurement": "ai-assistant-referrals (session level: claude.ai referrer, no UTM)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://support.claude.com/en/articles/8896518"
+    },
+    {
+      "id": "meta-ai",
+      "surface": "Meta AI",
+      "vendor": "Meta",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": null,
+      "evidence": "I",
+      "notes": "Meta AI search crawls with meta-webindexer. Meta AI shopping or checkout could not be verified. No IP list published.",
+      "feed_or_protocol": "Crawl (meta-webindexer)",
+      "crawler_ua": [
+        "meta-webindexer",
+        "meta-externalfetcher"
+      ],
+      "measurement": "ai-assistant-referrals (session level: meta.ai referrer is a practitioner claim, unverified)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developers.facebook.com/docs/sharing/webmasters/web-crawlers"
+    },
+    {
+      "id": "grok",
+      "surface": "Grok (xAI)",
+      "vendor": "xAI",
+      "surface_type": "answer",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": null,
+      "evidence": "I",
+      "notes": "No published crawler documentation or merchant programme; live fetches reportedly spoof browser UAs (third-party only). Could not verify.",
+      "feed_or_protocol": "unknown",
+      "crawler_ua": [],
+      "measurement": "ai-assistant-referrals (session level: grok.com referrer is a practitioner claim, unverified)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": null
+    },
+    {
+      "id": "amazon-rufus-alexa",
+      "surface": "Amazon Rufus and Alexa+",
+      "vendor": "Amazon",
+      "surface_type": "shopping",
+      "channel": "organic",
+      "status": "SHIPPED",
+      "gb_availability": "unknown",
+      "gb_evidence_url": null,
+      "evidence": "I",
+      "notes": "UK availability could not be verified. Amzn-SearchBot serves Alexa and search and is not used for training; Amazonbot may train.",
+      "feed_or_protocol": "Crawl (Amzn-SearchBot); AmazonBot also consumes IndexNow",
+      "crawler_ua": [
+        "Amzn-SearchBot",
+        "Amzn-User"
+      ],
+      "measurement": "ai-assistant-referrals (server-log level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://developer.amazon.com/amazonbot"
+    },
+    {
+      "id": "amazon-buy-for-me",
+      "surface": "Amazon Buy for Me (agent checks out on the brand's own site)",
+      "vendor": "Amazon",
+      "surface_type": "checkout",
+      "channel": "organic",
+      "status": "BETA",
+      "gb_availability": "us_only",
+      "gb_evidence_url": "https://www.aboutamazon.com/news/retail/amazon-shopping-app-buy-for-me-brands",
+      "evidence": "V",
+      "notes": "US beta; brands 'have the choice'. A policy decision for when it reaches the UK.",
+      "feed_or_protocol": "Agent completes your normal checkout",
+      "crawler_ua": [
+        "Amzn-User"
+      ],
+      "measurement": "ai-assistant-referrals (order level)",
+      "as_of": "2026-09-27",
+      "review_after": "2026-12-26",
+      "source_url": "https://www.aboutamazon.com/news/retail/amazon-shopping-app-buy-for-me-brands"
+    }
+  ]
+}

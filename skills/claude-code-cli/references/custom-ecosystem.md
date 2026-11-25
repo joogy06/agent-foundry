@@ -81,7 +81,7 @@ Critical rules summarised in the checklist:
 - **ROUTING**: Complexity pre-filter — TRIVIAL/SIMPLE bypass forge. PA is optional. Forge is a skill (inline), not a subagent.
 - **GAP DETECTION**: Never block active task. Use policy matrix (score 0-4). Dedup gaps. Inline notice for CRITICAL.
 - **TEMP FILES**: Always `mktemp -d`. Session-scoped. No hardcoded `/tmp/` paths.
-- **CROSS-MODEL**: Timeout all `codex exec` (`timeout 120`). Escalation terminates. Session-scoped Codex availability check. Antigravity (agy) for COMPLEX only. Verify `command -v agy` before agy work; delegate via `agy -p "..."` (plain-text output — parse text, not JSON). Use agy for large-codebase / large-file analysis.
+- **CROSS-MODEL**: Timeout all `codex exec` (`timeout 120`). Escalation terminates. Session-scoped Codex availability check. Antigravity (agy) for COMPLEX only. Verify `command -v agy` before agy work; delegate via `AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)` (`--sandbox` mandatory per #157; plain-text output — parse text, not JSON). Use agy for large-codebase / large-file analysis.
 - **WIKI**: Cite every claim. Raw is immutable. Single-writer lock. Lint after batch ingest. Index-first navigation.
 
 ## Memory system

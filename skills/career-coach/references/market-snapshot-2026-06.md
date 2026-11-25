@@ -1,5 +1,11 @@
 # Hiring-Market Snapshot — captured 2026-06
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: hiring-market-snapshot
+    review_by: "2027-01-31"
+-->
 REVIEW-BY: 2027-01 (purge/refresh point — re-verify or delete every row)
 Tags per row: [AS_OF] [CONFIDENCE: VERIFIED|LIKELY|CONTESTED] [SOURCE_TYPE: survey|platform|academic|vendor|press]
 

@@ -3,6 +3,12 @@
 Reference file for the `mcp-server-creator` skill. Covers prompts, transport layers, error
 handling patterns, and testing strategies.
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: mcp-transport-spec
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Transport and handshake sections reconciled 2026-07-29 against the 2026-07-28 specification
 release announcement.** Prompts, error handling and testing below are unaffected by that revision

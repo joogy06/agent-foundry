@@ -1,0 +1,14 @@
+{
+  "rule_id": "CONV-1",
+  "definition_file": "skills/_meta/convergence-rule.md",
+  "citing_files": [
+    "skills/forge/references/04-agy-and-converge.md",
+    "workflows/design-tournament.js",
+    "skills/avengers/SKILL.md",
+    "skills/adversarial-team-brainstorm/references/arbiter-synthesis.md",
+    "skills/design-critique/SKILL.md",
+    "skills/design-critique/references/critic-brief.md",
+    "skills/creative-studio/SKILL.md",
+    "skills/creative-studio/references/text-critic.md"
+  ]
+}

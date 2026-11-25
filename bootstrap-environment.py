@@ -40,6 +40,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # REPO_ROOT auto-detection:
@@ -54,6 +55,69 @@ elif (_HERE.parent / "CLAUDE.md").exists() or (_HERE.parent / "skills").exists()
     REPO_ROOT = _HERE.parent                  # legacy: script in an installer/ subdir
 else:
     REPO_ROOT = _HERE                         # fall back; steps will warn cleanly
+
+
+def _resolves_to(path: Path, other: Path) -> bool:
+    """True when `path` resolves to the same file as `other`. Never raises."""
+    try:
+        return Path(path).resolve() == Path(other).resolve()
+    except OSError:
+        return False
+
+
+def _atomic_copy(src: Path, dst: Path) -> None:
+    """Copy `src` over `dst` through a temp file and os.replace. os.replace swaps
+    a symlink at `dst` for a regular file instead of writing through it, and a
+    reader never sees a half-written file. The temp file comes from mkstemp
+    (O_CREAT|O_EXCL, a fresh random name), so no pre-planted path or symlink can
+    be written through either (#318 fix round 2)."""
+    dst = Path(dst)
+    fd, tmp_name = tempfile.mkstemp(dir=str(dst.parent), prefix=dst.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
+            shutil.copyfileobj(inp, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp_name, dst)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+MAX_BACKUPS = 5   # the same cap as install.py's _backup
+
+
+def _backup_indices(path: Path) -> list:
+    """(index, Path) of every backup of `path`, oldest first (`.bak` = 0, `.bak.N` = N)."""
+    found = []
+    for cand in path.parent.glob(path.name + ".bak*"):
+        suffix = cand.name[len(path.name) + len(".bak"):]
+        if suffix == "":
+            found.append((0, cand))
+        elif suffix.startswith(".") and suffix[1:].isdigit():
+            found.append((int(suffix[1:]), cand))
+    return sorted(found)
+
+
+def _next_backup(path: Path) -> Path:
+    """`<name>.bak`, then `.bak.N` past the highest existing one, so an earlier
+    backup is never lost."""
+    existing = _backup_indices(path)
+    if not existing:
+        return path.with_name(path.name + ".bak")
+    return path.with_name(path.name + f".bak.{existing[-1][0] + 1}")
+
+
+def _prune_backups(path: Path) -> None:
+    """Keep the newest MAX_BACKUPS backups of `path`. Best-effort."""
+    for _, old in _backup_indices(path)[:-MAX_BACKUPS]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
 
 
 def _resolve_install_py() -> "Path | None":
@@ -139,13 +203,18 @@ _AGY_TEMPLATE_FALLBACK = """\
 # agy — host directive (Antigravity CLI global context)
 
 You are `agy` (the Antigravity CLI): the PRIMARY second-opinion / challenger /
-research delegate for the primary coding agent. Invoked headlessly as
-`agy -p "<self-contained prompt>"`.
+research delegate for the primary coding agent. Invoked headlessly from an
+empty working directory as
+`agy --sandbox --mode plan --model <pinned slug> -p "<self-contained prompt>"`.
 
-- STDIN must be closed or piped: `timeout 600 agy -p "..." < /dev/null`
+- STDIN must be closed (agy waits on it; content goes inline in -p, never by pipe):
+  `(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan --model <pinned slug> -p "..." < /dev/null)`
   (headless agy reads non-TTY stdin until EOF and otherwise hangs).
-- No model flag by convention — use the Antigravity-account-configured model.
+- The caller pins the model: `--model <slug>` before `-p`, resolved through the
+  seat registry (seat_model.py argv --role <role> --provider agy).
 - Account auth under ~/.antigravity/ — no API-key/env prefix needed.
+- Advise only: unless the prompt explicitly grants writes, change nothing; your
+  stdout is your deliverable.
 - Plain text out. Be a genuine challenger, not a rubber stamp. Stay on the
   prompt. Be decision-grade and concise.
 """
@@ -231,27 +300,47 @@ class Bootstrap:
 
     def step_2_place_claude_md(self):
         self.out.step(2, "place ~/.claude/CLAUDE.md")
-        src = REPO_ROOT / "CLAUDE.md"
+        src = REPO_ROOT / "global" / "CLAUDE.md"  # #318: the root CLAUDE.md is project-only
         dst = self.claude_home / "CLAUDE.md"
         if not src.exists():
             self.out.warn(f"source not in repo: {src} — skipping")
             self.out.steps_skipped += 1
             return
-        if dst.exists() and not self.force:
-            try:
-                if dst.read_text(encoding="utf-8") == src.read_text(encoding="utf-8"):
-                    self.out.skip("CLAUDE.md already at canonical content")
-                    return
-            except (OSError, UnicodeDecodeError):
-                pass
-            self.out.skip(f"CLAUDE.md exists with different content — pass --force to overwrite ({dst})")
+        try:
+            same = dst.exists() and dst.read_bytes() == src.read_bytes()
+        except OSError:
+            same = False
+        if same:
+            self.out.skip("CLAUDE.md already at canonical content")
+            return
+        # A symlinked home CLAUDE.md is never written through (#318 fix round 1):
+        # before the split some homes linked it to the repo-root file, which is now
+        # the project-only file, and copy2 through the link would overwrite the repo.
+        # A link to the repo-root file is migrated; any other link needs --force.
+        # A dangling link counts as present, not absent (#318 fix round 2): it is
+        # the user's, so it is left alone unless --force.
+        link = dst.is_symlink()
+        legacy = link and _resolves_to(dst, REPO_ROOT / "CLAUDE.md")
+        if (dst.exists() or link) and not self.force and not legacy:
+            what = "is a symlink" if link else "exists with different content"
+            self.out.skip(f"CLAUDE.md {what} — pass --force to replace it ({dst})")
             return
         if self.dry_run:
-            self.out.skip(f"would copy {src} -> {dst}")
+            self.out.skip(f"would {'replace the symlink ' + str(dst) + ' with' if link else 'copy'} {src} -> {dst}")
             return
         self.claude_home.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-        self.out.ok(f"copied -> {dst}")
+        if dst.exists() or link:
+            backup = _next_backup(dst)
+            try:
+                # A link is backed up AS a link, so a dangling one can be backed up too.
+                shutil.copy2(dst, backup, follow_symlinks=not link)
+            except OSError as e:
+                self.out.fail(f"could not back up {dst} ({e}); refusing to replace it")
+                return
+            self.out.info(f"backup -> {backup}")
+            _prune_backups(dst)
+        _atomic_copy(src, dst)
+        self.out.ok(f"{'replaced symlink with a regular file' if link else 'copied'} -> {dst}")
 
     # ----- step 3 -----------------------------------------------------------
 
@@ -326,7 +415,8 @@ class Bootstrap:
     # ----- step 5 -----------------------------------------------------------
 
     def step_5_settings_hooks(self):
-        self.out.step(5, "merge SessionStart hooks into ~/.claude/settings.json")
+        self.out.step(5, "merge SessionStart hooks and the intake permission rules into "
+                         "~/.claude/settings.json")
         # Single source of truth: the 6 hooks + the pure merge core live in
         # install.py; import them so bootstrap and install.py cannot diverge.
         shared = _load_install_module()
@@ -352,13 +442,28 @@ class Bootstrap:
                           f"fix manually before re-running")
             return
 
-        if not added:
-            self.out.skip("required SessionStart hooks already present")
+        # The intake permission rules (#350), by the same shared merge install.py runs:
+        # the ask rules for override/triage/except and the Read deny on the quarantine.
+        # A wrong-shaped `permissions` object is left as it is and said so; the hooks
+        # are still merged.
+        added_rules = []
+        merge_rules = getattr(shared, "merge_missing_permission_rules", None)
+        if merge_rules is not None:
+            try:
+                added_rules = merge_rules(settings)
+            except TypeError as e:
+                self.out.warn(f"{path}: the permissions object is the wrong shape ({e}) — "
+                              f"the intake permission rules were NOT added")
+
+        if not added and not added_rules:
+            self.out.skip("required SessionStart hooks and intake permission rules already present")
             return
 
         if self.dry_run:
             for cmd in added:
                 self.out.skip(f"would add hook: {cmd}")
+            for bucket, rule in added_rules:
+                self.out.skip(f"would add permissions.{bucket}: {rule}")
             return
 
         self.claude_home.mkdir(parents=True, exist_ok=True)
@@ -371,7 +476,10 @@ class Bootstrap:
         shared._atomic_write_text(path, json.dumps(settings, indent=2) + "\n")
         for cmd in added:
             self.out.info(f"added hook: {cmd}")
-        self.out.ok(f"settings.json updated ({len(added)} new hook(s))")
+        for bucket, rule in added_rules:
+            self.out.info(f"added permissions.{bucket}: {rule}")
+        self.out.ok(f"settings.json updated ({len(added)} new hook(s), "
+                    f"{len(added_rules)} new permission rule(s))")
 
     # ----- step 6 -----------------------------------------------------------
 

@@ -1,0 +1,485 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mail-verdict.v1",
+  "title": "Mail scan verdict record",
+  "description": "One record per scan of one raw message. It carries the digest of the raw bytes, a keyed hash of the sender, the verdict, the reply decision, rule ids, gap names, classes, counts and inventories by opaque id. It never carries a subject, body text, an address, a host name or a file name: every string in it is a digest, an id this skill made, a time, a version or a word from a fixed list of this skill. There is no free-text field. The seal is an HMAC over the rest of the record under the key of the state root, so a record that was edited, or copied under another id, is refused when it is read. A sibling of intake-verdict.v1, written inside the subset of JSON Schema that the interpreter of intake-scan reads; bounds that subset cannot state are checked in code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "time",
+    "sha256",
+    "subject",
+    "sender",
+    "verdict",
+    "reply",
+    "reply_if_released",
+    "holds",
+    "rules",
+    "gaps",
+    "header_ambiguous",
+    "over_bound",
+    "attachment_only",
+    "inventory",
+    "view",
+    "versions",
+    "seal"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mail-verdict.v1"
+    },
+    "id": {
+      "$ref": "#/$defs/record_id"
+    },
+    "time": {
+      "$ref": "#/$defs/time"
+    },
+    "sha256": {
+      "$ref": "#/$defs/hex64"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "email"
+        }
+      }
+    },
+    "sender": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/hex64"
+        }
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "caution",
+        "block"
+      ]
+    },
+    "reply": {
+      "enum": [
+        "draft",
+        "none-automated",
+        "none-list",
+        "held"
+      ]
+    },
+    "reply_if_released": {
+      "enum": [
+        "draft",
+        "none-automated",
+        "none-list",
+        "held"
+      ]
+    },
+    "holds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "block",
+          "budget",
+          "held"
+        ]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule",
+          "class",
+          "count"
+        ],
+        "properties": {
+          "rule": {
+            "$ref": "#/$defs/name"
+          },
+          "class": {
+            "enum": [
+              "block",
+              "caution",
+              "reply"
+            ]
+          },
+          "count": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap",
+          "class",
+          "effect",
+          "detail",
+          "count"
+        ],
+        "properties": {
+          "gap": {
+            "$ref": "#/$defs/name"
+          },
+          "class": {
+            "enum": [
+              "block",
+              "caution"
+            ]
+          },
+          "effect": {
+            "enum": [
+              "held",
+              "none"
+            ]
+          },
+          "detail": {
+            "$ref": "#/$defs/name_or_empty"
+          },
+          "count": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "header_ambiguous": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "header",
+          "reason",
+          "count"
+        ],
+        "properties": {
+          "header": {
+            "$ref": "#/$defs/name"
+          },
+          "reason": {
+            "$ref": "#/$defs/name"
+          },
+          "count": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "over_bound": {
+      "$ref": "#/$defs/name_or_empty"
+    },
+    "attachment_only": {
+      "type": "boolean"
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parts",
+        "attachments",
+        "links"
+      ],
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "role",
+              "depth"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/part_id"
+              },
+              "type": {
+                "$ref": "#/$defs/media_word"
+              },
+              "role": {
+                "$ref": "#/$defs/name"
+              },
+              "depth": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "part",
+              "role",
+              "type",
+              "extension_class",
+              "signature",
+              "size"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/attachment_id"
+              },
+              "part": {
+                "$ref": "#/$defs/part_id"
+              },
+              "role": {
+                "$ref": "#/$defs/name"
+              },
+              "type": {
+                "$ref": "#/$defs/media_word"
+              },
+              "extension_class": {
+                "$ref": "#/$defs/name"
+              },
+              "signature": {
+                "$ref": "#/$defs/name"
+              },
+              "size": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "part",
+              "kind",
+              "number",
+              "flags"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/link_id"
+              },
+              "part": {
+                "$ref": "#/$defs/part_id"
+              },
+              "kind": {
+                "$ref": "#/$defs/name"
+              },
+              "number": {
+                "$ref": "#/$defs/count"
+              },
+              "flags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/flag"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "view": {
+      "description": "What the view step counted; null for a message no view was built for. The view itself is kept in another file and never here.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "warning",
+            "truncated",
+            "counts"
+          ],
+          "properties": {
+            "warning": {
+              "type": "boolean"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "counts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "hidden_chars",
+                "uncertain_chars",
+                "dropped_chars",
+                "dropped_elements",
+                "dropped_attributes",
+                "tag_chars",
+                "bidi_chars",
+                "format_chars",
+                "links",
+                "links_unlisted",
+                "secrets_masked",
+                "quoted_lines",
+                "visible_chars",
+                "visible_letters",
+                "images",
+                "style_blocks",
+                "conditional_comments",
+                "view_chars",
+                "view_lines"
+              ],
+              "properties": {
+                "hidden_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "uncertain_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "dropped_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "dropped_elements": {
+                  "$ref": "#/$defs/count"
+                },
+                "dropped_attributes": {
+                  "$ref": "#/$defs/count"
+                },
+                "tag_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "bidi_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "format_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "links": {
+                  "$ref": "#/$defs/count"
+                },
+                "links_unlisted": {
+                  "$ref": "#/$defs/count"
+                },
+                "secrets_masked": {
+                  "$ref": "#/$defs/count"
+                },
+                "quoted_lines": {
+                  "$ref": "#/$defs/count"
+                },
+                "visible_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "visible_letters": {
+                  "$ref": "#/$defs/count"
+                },
+                "images": {
+                  "$ref": "#/$defs/count"
+                },
+                "style_blocks": {
+                  "$ref": "#/$defs/count"
+                },
+                "conditional_comments": {
+                  "$ref": "#/$defs/count"
+                },
+                "view_chars": {
+                  "$ref": "#/$defs/count"
+                },
+                "view_lines": {
+                  "$ref": "#/$defs/count"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scanner",
+        "lists",
+        "python"
+      ],
+      "properties": {
+        "scanner": {
+          "$ref": "#/$defs/word"
+        },
+        "lists": {
+          "$ref": "#/$defs/word"
+        },
+        "python": {
+          "type": "string",
+          "pattern": "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}[0-9A-Za-z.+-]{0,20}$"
+        }
+      }
+    },
+    "seal": {
+      "$ref": "#/$defs/hex64"
+    }
+  },
+  "$defs": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "word": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,49}$"
+    },
+    "name_or_empty": {
+      "type": "string",
+      "pattern": "^([a-z][a-z0-9-]{0,49})?$"
+    },
+    "flag": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,49}$"
+    },
+    "media_word": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.+_-]{0,59}(/[a-z0-9][a-z0-9.+_-]{0,99})?$"
+    },
+    "part_id": {
+      "type": "string",
+      "pattern": "^p[0-9]{1,6}$"
+    },
+    "attachment_id": {
+      "type": "string",
+      "pattern": "^a[0-9]{1,6}$"
+    },
+    "link_id": {
+      "type": "string",
+      "pattern": "^l[0-9]{1,6}$"
+    }
+  }
+}

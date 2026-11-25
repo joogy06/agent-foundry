@@ -1,22 +1,42 @@
 ---
 name: ecommerce-growth
-description: Use when building or auditing customer-facing pages (homepage, category, product, cart, checkout), planning cart recovery or email campaigns, implementing cross-sell/upsell, or optimizing site performance and navigation for a WooCommerce store.
+description: E-commerce storefront growth for WooCommerce - page-by-page checklists (homepage, category, product, cart, checkout), cart recovery and email campaigns, cross-sell and upsell, navigation and performance targets. Use when building or auditing customer-facing pages or planning growth levers for an online store.
 disambiguation: WHAT goes on each customer-facing page and the growth levers across the store — page checklists, cart recovery, cross-sell, campaigns. The filtering and faceted-navigation layer specifically is woocommerce-faceted-navigation; experiment design is ecommerce-cro-experimentation; persuasion mechanics are conversion-psychology.
 ---
 
 # E-Commerce Growth
 
+<!-- FRESHNESS:v1
+volatility: medium
+anchors:
+  - kind: date_review
+    subject: ecommerce-growth-search-parts
+    review_by: 2027-03-26
+  - kind: external_fact
+    subject: core-web-vitals-thresholds
+    source_url: https://web.dev/articles/vitals
+    verified_on: 2026-09-27
+    review_by: 2027-03-26
+    claim: "LCP <= 2.5 s good at p75 (the LCP benchmark in Performance Targets); unchanged."
+-->
+
+## Verify before you assert
+
+Dated facts here carry a FRESHNESS anchor: past its `review_by`, fetch the `source_url` live before
+stating it. The full rules: `ai-search-optimizer` → "Verify before you assert".
+
+
 ## Overview
 
-Every page is a conversion opportunity. This skill covers **WHAT** to build on each page and how to structure the sales funnel — from first impression to post-purchase retention. For the psychology behind WHY tactics work, see `conversion-psychology`. For AI search visibility, see `ai-search-optimizer`.
+Every page is a conversion opportunity. This skill covers **WHAT** to build on each page and how to structure the sales funnel — from first impression to post-purchase retention. For the psychology behind WHY tactics work, see `conversion-psychology`. For AI search visibility, see `ai-search-optimizer`; for traffic and sales arriving from AI assistants (which often land deep on product pages), see `ai-assistant-referrals`.
 
 ## Top 5 Essentials
 
-1. **Guest checkout** — 63% abandon if forced to create account
-2. **BNPL pricing on product pages** — Klarna/PayPal monthly price increases AOV 30-50%
-3. **Express checkout buttons** at top of checkout (PayPal = 89% completion rate)
-4. **Abandoned cart 3-email sequence** — recovers 15-30% of abandoned carts
-5. **Page speed** — every 100ms delay = ~7% conversion drop
+1. **Guest checkout** — forced account creation is a leading abandonment reason (Baymard checkout research) [I]
+2. **Instalment pricing on product pages** — show your BNPL provider's monthly price (e.g. PayPal Pay in 3). In the UK, BNPL "Deferred Payment Credit" became FCA-regulated on 2026-07-15 [I]: follow the provider's approved wording for financial promotions
+3. **Express checkout buttons** at top of checkout
+4. **Abandoned cart 3-email sequence** — measure your own recovery rate
+5. **Page speed** — slower pages convert worse; measure your own field data
 
 ---
 
@@ -30,9 +50,9 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 | **Action** | "I'm buying this" | Streamlined checkout, express pay | Conversion rate |
 | **Retention** | "Should I come back?" | Post-purchase emails, upgrade offers | Repeat rate |
 
-**Biggest drop-offs** (industry estimate):
-- Product page → Add to cart: ~66% drop — fix with spec clarity, trust, payment framing
-- Category → Product: ~42% drop — fix with better cards, clearer differentiation
+**Usually the biggest drop-offs** (measure your own funnel in GA4 before prioritising):
+- Product page → Add to cart — fix with spec clarity, trust, payment framing
+- Category → Product — fix with better cards, clearer differentiation
 
 ---
 
@@ -42,7 +62,7 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 **Goal**: Establish trust, communicate value, route visitors within 5 seconds.
 
 - Single compelling headline + one primary CTA
-- Trust bar below hero: "Free Shipping | 2-Year Warranty | Klarna | 4.5 Stars"
+- Trust bar below hero: "Free Shipping | 2-Year Warranty | Pay in 3 | 4.5 Stars" (only claims you can prove)
 - 3-4 category cards (not more)
 - Social proof within first scroll
 - No rotating carousels (ignored by users, slow LCP)
@@ -64,7 +84,7 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 **Above fold**:
 - Image gallery (4-6 images, zoomable)
 - Clear title with key specs
-- Price large + Klarna monthly price
+- Price large + BNPL monthly price (your provider's approved wording)
 - Star rating with review count
 - Key specs as 4-6 bullet points
 - "Add to Cart" button (magenta, sticky on mobile)
@@ -83,12 +103,12 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 - **PDP trust badges**: put payment icons and returns/warranty near the price and Add-to-Cart, not only in the footer (see `conversion-psychology` trust architecture).
 - **Product comparison**: offer a compare table for 2-4 similar SKUs (spec-by-spec rows) so shoppers self-serve differentiation instead of bouncing to search.
 
-**Benchmarks**: Electronics CVR 1.4-1.8% normal, 2.5%+ excellent. Add-to-cart target: 8-12%.
+**Targets** (heuristic starting points, measure your own): electronics CVR 1.4-1.8% typical, 2.5%+ strong; add-to-cart 8-12%.
 
 ### Cart Page
 - Clear product summary with image, name, spec, price
 - Running total with shipping visible (no surprises)
-- Express checkout buttons (Klarna, PayPal)
+- Express checkout buttons (e.g. PayPal, Apple Pay, Google Pay)
 - 2-4 cross-sell suggestions max
 - Persistent cart across sessions
 
@@ -103,70 +123,29 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 
 ---
 
-## Cart Abandonment Recovery
+## Cart recovery, cross-sell, email capture and post-purchase
 
-**Rates**: Electronics 74-76%, Gaming ~67%, Mobile 73-75%
+The 3-email cart-recovery sequence, cross-sell and upsell placements, email-capture tactics and the
+post-purchase sequence:
+[references/campaigns.md](references/campaigns.md).
 
-### 3-Email Sequence
-
-| Email | Timing | Content | Discount |
-|-------|--------|---------|----------|
-| **Helpful nudge** | 1-2 hours | Product image + direct cart link | None |
-| **Social proof** | 24 hours | Reviews, stock urgency | None |
-| **Final incentive** | 48-72 hours | Small discount or free accessory | 5% off |
-
-**Recovery benchmark**: 15-30% of abandoned carts across the sequence. ROI: ~£25 return per £1 invested.
-
----
-
-## Cross-Sell & Upsell
-
-### Cross-Sell (what goes with it)
-| With PC | Suggest | Where |
-|---------|---------|-------|
-| Any gaming PC | Monitor, keyboard, mouse, headset | Product page: "Complete Your Setup" |
-| Any gaming PC | Gaming chair, desk | Cart: "Customers Also Bought" |
-| Any gaming PC | Extended warranty | Cart or checkout |
-
-### Upsell (upgrade path)
-- GPU upgrade: "RTX 5070 for +£150 (+35% FPS)" — on product page
-- RAM upgrade: "+16GB for +£45" — on product page
-- Storage: "2TB NVMe for +£60" — on product page
-
-**Rules**: Max 4 suggestions per placement. Never push during payment step. Show price + thumbnail for every suggestion.
-
----
-
-## Email Capture
-
-| Tactic | Timing | Offer | Capture Rate |
-|--------|--------|-------|-------------|
-| Exit-intent popup | Cursor leaves page | Free buying guide PDF | 4-7% |
-| Cart exit-intent | Leaving cart page | "Save your cart" | 12-17% |
-| Post-purchase | Order confirmation page | "Get build tips & deals" | 15-20% |
-| Embedded footer form | Always visible | Newsletter | 1-2% |
-
-**Lead magnets**: Gaming PC Buying Guide PDF, FPS Benchmarks Cheat Sheet, Build Comparison Chart.
-
-### Post-Purchase Sequence
-
-| Email | When | Content |
-|-------|------|---------|
-| Setup guide | 3 days post-delivery | Windows optimization, driver updates |
-| Review request | 7-14 days | "How's your PC? 10% off peripherals for a review" |
-| Cross-sell | 30 days | "Complete your setup" accessories |
-| Upgrade notification | 12 months | New GPU/component upgrade offers |
+**Reviews: no incentive by default.** Paying or discounting for reviews is legally risky in the UK
+(DMCCA 2024 Sch. 20 para 13, in force 2025-04-06) and against Google's review guidance. If an incentive is
+used at all it must be unconditional on sentiment, disclosed on the review itself, and never offered for
+Google reviews. Rules and sources: `seo-authority-builder`.
 
 ---
 
 ## Performance Targets
 
-| Metric | Benchmark (Electronics) | Target |
+Heuristic starting points (electronics), not sourced benchmarks: set targets from your own baseline.
+
+| Metric | Typical (heuristic) | Target (heuristic) |
 |--------|------------------------|--------|
-| Conversion rate | 1.4-1.8% | > 2% |
-| Cart abandonment | 74-76% | < 70% |
-| Add-to-cart rate | 5-10% | > 8% |
-| Bounce rate | 40-60% | < 50% |
+| Conversion rate | 1.4-1.8% (heuristic) | > 2% (heuristic) |
+| Cart abandonment | 74-76% (heuristic) | < 70% (heuristic) |
+| Add-to-cart rate | 5-10% (heuristic) | > 8% (heuristic) |
+| Bounce rate | 40-60% (heuristic) | < 50% (heuristic) |
 | LCP | < 2.5s | < 2.0s |
 | Pages/session | 3-5 | > 4 |
 
@@ -181,32 +160,17 @@ Every page is a conversion opportunity. This skill covers **WHAT** to build on e
 
 ---
 
-## Quick Wins (High Impact, Low Effort)
-
-1. Show Klarna monthly pricing on product pages
-2. Enable guest checkout
-3. Express checkout buttons at top of checkout
-4. Abandoned cart email sequence (3 emails)
-5. Exit-intent email capture popup
-6. Sticky "Add to Cart" on mobile
-7. FPS benchmark data on product pages
-8. Product count on filter options
-9. Persistent cart across sessions
-10. Post-purchase review request email
-
----
-
-## Anti-Patterns
+## Anti-patterns
 
 | Don't | Impact |
 |-------|--------|
-| Surprise shipping costs at checkout | #1 abandonment reason (48%) |
-| Force account creation | 63% abandon |
+| Surprise shipping costs at checkout | The top abandonment reason in Baymard's survey [I] |
+| Force account creation | A leading abandonment reason [I] |
 | Rotating hero carousels | Users ignore, slows LCP |
 | No filters on 12k product catalog | Visitors can't find anything |
 | Generic product descriptions | No differentiation, poor SEO |
 | Multi-page checkout (5+ steps) | Each step loses customers |
 | Cross-selling during payment | Distracts at critical moment |
-| No mobile optimization | 60%+ traffic is mobile |
+| No mobile optimization | Most shoppers browse on mobile; check your own device split |
 | Pagination that resets scroll | Frustrating UX |
 | No delivery timeframe shown | Increases purchase anxiety |

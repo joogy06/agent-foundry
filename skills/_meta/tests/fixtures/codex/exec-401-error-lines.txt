@@ -1,0 +1,39 @@
+# codex exec error lines -- #282 R2 fixture (pins codex_quota.CODEX_ERROR_LINE_PATTERNS).
+# Captured 2026-09-15T16:56:30Z, codex-cli 0.154.0 (x86_64-unknown-linux-musl), from a scratch cwd, by the
+# quota-free probe (no credentials, no model call, no quota spent):
+#   env -u OPENAI_API_KEY CODEX_HOME=$(mktemp -d) timeout 120 codex exec --skip-git-repo-check -s read-only -m gpt-5.6-sol "OK" </dev/null
+# exit status 1; stdout empty. The temp CODEX_HOME (and the rollout codex wrote into it) was deleted
+# afterwards; ~/.codex/sessions held the same 60 rollouts before and after.
+# Body: every stderr line in one of the two codex-owned error shapes, verbatim and in order, EXCEPT volatile
+# identifiers: the cf-ray value -> <CF_RAY>, the request id -> <REQUEST_ID> (timestamp digits are kept;
+# there were no URL query tokens). Header lines start with "# " and are not stderr.
+#   shape 1  ^ERROR: <msg>
+#   shape 2  ^<ISO-8601>Z ERROR codex_[a-z_:]+: <msg>   (the tracing form; fractional seconds present)
+# The real 401 appears in the tracing form (every websocket attempt). On this run codex also fell back to the
+# HTTPS transport and printed the 401 on two "ERROR: unexpected status 401 Unauthorized" lines; the spec-time
+# probe recorded it in the tracing form only. Omitted (not an error line, so never proof on its own): the
+# banner, the prompt echo "OK", a "WARNING: proceeding, even though we could not create PATH aliases: ..."
+# line, and the transport fallback line
+#   warning: Falling back from WebSockets to HTTPS transport. unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: <CF_RAY>
+# The usage-limit ERROR LINE shape is NOT observed live (spec Accepted limits): a quota stop's line shape is
+# assumed to be one of the two shapes above. `strings` over the installed binary (2026-09-15) contains
+# "Selected model is at capacity. Please try a different model." and
+# "Quota exceeded. Check your plan and billing details." verbatim; neither was rendered by this probe.
+2026-09-15T16:56:37.647031Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-09-15T16:56:37.697191Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-09-15T16:56:37.942485Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+ERROR: Reconnecting... 2/5
+2026-09-15T16:56:38.385256Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+ERROR: Reconnecting... 3/5
+2026-09-15T16:56:39.214425Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+ERROR: Reconnecting... 4/5
+2026-09-15T16:56:40.869579Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+ERROR: Reconnecting... 5/5
+2026-09-15T16:56:44.102121Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+ERROR: Reconnecting... 1/5
+ERROR: Reconnecting... 2/5
+ERROR: Reconnecting... 3/5
+ERROR: Reconnecting... 4/5
+ERROR: Reconnecting... 5/5
+ERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: <CF_RAY>, request id: <REQUEST_ID>
+ERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: <CF_RAY>, request id: <REQUEST_ID>

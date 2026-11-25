@@ -33,7 +33,8 @@ output storage. The caller owns those.
 **Parallel diverge is mandatory.** Round 1 teams MUST run in parallel, not sequentially. Sequential
 execution defeats the entire point of divergence — the later team sees the earlier team's output and
 anchors to it. Always spawn all teams simultaneously via `Agent` tool (Claude) / `codex exec` (Codex) /
-`agy -p` (Antigravity) calls batched in a single message.
+`agy --sandbox --mode plan $AGY_MODEL -p` (Antigravity) calls batched in a single message, every seat's model resolved
+through `seat_model` (see "Seat model selection").
 </HARD-RULE>
 
 <HARD-RULE>
@@ -124,13 +125,19 @@ meta:
 
 Each team generates `n_per_team` outputs **in parallel** and **without seeing the others' work**.
 
-**Per-team spawn prompt template:**
+**Per-team spawn prompt template** (the brief block: `skills/_meta/spawn-brief.md`):
 
+<!-- spawn-brief.v1 id=adversarial-team-brainstorm.team -->
 ```
 You are Team {NAME}, running the {LENS} lens.
 Your lens definition: {READ references/team-angles.md for {LENS}}
 
 Question: {QUESTION}
+Goal: {N} committed proposals answering the question through the {LENS} lens.
+Non-goals: other lenses; option lists; files or code changes.
+Open questions: none may be returned — decide, note the assumption in the output, proceed.
+Done when: exactly {N} outputs, each with the four fields below.
+Stop when: the {N} outputs are written, or you are blocked (state the blocker). One round only.
 
 {IF context[team_data_key] exists for this lens:}
 Data grounding (you MUST cite at least one source from this feed in each output):
@@ -152,8 +159,84 @@ CRITICAL:
 ```
 
 Spawn all teams simultaneously in one message (Claude via `Agent`, Codex via `codex exec`, Antigravity
-via `timeout 600 agy --sandbox -p "..." < /dev/null` as a background Bash task — `--sandbox` is
-mandatory for these advise-only calls, per the `antigravity-cli` SANDBOX RULE).
+via `AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)` as a background Bash task — `--sandbox` is
+mandatory for these advise-only calls, per the `antigravity-cli` SANDBOX RULE; the model of every seat
+comes from `seat_model`, below).
+
+### Seat model selection (user directive 2026-09-09; seat registry since S081)
+
+Brainstorming is DELIBERATIVE work, so main seats take each vendor's top model **regardless of how
+small the question is**. Seat models resolve through the seat registry
+`~/.claude/skills/_meta/seat_model.py`. It reads only home-tier inputs, never the working directory,
+a project policy or smart-config, and it is never hardcoded here: TOP selectors follow the vendor's
+roster, so `python3 ~/.claude/skills/_meta/seat_model.py emit --json` shows what serves right now.
+
+| Seat | seat_model role | Resolves to | Why |
+|---|---|---|---|
+| **MAIN seats** (the teams that carry the argument, and every adversarial/contrarian angle) | `consultant_main` | Claude main tier · codex std tier @ `xhigh` (the astra reserve, roster rev 4: codex TOP is kept for escalation and complex review) · agy newest roster-family model `-high` (rev 6: `gemini-4-argon-high`) | A weak challenger produces agreement, which is the exact failure this tournament exists to prevent |
+| **Supporting / advisory seats** (breadth angles, large-context sweeps) | `consultant_support` | Claude support tier · codex support tier @ `medium` (no `--ephemeral`, not budgeted) · agy newest roster-family model `-medium` (rev 6: `gemini-4-argon-medium`) | Coverage without spending top tier on every seat |
+
+The tiers are named, not their models: which model each Claude tier and the codex std tier are right
+now is the "Currently" column of codex-orchestration "Seat Models" (the roster, `skills/_meta/model_roster.py`).
+
+**agy is a THIRD MAIN provider here, not a fallback.** agy serves ONE Gemini family, the one the
+roster names (`model_roster.AGY_FAMILY`; rev 6: Gemini 4 Argon, which replaced flash on eval evidence),
+and `seat_model` enforces that family in code. The account default is still an older Gemini
+model of a family the roster now forbids, so an agy call without `$AGY_MODEL` silently
+seats a forbidden line.
+
+```bash
+# agy MAIN seat (consultant_main). A supporting agy seat uses --role consultant_support.
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)" \
+  && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL \
+       -p "You are the <angle> team. Question: ... (content INLINE, this call has no workspace)" \
+       < /dev/null)
+```
+
+Three providers on main seats is the point: Claude, OpenAI and Google have genuinely different
+blind spots. Two providers is a weaker cross-check, and it should be RECORDED as such when one
+arm no-shows rather than quietly back-filled by a same-vendor substitute. The one sanctioned
+substitute is a codex team that codex cannot serve (refused by the budget gate, quota exhausted,
+CLI missing, no eligible model, or two failed calls — after a capability failure, the one Sol → TOP retry
+comes first): a Claude team in the same lens on the
+Claude main tier serves it, labelled as a substitution, and the round is recorded as Claude + Google (provider gap:
+OpenAI) — see "Codex teams".
+
+Resolve the Claude seats through the registry, not smart-config. A main seat is a protected role,
+and smart-config merges a project policy from the working directory that could downgrade it:
+
+```bash
+m=$(python3 ~/.claude/skills/_meta/seat_model.py model --role consultant_main --provider claude)     # main seat
+m=$(python3 ~/.claude/skills/_meta/seat_model.py model --role consultant_support --provider claude)  # supporting seat
+# Agent(subagent_type=..., model=m, ...) — a non-zero exit prints nothing: the registry is broken.
+# Fix it; never spawn a seat on the inherited session model.
+```
+
+**Never staff a main adversarial seat below the top tier.** Seats that are genuinely mechanical
+(extraction, cite-checking, scribes) are not consultancy roles. They may take smart-config `light`.
+
+**Call budgets.** A codex MAIN seat is a std-tier call (Sol @ `xhigh`, since the astra reserve). It runs without `--ephemeral`, so quota is
+metered, and it is admitted as a **`brainstorm`** call against **the tournament's OWN budget key**, not
+the round's. The lead mints `tournament-<uuid>` once at tournament start and persists it at
+`$WORK/tournament-id`, so the diverge lead and the final cross-fire share ONE key and together spend the
+`brainstorm` budget (**2 TOP calls, 4 std**; a Sol team spends std). Until S081 revision 4 these seats were admitted as
+`consult` against the *forge cycle id*, which allows exactly ONE: a brainstorm inside a forge round
+either starved forge's own approach explorer or was itself refused, and the second codex team in a
+tournament was always refused. Outside a forge round the key is still the tournament's, not
+`adhoc-<UTC date>-<cycle base>`. A refused codex team is served by a Claude team in the same lens on
+the substitute model (Failure Modes), never re-seated on a codex std or support model: every codex
+model draws the same ChatGPT-plan quota. A substitute does not spend the astra budget; it is recorded in
+`~/.claude/projects/<slug>/astra-budget.jsonl` for the 2026-09-28 plan review. Only a broken seat
+registry or a codex failure the classifier calls a gap makes the codex team a **no-show**.
+Inside a forge round, forge's agy cap applies: at most 3 agy calls per round, and a capacity error
+stops further agy calls for that round.
+
+**Scope of the tournament key, stated so a reader does not expect more than exists.** The codex lead and
+the final cross-fire exist ONLY on this SKILL.md inline path. `workflows/adversarial-tournament.js` has
+**no codex stage at all** — verified by measurement, not assumed: the file contains zero occurrences of
+`codex`, and no `models` argument either. So the workflow mints no key, needs none, and is untouched by
+this change. A tournament run through the workflow is a Claude/agy tournament; only the inline path here
+spends the `brainstorm` budget.
 
 ### Round 2: Cross-fire
 
@@ -250,22 +333,201 @@ includes:
 4. The Round 1 output format
 
 **Codex teams** — use `codex exec` (preferred for `contrarian`, `first-principles`, `arbitrage`
-angles):
+angles). A codex team is a MAIN seat, `consultant_main` (the codex std tier @ `xhigh`, a 2400s runaway cap from
+`seat_model.py timeout` — the call is stopped by 300s of silence, not by the clock, and its Bash tool
+call runs with `run_in_background` because a foreground one is capped at 600s). Its model and
+effort come from `seat_model.py argv`, and the call runs only when the pin resolved. It runs WITHOUT
+`--ephemeral` so that quota is metered, which means its prompt persists in `~/.codex/sessions`: no
+secrets. `seat_model.py argv --use brainstorm --cycle-id "$TOURNAMENT_KEY"` admits and pins it in one
+call, against the tournament's own key rather than the round's. Exit 0 runs codex. Exit 3
+means codex cannot serve the seat: stdout line 1 is the reason, line 2 the Claude model, and no codex call
+runs. Anything else (1 = broken registry, 2 = usage error) is a no-show. A failed codex call goes
+through `codex_quota.py classify`: a timeout or empty answer re-runs only the exec line once, a
+model at capacity retries once and then substitutes (`capacity_twice`), a quota / rate-limit stop,
+auth failure, missing CLI or second timeout substitutes, and any other exit is a no-show.
+
+**When the output file starts with `CODEX_SUBSTITUTE:`,** run a Claude team in the SAME lens on the
+model named in that line: `Agent(subagent_type="general-purpose", model="<that model>")` with the
+Claude-team spawn prompt above (same lens, question, data feeds and Round 1 format), in a fresh
+context. Spawn it as soon as the line appears, still in Round 1: it is the one sanctioned spawn after
+the parallel batch, and like every Round 1 team it is given no other team's output. Label its outputs
+`<that model> (substituting codex: <reason>)` and keep the `CODEX_SUBSTITUTE:` line in `arbiter_notes`, so
+the round is recorded as Claude + Google (provider gap: OpenAI).
+**When it starts with `CODEX_QUOTA_WAIT:`** (#322: codex is out of quota and nothing is recorded yet), the
+tournament lead follows the codex-orchestration "Seat Models" steps: on `wait_advice notify`, `codex_quota.py
+notify-claim` and notify on its exit 0 (one notification per refusal wave); run `codex_quota.py await-reset
+--cycle-id <key>` in a background call (one per account; parallel teams join it; a record whose wait already timed out exits 4 at once); re-run the same codex team
+once on exit 0; on exit 4 / 6 / 3 record `seat_model.py substitute --use <use> --cycle-id <key>
+--requested-model <requested> --reason quota_exhausted_timeout|quota_probe_error|cli_missing` (the values on
+the line) and run the Claude team above.
 
 ```bash
-timeout 600 codex exec --ephemeral --skip-git-repo-check -s read-only \
-  -o "$WORK/team-contrarian-round1.md" \
-  "You are the contrarian team. Question: $QUESTION. Data: see $CONTEXT_FILE.
-   Produce $N outputs per the format in $OUTPUT_SPEC." < /dev/null
+# codex_top_seat NAME ROLE USE SIZE KEY BRIEF_FILE OUT_FILE [codex exec flags...] -- one TOP codex seat:
+# SIZE and KEY are each "" when the caller has none, and an empty one passes no flag.
+# admit + pin (exit 0 run codex, 3 substitute, else no-show), then classify any failed call (retry = re-run
+# only the exec line, once; substitute = record it; gap = the no-show line). Budget key's project:
+# $PROJECT_DIR, else the working directory.
+# RUN THE BASH TOOL CALL THAT DEFINES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on
+# the completion notification. A FOREGROUND Bash tool call is capped at 600 s however large the seat's own
+# cap is, and that cap -- not the model -- is what killed two healthy gpt-5.6-sol sessions mid-work (D24).
+codex_top_seat() {
+  local NAME="$1" ROLE="$2" USE="$3" SIZE="$4" KEY="$5" BRIEF="$6" DEST="$7" OUT RC ACT="" TRY TO MDL; shift 7
+  local SEAT="$HOME/.claude/skills/_meta/seat_model.py" QUOTA="$HOME/.claude/skills/_meta/codex_quota.py"
+  local WATCH="$HOME/.claude/skills/_meta/codex_watch.py" TRIES="1 2" SUBUSE="$USE" RETRY RRC RTO AID="" AKEY=""
+  local L2 WA RIN UU UK UM
+  # The receipt: `<admission id> <key>` of this seat's LIVE admission, written atomically by argv. DEST must be
+  # unique per seat (the receipt is "$DEST.admit"). Read in a subshell, so this function's "$@" is untouched.
+  rm -f "$DEST.admit"
+  # SIZE and KEY are EMPTY when the caller has none, and an empty one passes NO FLAG AT ALL. Sizing is
+  # opt-in: with no --size the registry reads no size file, so an unsized seat takes the TOP model even on
+  # a small cycle -- and passing a literal size instead of nothing would record `size_source: routing`, a
+  # routing decision nobody made. An empty KEY leaves the budget key the project derives; a caller that
+  # mints its own passes it here, so its seats share ONE key and spend their OWN budget, not the round's.
+  # #322: --await-quota -- a QUOTA refusal records no stand-in yet; it prints the reset lines and
+  # `substitution=deferred`, and the seat's owner waits (see CODEX_QUOTA_WAIT below).
+  OUT="$(python3 "$SEAT" argv --role "$ROLE" --provider codex --use "$USE" --receipt-file "$DEST.admit" \
+           --await-quota ${SIZE:+--size "$SIZE"} ${KEY:+--cycle-id "$KEY"} \
+           --project-root "${PROJECT_DIR:-$PWD}")"; RC=$?
+  # The timeout is the seat registry's, asked only AFTER an admitted `argv --use` (asked first, a no-eligible
+  # substitution would become a gap) and never as a second `argv` stdout line: $OUT is word-split into
+  # `codex exec $OUT`, so an extra line would become a prompt. No timeout -> the gap line; codex never runs.
+  if [ "$RC" -eq 0 ]; then
+    TO="$(python3 "$SEAT" timeout --role "$ROLE" --provider codex)" || { ACT="seat_model timeout exit $?"; RC=1; }
+    MDL="$(set -- $OUT; echo "$2")"     # the pinned model, named once: progress line and substitution record
+    AID="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${1-}")"
+    AKEY="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${2-}")"; AKEY="${AKEY:-$KEY}"
+  fi
+  if [ "$RC" -eq 0 ]; then
+    while [ -n "$TRIES" ]; do
+      for TRY in $TRIES; do
+        # D24: the watchdog stops the call on INACTIVITY -- no stdout, no stderr and no session-rollout write
+        # for the idle window -- so "thinking hard" is no longer killed as "hung". The registry timeout is
+        # passed as the RUNAWAY cap only, never as the normal stop, and the watchdog prints a progress line to
+        # this call's stderr while it waits. Its exits: 111 went silent (the retryable stop, classified as a
+        # timeout), 112 ran away while still active (a gap on the FIRST hit, never a substitution), anything
+        # else is codex's own status passed straight through.
+        python3 "$WATCH" --mode codex --hard-cap "$TO" --model "$MDL" \
+          --stdout-file "$DEST.stdout" --stderr-file "$DEST.stderr" \
+          -- codex exec "$@" $OUT -o "$DEST" "$(cat "$BRIEF")"; RC=$?
+        ACT="$(python3 "$QUOTA" classify --exit-code "$RC" --attempt "$TRY" $([ "$RC" -eq 111 ] && echo --timed-out) \
+                 --stderr-file "$DEST.stderr" --output-file "$DEST" --prompt-file "$BRIEF")" || ACT=classify_error
+        [ "${ACT%% *}" = retry ] || break
+      done
+      TRIES=""
+      # U2, the astra reserve: a seat that failed on CAPABILITY (capacity or a malformed answer, twice) gets ONE
+      # attempt on the codex TOP. seat_model decides whether that is a retry at all -- it proves the failed
+      # attempt from its receipt (an admitted std row of this role, use and key), wants a DIFFERENT pin that
+      # bills the TOP class, and admits it as `top_retry` on the FORGE CYCLE (1 per cycle) -- and records the
+      # event row. The TOP timeout is asked FIRST, so a failed lookup spends no retry slot. Exit 0: run it ONCE,
+      # classified as attempt 2 so it has no inner retry, and SUBUSE stops a second entry; the receipt now names
+      # the retry's own admission and key. Exit 3: the D6 line, already recorded. Anything else: the original
+      # failure is substituted below. Quota, auth, budget, timeout and gap outcomes never reach this branch.
+      case "$SUBUSE:$ACT" in
+        "$USE:substitute capacity_twice"|"$USE:substitute malformed_twice")
+          RRC=1
+          if RTO="$(python3 "$SEAT" timeout --role "$ROLE" --provider codex --top-retry)"; then
+            rm -f "$DEST.admit"   # only the retry's own receipt may follow
+            RETRY="$(python3 "$SEAT" argv --role "$ROLE" --provider codex --use "$USE" --top-retry \
+                       --failed-admission-id "$AID" --failed-reason "${ACT#substitute }" \
+                       --receipt-file "$DEST.admit" --await-quota ${AKEY:+--cycle-id "$AKEY"} \
+                       --project-root "${PROJECT_DIR:-$PWD}")"; RRC=$?
+          fi
+          if [ "$RRC" -eq 0 ]; then
+            OUT="$RETRY"; MDL="$(set -- $OUT; echo "$2")"; SUBUSE=top_retry; TRIES=2; TO="$RTO"
+            AKEY="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${2-}")"; AKEY="${AKEY:-$KEY}"
+          elif [ "$RRC" -eq 3 ]; then
+            OUT="$RETRY"; ACT=top_retry_substituted
+          fi ;;
+      esac
+    done
+    case "$ACT" in
+      "ok -") ;;
+      top_retry_substituted) RC=3 ;;
+      # the substitution names the key its admission was billed to (the receipt's, else the caller's KEY): a
+      # failed TOP retry keeps its forge-cycle key, a tournament or ballot seat its own
+      "substitute "*) OUT="$(python3 "$SEAT" substitute --role "$ROLE" --use "$SUBUSE" --reason "${ACT#substitute }" \
+                               --requested-model "$MDL" ${AKEY:+--cycle-id "$AKEY"} \
+                               --project-root "${PROJECT_DIR:-$PWD}")"; RC=$? ;;
+      # classify itself failed: after a codex exit 0 keep codex's output in $DEST; after a failed call, a gap
+      classify_error) if [ "$RC" -eq 0 ]; then
+                        echo "CODEX_CLASSIFY_ERROR: $NAME: classify failed after codex exit 0; $DEST keeps its output" >&2
+                      else RC=1; fi ;;
+      *) RC=1 ;;
+    esac
+  fi
+  # Exit 3 prints the reason on LINE 1 and the Claude model on LINE 2; a quota refusal (#322) appends
+  # key=value lines after them, so the model is read as line 2, never as the last line.
+  L2="${OUT#*$'\n'}"; L2="${L2%%$'\n'*}"
+  case "$RC:$OUT" in
+    0:*) ;;  # codex answered: $DEST holds its output
+    3:*$'\n'substitution=deferred*)
+       WA="${OUT##*$'\n'wait_advice=}"; WA="${WA%%$'\n'*}"
+       RIN="unknown"; case "$OUT" in *$'\n'resets_in_s=*) RIN="${OUT##*$'\n'resets_in_s=}"; RIN="${RIN%%$'\n'*}" ;; esac
+       # #322 fix round 1: the use, key and codex model a later `substitute` must name (a TOP retry's own)
+       UU="${OUT##*$'\n'use=}"; UU="${UU%%$'\n'*}"; UK="${OUT##*$'\n'key=}"; UK="${UK%%$'\n'*}"
+       UM="-"; case "$OUT" in *$'\n'requested_model=*) UM="${OUT##*$'\n'requested_model=}"; UM="${UM%%$'\n'*}" ;; esac
+       printf 'CODEX_QUOTA_WAIT: %s (reason %s; wait_advice %s; resets_in_s %s; stand-in %s; use %s; key %s; requested %s)\nbrief: %s\n' \
+         "$NAME" "${OUT%%$'\n'*}" "$WA" "$RIN" "$L2" "$UU" "$UK" "$UM" "$BRIEF" > "$DEST" ;;
+    3:*) printf 'CODEX_SUBSTITUTE: %s -> %s (reason %s; provider gap: openai)\nbrief: %s\n' \
+         "$NAME" "$L2" "${OUT%%$'\n'*}" "$BRIEF" > "$DEST" ;;
+    *) echo "NO_SHOW: $NAME codex team (${ACT:-exit $RC}; see stderr)" > "$DEST" ;;
+  esac
+}
+
+# ONE key for the WHOLE tournament, minted once at tournament start and PERSISTED, because the diverge
+# lead and the final cross-fire are separate Bash calls and shell state does not survive between them.
+# Sharing one key is what makes them spend the tournament's own `brainstorm` budget (top 2 / std 4)
+# instead of the round's single `consult` -- which is why a brainstorm inside a forge round used to
+# starve forge's explorer, or be refused by it. Re-running this is safe: an existing id is read back.
+if [ ! -s "$WORK/tournament-id" ]; then
+  TID="$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || true)"
+  # SHAPE-CHECKED BEFORE USE, never just concatenated. An empty mint would make the key the bare prefix
+  # `tournament-`, which SATISFIES codex_quota.CYCLE_ID_PATTERN -- a malformed key that passes validation
+  # and that every tournament on the host would then SHARE, silently recreating the starvation above.
+  case "$TID" in
+    ????????-????-????-????-????????????) printf 'tournament-%s\n' "$TID" > "$WORK/tournament-id" ;;
+    *) echo "tournament key mint failed (no uuidgen, no python3)" >&2 ;;
+  esac
+fi
+TOURNAMENT_KEY="$(cat "$WORK/tournament-id" 2>/dev/null || true)"
+
+# <!-- spawn-brief.v1 id=adversarial-team-brainstorm.codex-team -->
+cat > "$WORK/team-contrarian-round1.brief.md" << BRIEF
+You are the contrarian team. Question: $QUESTION. Data: see $CONTEXT_FILE.
+   Produce $N outputs per the format in $OUTPUT_SPEC.
+Goal: $N committed contrarian proposals answering the question.
+Non-goals: other lenses; option lists; file changes.
+Open questions: none may be returned — decide, note the assumption, proceed.
+Done when: exactly $N outputs in the $OUTPUT_SPEC format.
+Stop when: the $N outputs are written, or you are blocked (state the blocker).
+BRIEF
+# Brainstorming is DELIBERATIVE, so the size is `complex` by this skill's own routing, not read from a cycle
+# file (inside a forge round the registry takes the LARGER of forge's size and this one). Since the astra
+# reserve a main seat is the codex std tier at every size; the size is recorded on the budget row.
+# NO KEY -> NO CALL. A failed mint is a NO_SHOW, never an unkeyed codex call that would fall back to the
+# round's budget key -- the exact sharing this block exists to stop.
+if [ -n "$TOURNAMENT_KEY" ]; then
+  codex_top_seat contrarian consultant_main brainstorm complex "$TOURNAMENT_KEY" \
+    "$WORK/team-contrarian-round1.brief.md" "$WORK/team-contrarian-round1.md" --skip-git-repo-check -s read-only
+else
+  echo "NO_SHOW: contrarian codex team (tournament key mint failed; no unkeyed codex call)" \
+    > "$WORK/team-contrarian-round1.md"
+fi
 ```
 
 **Antigravity (agy) teams** — use the agy CLI for large-context angles (`blue-ocean`, `trend-first`
 with deep event history). Output is plain text on stdout — the orchestrator parses it (STDIN RULE:
-stdin MUST be closed or agy hangs in background shells, #135; SANDBOX RULE: `--sandbox` on every
-advise-only call or agy may write files/commit instead of answering, #157):
+stdin MUST be closed or agy hangs in background shells, #135; SANDBOX RULE: `--sandbox --mode plan`
+from an empty cwd on every advise-only call or agy may write files/commit instead of answering, #157, #366).
+The model comes from
+`seat_model` (`consultant_main` for a main seat, `consultant_support` for a supporting one) and goes
+before `-p`. The call runs from an empty directory, so the data and the output spec are passed
+INLINE, never as a path for agy to open. Read them before the subshell, which changes directory:
 
 ```bash
-timeout 600 agy --sandbox -p "You are the blue-ocean team. Question: ... Data: see $CONTEXT_FILE. Produce $N outputs per the format in $OUTPUT_SPEC. Advisory only — do not modify any files; answer on stdout." < /dev/null > "$WORK/team-blue-ocean-round1.md"
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)" \
+  && DATA="$(cat "$CONTEXT_FILE")" && SPEC="$(cat "$OUTPUT_SPEC")" \
+  && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "You are the blue-ocean team. Question: ... Data: $DATA Produce $N outputs per this format: $SPEC Advisory only — do not modify any files; answer on stdout." < /dev/null) > "$WORK/team-blue-ocean-round1.md"
 ```
 
 
@@ -284,6 +546,7 @@ All Round 1 team spawns MUST go in a single message with parallel tool calls. Th
 | Failure | Detection | Response |
 |---|---|---|
 | A team times out / returns empty | Round 1 aggregator sees no output for team X | Mark team X "no-show", continue with remaining teams, note in arbiter |
+| Codex cannot serve a codex team (budget refused, quota exhausted, CLI missing, no eligible model, two failed calls — after the one Sol → TOP retry on a capability failure) | The team's output file starts with `CODEX_SUBSTITUTE:` | Run a Claude team in the same lens on the model named in that line (fresh context, same Round 1 prompt), label its outputs `<that model> (substituting codex: <reason>)`, record the round as Claude + Google (provider gap: OpenAI) in `arbiter_notes`. Never re-seat on a codex std or support model |
 | A team refuses to attack in Round 2 | Round 2 aggregator sees "all good" verdicts or attacks without severity | Reject the attack output, re-spawn the team with sharper prompt; max 1 retry |
 | Arbiter cannot produce 2+ kill criteria for an output | Arbiter validation fails | Drop the output from the final list rather than fake kill criteria |
 | No output has external grounding | No `context` was passed, or all teams returned `unfounded` | Cap all confidence at `speculative`; emit warning in `arbiter_notes` |
@@ -326,7 +589,7 @@ Read these as needed during orchestration:
 
 - `references/team-angles.md` — the founding-lens library (problem-first, asset-first, trend-first, contrarian, first-principles, arbitrage, blue-ocean, constraint-inverted) with spawn-prompt guidance per angle
 - `references/cross-fire-protocol.md` — Round 2 attack protocol: target selection, severity rubric, fix-proposal format, rejected-attack fallback
-- `references/arbiter-synthesis.md` — Round 4 synthesis protocol: survivor selection, hybridization rules, kill-criteria attachment, confidence scoring, minority-report preservation
+- `references/arbiter-synthesis.md` — Round 4 synthesis protocol: survivor selection, the merge near-duplicates step, kill-criteria attachment, confidence scoring, minority-report preservation
 
 ---
 

@@ -22,6 +22,7 @@ Or plain unittest:
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import unittest
@@ -31,7 +32,25 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-import audit_spawn  # noqa: E402
+
+def _live_home_guard():
+    """#282 H2: the shared live-HOME helper, loaded by path under the name the guarded conftest uses
+    (a pytest session and a plain unittest run get the same module)."""
+    name = "foundry_live_home_guard"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parent / "live_home_guard.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+# #282 H2 (live-HOME tests): importing audit_spawn resolves the reviewer seat pins, and with a codex
+# roster present that records a TOP into ~/.claude/state/seat-model-tops.json - at COLLECTION time,
+# under the live HOME (reproduced at the revision-2c compile). import_audit_spawn() runs that import
+# under an empty temp HOME with a stub codex on PATH (its dependencies keep the session HOME);
+# these parser tests never read a pin.
+audit_spawn = _live_home_guard().import_audit_spawn()
 
 
 # ---------------------------------------------------------------------------

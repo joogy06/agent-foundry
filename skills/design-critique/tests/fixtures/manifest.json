@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:eab548d20897bbe7e66df97513620baff4a901d17a7fb7b72a1467d5c969569b",
+  "generated_by": "sample-data-scaffolding",
+  "note": "Inputs and outputs of these components are kind opaque in the contract map, so the fixtures are written as-is, not generated.",
+  "components": {
+    "design-critique": {
+      "inputs": {
+        "critic_refs": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/design-critique/tests/fixtures/critic-refs-sample.txt",
+              "hash": "sha256:d3cdad1fb1821939f68842eb39d96c68a30cd4f2a06e2ed78c799865ba11a6cf"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "critic_doctrine": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/design-critique/tests/fixtures/critic-doctrine-sample.md",
+              "hash": "sha256:cfe5c113af4cc92c5eb191ab1296ef5e54d8875f87cc92d292356ed3a6b63c03"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

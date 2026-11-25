@@ -49,6 +49,11 @@ APPLY_HELPER = (
     HOME / ".claude" / "skills" / "_meta" / "apply_project_hard_rules.py"
 )
 
+# A project CLAUDE.md that only POINTS at the global rules says so in this
+# sentence (foundry-lab's own does, #318). Found in the GLOBAL file, it means a
+# project file was installed at home and every global rule is missing.
+PROJECT_POINTER_MARKER = "The global rules are not in this file."
+
 PROJECT_CLAUDE_MD_CANDIDATES = [
     Path("CLAUDE.md"),
     Path(".claude/CLAUDE.md"),
@@ -162,6 +167,30 @@ def rule_reflected(rule: str, tokens: set[str]) -> bool:
         return True  # too little signal, assume covered
     hits = sum(1 for t in sig if t in tokens)
     return hits / len(sig) >= 0.5
+
+
+def global_file_problem(path: Path, global_rules: list[str]) -> tuple[str, bool] | None:
+    """Why the global CLAUDE.md cannot be trusted as the global rules, or None.
+
+    Returns (message, definite). `definite` problems (missing file, a project
+    pointer file installed at home) are surfaced even in hook mode; a file that
+    merely yields no directives is reported in plain mode only, because a
+    user's own global file may legitimately carry none."""
+    if not path.is_file():
+        return (f"`{path}` is missing: no global rules are loaded. "
+                "Re-run the installer (foundry-lab installs it from `global/CLAUDE.md`).", True)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return (f"`{path}` could not be read ({exc}).", True)
+    if PROJECT_POINTER_MARKER in text:
+        return (f"`{path}` is a PROJECT pointer file, not the global rules: every global "
+                "rule is missing. Re-install it from `global/CLAUDE.md` "
+                "(`install.py --force-global-config`).", True)
+    if not global_rules:
+        return (f"`{path}` yielded no hard-rule directives. If it should hold the "
+                "foundry global rules, compare it with `global/CLAUDE.md`.", False)
+    return None
 
 
 def find_project_claude_md() -> Path | None:
@@ -597,9 +626,13 @@ def main() -> int:
             suppressed_count=suppressed_count,
         )
 
+        problem = global_file_problem(GLOBAL_CLAUDE_MD, global_rules)
+        if problem is not None:
+            context = f"**Global CLAUDE.md warning:** {problem[0]}\n\n" + context
+
         if hook_mode:
             # Only inject context if there's something actionable.
-            if missing:
+            if missing or (problem is not None and problem[1]):
                 emit_hook_json(context)
             else:
                 emit_benign_hook_json()

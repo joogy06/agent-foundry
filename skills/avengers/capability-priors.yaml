@@ -14,7 +14,11 @@
 # DATA edit can never crash the fail-closed gate. This file is DATA; nothing here
 # is executed.
 schema: avengers-capability-priors.v1
-revision: 1
+# revision 2 (S081, 2026-09-14): adds the `model_beliefs` record below. The two
+# numeric tables are unchanged in value.
+# revision 3 (#291, 2026-09-23): adds model_beliefs.roster_move_2026_09_23 and marks the
+# 2026-09-14 model names as dated history. The numeric tables are unchanged in value.
+revision: 3
 note: >-
   Designer beliefs (seed). Not measured. Edit freely; convene.py re-derives on
   every run. Enabling rotation (deferred, off-by-default) is what turns these
@@ -29,7 +33,7 @@ seat_affinity:
     calibration: 3      # honest uncertainty, dissent-recording
     coding_depth: 2
   codex:
-    edge_catching: 3    # the adversarial critic / skeptic lens (gpt-5.6-sol)
+    edge_catching: 3    # the adversarial critic / skeptic lens (the codex std tier via consultant_main)
     evidence_discipline: 3
     unsticking: 2
   agy:
@@ -39,9 +43,138 @@ seat_affinity:
 # Adjudication prior (designer belief): how strong a NEUTRAL synthesizer each
 # provider is for the EXTERNAL cold-context arbiter (design §4/§5). claude carries
 # the strongest adjudication prior (why the coding-ratification fallback arbiter
-# lands on claude, and why the steward's affinity is agy — §5, WP-3). Higher wins;
-# alphabetical tie-break for determinism.
+# lands on claude, and why the steward's affinity is agy — §5, WP-3). When claude
+# is the ADVERSARIAL provider it cannot arbitrate, and agy 2 > codex 1 decides: that
+# is why the flipped business-ideation arbiter lands on agy (model_beliefs below).
+# Higher wins; alphabetical tie-break for determinism.
 adjudication_prior:
   claude: 3
   agy: 2
   codex: 1
+
+# --------------------------------------------------------------------------- #
+# model_beliefs — a dated RECORD, not a routing input (S081 WP-104).
+# Sources: docs/plans/2026-09-14-top-tier-model-roles-design.md §1, §2.4, §4.7,
+# §4.9, §4.10; docs/plans/2026-09-09-codex-model-pinning-design.md §6, §10.5.
+# convene.py reads ONLY `adjudication_prior` and `seat_affinity`; it ignores this
+# block, so nothing below changes a seat, a model, a tier or an arbiter. Models
+# are chosen by skills/_meta/seat_model.py (role table + auto-follow), not here.
+# Every statement below is a belief or a dated count. None is a measurement of
+# which model is better.
+# --------------------------------------------------------------------------- #
+model_beliefs:
+
+  user_prior:
+    date: '2026-09-14'
+    status: DESIGNER BELIEF (the user's stated prior). NOT measured.
+    statement: >-
+      gpt-6-astra > Fable 5.1 > Opus, with Fable only a bit better than Opus.
+      OpenAI models are the creative / visionary lead; Anthropic models get the
+      job done, especially coding.
+    effect_today: >-
+      Seat ASSIGNMENT already follows the prior (user decision, S081 §1.1). Codex
+      member seats resolve through seat_model role consultant_main, whose codex
+      selector is TOP: the vendor's top listed model, auto-followed, unless a
+      home-tier freeze pin holds it on a literal. Claude main seats resolve the
+      Claude main tier and Claude support seats the Claude support tier
+      (skills/_meta/model_roster.py). HISTORY, dated: on 2026-09-14 (roster rev 1)
+      those tiers were fable and opus; roster_move_2026_09_23 below records the
+      move. The prior changes no number in this file.
+    to_be_tested_by: >-
+      The astra trial (S081 design §4.10, skills/_meta/model_trial.py). It ships in
+      revision 3, stream 9, and its pre-registration
+      (docs/plans/2026-09-14-astra-trial-preregistration.md) is user-supplied and
+      does not exist yet. Until the trial reports, this prior stays a belief.
+
+  roster_move_2026_09_23:
+    date: '2026-09-23'
+    status: USER DECISION (#291). A seat assignment, NOT a measurement.
+    statement: >-
+      No seat serves Fable until a newer Fable ships; Opus 5.5 is better than the
+      Fable currently served (the user's stated reason). model_roster revision 2
+      moves the Claude main tier fable -> opus and the Claude support tier
+      opus -> sonnet, and benches the fable family on every Claude path.
+    effect_today: >-
+      Protected Claude seats (code_reviewer, consultant_main, arbiter, escalation)
+      resolve opus; consultant_support and the avengers declared arbiters resolve
+      sonnet, so a declared arbiter still differs from every Claude member seat
+      (D23 unchanged). Main tier == execution tier (opus), so a Claude review of
+      Claude-written work is same-family: the codex reviewer is the cross-provider
+      check (forge advisory review, REDUCED INDEPENDENCE standing clause).
+    not_a_measurement: >-
+      No benchmark compared Opus 5.5 with Fable 5.1 on these seats. The earlier
+      user_prior (gpt-6-astra > Fable 5.1 > Opus) is dated 2026-09-14 and refers
+      to the models of that date.
+    reversal: >-
+      A human trigger: re-instating Fable is a new roster revision per
+      docs/model-roster-swap.md. No announcement fires for a benched family.
+
+  evidence_as_of_2026_09_09:
+    source: S080 design §6 (counts recorded 2026-09-09, not re-counted here)
+    facts:
+    - >-
+      The 2026-07-11 effort fixtures are SATURATED. Every sol tier caught all
+      planted bugs with 0 false positives, so they cannot show headroom for a
+      stronger model.
+    - >-
+      Only 16 codex audits had ever run, over 11 avengers sessions, with 0 graded
+      run-records.
+    - >-
+      The one datum in astra's favour is 7 of 7 on mechanically checkable claims,
+      against a 60-65% external-model false-positive baseline. It is n=1 on a
+      self-selected task.
+    baselines_not_comparable: >-
+      The 60-65% false-positive baseline was measured on PROSE SPEC-CONTRADICTION
+      claims. The 7/7 was RUN-THE-SCRIPT REPRODUCTIONS over Python files, a claim
+      class with a naturally lower false-positive rate. The two rates must never be
+      reported as if they were comparable. The standing measurement (S080 §10.5,
+      S081 §4.10.9) records the claim class on every count for this reason.
+
+  kill_criterion:
+    original: >-
+      SUPERSEDED (S080 §6): if no hard-round fixture that sol@xhigh misses exists
+      by 2026-12-31, the astra pin is a preference, not a finding.
+    reframed: >-
+      S081 §4.10 (2026-09-14): is astra's INCREMENTAL value over sol worth a bigger
+      OpenAI plan? Seat assignment is already decided by the user, so the trial
+      does not demote astra. It answers KEEP_PLAN, UPGRADE_CANDIDATE or
+      INSUFFICIENT_EVIDENCE. INSUFFICIENT_EVIDENCE is the default until the
+      pre-registered n is reached. The plan decision stays with the user.
+    default_bar: >-
+      Overridable in the pre-registration: astra adds at least 2 verified major
+      findings that sol missed on independent inputs, its false-positive rate is
+      not worse by more than 10 percentage points, AND recorded budget or
+      trip-wire refusals blocked planned astra work in at least 2 separate weeks.
+    deadline: >-
+      The reframing sets no new date. The 2026-12-31 date belonged to the
+      superseded criterion.
+
+  quota_coupling: >-
+    astra and sol draw the SAME ChatGPT-plan quota (Plus today). An astra call
+    spends the pool every other codex path uses, and if it is exhausted ALL codex
+    paths fail, which is recorded as a provider gap. Sol is therefore never
+    substituted under quota pressure: it would draw on the same pool (S081 §4.7).
+    Cost is dominated by call shape: one repo-exploring astra consult took 15% of
+    a 5-hour window (S081 §2.4, n=2, concurrent use not excluded).
+
+  composition_flips:
+    business-ideation:
+      approved: '2026-09-14'
+      approved_by: user (S081 design §4.9, m7)
+      belief_under_test: OpenAI is the creative / visionary lead (user_prior above).
+      change: >-
+        architect moves to codex (TOP model, visionary lead, effort xhigh) and
+        skeptic moves to claude (the Claude main tier by seat_weight main,
+        adversarial; fable at approval, dated history).
+      arbiter_consequence: >-
+        All three providers deliberate, so the arbiter takes the fallback path.
+        claude is the adversarial provider and is excluded, which leaves agy and
+        codex. adjudication_prior agy 2 > codex 1 selects agy, which resolves
+        seat_model role arbiter to the agy family's -high level (dated history:
+        D23/D26 later declared a Claude arbiter, and D23 bars agy). The arbiter move is
+        quota-neutral.
+      trip_wire: >-
+        If the user overturns the arbiter's decision in 2 of the first 3 flipped
+        sessions, revert the flip. No automated counter exists: the chair or the
+        user counts.
+      control: coding-ratification is NOT flipped and keeps skeptic = codex.

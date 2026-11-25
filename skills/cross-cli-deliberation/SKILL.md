@@ -104,6 +104,8 @@ Full evidence taxonomy + verification protocol: `references/evidence-taxonomy.md
 
 ## Quorum rule
 
+A Claude main-tier consultant substituting for codex (see "Call budget" below) is PRESENT, not absent: count its ballot, label it, and name the OpenAI provider gap.
+
 If a consultant is unreachable after the retry budget (typical CLI auto-retry: 10× backoff for capacity errors):
 - **Declare absence explicitly** in the synthesis output. Never silently treat absence as ACCEPT_AS_IS.
 - Then choose one path:
@@ -140,25 +142,177 @@ Full test cases + scoring: `references/sycophancy-tests.md`.
 
 ```bash
 # Canonical pattern for Antigravity (agy) consultant
-# agy returns plain text on stdout (no model flag, no env prefix — it authenticates itself).
-# --sandbox is MANDATORY: consultants advise only; un-sandboxed agy has live write/git tools
-# and may act on the ballot instead of voting (antigravity-cli SANDBOX RULE, #157).
-agy --sandbox -p "$(cat ballot-prompt.md)" > /tmp/agy-ballot.md < /dev/null
+# agy returns plain text on stdout (no env prefix — it authenticates itself). The MODEL comes from
+# the seat registry (consultant_main = newest roster-family -high, rev 6 argon; the agy family rule enforced in code), placed
+# before -p; the && means an unresolved pin never runs agy on the account default.
+# --sandbox --mode plan from an empty cwd is MANDATORY: consultants advise only; un-sandboxed agy has
+# live write/git tools and may act on the ballot instead of voting (antigravity-cli SANDBOX RULE, #157, #366).
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)" \
+  && PROMPT="$(cat ballot-prompt.md)" \
+  && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "$PROMPT" < /dev/null) > /tmp/agy-ballot.md
 
 # Canonical pattern for Codex consultant
-# Effort is pinned PER CALL (codex-orchestration "Reasoning-Effort Tiers", benchmarked
-# 2026-07-11): `xhigh` is the FLOOR for ballot/challenger verdicts; use `max` (and
-# timeout 1200) for design-ratification, stuck-escalation, and post-incident ballots.
-# Never inherit the config default — it is whatever the interactive TUI last persisted.
-# Retry once on "Selected model is at capacity" (transient; fails within ~2s).
-timeout 600 codex exec --ephemeral -s read-only \
-  -c model_reasoning_effort=xhigh \
-  "$(cat ballot-prompt.md)" > /tmp/codex-ballot.md < /dev/null
+# MODEL and EFFORT are pinned PER CALL by the seat registry — never inherit the config default,
+# which is whatever the interactive TUI last persisted. consultant_main = the codex std tier @ xhigh
+# (the astra reserve, roster rev 4), the FLOOR for ballot/challenger verdicts (codex-orchestration
+# "Reasoning-Effort Tiers"); the registry CLI has no --effort flag, so do not append a raw effort
+# override after $PIN.
+# Codex seats run WITHOUT --ephemeral (only a non-ephemeral call meters quota; the ballot therefore
+# persists in ~/.codex/sessions — no secrets). `seat_model.py argv --use ballot` admits and pins
+# each ballot in one call: exit 0 runs codex; exit 3 = codex cannot serve it (budget spent, the
+# limit reached, CLI missing, no eligible model) -> the block writes CODEX_SUBSTITUTE (line 2 of
+# stdout = the Claude model) and runs no codex call; a QUOTA refusal (#322, no 70% threshold any
+# more) writes CODEX_QUOTA_WAIT instead: notify-claim + notify / await-reset / re-admit once / stand in
+# on exit 4, 6 or 3, per codex-orchestration "Seat Models"; anything else -> CONSULTANT_ABSENT. Never substitute a codex std or support model (same quota pool).
+# Retries belong to `codex_quota.py classify`: a timeout or an empty ballot re-runs ONLY the codex
+# exec line, once (same model, same admission); a quota/rate-limit stop, auth failure, missing CLI
+# or second timeout substitutes; any other exit is an absence. "Selected model is at capacity" on a
+# codex error line retries once, then substitutes (reason capacity_twice).
+# "A timeout" here means the WATCHDOG's idle stop (exit 111): the ballot went silent for 300s. A
+# ballot that ran to its runaway cap while still producing output (exit 112) is an ABSENCE on the
+# first hit, never a retry and never a substitution -- it is not the retryable kind of stop (D24).
+
+# codex_top_seat NAME ROLE USE SIZE KEY BRIEF_FILE OUT_FILE [codex exec flags...] -- one TOP codex seat:
+# SIZE and KEY are each "" when the caller has none, and an empty one passes no flag.
+# admit + pin (exit 0 run codex, 3 substitute, else absence), then classify any failed call (retry = re-run
+# only the exec line, once; substitute = record it; gap = the absence line). Budget key's project:
+# $PROJECT_DIR, else the working directory.
+# RUN THE BASH TOOL CALL THAT DEFINES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on
+# the completion notification. A FOREGROUND Bash tool call is capped at 600 s however large the seat's own
+# cap is, and that cap -- not the model -- is what killed two healthy gpt-5.6-sol sessions mid-work (D24).
+codex_top_seat() {
+  local NAME="$1" ROLE="$2" USE="$3" SIZE="$4" KEY="$5" BRIEF="$6" DEST="$7" OUT RC ACT="" TRY TO MDL; shift 7
+  local SEAT="$HOME/.claude/skills/_meta/seat_model.py" QUOTA="$HOME/.claude/skills/_meta/codex_quota.py"
+  local WATCH="$HOME/.claude/skills/_meta/codex_watch.py" TRIES="1 2" SUBUSE="$USE" RETRY RRC RTO AID="" AKEY=""
+  local L2 WA RIN UU UK UM
+  # The receipt: `<admission id> <key>` of this seat's LIVE admission, written atomically by argv. DEST must be
+  # unique per seat (the receipt is "$DEST.admit"). Read in a subshell, so this function's "$@" is untouched.
+  rm -f "$DEST.admit"
+  # SIZE and KEY are EMPTY when the caller has none, and an empty one passes NO FLAG AT ALL. Sizing is
+  # opt-in: with no --size the registry reads no size file, so an unsized seat takes the TOP model even on
+  # a small cycle -- and passing a literal size instead of nothing would record `size_source: routing`, a
+  # routing decision nobody made. An empty KEY leaves the budget key the project derives; a caller that
+  # mints its own passes it here, so its seats share ONE key and spend their OWN budget, not the round's.
+  # #322: --await-quota -- a QUOTA refusal records no stand-in yet; it prints the reset lines and
+  # `substitution=deferred`, and the seat's owner waits (see CODEX_QUOTA_WAIT below).
+  OUT="$(python3 "$SEAT" argv --role "$ROLE" --provider codex --use "$USE" --receipt-file "$DEST.admit" \
+           --await-quota ${SIZE:+--size "$SIZE"} ${KEY:+--cycle-id "$KEY"} \
+           --project-root "${PROJECT_DIR:-$PWD}")"; RC=$?
+  # The timeout is the seat registry's, asked only AFTER an admitted `argv --use` (asked first, a no-eligible
+  # substitution would become a gap) and never as a second `argv` stdout line: $OUT is word-split into
+  # `codex exec $OUT`, so an extra line would become a prompt. No timeout -> the gap line; codex never runs.
+  if [ "$RC" -eq 0 ]; then
+    TO="$(python3 "$SEAT" timeout --role "$ROLE" --provider codex)" || { ACT="seat_model timeout exit $?"; RC=1; }
+    MDL="$(set -- $OUT; echo "$2")"     # the pinned model, named once: progress line and substitution record
+    AID="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${1-}")"
+    AKEY="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${2-}")"; AKEY="${AKEY:-$KEY}"
+  fi
+  if [ "$RC" -eq 0 ]; then
+    while [ -n "$TRIES" ]; do
+      for TRY in $TRIES; do
+        # D24: the watchdog stops the call on INACTIVITY -- no stdout, no stderr and no session-rollout write
+        # for the idle window -- so "thinking hard" is no longer killed as "hung". The registry timeout is
+        # passed as the RUNAWAY cap only, never as the normal stop, and the watchdog prints a progress line to
+        # this call's stderr while it waits. Its exits: 111 went silent (the retryable stop, classified as a
+        # timeout), 112 ran away while still active (a gap on the FIRST hit, never a substitution), anything
+        # else is codex's own status passed straight through.
+        python3 "$WATCH" --mode codex --hard-cap "$TO" --model "$MDL" \
+          --stdout-file "$DEST.stdout" --stderr-file "$DEST.stderr" \
+          -- codex exec "$@" $OUT -o "$DEST" "$(cat "$BRIEF")"; RC=$?
+        ACT="$(python3 "$QUOTA" classify --exit-code "$RC" --attempt "$TRY" $([ "$RC" -eq 111 ] && echo --timed-out) \
+                 --stderr-file "$DEST.stderr" --output-file "$DEST" --prompt-file "$BRIEF")" || ACT=classify_error
+        [ "${ACT%% *}" = retry ] || break
+      done
+      TRIES=""
+      # U2, the astra reserve: a seat that failed on CAPABILITY (capacity or a malformed answer, twice) gets ONE
+      # attempt on the codex TOP. seat_model decides whether that is a retry at all -- it proves the failed
+      # attempt from its receipt (an admitted std row of this role, use and key), wants a DIFFERENT pin that
+      # bills the TOP class, and admits it as `top_retry` on the FORGE CYCLE (1 per cycle) -- and records the
+      # event row. The TOP timeout is asked FIRST, so a failed lookup spends no retry slot. Exit 0: run it ONCE,
+      # classified as attempt 2 so it has no inner retry, and SUBUSE stops a second entry; the receipt now names
+      # the retry's own admission and key. Exit 3: the D6 line, already recorded. Anything else: the original
+      # failure is substituted below. Quota, auth, budget, timeout and gap outcomes never reach this branch.
+      case "$SUBUSE:$ACT" in
+        "$USE:substitute capacity_twice"|"$USE:substitute malformed_twice")
+          RRC=1
+          if RTO="$(python3 "$SEAT" timeout --role "$ROLE" --provider codex --top-retry)"; then
+            rm -f "$DEST.admit"   # only the retry's own receipt may follow
+            RETRY="$(python3 "$SEAT" argv --role "$ROLE" --provider codex --use "$USE" --top-retry \
+                       --failed-admission-id "$AID" --failed-reason "${ACT#substitute }" \
+                       --receipt-file "$DEST.admit" --await-quota ${AKEY:+--cycle-id "$AKEY"} \
+                       --project-root "${PROJECT_DIR:-$PWD}")"; RRC=$?
+          fi
+          if [ "$RRC" -eq 0 ]; then
+            OUT="$RETRY"; MDL="$(set -- $OUT; echo "$2")"; SUBUSE=top_retry; TRIES=2; TO="$RTO"
+            AKEY="$(set -- $(cat "$DEST.admit" 2>/dev/null); echo "${2-}")"; AKEY="${AKEY:-$KEY}"
+          elif [ "$RRC" -eq 3 ]; then
+            OUT="$RETRY"; ACT=top_retry_substituted
+          fi ;;
+      esac
+    done
+    case "$ACT" in
+      "ok -") ;;
+      top_retry_substituted) RC=3 ;;
+      # the substitution names the key its admission was billed to (the receipt's, else the caller's KEY): a
+      # failed TOP retry keeps its forge-cycle key, a tournament or ballot seat its own
+      "substitute "*) OUT="$(python3 "$SEAT" substitute --role "$ROLE" --use "$SUBUSE" --reason "${ACT#substitute }" \
+                               --requested-model "$MDL" ${AKEY:+--cycle-id "$AKEY"} \
+                               --project-root "${PROJECT_DIR:-$PWD}")"; RC=$? ;;
+      # classify itself failed: after a codex exit 0 keep codex's output in $DEST; after a failed call, a gap
+      classify_error) if [ "$RC" -eq 0 ]; then
+                        echo "CODEX_CLASSIFY_ERROR: $NAME: classify failed after codex exit 0; $DEST keeps its output" >&2
+                      else RC=1; fi ;;
+      *) RC=1 ;;
+    esac
+  fi
+  # Exit 3 prints the reason on LINE 1 and the Claude model on LINE 2; a quota refusal (#322) appends
+  # key=value lines after them, so the model is read as line 2, never as the last line.
+  L2="${OUT#*$'\n'}"; L2="${L2%%$'\n'*}"
+  case "$RC:$OUT" in
+    0:*) ;;  # codex answered: $DEST holds its output
+    3:*$'\n'substitution=deferred*)
+       WA="${OUT##*$'\n'wait_advice=}"; WA="${WA%%$'\n'*}"
+       RIN="unknown"; case "$OUT" in *$'\n'resets_in_s=*) RIN="${OUT##*$'\n'resets_in_s=}"; RIN="${RIN%%$'\n'*}" ;; esac
+       # #322 fix round 1: the use, key and codex model a later `substitute` must name (a TOP retry's own)
+       UU="${OUT##*$'\n'use=}"; UU="${UU%%$'\n'*}"; UK="${OUT##*$'\n'key=}"; UK="${UK%%$'\n'*}"
+       UM="-"; case "$OUT" in *$'\n'requested_model=*) UM="${OUT##*$'\n'requested_model=}"; UM="${UM%%$'\n'*}" ;; esac
+       printf 'CODEX_QUOTA_WAIT: %s (reason %s; wait_advice %s; resets_in_s %s; stand-in %s; use %s; key %s; requested %s)\nbrief: %s\n' \
+         "$NAME" "${OUT%%$'\n'*}" "$WA" "$RIN" "$L2" "$UU" "$UK" "$UM" "$BRIEF" > "$DEST" ;;
+    3:*) printf 'CODEX_SUBSTITUTE: %s -> %s (reason %s; provider gap: openai)\nbrief: %s\n' \
+         "$NAME" "$L2" "${OUT%%$'\n'*}" "$BRIEF" > "$DEST" ;;
+    *) echo "CONSULTANT_ABSENT: $NAME (${ACT:-exit $RC}; see stderr)" > "$DEST" ;;
+  esac
+}
+
+# ONE key per ballot, minted beside the prompt it votes on, so a ballot spends the `ballot` budget
+# instead of the round's single `challenger` admission. That sharing is why a tiebreak, or any ballot
+# after forge's own challenger had run, used to find codex refused before it ever asked a question.
+BID="$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || true)"
+# SHAPE-CHECKED BEFORE USE, never just concatenated: an empty mint would leave the bare prefix `ballot-`,
+# which SATISFIES codex_quota.CYCLE_ID_PATTERN -- a malformed key that passes validation and that every
+# ballot on the host would then share, quietly recreating the starvation this mint exists to end.
+case "$BID" in
+  ????????-????-????-????-????????????) BALLOT_KEY="ballot-$BID" ;;
+  *) BALLOT_KEY="" ;;
+esac
+# A RATIFICATION ballot is `complex`: ratifying a design is deliberative work whatever the size of the
+# change under review. A non-ratification ballot passes its own declared size here instead.
+BALLOT_SIZE=complex
+# NO KEY -> NO CALL. A failed mint is an ABSENCE under the quorum rule, never an unkeyed codex call
+# that would silently fall back to the round's budget key.
+if [ -n "$BALLOT_KEY" ]; then
+  codex_top_seat codex consultant_main ballot "$BALLOT_SIZE" "$BALLOT_KEY" \
+    ballot-prompt.md /tmp/codex-ballot.md -s read-only
+else
+  echo "CONSULTANT_ABSENT: codex (ballot key mint failed; no unkeyed codex call)" > /tmp/codex-ballot.md
+fi
 
 # Run them in parallel via background tasks; collect both before synthesizing
 ```
 
 Where `ballot-prompt.md` follows the template at `references/ballot-template.md`.
+
+**Call budget.** Both consultants resolve through `skills/_meta/seat_model.py`, so what serves right now is `python3 ~/.claude/skills/_meta/seat_model.py emit --json`. Codex is admitted as a **`ballot`** against **the ballot's OWN minted key** (`ballot-<uuid>`, minted beside `ballot-prompt.md`), which allows **1 TOP call and 2 std** per ballot (the codex consultant is `consultant_main`, the codex std tier @ `xhigh` since the astra reserve, so a ballot spends std; a capability failure gets the one Sol → TOP retry before the substitute). Until S081 revision 4 a ballot was admitted as a `challenger` against the *forge cycle id*, which allows exactly one — so a tiebreak round, or any ballot after forge's own codex challenger had already run, usually found codex refused before it could vote, and the deliberation silently lost its OpenAI arm to a budget collision rather than to a real quota limit. A refused or failed ballot still substitutes exactly as before: `/tmp/codex-ballot.md` starts with `CODEX_SUBSTITUTE:` and the orchestrator spawns a fresh-context Claude main-tier consultant, `Agent(subagent_type="general-purpose", model="<model from that line>")`, with the SAME `ballot-prompt.md` and no view of the other ballot or of the orchestrator's opinion. That substitute is PRESENT for the quorum rule. Its ballot is labelled `<model from that line> (substituting codex: <reason>)`, and the deliberation is recorded as Claude + Google with the OpenAI provider gap named. The two-gate protocol is unchanged: the substitute's ballot passes Gate 1 and Gate 2 exactly like any consultant's. A substitute does not spend the astra budget; it is recorded in `~/.claude/projects/<slug>/astra-budget.jsonl` for the 2026-09-28 plan review, and it is never a codex std or support model — every codex model draws the same plan quota. Only a `CONSULTANT_ABSENT:` line (a broken seat registry, or a codex failure the classifier calls a gap) is an absence under the quorum rule, never a silent pass. Inside a forge round agy gets at most 3 calls, and a capacity error stops further agy calls for that round; agy is never substituted.
 
 ## Fast path — `cross-cli-deliberation` workflow (S055, optional, main-loop only)
 

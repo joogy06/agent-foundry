@@ -18,13 +18,14 @@ these rules. Where this file rules, it wins (Slice B is the family arbiter).
 
 ---
 
-## Manifest (the 8 v1 workflows — R6 / W1)
+## Manifest (the 8 v1 workflows — R6 / W1 — plus `bob-stage`, #311)
 
 | Workflow | Owner | Version | Nesting | Fallback section |
 |----------|-------|---------|---------|------------------|
 | `design-tournament` | forge | 1.0.0 | none | forge SKILL.md "Step 6B design exploration team (portable, canonical)" |
 | `ratify-design` | forge | 1.0.0 | calls `cross-cli-deliberation` | forge SKILL.md Step 8b |
 | `bob-serial-exec` | bob | 1.0.0 | none | bob.md HARD-RULE 1 item 3 (serial-with-checkpointing) |
+| `bob-stage` | bob | 1.3.0 | none | bob.md "Workflow-stage modes" (one serial BOB_MODE stage, dispatched directly) |
 | `alf-sweep` | alf | 1.0.0 | none | alf_sweep_launcher.sh `--inline` mode |
 | `adversarial-tournament` | adversarial-team-brainstorm | 1.0.0 | none | adversarial-team-brainstorm SKILL.md inline tournament |
 | `cross-cli-deliberation` | cross-cli-deliberation | 1.0.0 | none | cross-cli-deliberation SKILL.md inline two-gate protocol |
@@ -185,7 +186,15 @@ it (R9).
 - **Resume audit**: every resume appends an `executing` line with `resumed_from`;
   a `resumed_from` line appearing after a higher `plan_revision` line for the
   same plan is mechanically detectable = the "no resume across amendment" audit.
-- Mandatory for ALL eight family workflows' invocations; doubles as the #147
+- **`bob-stage` (#311)** is ONE work-package stage, so a plan runs it once per WP. The main
+  loop claims `bob-stage` for the plan's `(plan_hash, plan_revision)` before each stage and
+  finishes the claim after it — the exactly-once claim then doubles as the "one live bob per
+  project_root" guard (CB4) across stages. Its per-dispatch receipts are the effort rows:
+  `effort_policy.py record-dispatch` before the stage and `record-outcome` after it
+  (`.process-observations/spawn-runs.jsonl`, `tool: claude_dispatch`); the workflow itself has
+  no filesystem and writes nothing. It always passes an explicit `effort` and refuses to
+  dispatch without one.
+- Mandatory for ALL family workflows' invocations; doubles as the #147
   enforcement hook and the #124 cost-correlation point (designed now, enforced
   never this cycle).
 

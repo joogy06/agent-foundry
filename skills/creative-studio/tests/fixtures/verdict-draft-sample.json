@@ -1,0 +1,85 @@
+{
+  "schema_version": "studio-verdict.v1",
+  "run_id": "sample-page-run",
+  "profile": "website-page",
+  "work_kind": "rendered",
+  "mode": "full",
+  "borrow_max": 3,
+  "runner": {
+    "variants": [
+      {
+        "id": "variant-1",
+        "direction_contract": "variants/variant-1/direction.md",
+        "evidence": [
+          "evidence/variant-1/tiles/390-01.png",
+          "evidence/variant-1/tiles/768-01.png",
+          "evidence/variant-1/tiles/1280-01.png"
+        ]
+      },
+      {
+        "id": "variant-2",
+        "direction_contract": "variants/variant-2/direction.md",
+        "evidence": [
+          "evidence/variant-2/tiles/390-01.png",
+          "evidence/variant-2/tiles/768-01.png",
+          "evidence/variant-2/tiles/1280-01.png"
+        ]
+      }
+    ],
+    "read_orders": [
+      ["variant-2", "variant-1"],
+      ["variant-1", "variant-2"]
+    ],
+    "floor_rows": [
+      {"id": "contrast-text", "variant": "variant-1", "blocking": true, "result": "pass", "viewport": 390, "element": "main p"},
+      {"id": "overflow-x", "variant": "variant-1", "blocking": true, "result": "pass", "viewport": 390, "element": "html"},
+      {"id": "line-length", "variant": "variant-1", "blocking": false, "result": "fail", "viewport": 390, "element": "main p"},
+      {"id": "contrast-text", "variant": "variant-2", "blocking": true, "result": "pass", "viewport": 390, "element": "main p"},
+      {"id": "overflow-x", "variant": "variant-2", "blocking": true, "result": "pass", "viewport": 390, "element": "html"}
+    ],
+    "recaptures": []
+  },
+  "critic": {
+    "reads": [
+      {"read": 1, "pick": "variant-1"},
+      {"read": 2, "pick": "variant-1"}
+    ],
+    "tells": [
+      {
+        "variant": "variant-1",
+        "tells": [
+          {"axis": "motion", "held": true, "observation": "The contract promises one entrance per section and the tiles show one."}
+        ]
+      },
+      {
+        "variant": "variant-2",
+        "tells": [
+          {"axis": "density and whitespace", "held": false, "observation": "The contract promises generous spacing; the pricing section is packed edge to edge at 390."}
+        ]
+      }
+    ],
+    "rubric": [
+      {"criterion": "The one action is visible in the first tile", "visitor_mode": "persuade", "favours": "variant-1", "reason": "The action sits above the fold at all three widths."},
+      {"criterion": "The proof the brief asks for is easy to find", "visitor_mode": "persuade", "favours": "variant-2", "reason": "The proof strip is the second thing a visitor meets."}
+    ],
+    "outcome": "winner",
+    "winner": "variant-1",
+    "selected_for_repair": false,
+    "repair": null,
+    "no_award": null,
+    "borrowed": [
+      {
+        "from": "variant-2",
+        "kind": "fragment",
+        "what": "the proof strip under the hero",
+        "why": "The brief asks for the proof to be easy to find.",
+        "locator": {"markup": "section#proof"}
+      }
+    ],
+    "rejected": [],
+    "could_not_judge": [
+      {"what": "motion", "why": "Still tiles cannot show how the entrance moves."}
+    ],
+    "open_to_user": []
+  }
+}

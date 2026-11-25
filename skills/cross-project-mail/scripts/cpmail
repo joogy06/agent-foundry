@@ -10,13 +10,16 @@ See design: docs/plans/2026-05-16-cross-project-mail-v1-design.md
 """
 import argparse
 import datetime as _dt
+import errno
 import hashlib
 import json
 import os
 import random
 import re
+import signal
 import socket
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,6 +28,17 @@ try:
     import yaml
 except ImportError:
     sys.exit("cpmail: pyyaml required. Install: pip install --user pyyaml")
+
+# Advisory file locks: fcntl is POSIX-only and msvcrt Windows-only, so each is
+# imported conditionally and neither import can take the CLI down elsewhere.
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
 
 SCHEMA_VERSION = "1"
 ULID_PAT = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
@@ -37,6 +51,19 @@ AGENTS = {"claude_code", "codex_cli", "gemini_cli", "copilot_chat", "copilot_cli
 BODY_CAP_BYTES = 16 * 1024
 SUBJECT_CAP = 200
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+EXIT_DUPLICATE = 4  # send --dedupe refused: an unacked message on the topic exists
+DEDUPE_LOCK_WAIT_S = 10.0   # how long a --dedupe send waits for its topic lock
+DEDUPE_LOCK_STALE_S = 60.0  # a topic lock older than this is a crashed sender's
+EXIT_WATCHING = 3           # watch-loop: another loop already holds this project+session
+WATCH_DEFAULT_INTERVAL_S = 600.0
+WATCH_MIN_INTERVAL_S = 30.0
+CONFIG_LOCK_WAIT_S = 10.0
+FRONTMATTER_CAP_BYTES = 4096   # state reads parse only this much of a message
+SESSION_PAT = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+# yaml.safe_load semantics; the libyaml-backed loader when present keeps the
+# SessionStart hook inside its budget on an inbox of a few hundred messages.
+_SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_ACK_LINE = re.compile(r"^ack_state:[ \t]*([A-Za-z]+)[ \t]*\r?$", re.MULTILINE)
 
 
 # ---------------------------------------------------------------- ULID
@@ -133,9 +160,13 @@ def validate(env: dict) -> None:
         if v is not None and not ULID_PAT.match(v):
             raise ValidationError(f"invalid {k}: {v!r}")
 
+    dk = env.get("dedupe_key")
+    if dk is not None and not (isinstance(dk, str) and 1 <= len(dk) <= SUBJECT_CAP):
+        raise ValidationError(f"dedupe_key must be 1-{SUBJECT_CAP} chars")
+
     known = {"schema_version", "msg_id", "sent_at", "sender", "recipient",
              "subject", "source_type", "reply_to", "thread_id", "labels",
-             "ack_state", "attachments"}
+             "ack_state", "attachments", "dedupe_key"}
     unknown = env.keys() - known
     if unknown:
         print(f"cpmail: warning: unknown envelope fields ignored: {sorted(unknown)}",
@@ -157,6 +188,27 @@ def load_message(path: Path) -> tuple[dict, str]:
     return env, m.group(2)
 
 
+# ---------------------------------------------------------------- Atomic writes
+def atomic_write_text(path: Path, text: str, mode: int = 0o600) -> None:
+    """Write text to path so a reader sees the old file or the whole new one,
+    never a partial one (A6). The temp file is a dot-file in the same directory,
+    which every inbox scan skips and which keeps os.replace on one filesystem."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 # ---------------------------------------------------------------- Project detect
 def detect_project(cwd: Optional[Path] = None) -> Optional[str]:
     cwd = (cwd or Path.cwd()).resolve()
@@ -166,10 +218,17 @@ def detect_project(cwd: Optional[Path] = None) -> Optional[str]:
     if cfg_path.exists():
         try:
             cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            # Match whole path components, so an alias for .../trading covers
+            # .../trading/src but not the sibling .../trading02; the deepest
+            # matching alias wins.
+            best = None
             for path_pat, project in (cfg.get("project_aliases") or {}).items():
-                if str(cwd).startswith(str(Path(path_pat).expanduser().resolve())):
-                    if PROJECT_PAT.match(project or ""):
-                        return project
+                alias = Path(path_pat).expanduser().resolve()
+                if (cwd == alias or alias in cwd.parents) and PROJECT_PAT.match(project or ""):
+                    if best is None or len(alias.parts) > len(best[0].parts):
+                        best = (alias, project)
+            if best:
+                return best[1]
         except (yaml.YAMLError, OSError):
             pass
 
@@ -192,6 +251,94 @@ def detect_project(cwd: Optional[Path] = None) -> Optional[str]:
     if PROJECT_PAT.match(base):
         return base
     return None
+
+
+# ---------------------------------------------------------------- Dedupe
+def normalise_key(text: str) -> str:
+    """Casefold and collapse whitespace: the dedupe key of a subject or --dedupe-key."""
+    return " ".join((text or "").split()).casefold()
+
+
+def find_unacked_duplicate(sender_project: str, recipient: str, key: str) -> Optional[str]:
+    """msg_id of an unacked message from sender_project to recipient whose dedupe
+    key equals key, else None. Acked messages leave the active inbox, so a topic
+    reopens once the recipient acks. A message with no recorded key (sent without
+    --dedupe) is keyed by its normalised subject."""
+    for f in list_active(recipient):
+        try:
+            env, _ = load_message(f)
+        except (ValidationError, yaml.YAMLError, OSError):
+            continue
+        if (env.get("sender") or {}).get("project") != sender_project:
+            continue
+        if env.get("ack_state") == "acked":
+            continue
+        existing = env.get("dedupe_key") or normalise_key(env.get("subject") or "")
+        if existing == key:
+            return env.get("msg_id") or f.stem
+    return None
+
+
+def dedupe_lock_path(sender_project: str, recipient: str, key: str) -> Path:
+    digest = hashlib.sha256(f"{sender_project}\0{recipient}\0{key}".encode()).hexdigest()
+    return mailbox_root() / ".locks" / f"dedupe-{digest[:32]}.lock"
+
+
+class DedupeLock:
+    """Per (sender, recipient, key) mutex held across the duplicate scan and the
+    write, so concurrent --dedupe sends on one topic write exactly one message.
+    The lock is a file created with O_CREAT|O_EXCL, which is atomic on POSIX and
+    Windows alike; it is removed on exit. A lock older than DEDUPE_LOCK_STALE_S
+    is left by a crashed sender and is broken."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.held = False
+
+    def __enter__(self) -> "DedupeLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + DEDUPE_LOCK_WAIT_S
+        while True:
+            try:
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                self._break_if_stale()
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"dedupe lock busy: {self.path}")
+                time.sleep(random.uniform(0.01, 0.05))
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(f"{os.getpid()} {socket.gethostname()[:64]}\n")
+            self.held = True
+            return self
+
+    def _break_if_stale(self) -> None:
+        try:
+            if time.time() - self.path.stat().st_mtime < DEDUPE_LOCK_STALE_S:
+                return
+            # Move the lock aside, then check what was moved: if a second breaker
+            # got here after the first one had already broken it and taken a
+            # fresh lock, the moved file is live and is put back (link() never
+            # overwrites). Residual: only after a crash, with three or more
+            # senders racing inside this window.
+            grave = self.path.with_name(f"{self.path.name}.stale-{os.getpid()}-{random.getrandbits(32):08x}")
+            os.replace(self.path, grave)
+            if time.time() - grave.stat().st_mtime < DEDUPE_LOCK_STALE_S:
+                try:
+                    os.link(grave, self.path)
+                except OSError:
+                    pass
+            os.unlink(grave)
+        except OSError:
+            pass
+
+    def __exit__(self, *exc) -> None:
+        if self.held:
+            try:
+                os.unlink(self.path)
+            except OSError:
+                pass
+            self.held = False
 
 
 # ---------------------------------------------------------------- Commands
@@ -217,6 +364,28 @@ def cmd_send(args: argparse.Namespace) -> int:
         print("cpmail: cannot detect sender project; pass --from-project", file=sys.stderr)
         return 2
 
+    dedupe_key = None
+    if args.dedupe or args.dedupe_key is not None:
+        dedupe_key = normalise_key(args.subject if args.dedupe_key is None else args.dedupe_key)
+        if not dedupe_key or len(dedupe_key) > SUBJECT_CAP:
+            print(f"cpmail: --dedupe-key must be 1-{SUBJECT_CAP} chars", file=sys.stderr)
+            return 2
+        try:
+            with DedupeLock(dedupe_lock_path(sender_project, args.to, dedupe_key)):
+                dup = find_unacked_duplicate(sender_project, args.to, dedupe_key)
+                if dup:
+                    print(f"cpmail: duplicate: unacked message {dup} to {args.to} already has "
+                          f"dedupe key {dedupe_key!r}; not sent", file=sys.stderr)
+                    return EXIT_DUPLICATE
+                return _write_message(args, body, sender_project, dedupe_key)
+        except TimeoutError as e:
+            print(f"cpmail: {e}; not sent", file=sys.stderr)
+            return 1
+    return _write_message(args, body, sender_project, None)
+
+
+def _write_message(args: argparse.Namespace, body: str, sender_project: str,
+                   dedupe_key: Optional[str]) -> int:
     mid = ulid()
     env = {
         "schema_version": SCHEMA_VERSION,
@@ -233,6 +402,8 @@ def cmd_send(args: argparse.Namespace) -> int:
         "ack_state": "unread",
         "attachments": [],
     }
+    if dedupe_key is not None:
+        env["dedupe_key"] = dedupe_key
     validate(env)
 
     ensure_layout(args.to)
@@ -241,8 +412,7 @@ def cmd_send(args: argparse.Namespace) -> int:
     if out.exists():
         print(f"cpmail: msg_id collision: {mid}", file=sys.stderr)
         return 1
-    out.write_text(dump_message(env, body), encoding="utf-8")
-    os.chmod(out, 0o600)
+    atomic_write_text(out, dump_message(env, body))
 
     # outbox symlink (advisory; ignore failures on weird filesystems)
     out_link = outbox_dir(sender_project) / f"{mid}.md"
@@ -256,18 +426,97 @@ def cmd_send(args: argparse.Namespace) -> int:
     return 0
 
 
-def list_active(project: str) -> list[Path]:
-    d = inbox_dir(project)
-    if not d.exists():
+def _message_files(d: Path) -> list[Path]:
+    """Message files directly under d. Dot-files (in-flight temp files among them)
+    and *.tmp are never messages; a directory that vanished lists as empty."""
+    try:
+        entries = list(d.iterdir())
+    except OSError:
         return []
-    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix == ".md")
+    out = []
+    for p in entries:
+        if p.name.startswith(".") or p.suffix != ".md":
+            continue
+        try:
+            if p.is_file():
+                out.append(p)
+        except OSError:
+            continue
+    return sorted(out)
+
+
+def list_active(project: str) -> list[Path]:
+    return _message_files(inbox_dir(project))
 
 
 def list_acked(project: str) -> list[Path]:
-    d = acked_dir(project)
-    if not d.exists():
-        return []
-    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix == ".md")
+    return _message_files(acked_dir(project))
+
+
+def read_state(path: Path) -> Optional[str]:
+    """ack_state of a message from its frontmatter alone (A7): the first
+    FRONTMATTER_CAP_BYTES are read and the block parsed with yaml safe loading (a
+    single plain top-level `ack_state:` line, which is what cpmail writes, is taken
+    directly, to keep the hook inside its budget). A file
+    that vanished returns None (absent); a missing or invalid state is 'unread', so
+    a damaged message is surfaced rather than hidden."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(FRONTMATTER_CAP_BYTES)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return "unread"
+    try:
+        text = head.decode("utf-8", errors="replace")
+        m = re.match(r"\A---\r?\n(.*?\r?\n)---\r?\n", text, re.DOTALL)
+        if not m:
+            return "unread"
+        block = m.group(1)
+        # Fast path: cpmail writes exactly one top-level `ack_state: <state>` line.
+        # Anything less plain goes through the YAML parser.
+        hits = _ACK_LINE.findall(block)
+        if len(hits) == 1 and hits[0] in ACK_STATES:
+            return hits[0]
+        env = yaml.load(block, Loader=_SAFE_LOADER)
+        state = env.get("ack_state") if isinstance(env, dict) else None
+    except yaml.YAMLError:
+        state = None
+    return state if state in ACK_STATES else "unread"
+
+
+def state_counts(project: str) -> tuple[int, int]:
+    """(new, read-but-not-acked) for the project's active inbox."""
+    new = read = 0
+    for f in list_active(project):
+        st = read_state(f)
+        if st == "unread":
+            new += 1
+        elif st == "read":
+            read += 1
+    return new, read
+
+
+def format_row(env: dict) -> str:
+    sender = env.get("sender") or {}
+    return (f"{env.get('msg_id', '?')}\t{env.get('ack_state', '?')}\t"
+            f"{env.get('sent_at', '?')}\t"
+            f"{sender.get('project', '?')}/{sender.get('agent', '?')}\t"
+            f"{env.get('source_type', '?')}\t{env.get('subject', '')}")
+
+
+def new_message_rows(project: str) -> list[str]:
+    """list rows of the project's messages in state 'unread'."""
+    rows = []
+    for f in list_active(project):
+        if read_state(f) != "unread":
+            continue
+        try:
+            env, _ = load_message(f)
+        except (ValidationError, yaml.YAMLError, OSError):
+            env = {"msg_id": f.stem, "ack_state": "unread", "subject": "(unparseable message)"}
+        rows.append(format_row(env))
+    return rows
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -276,7 +525,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print("cpmail: cannot detect project; pass --project", file=sys.stderr)
         return 2
 
-    # Default to unread when no flag given
+    # Default to unread (= everything not acked) when no flag given
     if args.acked:
         state = "acked"
     elif args.all:
@@ -303,7 +552,9 @@ def cmd_list(args: argparse.Namespace) -> int:
     for f in files:
         try:
             env, _ = load_message(f)
-        except (ValidationError, yaml.YAMLError):
+        except (ValidationError, yaml.YAMLError, OSError):
+            continue  # unparseable, or vanished between listing and reading
+        if args.new and env.get("ack_state") != "unread":
             continue
         if since:
             try:
@@ -317,11 +568,7 @@ def cmd_list(args: argparse.Namespace) -> int:
             break
 
     for env in rows:
-        sender = env.get("sender") or {}
-        print(f"{env.get('msg_id', '?')}\t{env.get('ack_state', '?')}\t"
-              f"{env.get('sent_at', '?')}\t"
-              f"{sender.get('project', '?')}/{sender.get('agent', '?')}\t"
-              f"{env.get('source_type', '?')}\t{env.get('subject', '')}")
+        print(format_row(env))
     return 0
 
 
@@ -340,6 +587,18 @@ def find_file(mid: str, project: Optional[str] = None) -> Optional[Path]:
     return None
 
 
+_FRAME_TAG = re.compile(r"<(\s*/?\s*user_data\b)", re.IGNORECASE)
+
+
+def _neutralise_frame_tags(text: str) -> str:
+    """Make a `<user_data>` or `</user_data>` tag inside sender text inert (#353).
+
+    `cpmail read` frames the body as untrusted data. A body that carries the closing
+    tag would end that frame early, and the text after it would read as trusted, so
+    the tag's `<` is written as `&lt;`. Only the frame's own tag is touched."""
+    return _FRAME_TAG.sub(r"&lt;\1", text)
+
+
 def cmd_read(args: argparse.Namespace) -> int:
     p = find_file(args.msg_id)
     if not p:
@@ -354,7 +613,7 @@ def cmd_read(args: argparse.Namespace) -> int:
     # Auto-bump unread -> read on first read (preserves audit trail in body)
     if env.get("ack_state") == "unread" and ".acked" not in p.parts:
         env["ack_state"] = "read"
-        p.write_text(dump_message(env, body), encoding="utf-8")
+        atomic_write_text(p, dump_message(env, body))
 
     print(f"--- message {env['msg_id']} ---")
     for k in ("sent_at", "sender", "recipient", "subject", "source_type",
@@ -364,10 +623,10 @@ def cmd_read(args: argparse.Namespace) -> int:
             continue
         if isinstance(v, (dict, list)):
             v = json.dumps(v, separators=(",", ":"))
-        print(f"{k}: {v}")
+        print(f"{k}: {_neutralise_frame_tags(str(v))}")
     print()
     print("<user_data>")
-    print(body)
+    print(_neutralise_frame_tags(body))
     print("</user_data>")
     return 0
 
@@ -391,9 +650,11 @@ def cmd_ack(args: argparse.Namespace) -> int:
     project = env["recipient"]["project"]
     target = acked_dir(project) / p.name
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(dump_message(env, body), encoding="utf-8")
-    os.chmod(target, 0o600)
-    p.unlink()
+    atomic_write_text(target, dump_message(env, body))
+    try:
+        p.unlink()
+    except FileNotFoundError:
+        pass
     print(f"acked: {args.msg_id}")
     return 0
 
@@ -497,8 +758,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                     ensure_layout(recipient)
                     ensure_layout(sender_project)
                     out = inbox_dir(recipient) / f"{mid}.md"
-                    out.write_text(dump_message(env, wrapped), encoding="utf-8")
-                    os.chmod(out, 0o600)
+                    atomic_write_text(out, dump_message(env, wrapped))
                     out_link = outbox_dir(sender_project) / f"{mid}.md"
                     if not out_link.exists():
                         try:
@@ -560,6 +820,302 @@ def cmd_detect_project(args: argparse.Namespace) -> int:
     return 1
 
 
+# ---------------------------------------------------------------- Advisory locks
+# Windows locks a byte range, and a locked range cannot be read by another
+# process, so the lock byte sits past the PID text a second loop reads.
+_WIN_LOCK_OFFSET = 1 << 20
+
+
+def _try_lock_fd(fd: int) -> bool:
+    """Take an exclusive advisory lock on fd without waiting. True when taken.
+    The kernel drops it when the holder exits, however it exits (A1)."""
+    if fcntl is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+        except OSError as e:
+            if e.errno in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
+                return False
+            raise
+    if msvcrt is not None:
+        pos = os.lseek(fd, 0, os.SEEK_CUR)
+        os.lseek(fd, _WIN_LOCK_OFFSET, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+        finally:
+            os.lseek(fd, pos, os.SEEK_SET)
+    return True  # no lock facility on this platform: best effort, never block
+
+
+def _unlock_fd(fd: int) -> None:
+    try:
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        elif msvcrt is not None:
+            os.lseek(fd, _WIN_LOCK_OFFSET, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+
+
+class FileLock:
+    """An advisory lock on an open descriptor. acquire(wait) retries until wait
+    seconds pass (0 = one try). After the lock is taken the path is re-checked:
+    if a releasing holder unlinked it meanwhile, the lock is on a dead inode and
+    the attempt starts again on the new file."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.fd: Optional[int] = None
+
+    def acquire(self, wait: float = 0.0) -> bool:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + wait
+        while True:
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            if _try_lock_fd(fd):
+                try:
+                    same = os.path.samestat(os.fstat(fd), os.stat(self.path))
+                except OSError:
+                    same = False
+                if same:
+                    self.fd = fd
+                    return True
+                _unlock_fd(fd)
+            os.close(fd)
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(random.uniform(0.02, 0.08))
+
+    def write_pid(self) -> None:
+        """Diagnostic metadata only; the lock, not this text, is the exclusion."""
+        if self.fd is None:
+            return
+        os.lseek(self.fd, 0, os.SEEK_SET)
+        os.ftruncate(self.fd, 0)
+        os.write(self.fd, f"{os.getpid()} {socket.gethostname()[:64]}\n".encode("utf-8"))
+
+    def holder_pid(self) -> str:
+        try:
+            with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+                first = (f.read(200).split() or ["?"])[0]
+            return first if first.isdigit() else "?"
+        except OSError:
+            return "?"
+
+    def release(self, remove: bool = False) -> None:
+        if self.fd is None:
+            return
+        fd, self.fd = self.fd, None
+        if remove and os.name != "nt":
+            # POSIX: unlink while still holding, so no newcomer can lock the old inode
+            # and believe it is alone (acquire re-checks the path for the same reason).
+            try:
+                os.unlink(self.path)
+            except OSError:
+                pass
+        _unlock_fd(fd)
+        os.close(fd)
+        if remove and os.name == "nt":
+            try:  # Windows cannot unlink an open file; a held lock makes this fail harmlessly
+                os.unlink(self.path)
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------- Config / watch setting
+def config_path() -> Path:
+    return mailbox_root() / ".config.yaml"
+
+
+class ConfigError(Exception):
+    pass
+
+
+def load_config() -> dict:
+    p = config_path()
+    try:
+        text = p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise ConfigError(f"cannot read {p}: {e}")
+    try:
+        cfg = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ConfigError(f"{p} is not valid YAML: {e}")
+    if cfg is None:
+        return {}
+    if not isinstance(cfg, dict):
+        raise ConfigError(f"{p} is not a YAML mapping")
+    return cfg
+
+
+def watch_enabled(project: str) -> bool:
+    """Absent, unreadable or malformed config means off."""
+    try:
+        watch = load_config().get("watch")
+    except ConfigError:
+        return False
+    return isinstance(watch, dict) and watch.get(project) is True
+
+
+def set_watch(project: str, on: bool) -> None:
+    """Rewrite the config under .config.lock (A5): read, change watch.<project>,
+    write a temp file in the mailbox root, os.replace. Every other key is kept;
+    comments are not (whole-file YAML round-trip)."""
+    root = mailbox_root()
+    root.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(root / ".config.lock")
+    if not lock.acquire(wait=CONFIG_LOCK_WAIT_S):
+        raise TimeoutError(f"config lock busy: {root / '.config.lock'}")
+    try:
+        cfg = load_config()
+        watch = cfg.get("watch")
+        if not isinstance(watch, dict):
+            watch = {}
+        watch[project] = bool(on)
+        cfg["watch"] = watch
+        p = config_path()
+        try:
+            mode = p.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o600
+        atomic_write_text(p, yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False,
+                                            allow_unicode=True), mode=mode)
+    finally:
+        lock.release()
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    project = args.project or detect_project()
+    if not project or not PROJECT_PAT.match(project):
+        print("cpmail: cannot detect project; pass --project", file=sys.stderr)
+        return 2
+    if args.action in ("on", "off"):
+        try:
+            set_watch(project, args.action == "on")
+        except (ConfigError, TimeoutError, OSError) as e:
+            print(f"cpmail: {e}; watch setting not changed", file=sys.stderr)
+            return 1
+    print(f"watch: {'on' if watch_enabled(project) else 'off'} for {project}")
+    return 0
+
+
+# ---------------------------------------------------------------- watch-loop
+def session_id(explicit: Optional[str]) -> str:
+    """--session, else $CLAUDE_CODE_SESSION_ID, else $CLAUDE_SESSION_ID, else the
+    parent pid (A2). Never a shared default."""
+    for v in (explicit, os.environ.get("CLAUDE_CODE_SESSION_ID"),
+              os.environ.get("CLAUDE_SESSION_ID")):
+        if v:
+            return v
+    return f"ppid-{os.getppid()}"
+
+
+def session_filename_part(sid: str) -> str:
+    """A session id reaches a path only when it is plainly safe; anything else is
+    hashed (sha256, first 16 hex)."""
+    if SESSION_PAT.match(sid) and sid not in (".", ".."):
+        return sid
+    return "h-" + hashlib.sha256(sid.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
+def watch_lock_path(project: str, sid: str) -> Path:
+    return mailbox_root() / ".watch" / f"{project}-{session_filename_part(sid)}.lock"
+
+
+def min_watch_interval() -> float:
+    # CPMAIL_WATCH_MIN_INTERVAL lowers the floor for the test suite only.
+    try:
+        return float(os.environ.get("CPMAIL_WATCH_MIN_INTERVAL", WATCH_MIN_INTERVAL_S))
+    except ValueError:
+        return WATCH_MIN_INTERVAL_S
+
+
+class _Terminated(Exception):
+    pass
+
+
+def _on_sigterm(signum, frame):  # noqa: ARG001
+    raise _Terminated()
+
+
+def cmd_watch_loop(args: argparse.Namespace) -> int:
+    project = args.project or detect_project()
+    if not project or not PROJECT_PAT.match(project):
+        print("cpmail: cannot detect project; pass --project", file=sys.stderr)
+        return 2
+    floor = min_watch_interval()
+    if args.interval < floor:
+        print(f"cpmail: --interval must be at least {floor:g} seconds", file=sys.stderr)
+        return 2
+    if not watch_enabled(project):
+        print(f"watch is off for {project}")
+        return 0
+
+    lock = FileLock(watch_lock_path(project, session_id(args.session)))
+    try:
+        got = lock.acquire(wait=0.0)
+        if got:
+            lock.write_pid()
+    except OSError as e:
+        lock.release(remove=True)
+        print(f"cpmail: cannot take the watch lock: {e}", file=sys.stderr)
+        return 1
+    if not got:
+        print(f"already watching (pid {lock.holder_pid()})")
+        return EXIT_WATCHING
+
+    parent = os.getppid()
+    prev_term = None
+    if hasattr(signal, "SIGTERM"):
+        try:
+            prev_term = signal.signal(signal.SIGTERM, _on_sigterm)
+        except ValueError:  # not the main thread (in-process callers)
+            prev_term = None
+    try:
+        while True:
+            if os.getppid() != parent:
+                return 0  # orphaned: the session that started us is gone (A4)
+            if not watch_enabled(project):
+                print(f"watch turned off for {project}")
+                return 0
+            rows = new_message_rows(project)
+            if rows:
+                print(f"NEW CPMAIL for {project}:")
+                for r in rows:
+                    print(r)
+                return 0
+            sys.stdout.flush()
+            time.sleep(args.interval)
+    except _Terminated:
+        return 143
+    finally:
+        lock.release(remove=True)
+        if prev_term is not None:
+            try:
+                signal.signal(signal.SIGTERM, prev_term)
+            except ValueError:
+                pass
+
+
+def cmd_hook_counts(args: argparse.Namespace) -> int:
+    """Internal, for the SessionStart hook: one line `<project> <new> <read> <on|off>`.
+    One process gives the hook everything it prints."""
+    project = args.project or detect_project()
+    if not project or not PROJECT_PAT.match(project):
+        return 1
+    new, read = state_counts(project)
+    print(f"{project} {new} {read} {'on' if watch_enabled(project) else 'off'}")
+    return 0
+
+
 # ---------------------------------------------------------------- Main
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cpmail",
@@ -580,11 +1136,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--from-project", dest="from_project", default=None)
     s.add_argument("--sender-agent", dest="sender_agent", default="unknown",
                    choices=sorted(AGENTS))
+    s.add_argument("--dedupe", action="store_true",
+                   help=f"refuse (exit {EXIT_DUPLICATE}) if an unacked message from this "
+                        "project to --to has the same dedupe key")
+    s.add_argument("--dedupe-key", dest="dedupe_key", default=None,
+                   help="topic key for --dedupe (implies it); default: the normalised subject")
 
     s = sub.add_parser("list", help="list messages")
     s.add_argument("--project", default=None)
     g = s.add_mutually_exclusive_group()
-    g.add_argument("--unread", action="store_true")
+    g.add_argument("--unread", action="store_true",
+                   help="everything not acked (unread and read); the default")
+    g.add_argument("--new", action="store_true",
+                   help="only messages never opened (ack_state unread)")
     g.add_argument("--acked", action="store_true")
     g.add_argument("--all", action="store_true")
     s.add_argument("--limit", type=int, default=None)
@@ -607,6 +1171,23 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("_detect-project", help="(internal) print detected project")
     s.add_argument("--from-cwd", dest="from_cwd", default=None)
 
+    s = sub.add_parser("watch", help="per-project watch setting: on, off or status")
+    s.add_argument("action", choices=["on", "off", "status"])
+    s.add_argument("--project", default=None)
+
+    s = sub.add_parser("watch-loop",
+                       help="wait for new mail; exit 0 with the rows when it arrives")
+    s.add_argument("--project", default=None)
+    s.add_argument("--interval", type=float, default=WATCH_DEFAULT_INTERVAL_S,
+                   help=f"seconds between checks (default {WATCH_DEFAULT_INTERVAL_S:g}, "
+                        f"min {WATCH_MIN_INTERVAL_S:g})")
+    s.add_argument("--session", default=None,
+                   help="session id (default $CLAUDE_CODE_SESSION_ID, $CLAUDE_SESSION_ID, "
+                        "else the parent pid)")
+
+    s = sub.add_parser("_hook-counts", help="(internal) project, new, read, watch for the hook")
+    s.add_argument("--project", default=None)
+
     return p
 
 
@@ -616,6 +1197,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         "send": cmd_send, "list": cmd_list, "read": cmd_read, "ack": cmd_ack,
         "migrate": cmd_migrate, "doctor": cmd_doctor,
         "_detect-project": cmd_detect_project,
+        "watch": cmd_watch, "watch-loop": cmd_watch_loop,
+        "_hook-counts": cmd_hook_counts,
     }
     return dispatch[args.cmd](args)
 

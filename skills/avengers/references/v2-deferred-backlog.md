@@ -12,6 +12,13 @@ criteria in `progress/work-packages.yaml`.
 
 ---
 
+## Contents
+
+- What v2 SHIPPED (the baseline this backlog is measured against)
+- Deferred items
+- Rejected (NOT deferred — decided against, design §11)
+- v1 out-of-scope still standing (design §14 — do NOT flag as "missing")
+
 ## What v2 SHIPPED (the baseline this backlog is measured against)
 
 - **D1** — constraint-based diversified staffing: `capability-priors.yaml` (DATA), seat

@@ -17,6 +17,7 @@ Run:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,7 +48,17 @@ def _run_gate(
         env["GATES_TELEMETRY_FORCE_IMPORTERROR"] = "1"
     else:
         env.pop("GATES_TELEMETRY_FORCE_IMPORTERROR", None)
-    return subprocess.run(argv, capture_output=True, text=True, env=env)
+    # S081 WP-R01 (design §4.11, L6): run the gate INSIDE its tmp project root.
+    # gates.py's telemetry (the gate-runs.jsonl denominator and the G_DUAL_VERDICT
+    # observation in events.jsonl / active.yaml) finds its project from the cwd.
+    # With no cwd= the child inherited pytest's, so a run from the repository
+    # root wrote 20 gate-runs rows and 7 events and rewrote active.yaml in the
+    # TRACKED .process-observations/. The marker keeps the backend live (so
+    # test_telemetry_byte_invariance still compares against a writing backend)
+    # and keeps what it writes inside the tmp root.
+    (project_root / ".process-observations").mkdir(parents=True, exist_ok=True)
+    return subprocess.run(argv, capture_output=True, text=True, env=env,
+                          cwd=str(project_root))
 
 
 def _write_archive(root: Path, bundle_hash: str, **overrides: Any) -> None:
@@ -195,6 +206,46 @@ class TestGDualVerdictGate(unittest.TestCase):
                     f"exit code drift with vs without telemetry for "
                     f"bundle_hash={bh}: on={on.returncode} off={off.returncode}",
                 )
+
+
+def _jsonl(path: Path) -> List[Dict[str, Any]]:
+    return [_json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+class TestGateTelemetryIsolation(unittest.TestCase):
+    """S081 WP-R01 (design §4.11, L6): the gate's telemetry lands in the tmp
+    root under test, never in the project the test process happens to run in."""
+
+    def _tmpdir(self, prefix: str) -> Path:
+        d = Path(tempfile.mkdtemp(prefix=prefix)).resolve()
+        self.addCleanup(shutil.rmtree, d, True)
+        return d
+
+    def test_gate_telemetry_lands_in_the_gate_root_not_the_invoking_cwd(self) -> None:
+        # The launching process sits inside a DECOY project (it has the marker),
+        # standing in for a test run started from the repository root.
+        decoy = self._tmpdir("gdv-decoy-")
+        (decoy / ".process-observations").mkdir()
+        root = self._tmpdir("gdv-")
+        (root / ".ledger" / "verdicts").mkdir(parents=True)
+        prev = os.getcwd()
+        os.chdir(decoy)
+        try:
+            cp = _run_gate(root, _bh("z"))  # missing archive -> exit 2 + observation
+        finally:
+            os.chdir(prev)
+        self.assertEqual(cp.returncode, 2, cp.stdout + cp.stderr)
+
+        # ISOLATION: the decoy project received nothing.
+        self.assertEqual(sorted(p.name for p in (decoy / ".process-observations").iterdir()), [])
+
+        # CONTROL: the telemetry backend is live and wrote into the gate's root.
+        obs = root / ".process-observations"
+        runs = _jsonl(obs / "gate-runs.jsonl")
+        self.assertEqual({r["gate"] for r in runs}, {"G_DUAL_VERDICT"})
+        self.assertIn(2, [r["code"] for r in runs])
+        events = _jsonl(obs / "events.jsonl")
+        self.assertIn("gates.py:G_DUAL_VERDICT", [e.get("observed_by") for e in events])
 
 
 if __name__ == "__main__":

@@ -1,14 +1,37 @@
 ---
 name: seo-meta-optimizer
-description: Use when creating or optimizing title tags, meta descriptions, Open Graph tags, Twitter Cards, URL structures, or any SERP-facing metadata. Covers character limits, pixel widths, CTR optimization, and AI Overview impact on click-through rates.
+description: SERP and social metadata - title tags, meta descriptions, Open Graph and X cards, URL structure, pixel widths, rewrite behaviour, and the syntax of robots meta and snippet tags (nosnippet, max-snippet, data-nosnippet, Bing noarchive). Use when writing or auditing titles, descriptions, social tags or snippet-tag markup; whether to opt out of AI features is ai-search-optimizer.
 family: seo
 ---
 
 # SEO Meta Optimizer
 
+<!-- FRESHNESS:v1
+volatility: medium
+anchors:
+  - kind: date_review
+    subject: seo-meta-optimizer-review
+    review_by: 2027-03-26
+  - kind: external_fact
+    subject: ai-snippet-controls
+    source_url: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+    verified_on: 2026-09-27
+    review_by: 2026-12-26
+    claim: "nosnippet, max-snippet, data-nosnippet and noindex govern AI Overview and AI Mode input; no AI-specific robots meta directive; Search Console generative-AI setting per property."
+-->
+
+## Verify before you assert
+
+Dated facts here carry a FRESHNESS anchor: past its `review_by`, fetch the `source_url` live before
+stating it. The full rules: `ai-search-optimizer` → "Verify before you assert".
+
+
 ## Overview
 
-Meta optimization is about controlling what users see in search results and social shares. Google rewrites 76% of title tags — but well-crafted titles within limits get rewritten less often and earn higher CTR. With AI Overviews reducing organic CTR by 40-61%, every click matters more.
+Meta optimisation controls what people see in search results and social shares. Google often
+rewrites titles and descriptions, but titles within limits that match the page get rewritten less.
+AI Overviews take clicks on many queries, so every remaining click matters more; measure the effect
+on your own pages (Search Console) rather than quoting industry averages.
 
 ## Title Tags
 
@@ -20,9 +43,9 @@ Meta optimization is about controlling what users see in search results and soci
 | Mobile | ~50 characters | ~500px |
 | Sweet spot (lowest rewrite rate) | **51-60 characters** | **< 580px** |
 
-- Google rewrites 76% of titles (McAlpin Q1 2025), but 63% of rewrites are just brand name changes (cosmetic)
-- Titles 40-60 chars have 33.3% higher CTR than those outside this range
-- Bold keywords add 15-20% more pixels — titles that normally fit can get truncated when Google bolds query matches
+- Google rewrites a large share of titles, many of them only to change the brand name (McAlpin, Q1 2025 study: directional)
+- Keep titles near the sweet spot above; very short and very long titles underperform
+- Bolded query matches widen the title in pixels, so a title that normally fits can be truncated
 
 ### Title Formula
 
@@ -31,21 +54,19 @@ Meta optimization is about controlling what users see in search results and soci
 
 ### CTR Optimization (Data-Backed)
 
-| Tactic | Impact | Source |
-|--------|--------|--------|
-| Positive/emotional sentiment | **+7.3% CTR** | Backlinko, 4M results |
-| Power words (FREE! AMAZING! ULTIMATE!) | **-13.9% CTR** | Backlinko, 4M results |
-| Title case | Up to +37% CTR | Multiple studies |
-| Numbers in title | Positive correlation | Multiple studies |
-| URL containing query terms | +45% CTR | Backlinko |
+| Tactic | Direction (Backlinko large-sample CTR study; undated here, so directional only) |
+|--------|--------|
+| Positive/emotional sentiment | Higher CTR |
+| Power words (FREE! AMAZING! ULTIMATE!) | **Lower** CTR: they read as clickbait |
+| Numbers in title | Positive correlation |
+| URL containing query terms | Higher CTR |
 
-**Sacred cow killed:** Power words DECREASE CTR. They signal clickbait. Use positive sentiment instead.
+Test on your own pages (Search Console CTR by page) before generalising; see `ecommerce-cro-experimentation`.
 
 ## Meta Descriptions
 
-- Google ignores provided descriptions **~72% of the time** — generates its own from page content
-- BUT pages with meta descriptions have **5.8% higher CTR** than pages without
-- **Always write them** — the 28% usage rate still drives significant value, and they control social sharing previews
+- Google often ignores a provided description and generates its own from page content
+- **Always write them**: they are used when they match the query, and they drive social sharing previews
 
 ### Rules
 
@@ -83,39 +104,50 @@ X/Twitter-specific tags (`twitter:card`, etc.) are optional — X falls back to 
 
 ## URL Structure
 
-- **Under 60 characters** — shorter URLs improve CTR by up to 15%
+- **Under 60 characters**, short and readable
 - Lowercase, hyphens, descriptive keywords
 - No parameters, session IDs, or unnecessary depth
 - E-commerce: `domain.com/category/product-name` is the practical middle ground
 - Use canonical tags for product variants to prevent duplicate content
 - **Keep URLs stable** — changing URLs loses accumulated authority
 
-## AI Overview Impact on Meta Strategy
+## AI Overviews and meta strategy
 
-| Metric | Value |
-|--------|-------|
-| AI Overview appearance rate | 15-48% (varies by query type and month) |
-| CTR drop when AI Overview present | 40-61% |
-| Zero-click rate with AI Overviews | 83% |
-| Users who click AI Overview sources | ~1% (Pew Research) |
-| Cited brand organic CTR boost | +35% vs non-cited |
+Metadata now serves two readers: people choosing a result, and AI features choosing a source. Keep
+titles and descriptions factual and entity-rich. Pew Research (Jul 2025) found users rarely click a
+link inside an AI summary [I]. Measure your own: Search Console's Generative AI report shows AI
+impressions per page (no clicks) [V https://support.google.com/webmasters/answer/16984139]; method in
+`ai-assistant-referrals`.
 
-**Strategy shift:** Meta content must serve dual purpose — compelling for human clicks AND clear/factual/entity-rich for AI citation. Being cited in an AI Overview gives a +35% halo effect on organic CTR even though only 1% click within the AIO itself.
+## Robots meta and snippet-control syntax
 
-## Robots Meta (2025-2026)
+This skill owns the **syntax**; what each control does to AI features, and whether to opt out, is
+the one controls table, `ai-search-optimizer/references/controls.md`.
 
-- `max-snippet` and `nosnippet` directives now **extend to AI Overviews** — publishers can control AI snippet usage
-- `indexifembedded` allows indexing of embedded content despite noindex
-- No official `noai` directive exists — control via existing `nosnippet`/`max-snippet`
+```html
+<!-- page level: no snippet, or a capped one (also limits AI Overview / AI Mode input) -->
+<meta name="robots" content="max-snippet:160, max-image-preview:large">
+<meta name="robots" content="nosnippet">
+<!-- Bing only: keep in search, out of Copilot answers and training -->
+<meta name="bingbot" content="noarchive">
+<!-- one block of text kept out of snippets (Google and Bing) -->
+<p data-nosnippet>Trade prices are for account holders only.</p>
+<!-- allow indexing of embedded content despite a noindex -->
+<meta name="googlebot" content="noindex, indexifembedded">
+```
 
-## Anti-Patterns
+There is no `noai` directive. The Search Console "Search generative AI" setting is a property
+setting, not a tag.
+
+## Anti-patterns
 
 | Don't | Why |
 |-------|-----|
-| Use power words in titles | Data shows -13.9% CTR decrease |
+| Use power words in titles | They read as clickbait and lower CTR |
 | Optimize for character count alone | Pixel width is the actual measurement |
-| Skip meta descriptions ("Google rewrites anyway") | 5.8% CTR boost when present |
-| Put brand name first on non-homepage pages | Keyword-first performs better |
+| Skip meta descriptions ("Google rewrites anyway") | Used when they match, and they drive social previews |
+| Put brand name first on non-homepage pages | Keyword-first front-loads relevance |
+| Use a `noai` meta tag | No such directive; it does nothing |
 | Write meta descriptions under 70 characters | Too short triggers auto-generation |
 | Use relative URLs in OG tags | Break when content is shared |
 | Change URLs during refresh | Loses accumulated authority; keep same URL |

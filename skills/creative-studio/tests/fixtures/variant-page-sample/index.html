@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample variant page</title>
+<style>
+  :root { --ink: #1c1b19; --paper: #faf8f4; --rule: #d8d2c6; --accent: #7a2e1f; }
+  * { box-sizing: border-box; }
+  html { font-size: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font-family: Georgia, "Times New Roman", serif; font-size: 1.125rem; line-height: 1.55; }
+  header, main > section, footer { padding: 3rem 1.25rem; max-width: 44rem; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--rule); }
+  h1 { font-size: 2.5rem; line-height: 1.1; margin: 0 0 1rem; }
+  h2 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 1rem; color: var(--accent); }
+  p { margin: 0 0 1rem; max-width: 62ch; }
+  footer { border-top: 1px solid var(--rule); font-size: 1rem; }
+  .mark { display: inline-block; width: 2.5rem; height: 0.25rem; background: var(--accent);
+          animation: grow 0.6s ease-out both; }
+  @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) { .mark { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="mark" aria-hidden="true"></span>
+  <h1>A sample page for the capture</h1>
+  <p>This page stands in for a variant a maker would write. It keeps every file inside its own directory,
+     uses fonts the host already has, and reads comfortably at a narrow, a middle and a wide screen.</p>
+</header>
+<main>
+  <section>
+    <h2>First section</h2>
+    <p>The capture loads this file with every request intercepted, scrolls through it once so that late
+       content settles, and then records one tile per screen height for each section. The paragraph is long
+       enough to wrap onto several lines at every width, which is what the line-length row measures.</p>
+    <p>A second paragraph gives the body-size row more than one element to compare, and keeps the section
+       taller than a single phone screen so that the narrow width yields more than one tile for it.</p>
+  </section>
+  <section>
+    <h2>Second section</h2>
+    <p>Nothing on this page moves once reduced motion is requested: the small rule above the title grows in
+       only when motion is allowed, and that is the difference the second set of frames is there to show.
+       The text colour and the paper colour are far enough apart to pass the contrast rows with room.</p>
+  </section>
+</main>
+<footer>
+  <p>Sample footer. No names, no prices, no external address.</p>
+</footer>
+</body>
+</html>

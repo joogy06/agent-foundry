@@ -1,0 +1,40 @@
+{
+  "schema": "intake-target-ref-sample.v1",
+  "note": "Benign shape sample of a target reference: one string, read as a git URL, a local folder or a zip. Only https git URLs are accepted. The paths are placeholders; tests build real targets in a temp directory.",
+  "accepted": [
+    {
+      "target": "https://example.invalid/owner/sample-skill.git",
+      "source_type": "git",
+      "ref": null
+    },
+    {
+      "target": "https://example.invalid/owner/sample-skill.git",
+      "source_type": "git",
+      "ref": "v1.0.0"
+    },
+    {
+      "target": "downloads/sample-skill",
+      "source_type": "folder",
+      "ref": null
+    },
+    {
+      "target": "downloads/sample-skill.zip",
+      "source_type": "zip",
+      "ref": null
+    }
+  ],
+  "refused": [
+    {
+      "target": "http://example.invalid/owner/sample-skill.git",
+      "gap": "protocol-not-allowed"
+    },
+    {
+      "target": "ssh://example.invalid/owner/sample-skill.git",
+      "gap": "protocol-not-allowed"
+    },
+    {
+      "target": "downloads/does-not-exist",
+      "gap": "target-not-found"
+    }
+  ]
+}

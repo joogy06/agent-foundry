@@ -1,0 +1,730 @@
+{
+  "schema": "split-manifest.v1",
+  "skill": "forge",
+  "extra_files": [
+    "_meta/codex_top_seat.sh"
+  ],
+  "deletes": [
+    {
+      "lines": [
+        "codex_top_seat() {",
+        "  local NAME=\"$1\" ROLE=\"$2\" USE=\"$3\" SIZE=\"$4\" KEY=\"$5\" BRIEF=\"$6\" DEST=\"$7\" OUT RC ACT=\"\" TRY TO MDL; shift 7",
+        "  local SEAT=\"$HOME/.claude/skills/_meta/seat_model.py\" QUOTA=\"$HOME/.claude/skills/_meta/codex_quota.py\"",
+        "  local WATCH=\"$HOME/.claude/skills/_meta/codex_watch.py\" TRIES=\"1 2\" SUBUSE=\"$USE\" RETRY RRC RTO AID=\"\" AKEY=\"\"",
+        "  local L2 WA RIN UU UK UM",
+        "  # The receipt: `<admission id> <key>` of this seat's LIVE admission, written atomically by argv. DEST must be",
+        "  # unique per seat (the receipt is \"$DEST.admit\"). Read in a subshell, so this function's \"$@\" is untouched.",
+        "  rm -f \"$DEST.admit\"",
+        "  # SIZE and KEY are EMPTY when the caller has none, and an empty one passes NO FLAG AT ALL. Sizing is",
+        "  # opt-in: with no --size the registry reads no size file, so an unsized seat takes the TOP model even on",
+        "  # a small cycle -- and passing a literal size instead of nothing would record `size_source: routing`, a",
+        "  # routing decision nobody made. An empty KEY leaves the budget key the project derives; a caller that",
+        "  # mints its own passes it here, so its seats share ONE key and spend their OWN budget, not the round's.",
+        "  # #322: --await-quota -- a QUOTA refusal records no stand-in yet; it prints the reset lines and",
+        "  # `substitution=deferred`, and the seat's owner waits (see CODEX_QUOTA_WAIT below).",
+        "  OUT=\"$(python3 \"$SEAT\" argv --role \"$ROLE\" --provider codex --use \"$USE\" --receipt-file \"$DEST.admit\" \\",
+        "           --await-quota ${SIZE:+--size \"$SIZE\"} ${KEY:+--cycle-id \"$KEY\"} \\",
+        "           --project-root \"${PROJECT_DIR:-$PWD}\")\"; RC=$?",
+        "  # The timeout is the seat registry's, asked only AFTER an admitted `argv --use` (asked first, a no-eligible",
+        "  # substitution would become a gap) and never as a second `argv` stdout line: $OUT is word-split into",
+        "  # `codex exec $OUT`, so an extra line would become a prompt. No timeout -> the gap line; codex never runs.",
+        "  if [ \"$RC\" -eq 0 ]; then",
+        "    TO=\"$(python3 \"$SEAT\" timeout --role \"$ROLE\" --provider codex)\" || { ACT=\"seat_model timeout exit $?\"; RC=1; }",
+        "    MDL=\"$(set -- $OUT; echo \"$2\")\"     # the pinned model, named once: progress line and substitution record",
+        "    AID=\"$(set -- $(cat \"$DEST.admit\" 2>/dev/null); echo \"${1-}\")\"",
+        "    AKEY=\"$(set -- $(cat \"$DEST.admit\" 2>/dev/null); echo \"${2-}\")\"; AKEY=\"${AKEY:-$KEY}\"",
+        "  fi",
+        "  if [ \"$RC\" -eq 0 ]; then",
+        "    while [ -n \"$TRIES\" ]; do",
+        "      for TRY in $TRIES; do",
+        "        # D24: the watchdog stops the call on INACTIVITY -- no stdout, no stderr and no session-rollout write",
+        "        # for the idle window -- so \"thinking hard\" is no longer killed as \"hung\". The registry timeout is",
+        "        # passed as the RUNAWAY cap only, never as the normal stop, and the watchdog prints a progress line to",
+        "        # this call's stderr while it waits. Its exits: 111 went silent (the retryable stop, classified as a",
+        "        # timeout), 112 ran away while still active (a gap on the FIRST hit, never a substitution), anything",
+        "        # else is codex's own status passed straight through.",
+        "        python3 \"$WATCH\" --mode codex --hard-cap \"$TO\" --model \"$MDL\" \\",
+        "          --stdout-file \"$DEST.stdout\" --stderr-file \"$DEST.stderr\" \\",
+        "          -- codex exec \"$@\" $OUT -o \"$DEST\" \"$(cat \"$BRIEF\")\"; RC=$?",
+        "        ACT=\"$(python3 \"$QUOTA\" classify --exit-code \"$RC\" --attempt \"$TRY\" $([ \"$RC\" -eq 111 ] && echo --timed-out) \\",
+        "                 --stderr-file \"$DEST.stderr\" --output-file \"$DEST\" --prompt-file \"$BRIEF\")\" || ACT=classify_error",
+        "        [ \"${ACT%% *}\" = retry ] || break",
+        "      done",
+        "      TRIES=\"\"",
+        "      # U2, the astra reserve: a seat that failed on CAPABILITY (capacity or a malformed answer, twice) gets ONE",
+        "      # attempt on the codex TOP. seat_model decides whether that is a retry at all -- it proves the failed",
+        "      # attempt from its receipt (an admitted std row of this role, use and key), wants a DIFFERENT pin that",
+        "      # bills the TOP class, and admits it as `top_retry` on the FORGE CYCLE (1 per cycle) -- and records the",
+        "      # event row. The TOP timeout is asked FIRST, so a failed lookup spends no retry slot. Exit 0: run it ONCE,",
+        "      # classified as attempt 2 so it has no inner retry, and SUBUSE stops a second entry; the receipt now names",
+        "      # the retry's own admission and key. Exit 3: the D6 line, already recorded. Anything else: the original",
+        "      # failure is substituted below. Quota, auth, budget, timeout and gap outcomes never reach this branch.",
+        "      case \"$SUBUSE:$ACT\" in",
+        "        \"$USE:substitute capacity_twice\"|\"$USE:substitute malformed_twice\")",
+        "          RRC=1",
+        "          if RTO=\"$(python3 \"$SEAT\" timeout --role \"$ROLE\" --provider codex --top-retry)\"; then",
+        "            rm -f \"$DEST.admit\"   # only the retry's own receipt may follow",
+        "            RETRY=\"$(python3 \"$SEAT\" argv --role \"$ROLE\" --provider codex --use \"$USE\" --top-retry \\",
+        "                       --failed-admission-id \"$AID\" --failed-reason \"${ACT#substitute }\" \\",
+        "                       --receipt-file \"$DEST.admit\" --await-quota ${AKEY:+--cycle-id \"$AKEY\"} \\",
+        "                       --project-root \"${PROJECT_DIR:-$PWD}\")\"; RRC=$?",
+        "          fi",
+        "          if [ \"$RRC\" -eq 0 ]; then",
+        "            OUT=\"$RETRY\"; MDL=\"$(set -- $OUT; echo \"$2\")\"; SUBUSE=top_retry; TRIES=2; TO=\"$RTO\"",
+        "            AKEY=\"$(set -- $(cat \"$DEST.admit\" 2>/dev/null); echo \"${2-}\")\"; AKEY=\"${AKEY:-$KEY}\"",
+        "          elif [ \"$RRC\" -eq 3 ]; then",
+        "            OUT=\"$RETRY\"; ACT=top_retry_substituted",
+        "          fi ;;",
+        "      esac",
+        "    done",
+        "    case \"$ACT\" in",
+        "      \"ok -\") ;;",
+        "      top_retry_substituted) RC=3 ;;",
+        "      # the substitution names the key its admission was billed to (the receipt's, else the caller's KEY): a",
+        "      # failed TOP retry keeps its forge-cycle key, a tournament or ballot seat its own",
+        "      \"substitute \"*) OUT=\"$(python3 \"$SEAT\" substitute --role \"$ROLE\" --use \"$SUBUSE\" --reason \"${ACT#substitute }\" \\",
+        "                               --requested-model \"$MDL\" ${AKEY:+--cycle-id \"$AKEY\"} \\",
+        "                               --project-root \"${PROJECT_DIR:-$PWD}\")\"; RC=$? ;;",
+        "      # classify itself failed: after a codex exit 0 keep codex's output in $DEST; after a failed call, a gap",
+        "      classify_error) if [ \"$RC\" -eq 0 ]; then",
+        "                        echo \"CODEX_CLASSIFY_ERROR: $NAME: classify failed after codex exit 0; $DEST keeps its output\" >&2",
+        "                      else RC=1; fi ;;",
+        "      *) RC=1 ;;",
+        "    esac",
+        "  fi",
+        "  # Exit 3 prints the reason on LINE 1 and the Claude model on LINE 2; a quota refusal (#322) appends",
+        "  # key=value lines after them, so the model is read as line 2, never as the last line.",
+        "  L2=\"${OUT#*$'\\n'}\"; L2=\"${L2%%$'\\n'*}\"",
+        "  case \"$RC:$OUT\" in",
+        "    0:*) ;;  # codex answered: $DEST holds its output",
+        "    3:*$'\\n'substitution=deferred*)",
+        "       WA=\"${OUT##*$'\\n'wait_advice=}\"; WA=\"${WA%%$'\\n'*}\"",
+        "       RIN=\"unknown\"; case \"$OUT\" in *$'\\n'resets_in_s=*) RIN=\"${OUT##*$'\\n'resets_in_s=}\"; RIN=\"${RIN%%$'\\n'*}\" ;; esac",
+        "       # #322 fix round 1: the use, key and codex model a later `substitute` must name (a TOP retry's own)",
+        "       UU=\"${OUT##*$'\\n'use=}\"; UU=\"${UU%%$'\\n'*}\"; UK=\"${OUT##*$'\\n'key=}\"; UK=\"${UK%%$'\\n'*}\"",
+        "       UM=\"-\"; case \"$OUT\" in *$'\\n'requested_model=*) UM=\"${OUT##*$'\\n'requested_model=}\"; UM=\"${UM%%$'\\n'*}\" ;; esac",
+        "       printf 'CODEX_QUOTA_WAIT: %s (reason %s; wait_advice %s; resets_in_s %s; stand-in %s; use %s; key %s; requested %s)\\nbrief: %s\\n' \\",
+        "         \"$NAME\" \"${OUT%%$'\\n'*}\" \"$WA\" \"$RIN\" \"$L2\" \"$UU\" \"$UK\" \"$UM\" \"$BRIEF\" > \"$DEST\" ;;",
+        "    3:*) printf 'CODEX_SUBSTITUTE: %s -> %s (reason %s; provider gap: openai)\\nbrief: %s\\n' \\",
+        "         \"$NAME\" \"$L2\" \"${OUT%%$'\\n'*}\" \"$BRIEF\" > \"$DEST\" ;;",
+        "    *) echo \"CODEX_GAP: $NAME seat skipped (${ACT:-exit $RC}; see stderr)\" > \"$DEST\" ;;",
+        "  esac",
+        "}"
+      ],
+      "count": 1,
+      "reason": "#344 WP-3: forge pasted the codex_top_seat function twice (Spawning Codex Agents, Codex Escalation); both copies are replaced by the preamble and ONE copy of the function now lives in skills/_meta/codex_top_seat.sh (extra_files), byte-for-byte, so each function line is one occurrence fewer"
+    },
+    {
+      "text": "---",
+      "count": 3,
+      "reason": "#344 WP-4: horizontal rules that separated two sections of the old SKILL.md which now sit in different files; a file boundary replaces the rule (the other rules moved with their sections)"
+    },
+    {
+      "lines": [
+        "**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (pinned per role through `skills/_meta/seat_model.py`: the codex std tier for the consultancy seats, codex TOP kept in reserve for escalation and complex review) AND Antigravity CLI (`agy`, via `agy --sandbox $AGY_MODEL -p`, model pinned the same way) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If agy is unavailable, fall back gracefully and note the gap explicitly. If codex cannot serve a codex seat (the budget gate refuses it, the quota is exhausted, the CLI is missing, no eligible model is listed, or the call fails twice — after a capability failure on the std tier, the one TOP retry comes first), a fresh-context Claude main-tier agent serves that seat with the same brief — never a codex std or support model, which draw the same plan quota — and the round is recorded as Claude + Google (provider gap: OpenAI). A codex failure the classifier calls a gap is still a gap: note it explicitly.",
+        "   - **capabilities.agy_analyst = true**: `agy` available, use a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy hangs on stdin in non-TTY shells, #135).",
+        "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+        "**SANDBOX RULE (S052 rogue-commit incident, #157):** the agy analyst is a READ-ONLY role — ALWAYS",
+        "invoke it with `--sandbox`. agy has write/shell/git tools by default; in S052 an un-sandboxed",
+        "\"analyst\" auto-authored and git-committed broken code mid-design (HARD-GATE violation). Codex is",
+        "unaffected (it already runs `-s read-only`). FLAG ORDER (root-caused 2026-07-02): `--sandbox` and",
+        "every other flag BEFORE `-p`, prompt LAST — `agy -p --sandbox \"X\"` silently runs UN-sandboxed",
+        "with the literal prompt `--sandbox` and discards \"X\" (agy then improvises from implicit memory —",
+        "the \"does work instead of consulting\" failure mode). Scope caveat (verified 2026-07-02, 1.0.15):",
+        "`--sandbox` constrains shell/git only, NOT native file writes — prefer piping content over",
+        "`--add-dir` on a writable repo, open the prompt with \"Advisory only — do not modify any files;",
+        "answer on stdout\", and run `git status --short` afterwards if a repo was exposed.",
+        "  && timeout 600 agy --sandbox $AGY_MODEL -p \"You are an analyst for [TASK].",
+        "At the very end print one line: SERVED_BY=<model-id-you-are-running-as>.\" < /dev/null",
+        "# For codebase context, add the relevant paths to the workspace with --add-dir:",
+        "# CAUTION: --sandbox does NOT gate native file writes into --add-dir trees — prefer piping;",
+        "# if you must --add-dir a writable repo, run `git status --short` afterwards and revert strays.",
+        "  && timeout 600 agy --sandbox $AGY_MODEL --add-dir [PATHS] -p \"Advisory only — do not modify any files; answer on stdout.",
+        "Review the codebase at [PATHS] for [TASK].",
+        "Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries.\" < /dev/null",
+        "  && timeout 600 agy --sandbox $AGY_MODEL -p \"Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —",
+        "Green (alternatives), and Blue (process) in turn, then summarise.\" < /dev/null",
+        "**When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.",
+        "- agy (`AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` direct Bash call, bridge-mode agy analyst)",
+        "- **agy as an independent third model** — use `agy --sandbox --model <slug> -p` (the slug from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)"
+      ],
+      "count": 1,
+      "reason": "#366: agy rule rewritten from the 1.4.12 measurements; advisory recipes run --sandbox --mode plan from an empty cwd"
+    },
+    {
+      "lines": [
+        "**STDIN RULE (root-caused 2026-06-05, #135):** headless `agy` MUST have stdin closed or piped —",
+        "`< /dev/null` on every call. agy reads non-TTY stdin until EOF *before* the model call; in",
+        "it is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline or piped, no `--add-dir`.",
+        "# For codebase context, pipe the relevant files in (the agy analyst has no workspace):",
+        "  && tail -n +1 [FILES] | (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout.",
+        "Review the files on stdin for [TASK].",
+        "Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries.\")",
+        "**When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (pipe the files in), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.",
+        "- **agy as an independent third model** — use `agy --sandbox --mode plan --model <slug> -p` (the slug from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (pipe the files in), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)"
+      ],
+      "count": 1,
+      "reason": "#366 fix round 2: piped stdin never reaches the model, so content is inlined"
+    },
+    {
+      "lines": [
+        "   - **capabilities.agy_analyst = true**: `agy` available, use a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` call (read-only analyst, #157; `< /dev/null` is MANDATORY: agy hangs on open stdin, #135).",
+        "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"You are an analyst for [TASK].",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout.",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —",
+        "- agy (`AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` direct Bash call, bridge-mode agy analyst)"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C1: the empty-cwd allocation is checked before the cd"
+    },
+    {
+      "lines": [
+        "- **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It goes to the owner as a question about the constraint, with no fix proposed. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "- **`works-against`, for a real defect:** look for a fix that resolves the defect without harming the Purpose. If one exists it is the fix for a critical or major, and is offered, not applied, for a minor or an owner-decision item. If none exists the finding goes to the user labelled `works-against`, with both sides and no default fix.",
+        "   - **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It is recorded as `constraint-question` and put to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint it is relabelled `owner-stated: \"<quote>\"` and the finding is ruled normally; once `awaiting-user` is recorded, any fix that follows is a `--user-directed` round citing the owner's confirmation as `--user-ref`. If the owner rejects it, the finding closes with their words quoted. A critical or major in this branch follows the `awaiting-user`, carry-forward and user-must-rule rules below. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "   - **`works-against` route, for a real defect.** (1) Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix (the no-approval path), and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. (2) If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix.",
+        "   - **Limits.** The ruling must **quote the Purpose and name the concrete outcome harmed**. A ruling resting on a `lead-inferred` Purpose goes to the owner as `constraint-question`. **Never grounds:** fix cost, effort, diff size, schedule, scope, or a `lead-inferred` constraint. **Never ruled `works-against`:** security, data loss, payment, legal, a claim false on owner-stated facts, or a failing gate or DW; these take the normal fix path and any tension is reported beside the fix. **Before close-out the user must rule** on any open critical or major. The lead never closes one.",
+        "1. **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. Record it as `constraint-question` and put it to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint, relabel it `owner-stated: \"<quote>\"` and rule the finding normally. If the owner rejects it, the finding closes with their words quoted. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "3. **`works-against`, for a real defect.** Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix, with no approval step, and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix.",
+        "The ruler is the actor who erred in the retro this step comes from, so the ruling has limits: it must quote the Purpose and name the concrete outcome harmed, some grounds are never accepted, some findings are never ruled `works-against`, and the user rules on any open critical or major. They are in `references/10-close-out.md`, step 1a, with the D21 mechanics.",
+        "If the owner rejects the clause, the finding closes with their words quoted and the hours stay. If they confirm it, it becomes `owner-stated: \"<quote>\"` and the finding is ruled normally. While the hours are true, removing them harms the Purpose, so the fix is `works-against` and takes the route in step 5. If the owner says the hours are false, the markup is a claim false on owner-stated facts, which is never ruled `works-against`, so it takes the normal fix path.",
+        "**Ruling:** no `lead-inferred` constraint is involved, and the finding is not on the never-ruled list. The defect is real and the fix is `works-against`: \"the status page must load instantly on a bad connection\", and a live fetch puts a round trip on the bad connection before anything renders."
+      ],
+      "count": 1,
+      "reason": "Codex review fix C3: every remedy gets goal-fit; the list governs leaving a defect unresolved"
+    },
+    {
+      "lines": [
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)"
+      ],
+      "count": 1,
+      "reason": "Codex re-review: every mktemp allocation is checked"
+    }
+  ],
+  "adds": [
+    {
+      "lines": [
+        ". \"$HOME/.claude/skills/_meta/codex_top_seat.sh\" 2>/dev/null",
+        "if ! declare -F codex_top_seat >/dev/null; then",
+        "  echo \"CODEX_GAP: codex_top_seat.sh missing or unreadable; no codex seat was started\" >&2",
+        "  exit 1",
+        "fi"
+      ],
+      "count": 2,
+      "reason": "#344 WP-3: the source-and-guard preamble that replaces the pasted codex_top_seat function at a call site; the guard stops the Bash call before any seat starts when the script is missing (two sites)"
+    },
+    {
+      "lines": [
+        "# codex_top_seat.sh -- SOURCED, never executed. It defines the one function below and nothing else:",
+        "# no top-level command, no `set`, no trap, no `cd`. A call site sources it and checks that the function",
+        "# exists, in the SAME Bash call that runs its seats (shell functions do not survive between calls); the",
+        "# source-and-guard preamble is in the codex-orchestration skill, \"Seat Models\".",
+        "#",
+        "# codex_top_seat NAME ROLE USE SIZE KEY BRIEF_FILE OUT_FILE [codex exec flags...] -- one budgeted codex seat."
+      ],
+      "count": 1,
+      "reason": "#344 WP-3: header comment of the new sourced script skills/_meta/codex_top_seat.sh (what the file is, that it is sourced and never executed, the call signature)"
+    },
+    {
+      "lines": [
+        "When this file is read, return to the SKILL.md checklist."
+      ],
+      "count": 11,
+      "reason": "#344 WP-4: second line of the two-line header of each new step reference (return to the SKILL.md checklist)"
+    },
+    {
+      "lines": [
+        "# Forge reference — intake",
+        "Checklist steps 1, 3 and 5 — previous: none, a cycle starts here; next: step 6, design exploration.",
+        "The cycle-start block that opens Step 1 (`.forge/cycle-id`, `.forge/cycle-base`) is in SKILL.md, under \"Step 1: Understanding (Lead Only)\". Run it before anything in this file.",
+        "- Skill Gap Detection — checklist step 5",
+        "- Understanding: what the lead does in Step 1 — checklist steps 1 and 3 (questions, performance, runtime and security branches)",
+        "- Large Project Decomposition and the Recursion Limit — checklist step 3",
+        "## Understanding: what the lead does in the first step",
+        "# Forge reference — design team",
+        "Step 6 needs this file together with `references/03-codex-seats.md` and `references/04-agy-and-converge.md`: \"all agents below\" in this file includes the Codex seats and the agy analyst, which those two files hold. \"Present Design\" is in `references/06-present-and-doc.md` and \"Spec Review\" in `references/08-spec-review.md`. The orchestration-tier choice (Step 4b) is in SKILL.md.",
+        "- Step 6A fast path — the `design-tournament` workflow",
+        "- Step 6B: Design exploration team — the avengers recursion guard",
+        "- Step 2: Approach Exploration",
+        "  - Design Exploration Team Structure",
+        "  - Three Phases (diverge, challenge, converge)",
+        "  - Spawning Design Exploration Agents: model selection per spawn, then the approach, UX and Claude-challenger briefs",
+        "# Forge reference — codex seats",
+        "The same seat recipe serves the escalation seat (`references/05-escalation.md`) and the codex reviewer of the advisory code review (`references/10-close-out.md`); both cite this file's rules as \"above\". The agy stdin rule this file mentions is in `references/04-agy-and-converge.md`.",
+        "- Spawning Codex Agents",
+        "  - The guarded seat call is the only path for a protected seat; plugin commands are an ungated convenience",
+        "  - Model, quota and call shape: admit and pin, call-time failures, the Sol to TOP retry (U2), substitution (D6), quota wait (#322), research, shape discipline",
+        "  - The bash block: size read, the `codex_top_seat` source-and-guard preamble, the challenger brief, the approach-explorer brief, the research lookup",
+        "  - Plugin vs guarded call",
+        "# Forge reference — agy analyst and convergence",
+        "Convergence reads the Codex seats' output files and cites \"the Quota wait bullet above\": both are in `references/03-codex-seats.md`. \"Stage 1.5\" is the verification pass in `references/08-spec-review.md`.",
+        "- Spawning Antigravity (agy) Analyst: the stdin rule, the sandbox rule and flag order, the model rule, the call cap, the three call shapes",
+        "- When to use agy vs Codex",
+        "- Converging Triple-Model Findings",
+        "# Forge reference — codex escalation",
+        "Any checklist step where Claude is stuck (the Codex Escalation hard rule) — previous: two failed Claude attempts; next: the step you were on, or the user when the escalation also fails.",
+        "The watchdog, classify, substitution and Quota wait rules this file cites as \"above\" are in `references/03-codex-seats.md`, under \"Spawning Codex Agents\".",
+        "- Codex Escalation (When Claude Is Stuck): the escalation seat, its own role and budget use, the bash block and the brief",
+        "- Escalation Termination",
+        "# Forge reference — present the design and write the doc",
+        "Checklist steps 2, 7, 7b and 8 — previous: step 6, design exploration (step 2 comes earlier, right after step 1); next: step 8a, the contract map.",
+        "The `.forge/size` block that closes the design-doc step is in SKILL.md, under \"Step 4: Write Design Doc\". \"After convergence\" refers to `references/04-agy-and-converge.md`.",
+        "- Step 3: Present Design — checklist step 7",
+        "- Write Design Doc: what the doc must contain — checklist step 8",
+        "- Visual Companion — checklist step 2",
+        "- UI designs — design-skeleton freeze (Step 2.5) — checklist step 7b",
+        "### Write Design Doc: what the doc must contain",
+        "# Forge reference — contract map",
+        "Checklist step 8a — previous: step 8, write design doc; next: step 8b, spec review.",
+        "- Step 8a.0: Emit + corroborate the classification artifact",
+        "- Step 8a.1+: Build the signed contract map (component cycles only)",
+        "- Step 8a.1: Invoke component-contract-mapping",
+        "- Step 8a.2: Emit session material and sign",
+        "- Step 8a.3: Verify signature",
+        "- Step 8a.3b: Re-pin the retro-scan baseline (mandatory after any map write)",
+        "- Step 8a.4: Stage for bob",
+        "# Forge reference — spec review",
+        "Checklist steps 8b and 8c — previous: step 8a, the contract map; next: step 8d, the hard rules checkpoint, then step 9, spawn bob.",
+        "\"Model selection per spawn\" is in `references/02-design-team.md`; the reviewer's model command is repeated in Stage 2 below.",
+        "- Stage 1 — Self-review (inline)",
+        "- Stage 1.5 — External-finding verification, then goal-fit",
+        "- Fast path — the `ratify-design` workflow",
+        "- Stage 2 — Subagent review (dispatched), then the user reviews the spec",
+        "# Forge reference — bob handoff",
+        "Checklist step 9 — previous: step 8d, the hard rules checkpoint; next: step 10, wait for bob, then step 11, final integration.",
+        "- Phase 2: Implementation via bob",
+        "- Step 5: Spawn bob: the spawn brief, the contract-map block and its N/A line, reasoning effort, what to include in bob's prompt",
+        "- Execution Method Selection",
+        "# Forge reference — close-out",
+        "Checklist step 11 — previous: step 10, wait for bob; next: none, the cycle ends with the close-out block.",
+        "The deletion this file calls \"the close-out below\" and \"the `rm -f` below\" is in SKILL.md, under \"Step 6: Collect Results\". Everything in this file runs before it. The `codex_top_seat` recipe and the `CODEX_QUOTA_WAIT` steps are in `references/03-codex-seats.md`; \"Stage-1.5 verification\" is in `references/08-spec-review.md`.",
+        "- Collect Results: status, the report template, the spot-check of bob's verification artifacts",
+        "- Advisory code review: trigger, why it runs before the deletion, the dossier, the seats, the reviewer brief, unavailability",
+        "- The fix loop (D21): verify, goal-fit (1a), fix, bound, the exhausted-bound reserve review (3a), review against Done when (3b), unfixable, minor, report, owner decisions",
+        "## Collect Results",
+        "# Forge reference — principles",
+        "Checklist steps 6 and 7 — previous: step 5b, the hard rules checkpoint; next: step 8, write design doc.",
+        "- UX Principles Reference",
+        "- Key Principles"
+      ],
+      "reason": "#344 WP-4: reference headers of the new step references: title, the step line (previous / next), where a section the moved text calls \"above\" or \"below\" now lives, the contents list, and a heading for a span whose old heading stays in SKILL.md with its fail-silent block"
+    },
+    {
+      "lines": [
+        "## Contents"
+      ],
+      "count": 11,
+      "reason": "#344 WP-4: reference headers of the new step references: title, the step line (previous / next), where a section the moved text calls \"above\" or \"below\" now lives, the contents list, and a heading for a span whose old heading stays in SKILL.md with its fail-silent block"
+    },
+    {
+      "lines": [
+        "Checklist step 6 — previous: step 5b, the hard rules checkpoint; next: step 7, present design."
+      ],
+      "count": 3,
+      "reason": "#344 WP-4: reference headers of the new step references: title, the step line (previous / next), where a section the moved text calls \"above\" or \"below\" now lives, the contents list, and a heading for a span whose old heading stays in SKILL.md with its fail-silent block"
+    },
+    {
+      "lines": [
+        "   Read references/01-intake.md before this step. Run the cycle-start block under \"Step 1: Understanding (Lead Only)\" below first.",
+        "   Read references/02-design-team.md, references/03-codex-seats.md, references/04-agy-and-converge.md and references/principles.md before this step, and Stage 1.5 in references/08-spec-review.md before converging the findings.",
+        "   Read references/06-present-and-doc.md and references/principles.md before this step.",
+        "   Read references/06-present-and-doc.md before this step. Then run the `.forge/size` block under \"Step 4: Write Design Doc\" below.",
+        "   Read references/07-contract-map.md before this step.",
+        "   Read references/08-spec-review.md and references/external-finding-verification.md before this step.",
+        "   Read references/08-spec-review.md before this step.",
+        "   Read references/09-bob-handoff.md before this step.",
+        "   Read references/10-close-out.md and references/03-codex-seats.md before this step, and Stage 1.5 in references/08-spec-review.md with references/external-finding-verification.md before the review's fix loop. The close-out block is under \"Step 6: Collect Results\" below."
+      ],
+      "reason": "#344 WP-4: pointer lines: each checklist step that has a reference names it (`Read references/... before this step.`), and the three steps that own a fail-silent block name that block too"
+    },
+    {
+      "lines": [
+        "   Read references/06-present-and-doc.md before this step.",
+        "   Read references/01-intake.md before this step."
+      ],
+      "count": 2,
+      "reason": "#344 WP-4: pointer lines: each checklist step that has a reference names it (`Read references/... before this step.`), and the three steps that own a fail-silent block name that block too"
+    },
+    {
+      "lines": [
+        "## How to use this skill",
+        "This file is the entry point: the rules above, the checklist, and three blocks that fail silently when skipped. Each step's detail is in one file under `references/`, named on that step's checklist line.",
+        "- Read the named reference in full before the step. Do not work from memory of an earlier cycle.",
+        "- After a context compaction, re-read this file and the current step's reference. Only the first part of this file is re-attached (about 20,000 bytes): the Step 1 block starts inside it, and the Step 4 and Step 6 blocks sit after it.",
+        "- Every reference is named in this file. Where kept text says \"see\" a section or \"below\" and the section is not in this file, the index says which reference holds it.",
+        "- Spawned with `mode=amendment`: skip the checklist, read `references/amendment.md` and follow only that.",
+        "### Reference index",
+        "- `references/01-intake.md` — steps 1, 3, 5: Skill Gap Detection, what the lead asks in Step 1 (performance, runtime and security branches), Large Project Decomposition and the Recursion Limit.",
+        "- `references/02-design-team.md` — step 6: Step 6A fast path, Step 6B and the avengers recursion guard, Step 2 Approach Exploration (team, phases, model per spawn; the approach, UX and Claude-challenger briefs).",
+        "- `references/03-codex-seats.md` — step 6, and the codex reviewer seat of step 11: Spawning Codex Agents (the guarded seat call, admit, classify, substitution and quota-wait rules, the challenger and approach-explorer briefs, the research lookup).",
+        "- `references/04-agy-and-converge.md` — step 6: the agy analyst (stdin, sandbox, model and call-cap rules) and Converging Triple-Model Findings.",
+        "- `references/05-escalation.md` — any step where Claude is stuck: Codex Escalation and Escalation Termination. Read `references/03-codex-seats.md` with it for the seat rules it cites.",
+        "- `references/06-present-and-doc.md` — steps 2, 7, 7b, 8: Step 3 Present Design, the design doc's contents, Visual Companion, the design-skeleton freeze (Step 2.5).",
+        "- `references/07-contract-map.md` — step 8a: Contract Map Generation, Steps 8a.0 to 8a.4.",
+        "- `references/08-spec-review.md` — steps 8b, 8c, and the Stage 1.5 verification that steps 6 and 11 run: Spec Review (Stage 1, Stage 1.5, the `ratify-design` fast path, Stage 2).",
+        "- `references/09-bob-handoff.md` — step 9: Phase 2, Step 5 Spawn bob, Execution Method Selection.",
+        "- `references/10-close-out.md` — step 11: Collect Results (report template, spot-check), the advisory code review and its fix loop (D21).",
+        "- `references/principles.md` — steps 6, 7: UX Principles Reference, Key Principles.",
+        "- `references/amendment.md` — out of band (bob spawns forge with `mode=amendment`): Amendment Mode, the full protocol.",
+        "- `references/external-finding-verification.md` — step 8b (Stage 1.5) and the step 11 fix loop: how to verify a finding an external model raised.",
+        "- `superpowers-tracked.md` — not a step: the superpowers plugin version tracker, read when it updates.",
+        "At any step where Claude is stuck (the Codex Escalation rule above), read references/05-escalation.md and references/03-codex-seats.md before escalating.",
+        "## The three fail-silent blocks",
+        "These three blocks stay in this file because skipping one raises no error. A cycle that does not mint a fresh `.forge/cycle-id` draws on a budget that is not its own. A cycle that does not record `.forge/size` has its sized codex seat resolved at `complex`. A `.forge/cycle-id` or `.forge/size` left behind at close-out is read by the next cycle. Run each block at its step; the rest of each step is in the reference named under its heading.",
+        "The rest of Step 1, what the lead asks and checks, is in `references/01-intake.md`.",
+        "What the design doc must contain is in `references/06-present-and-doc.md`. Write the doc first, then record the size:",
+        "Read `references/10-close-out.md` before this step. It holds the report template, the spot-check, and the advisory code review with its fix loop (D21). All of them run before the block below."
+      ],
+      "reason": "#344 WP-4: SKILL.md entry text: the \"How to use this skill\" paragraph, the reference index (one line per file), the heading and intro of the three fail-silent blocks, one pointer line under each kept step heading, and the line under the checklist that names the escalation reference for a stuck step"
+    },
+    {
+      "lines": [
+        "Out of band, not a checklist step — previous: bob's contract-scope pause cycle; next: return `{amended_map_path, deltas_resolved}` to bob.",
+        "There is no return to the SKILL.md checklist: the paused cycle's own steps resume in bob.",
+        "## Contents",
+        "- Amendment Mode (S029): trigger, budget key and size, authority, what forge does and does not do",
+        "- 1. Entry signature",
+        "- 2. Amendment dialogue protocol",
+        "- 3. Drafting the amended map (helper call)",
+        "- 4. Output contract — what forge returns to bob",
+        "- 5. Worked example — SQL-table-D delta",
+        "- 6. HARD-RULEs for forge in amendment mode (summary)",
+        "- 6b. Post-amendment obligation: re-pin the retro-scan baseline",
+        "- 7. Cross-references"
+      ],
+      "reason": "#344 WP-4: existing reference amendment.md: the two-line header and the contents list (audit rule A8); the Amendment Mode section moved in from SKILL.md byte-for-byte apart from its reviewed own-path change"
+    },
+    {
+      "lines": [
+        "## Contents",
+        "- Why this exists",
+        "- When to run",
+        "- Protocol: find the cited artifact, confirm the claim, classify the finding, route by classification, rule goal-fit",
+        "- Worked example: a Codex hallucination (S030-init WP-0)",
+        "- Worked example: a real bug (illustrative)",
+        "- Anti-patterns"
+      ],
+      "reason": "#344 WP-4: existing reference external-finding-verification.md: a contents list (audit rule A8)"
+    },
+    {
+      "lines": [
+        "## Contents",
+        "- Uplifted Features (now in forge)",
+        "- Monitored Skills",
+        "- Review History: v5.1.0, v5.0.7, v5.0.6",
+        "- How to Review a New Version"
+      ],
+      "reason": "#344 WP-4: existing file superpowers-tracked.md: a contents list (audit rule A8)"
+    },
+    {
+      "lines": [
+        "The Step 1 block is not under this heading: it sits directly after the Checklist, so that it starts inside the part of this file that is re-attached after a compaction. The Step 4 and Step 6 blocks follow here."
+      ],
+      "reason": "#344 fix round 1 (m2): pointer under the fail-silent heading saying where the Step 1 block went (directly after the Checklist) and which two blocks follow the heading"
+    },
+    {
+      "lines": [
+        "**A missing seat script is a gap for every seat of the call.** When the Bash call exits non-zero with the stderr line `CODEX_GAP: codex_top_seat.sh missing or unreadable; no codex seat was started`, the guard stopped it before any seat ran and no seat output file was written: every seat of that call is a gap, to be handled exactly as if each seat's file opened with `CODEX_GAP:`.",
+        "**A missing seat script is a gap too.** When the Bash call exits non-zero with the stderr line `CODEX_GAP: codex_top_seat.sh missing or unreadable; no codex seat was started`, the guard stopped it before the escalation seat ran and no seat output file was written: every seat of that call is a gap, so the Codex attempt has failed and the steps below apply."
+      ],
+      "reason": "#344 fix round 1 (m3): one sentence at each forge seat site (03-codex-seats.md, 05-escalation.md): the guard's non-zero exit with the stderr CODEX_GAP line writes no per-seat file, so every seat of that call is a gap"
+    },
+    {
+      "lines": [
+        "8. Where the round ends in ONE design direction chosen from rival approaches, choose it under **CONV-1** (`~/.claude/skills/_meta/convergence-rule.md`). Run its applicability test first and follow its exclusion table when the test fails; the rule is defined there and is not restated here. Record the winning approach and each borrowed part by name, with the approach it came from, in the design presentation."
+      ],
+      "reason": "#352 WP-1: step 8 of Converging Triple-Model Findings (04-agy-and-converge.md) cites the convergence rule CONV-1 by id; the rule itself is defined in skills/_meta/convergence-rule.md and is not restated"
+    },
+    {
+      "lines": [
+        "- Always present the `**Purpose:**` line and the constraint labels; a `lead-inferred` one is the owner's to correct here",
+        "- **An item put to the owner states its effect on the Purpose (#345).** If the lead has not evaluated it, it says \"not evaluated\" and gives no recommendation. A default \"I'd remove\" is not allowed",
+        "- **Required `**Purpose:**` line at the top** (#345): the outcome the cycle exists for, one sentence. It quotes the owner, or is labelled `lead-inferred` and is then challengeable like any other inferred constraint",
+        "- **Every constraint is labelled** (#345): `owner-stated: \"<quote>\"` or `lead-inferred`. A constraint that adds to what the owner said is `lead-inferred` even when it seems implied. **The label travels:** wherever a constraint is copied (a bob brief, a reviewer brief, project memory) it keeps its label",
+        "- Existing docs are not rewritten retroactively. Where a review runs with no design doc (a standalone bob run, direct edits), the reviewer brief says `Purpose: none stated`; goal-fit is skipped and the report says so",
+        "Purpose: [the design doc's Purpose line, verbatim, or \"none stated\"]",
+        "Constraints: [each with its label, or \"see design doc\"]",
+        "Flag a finding whose natural fix would work against the Purpose.",
+        "Treat a `lead-inferred` constraint as challengeable, not binding.",
+        "Purpose: [the design doc's Purpose line, verbatim, or \"none stated\"]",
+        "Constraints: [each with its label, or \"see design doc\"]",
+        "Flag a finding whose natural fix would work against the Purpose.",
+        "Treat a `lead-inferred` constraint as challengeable, not binding."
+      ],
+      "reason": "#345 WP-1: Purpose line, labelled constraints, owner-decision rule, reviewer brief fields"
+    },
+    {
+      "lines": [
+        "**Goal-fit, after verification (#345).** Verification asks whether the citation is real. Goal-fit then asks whether acting on the finding serves the design's Purpose. The main loop asks it of every VERIFIED finding: every severity, owner-decision items included, from every reviewer (Claude, Codex, agy). When the fast path ran it comes after `ratify-design` returns; the workflow and its schema do not change. It judges the **fix**, never the existence of the defect. With `Purpose: none stated` it is skipped and the report says so.",
+        "- **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It goes to the owner as a question about the constraint, with no fix proposed. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "- **Otherwise rule the proposed fix** `serves`, `neutral` or `works-against`. `serves` and `neutral` take the existing path.",
+        "- **`works-against`, for a real defect:** look for a fix that resolves the defect without harming the Purpose. If one exists it is the fix for a critical or major, and is offered, not applied, for a minor or an owner-decision item. If none exists the finding goes to the user labelled `works-against`, with both sides and no default fix.",
+        "The steps and two worked examples are in `references/external-finding-verification.md`, step 5. The limits on the ruling are in `references/10-close-out.md`, step 1a, and they apply here too.",
+        "1a. **Goal-fit (#345).** Step 1 asks whether the citation is real. This asks whether acting on the finding serves the design's Purpose. The main loop asks it of every VERIFIED finding, at every severity, owner-decision items included, from every reviewer (Claude, Codex, agy). It judges the **fix**, never the existence of the defect. With `Purpose: none stated` it is skipped and the report says so. The steps and two worked examples: `references/external-finding-verification.md`, step 5.",
+        "   - **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It is recorded as `constraint-question` and put to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint it is relabelled `owner-stated: \"<quote>\"` and the finding is ruled normally; once `awaiting-user` is recorded, any fix that follows is a `--user-directed` round citing the owner's confirmation as `--user-ref`. If the owner rejects it, the finding closes with their words quoted. A critical or major in this branch follows the `awaiting-user`, carry-forward and user-must-rule rules below. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "   - **Ruling.** The proposed fix is `serves`, `neutral` or `works-against`. `serves` and `neutral` take the existing path.",
+        "   - **`works-against` route, for a real defect.** (1) Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix (the no-approval path), and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. (2) If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix.",
+        "   - **Limits.** The ruling must **quote the Purpose and name the concrete outcome harmed**. A ruling resting on a `lead-inferred` Purpose goes to the owner as `constraint-question`. **Never grounds:** fix cost, effort, diff size, schedule, scope, or a `lead-inferred` constraint. **Never ruled `works-against`:** security, data loss, payment, legal, a claim false on owner-stated facts, or a failing gate or DW; these take the normal fix path and any tension is reported beside the fix. **Before close-out the user must rule** on any open critical or major. The lead never closes one.",
+        "   - **D21 mechanics, with no change to `effort_policy.py`.** `awaiting-user` is terminal, so it is recorded only when no other fixable blocker remains; otherwise the round is `fixing`, or `exhausted` at the bound, where step 3a runs because of the other blocker. An open `works-against` or `constraint-question` critical or major is carried in `--raised` and `--verified` on every later row, and `converged` is barred while one is open. The code does not enforce that (a fix-only re-review with empty counts records `converged`); it is a rule of this text and a known limit, in line with the honest limits in `skills/_meta/spawn-brief.md`. User says fix: a `--user-directed` round citing their words as `--user-ref`. User says leave it: `unfixable: contradicts a standing user decision`, quoting the ruling, so step 4 stays the only path to done with one open.",
+        "   - **Recording.** One word per verified finding; a sentence only for `works-against`. The review report's header carries the count (step 6), so an unrecorded check is visible.",
+        "7. **Owner decisions (#345).** An item put to the owner states its effect on the Purpose. If the lead has not evaluated it, it says \"not evaluated\" and gives no recommendation. A default \"I'd remove\" is not allowed.",
+        "- Worked example: an owner statement widened into a rule (`constraint-question`)",
+        "- Worked example: a genuine trade-off (`works-against`, illustrative)",
+        "### 5. Rule goal-fit on every verified finding",
+        "This step is not limited to external models. It covers every verified finding from every reviewer (Claude, Codex, agy), at every severity, owner-decision items included, and it runs in the main loop, after `ratify-design` returns when that workflow ran.",
+        "Steps 1-4 ask whether the citation is real. This step asks whether acting on the finding serves the design doc's Purpose. It judges the **fix**, never the existence of the defect. With `Purpose: none stated` it is skipped and the report says so. Reviewers flag; the lead rules, because the lead holds the owner's words.",
+        "1. **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. Record it as `constraint-question` and put it to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint, relabel it `owner-stated: \"<quote>\"` and rule the finding normally. If the owner rejects it, the finding closes with their words quoted. This branch comes before the never-ruled list, except for security, data loss and payment findings.",
+        "2. **Otherwise rule the proposed fix:** `serves`, `neutral` or `works-against`. `serves` and `neutral` take the existing path.",
+        "3. **`works-against`, for a real defect.** Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix, with no approval step, and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix.",
+        "4. **Record** one word per verified finding, a sentence only for `works-against`. The report header carries `goal-fit: n ruled, m works-against, k constraint-question`.",
+        "The ruler is the actor who erred in the retro this step comes from, so the ruling has limits: it must quote the Purpose and name the concrete outcome harmed, some grounds are never accepted, some findings are never ruled `works-against`, and the user rules on any open critical or major. They are in `references/10-close-out.md`, step 1a, with the D21 mechanics.",
+        "## Worked example: an owner statement widened into a rule (`constraint-question`)",
+        "The retro behind step 5, replayed with its real inputs. A consumer project's forge cycle existed to improve local SEO.",
+        "- **Owner:** \"we allow local collection but no show room.\"",
+        "- **Constraint as the lead wrote it:** never write \"visit\", \"shop\", \"store\", \"showroom\" or shop opening hours. Labelled, it splits: the showroom wording is `owner-stated: \"we allow local collection but no show room.\"`; the opening-hours clause adds to what the owner said, so it is `lead-inferred`.",
+        "- **Finding:** a **minor** from a fresh **Claude** reviewer, marked **owner decision**: the `LocalBusiness` JSON-LD is `ComputerStore` with `openingHoursSpecification` Mon-Fri 09:00-17:00.",
+        "**What happened:** the citation was real, so every check passed, and the lead relayed the finding with \"I'd remove\", in the sign-off for a release whose purpose was local search. The owner caught it with one question.",
+        "**Replay:**",
+        "1. Steps 1-4: the citation matches. **VERIFIED.**",
+        "2. Step 5 still applies: being a minor, from a Claude reviewer, on an owner-decision item exempts it from nothing.",
+        "3. Without the `lead-inferred` clause the hours contradict nothing, so the finding exists only because of that clause. **`constraint-question`.** It is not ruled and no fix is proposed.",
+        "4. It reaches the owner as a question about the constraint: \"The brief says no shop opening hours. That clause is mine, not yours: you said no show room. Did you mean the hours too? Effect on the Purpose: not evaluated.\" No recommendation goes with it.",
+        "5. Report header: `goal-fit: 0 ruled, 0 works-against, 1 constraint-question`.",
+        "If the owner rejects the clause, the finding closes with their words quoted and the hours stay. If they confirm it, it becomes `owner-stated: \"<quote>\"` and the finding is ruled normally. While the hours are true, removing them harms the Purpose, so the fix is `works-against` and takes the route in step 5. If the owner says the hours are false, the markup is a claim false on owner-stated facts, which is never ruled `works-against`, so it takes the normal fix path.",
+        "## Worked example: a genuine trade-off (`works-against`, illustrative)",
+        "**Purpose:** `owner-stated: \"the status page must load instantly on a bad connection\"`.",
+        "**Finding (major, Codex, VERIFIED):** the page serves a snapshot up to five minutes old with no age shown, so a reader can take a resolved incident for a live one. Proposed fix: drop the snapshot and fetch live on every view.",
+        "**Ruling:** no `lead-inferred` constraint is involved, and the finding is not on the never-ruled list. The defect is real and the fix is `works-against`: \"the status page must load instantly on a bad connection\", and a live fetch puts a round trip on the bad connection before anything renders.",
+        "**Route, when another fix exists:** keep the snapshot, show its age and refresh it in the background. That resolves the defect without harming the Purpose. The finding is a major, so this is the fix, with no approval step, and the swap is recorded.",
+        "**Route, when none exists:** suppose instead the finding were that readers need per-region detail the snapshot cannot hold, so every fix adds the round trip. It goes to the user labelled `works-against`, with both sides and no default fix. If it is the last blocker the round is recorded `awaiting-user`; otherwise the round stays `fixing`, or `exhausted` at the bound. The finding is carried in `--raised` and `--verified` on every later row. The user says fix (a `--user-directed` round) or leave it (`unfixable: contradicts a standing user decision`, quoting the ruling)."
+      ],
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "lines": [
+        "**Multi-Model Second Opinion**: For MEDIUM and COMPLEX tasks, run BOTH Codex (pinned per role through `skills/_meta/seat_model.py`: the codex std tier for the consultancy seats, codex TOP kept in reserve for escalation and complex review) AND Antigravity CLI (`agy`, via `agy --sandbox --mode plan $AGY_MODEL -p`, model pinned the same way) in parallel alongside Claude agents — three models catch what two miss. For SIMPLE tasks, external models are optional. If agy is unavailable, fall back gracefully and note the gap explicitly. If codex cannot serve a codex seat (the budget gate refuses it, the quota is exhausted, the CLI is missing, no eligible model is listed, or the call fails twice — after a capability failure on the std tier, the one TOP retry comes first), a fresh-context Claude main-tier agent serves that seat with the same brief — never a codex std or support model, which draw the same plan quota — and the round is recorded as Claude + Google (provider gap: OpenAI). A codex failure the classifier calls a gap is still a gap: note it explicitly.",
+        "   - **capabilities.agy_analyst = true**: `agy` available, use a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` call (read-only analyst, #157; `< /dev/null` is MANDATORY: agy hangs on open stdin, #135).",
+        "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+        "**SANDBOX RULE (S052 rogue-commit incident, #157; #366):** the agy analyst is a READ-ONLY role, so",
+        "it is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline or piped, no `--add-dir`.",
+        "In S052 an un-sandboxed \"analyst\" auto-authored and git-committed broken code mid-design (HARD-GATE",
+        "violation). Codex is unaffected (it already runs `-s read-only`). FLAG ORDER (root-caused 2026-07-02):",
+        "`--sandbox` and every other flag BEFORE `-p`, prompt LAST — `agy -p --sandbox \"X\"` silently runs",
+        "UN-sandboxed with the literal prompt `--sandbox` and discards \"X\" (agy then improvises from implicit",
+        "memory — the \"does work instead of consulting\" failure mode). Measured 2026-11-01 on 1.4.12:",
+        "`--sandbox` restricts only the shell, `--mode plan` removes native writes and the shell, and the cwd",
+        "is the workspace, so a call from a repo can read that repo. Open the prompt with \"Advisory only — do",
+        "not modify any files; answer on stdout\". The table is in the `antigravity-cli` skill.",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"You are an analyst for [TASK].",
+        "At the very end print one line: SERVED_BY=<model-id-you-are-running-as>.\" < /dev/null)",
+        "# For codebase context, pipe the relevant files in (the agy analyst has no workspace):",
+        "  && tail -n +1 [FILES] | (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout.",
+        "Review the files on stdin for [TASK].",
+        "Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries.\")",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —",
+        "Green (alternatives), and Blue (process) in turn, then summarise.\" < /dev/null)",
+        "**When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (pipe the files in), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.",
+        "- agy (`AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` direct Bash call, bridge-mode agy analyst)",
+        "- **agy as an independent third model** — use `agy --sandbox --mode plan --model <slug> -p` (the slug from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (pipe the files in), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)"
+      ],
+      "count": 1,
+      "reason": "#366: agy rule rewritten from the 1.4.12 measurements; advisory recipes run --sandbox --mode plan from an empty cwd"
+    },
+    {
+      "lines": [
+        "**STDIN RULE (root-caused 2026-06-05, #135):** headless `agy` MUST have stdin closed —",
+        "`< /dev/null` on every call. agy waits on non-TTY stdin until EOF *before* the model call, and piped",
+        "text never reaches the model (2026-11-01, 1.4.12, rc 0); in",
+        "it is Pattern 1: `--sandbox --mode plan` from an empty cwd, content inline in `-p` (at most 100 KB per call), no `--add-dir`.",
+        "# For codebase context, inline the relevant files, read first (the agy analyst has no workspace):",
+        "  && C=\"$(tail -n +1 [FILES])\" \\",
+        "  && (cd \"$(mktemp -d)\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout.",
+        "Review these files for [TASK].",
+        "Focus on: cross-cutting concerns, hidden coupling, N+1 patterns, missing error boundaries.",
+        "$C\" < /dev/null)",
+        "**When to use agy vs Codex**: `agy` is a useful independent third model for architecture analysis, codebase review (inline the files), and multi-methodology brainstorming. Codex excels at focused code review, devil's advocate challenger work, and prototype exploration.",
+        "- **agy as an independent third model** — use `agy --sandbox --mode plan --model <slug> -p` (the slug from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (inline the files), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)"
+      ],
+      "count": 1,
+      "reason": "#366 fix round 2: piped stdin never reaches the model, so content is inlined"
+    },
+    {
+      "lines": [
+        "   - **capabilities.agy_analyst = true**: `agy` available, use a `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` call (read-only analyst, #157; `< /dev/null` MANDATORY: open stdin hangs agy, #135).",
+        "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+        "  && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"You are an analyst for [TASK].",
+        "  && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Advisory only — do not modify any files; answer on stdout.",
+        "  && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"Brainstorm approaches for [TASK] using the Six Thinking Hats methodology —",
+        "- agy (`AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && (d=\"$(mktemp -d)\" && cd \"$d\" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p \"...\" < /dev/null)` direct Bash call, bridge-mode agy analyst)"
+      ],
+      "count": 1,
+      "reason": "Codex review fix C1: the empty-cwd allocation is checked before the cd"
+    },
+    {
+      "lines": [
+        "- **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It goes to the owner as a question about the constraint, with no fix proposed. This branch comes before the must-resolve list, except for security, data loss and payment findings.",
+        "- **`works-against`, for a real defect:** look for a fix that resolves the defect without harming the Purpose. If one exists it is the fix for a critical or major, and is offered, not applied, for a minor or an owner-decision item. If none exists the finding goes to the user labelled `works-against`, with both sides and no default fix, unless it is on the must-resolve list.",
+        "   - **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. It is recorded as `constraint-question` and put to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint it is relabelled `owner-stated: \"<quote>\"` and the finding is ruled normally; once `awaiting-user` is recorded, any fix that follows is a `--user-directed` round citing the owner's confirmation as `--user-ref`. If the owner rejects it, the finding closes with their words quoted. A critical or major in this branch follows the `awaiting-user`, carry-forward and user-must-rule rules below. This branch comes before the must-resolve list, except for security, data loss and payment findings.",
+        "   - **`works-against` route, for a real defect.** (1) Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix (the no-approval path), and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. (2) If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix, unless it is on the must-resolve list below.",
+        "   - **Limits.** The ruling must **quote the Purpose and name the concrete outcome harmed**. A ruling resting on a `lead-inferred` Purpose goes to the owner as `constraint-question`. **Never grounds:** fix cost, effort, diff size, schedule, scope, or a `lead-inferred` constraint. **Must resolve:** security, data loss, payment, legal, a claim false on owner-stated facts, or a failing gate or DW. This list governs leaving the defect unresolved, not recognising a harmful remedy: every remedy for these still gets the goal-fit question and the search for a fix that keeps the Purpose, and that fix is the one applied when it exists. The defect must still be resolved, so \"leave it\" is not on offer, and when no such fix exists the remedy takes the normal fix path with the harm reported beside it. **Before close-out the user must rule** on any open critical or major. The lead never closes one.",
+        "1. **First branch, before any ruling: `constraint-question`.** A finding that exists only because of a `lead-inferred` constraint is not ruled. Record it as `constraint-question` and put it to the owner as a question about the constraint, with no fix proposed. If the owner confirms the constraint, relabel it `owner-stated: \"<quote>\"` and rule the finding normally. If the owner rejects it, the finding closes with their words quoted. This branch comes before the must-resolve list, except for security, data loss and payment findings.",
+        "3. **`works-against`, for a real defect.** Look for a fix that resolves the defect without harming the Purpose. If one exists and the finding is critical or major, it is the fix, with no approval step, and the swap is recorded. For a minor or an owner-decision item it is offered, not applied. If none exists, the finding goes to the user labelled `works-against` with both sides, and no default fix, unless it is on the must-resolve list.",
+        "The ruler is the actor who erred in the retro this step comes from, so the ruling has limits: it must quote the Purpose and name the concrete outcome harmed, some grounds are never accepted, some defects must be resolved whatever the ruling (their remedies still get the question and the search for a fix that keeps the Purpose), and the user rules on any open critical or major. They are in `references/10-close-out.md`, step 1a, with the D21 mechanics.",
+        "If the owner rejects the clause, the finding closes with their words quoted and the hours stay. If they confirm it, it becomes `owner-stated: \"<quote>\"` and the finding is ruled normally. While the hours are true, removing them harms the Purpose, so the fix is `works-against` and takes the route in step 5. If the owner says the hours are false, the markup is a claim false on owner-stated facts, which is on the must-resolve list: the defect must be resolved, but the remedy still gets the question. Removing the hours works against the Purpose and correcting them to the true hours does not, so correcting them is the fix. The same holds if the markup fails a schema gate: repair the markup so the gate passes and the accurate hours stay; deleting them is the remedy only if no such repair exists, and the harm is then reported beside the fix.",
+        "**Ruling:** no `lead-inferred` constraint is involved, and the finding is not on the must-resolve list. The defect is real and the fix is `works-against`: \"the status page must load instantly on a bad connection\", and a live fetch puts a round trip on the bad connection before anything renders.",
+        "**If it were on the must-resolve list:** suppose the stale page were failing a DW. The remedy gets the same question and the same search, and the snapshot-with-age fix is still the one applied. Only if no such fix existed would the live fetch go in, with the harm reported beside it. The defect is not left open."
+      ],
+      "count": 1,
+      "reason": "Codex review fix C3: every remedy gets goal-fit; the list governs leaving a defect unresolved"
+    },
+    {
+      "lines": [
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1",
+        "CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1"
+      ],
+      "count": 1,
+      "reason": "Codex re-review: every mktemp allocation is checked"
+    }
+  ],
+  "changes": [
+    {
+      "old": "**Reference.** Full protocol detail (entry signature, dialogue script, output contract, worked SQL-table-D example, HARD-RULEs) lives in `~/.claude/skills/forge/references/amendment.md`. Read that doc before handling any `mode=amendment` invocation.",
+      "new": "**Reference.** Full protocol detail (entry signature, dialogue script, output contract, worked SQL-table-D example, HARD-RULEs) lives in `references/amendment.md`. Read that doc before handling any `mode=amendment` invocation.",
+      "reason": "#344 WP-4: a home path to forge's own file becomes skill-relative (audit rule A9); the sentence is otherwise unchanged"
+    },
+    {
+      "old": "`~/.claude/skills/forge/references/external-finding-verification.md`.",
+      "new": "`references/external-finding-verification.md`.",
+      "reason": "#344 WP-4: a home path to forge's own file becomes skill-relative (audit rule A9); the line is otherwise unchanged"
+    },
+    {
+      "old": "description: Use when the user has an idea, feature, design, or change that needs exploration before implementation — architecture decisions, new features, system design, refactoring plans, or any creative/building task that benefits from structured design thinking before code.",
+      "new": "description: \"Structured design before code: architecture decisions, new features, system design, refactoring plans. Explores and challenges approaches, then hands an approved design to bob. Use when an idea or change needs exploration before implementation.\"",
+      "reason": "#344 WP-6: the description is rewritten subject first, third person and within its limit (audit rules A4/A5); no body line changes"
+    },
+    {
+      "old": "# RUN THE BASH TOOL CALL THAT DEFINES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on",
+      "new": "# RUN THE BASH TOOL CALL THAT SOURCES AND RUNS THIS IN THE BACKGROUND (run_in_background: true) and act on",
+      "count": 2,
+      "reason": "#344 fix round 1 (m4): the two forge call sites source codex_top_seat.sh since WP-3 and no longer define the function; the comment says SOURCES AND RUNS"
+    },
+    {
+      "old": "**MODEL RULE:** the model comes from the seat registry, never the account default (≈ `gemini-3.6-flash`, two flash generations behind). `seat_model.py argv --role consultant_main --provider agy` prints `--model gemini-<newest flash>-high`. It enforces FLASH-ONLY in code, and on failure it exits non-zero with empty output, so the `&&` never runs agy unpinned. `$AGY_MODEL` goes before `-p` like every other flag.",
+      "new": "**MODEL RULE:** the model comes from the seat registry, never the account default (an older Gemini model of a family the roster no longer allows). `seat_model.py argv --role consultant_main --provider agy` prints `--model gemini-<newest>-<family>-high` (rev 6: `gemini-4-argon-high`). It enforces the agy family rule (`model_roster.AGY_FAMILY`) in code, and on failure it exits non-zero with empty output, so the `&&` never runs agy unpinned. `$AGY_MODEL` goes before `-p` like every other flag.",
+      "reason": "#367 WP-A (roster rev 6): agy's family moved from flash to Gemini 4 Argon (model_roster.AGY_FAMILY); the line now names the family rule and the argon selector, otherwise unchanged"
+    },
+    {
+      "old": "# Antigravity (agy) Analyst — independent third-model analysis (consultant_main: TOP-flash -high)",
+      "new": "# Antigravity (agy) Analyst — independent third-model analysis (consultant_main: TOP-argon -high)",
+      "reason": "#367 WP-A (roster rev 6): agy's family moved from flash to Gemini 4 Argon (model_roster.AGY_FAMILY); the line now names the family rule and the argon selector, otherwise unchanged"
+    },
+    {
+      "old": "- agy (`agy --sandbox -p \"...\"` direct Bash call, bridge-mode agy analyst)",
+      "new": "- agy (`AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` direct Bash call, bridge-mode agy analyst)",
+      "reason": "#367 review fix round 1: every agy call pins --model through seat_model (agy family rule); the example now shows the pin"
+    },
+    {
+      "old": "   - **capabilities.agy_analyst = true**: `agy` available, use a direct `timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call, with `$AGY_MODEL` from `seat_model.py argv --role consultant_main --provider agy` (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy blocks on stdin in non-TTY shells and hangs to timeout, #135).",
+      "new": "   - **capabilities.agy_analyst = true**: `agy` available, use a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call (read-only analyst, #157; `< /dev/null` is MANDATORY — without it agy hangs on stdin in non-TTY shells, #135).",
+      "reason": "#367 WP-C (agy recipes pinned through seat_model with the assignment in the recipe; agy flash slug removed): line updated, otherwise unchanged"
+    },
+    {
+      "old": "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call (`consultant_main` via `seat_model`) — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+      "new": "| **Antigravity (agy) Analyst** | 1 (MEDIUM+, if available) | Independent analysis via a direct `AGY_MODEL=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_main --provider agy)\" && timeout 600 agy --sandbox $AGY_MODEL -p \"...\" < /dev/null` Bash call — third model for additional coverage (read-only, #157; `< /dev/null` mandatory or agy hangs, #135) |",
+      "reason": "#367 WP-C (agy recipes pinned through seat_model with the assignment in the recipe; agy flash slug removed): line updated, otherwise unchanged"
+    },
+    {
+      "old": "- **agy as an independent third model** — use `agy --sandbox $AGY_MODEL -p` (model from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)",
+      "new": "- **agy as an independent third model** — use `agy --sandbox --model <slug> -p` (the slug from `seat_model.py argv --role consultant_main --provider agy`, at most 3 calls per round) for architecture analysis, codebase review (add paths with `--add-dir`), and multi-methodology brainstorming; `--sandbox` is mandatory for these advise-only calls (#157 — without it agy may edit/commit the reviewed project instead of reporting)",
+      "reason": "#367 WP-C (agy recipes pinned through seat_model with the assignment in the recipe; agy flash slug removed): line updated, otherwise unchanged"
+    },
+    {
+      "old": "3. **Ask clarifying questions, scaled by ask size** (CLAUDE.md \"Ask size sets the contract\") — Simple: restate the ask and its done-when in one line, and ask zero or one material question; Medium/Complex: ONE bounded round, material questions only (answers that would change the work), bundled into one message, then commit. Settle purpose, non-goals, constraints and the success criteria, which become the design doc's `## Done when` DWs. If the request describes multiple independent subsystems, flag and decompose first (see Large Project Decomposition). **Founder-intent routing:** if the request is \"I have a startup idea\" / \"generate ideas\" / \"validate my idea\" / \"what should I build\" / any pre-execution founder / innovator / inventor intent — route to the `founder` skill FIRST (not forge directly). Founder owns pre-execution (ideation, validation, business model, GTM); forge owns execution. Founder will hand back at the Scope→Launch gate with a populated `forge_brief` when the venture is ready for build. See `founder/references/forge-handshake.md` for the full contract.",
+      "new": "3. **Ask clarifying questions, scaled by ask size** (CLAUDE.md \"Ask size sets the contract\") — Simple: restate the ask and its done-when in one line, and ask zero or one material question; Medium/Complex: ONE bounded round, material questions only (answers that would change the work), bundled into one message, then commit. Settle purpose (`**Purpose:**`), non-goals, labelled constraints and success criteria (`## Done when` DWs). If the request describes multiple independent subsystems, flag and decompose first (see Large Project Decomposition). **Founder-intent routing:** if the request is \"I have a startup idea\" / \"generate ideas\" / \"validate my idea\" / \"what should I build\" / any pre-execution founder / innovator / inventor intent — route to the `founder` skill FIRST (not forge directly). Founder owns pre-execution (ideation, validation, business model, GTM); forge owns execution. Founder will hand back at the Scope→Launch gate with a populated `forge_brief` when the venture is ready for build. See `founder/references/forge-handshake.md` for the full contract.",
+      "reason": "#345 WP-1: Purpose line, labelled constraints, owner-decision rule, reviewer brief fields"
+    },
+    {
+      "old": "- Any user-specified constraints (e.g., \"don't touch the database schema\")",
+      "new": "- Any user-specified constraints (e.g., \"don't touch the database schema\"), each keeping its label from the design doc: `owner-stated: \"<quote>\"` or `lead-inferred` (#345; a copied constraint never loses its label)",
+      "reason": "#345 WP-1: Purpose line, labelled constraints, owner-decision rule, reviewer brief fields"
+    },
+    {
+      "old": "If issues found: fix and re-dispatch (max 3 iterations). Then present to user:",
+      "new": "If issues found: rule goal-fit on each first (Stage 1.5: a `constraint-question` goes to the owner with no fix proposed, a `works-against` fix takes its route), fix the rest and re-dispatch (max 3 iterations). Then present to user:",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "**The fix loop (D21) — verified critical and major findings are FIXED before anything is called done.** There is no user-approval step in front of the fix:",
+      "new": "**The fix loop (D21) — verified critical and major findings are FIXED before anything is called done.** There is no user-approval step in front of the fix, with one exception: a finding goal-fit sends to the user (step 1a).",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "3a. **Exhausted → ONE reserve review, then the user (the astra reserve U3/F5).** When fix round 2's re-review (recorded `--disposition exhausted`) still has a verified critical or major finding, run **one** review on the `escalation` seat — codex TOP @ `max` at every size, so a light cycle never hits `class_not_budgeted` — over the WHOLE cycle diff, before the loop goes to the user. It is admitted as the budget use `exhausted_review` (TOP, 1 per review, keyed on the cycle id plus the review id as the task key): `RID=\"$(python3 ~/.claude/skills/_meta/effort_policy.py review-id $ID | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"review_id\"])')\" && PIN=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role escalation --provider codex --use exhausted_review --task-key \"$RID\" --project-root .)\"`, then the call runs exactly as `codex_top_seat` runs its exec line (background, `codex_watch.py` with the `timeout --role escalation` cap, `codex_quota.py classify`, `-s read-only`). Its findings are VERIFIED like any other and **presented to the user with the loop's record; they NEVER start a third automatic round.** Record it with `effort_policy.py record-exhausted-review $ID --outcome ran --raised ... --verified ...` (refused unless the loop is exhausted with a blocking finding, and refused a second time; it writes no admission, so `admit-fix-round` still refuses round 3). **TOP unavailable:** `argv --use exhausted_review` exits **10** (skipped, never substituted — a Claude stand-in adds no independence to this review) with EMPTY stdout, and records the refusal. The exit-10 path carries no reset fields, so the lead asks for them with a CHECK-ONLY admit, which writes nothing and spends nothing: `DEC=\"$(python3 ~/.claude/skills/_meta/codex_quota.py admit --use exhausted_review --model-class top --cycle-id \"$(python3 ~/.claude/skills/_meta/codex_quota.py cycle-id --project-root .)\" --task-key \"$RID\" --project-root .)\"; RC=$?` puts the decision JSON in `$DEC`. That admit exits **10** on a refusal (the only case here), so never chain it with `&&` — the chain would stop and lose the JSON: read `$DEC` whatever `$RC` is (exit 3 alone is a usage or store error). When its `reason` is `quota_exhausted` or `rate_limit_reached`, apply the #322 rule exactly as a `CODEX_QUOTA_WAIT` line: with `wait_advice` `notify`, `notify-claim` and on its exit 0 notify the user (\"codex at 100% (exhausted_review) — reset please; waiting up to 30 min\"); run `codex_quota.py await-reset` in a BACKGROUND call; on its exit 0 re-run the `argv --use exhausted_review` call ONCE. Any other reason, an await-reset exit other than 0, or a second refusal: there is no stand-in for this seat, so record `--outcome unavailable --unavailable-reason <token>` and surface to the user WITHOUT it.",
+      "new": "3a. **Exhausted → ONE reserve review, then the user (the astra reserve U3/F5).** When fix round 2's re-review (recorded `--disposition exhausted`) still has a verified critical or major finding other than a `works-against` or `constraint-question` one (reserve quota is not spent on a purpose question), run **one** review on the `escalation` seat — codex TOP @ `max` at every size, so a light cycle never hits `class_not_budgeted` — over the WHOLE cycle diff, before the loop goes to the user. It is admitted as the budget use `exhausted_review` (TOP, 1 per review, keyed on the cycle id plus the review id as the task key): `RID=\"$(python3 ~/.claude/skills/_meta/effort_policy.py review-id $ID | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"review_id\"])')\" && PIN=\"$(python3 ~/.claude/skills/_meta/seat_model.py argv --role escalation --provider codex --use exhausted_review --task-key \"$RID\" --project-root .)\"`, then the call runs exactly as `codex_top_seat` runs its exec line (background, `codex_watch.py` with the `timeout --role escalation` cap, `codex_quota.py classify`, `-s read-only`). Its findings are VERIFIED like any other and **presented to the user with the loop's record; they NEVER start a third automatic round.** Record it with `effort_policy.py record-exhausted-review $ID --outcome ran --raised ... --verified ...` (refused unless the loop is exhausted with a blocking finding, and refused a second time; it writes no admission, so `admit-fix-round` still refuses round 3). **TOP unavailable:** `argv --use exhausted_review` exits **10** (skipped, never substituted — a Claude stand-in adds no independence to this review) with EMPTY stdout, and records the refusal. The exit-10 path carries no reset fields, so the lead asks for them with a CHECK-ONLY admit, which writes nothing and spends nothing: `DEC=\"$(python3 ~/.claude/skills/_meta/codex_quota.py admit --use exhausted_review --model-class top --cycle-id \"$(python3 ~/.claude/skills/_meta/codex_quota.py cycle-id --project-root .)\" --task-key \"$RID\" --project-root .)\"; RC=$?` puts the decision JSON in `$DEC`. That admit exits **10** on a refusal (the only case here), so never chain it with `&&` — the chain would stop and lose the JSON: read `$DEC` whatever `$RC` is (exit 3 alone is a usage or store error). When its `reason` is `quota_exhausted` or `rate_limit_reached`, apply the #322 rule exactly as a `CODEX_QUOTA_WAIT` line: with `wait_advice` `notify`, `notify-claim` and on its exit 0 notify the user (\"codex at 100% (exhausted_review) — reset please; waiting up to 30 min\"); run `codex_quota.py await-reset` in a BACKGROUND call; on its exit 0 re-run the `argv --use exhausted_review` call ONCE. Any other reason, an await-reset exit other than 0, or a second refusal: there is no stand-in for this seat, so record `--outcome unavailable --unavailable-reason <token>` and surface to the user WITHOUT it.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "3b. **Review against Done when.** Each reviewer brief carries the design's `## Done when` DWs — read from the design doc, never from a WP — and rules each one `met | unmet | unverified` with evidence (`unverified` counts as not met; `contract_lint.py check-verdict` checks the shape). **Done** = every DW met AND every existing gate passed (VERIFIED, D21, the security and identity gates). D21 itself is unchanged: a verified critical or major finding is fixed even when it falls outside the DWs; only optional improvements are advisory. **Converged** = every DW met, the gates passed and no unresolved verified blocker; a loop that merely stopped did not converge.",
+      "new": "3b. **Review against Done when.** Each reviewer brief carries the design's `## Done when` DWs — read from the design doc, never from a WP — and rules each one `met | unmet | unverified` with evidence (`unverified` counts as not met; `contract_lint.py check-verdict` checks the shape). **Done** = every DW met AND every existing gate passed (VERIFIED, D21, the security and identity gates). D21 itself is unchanged apart from goal-fit (step 1a): a verified critical or major finding is fixed even when it falls outside the DWs; only optional improvements are advisory. **Converged** = every DW met, the gates passed and no unresolved verified blocker; a loop that merely stopped did not converge.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "5. **Minor.** VERIFIED **minor** findings are fixed in the same round when cheap, otherwise filed as tasks.",
+      "new": "5. **Minor.** Goal-fit comes first (step 1a). VERIFIED **minor** findings are then fixed in the same round when cheap, otherwise filed as tasks.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "6. **Report.** `docs/reviews/YYYY-MM-DD-<cycle>-review.md`, carrying each finding's verification verdict, its disposition (`fixed <commit>` / `unfixable: <reason>` / `task #n`), evidence coverage, and the reviewer models.",
+      "new": "6. **Report.** `docs/reviews/YYYY-MM-DD-<cycle>-review.md`, carrying each finding's verification verdict, its disposition (`fixed <commit>` / `unfixable: <reason>` / `task #n` / `awaiting-user` / `closed: owner rejected constraint \"<quote>\"`), its goal-fit ruling, evidence coverage, and the reviewer models. The header carries `goal-fit: n ruled, m works-against, k constraint-question`.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "It does NOT apply to Claude-internal findings — those run in the same",
+      "new": "Steps 1-4 do NOT apply to Claude-internal findings — those run in the same",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "separate review surface.",
+      "new": "separate review surface. Step 5 is the exception: it applies to Claude findings too.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "consolidated review and let the user decide whether to fix.",
+      "new": "consolidated review. Step 5 then rules the fix; the user decides only where that step says so.",
+      "reason": "#345 WP-2: goal-fit after verification, the constraint-question branch, the works-against route, the owner-decision rule and both worked examples; the lines that said the opposite are amended"
+    },
+    {
+      "old": "11. **Final integration** — collect execution results, verify, run the advisory code review and its fix loop (D21 — verified critical/major findings are FIXED, not just reported), present to user, then delete `.forge/cycle-id` and `.forge/size` (close-out, every status; see Step 6: Collect Results)",
+      "new": "11. **Final integration** — collect execution results, verify, run the advisory code review and its fix loop (D21 — verified critical/major findings are FIXED, bar goal-fit (1a)), present to user, then delete `.forge/cycle-id` and `.forge/size` (close-out, every status; see Step 6: Collect Results)",
+      "reason": "#345 D21 fix round 1: goal-fit exception stated where the rule is summarised, merge after goal-fit, step 4 tightened, dispositions and edge cases"
+    },
+    {
+      "old": "forge merges VERIFIED findings inline and spot-checks (re-greps ≥1 VERIFIED",
+      "new": "forge merges VERIFIED findings inline after goal-fit (below) and spot-checks (re-greps ≥1 VERIFIED",
+      "reason": "#345 D21 fix round 1: goal-fit exception stated where the rule is summarised, merge after goal-fit, step 4 tightened, dispositions and edge cases"
+    },
+    {
+      "old": "4. **Unfixable.** A finding judged **UNFIXABLE** needs a CONCRETE reason — it contradicts a standing user decision, it is an external dependency, it is out of repo scope. The reason is recorded and shown to the user. **This is the ONLY path to \"done\" with an open verified critical or major finding.**",
+      "new": "4. **Unfixable.** A finding judged **UNFIXABLE** needs a CONCRETE reason — it contradicts a standing user decision, it is an external dependency, it is out of repo scope. A standing user decision must be quoted owner words; a `lead-inferred` constraint never qualifies, and a goal-fit finding reaches this step only with the user's ruling. The reason is recorded and shown to the user. **This is the ONLY path to \"done\" with an open verified critical or major finding**, apart from one closed because the owner rejected its constraint (step 1a).",
+      "reason": "#345 D21 fix round 1: goal-fit exception stated where the rule is summarised, merge after goal-fit, step 4 tightened, dispositions and edge cases"
+    }
+  ],
+  "reorders": [
+    {
+      "old_lines": [
+        197,
+        223
+      ],
+      "file": "SKILL.md",
+      "reason": "#344 fix round 1 (m2): reviewed reorder: the Step 1 cycle-start block with its two lifecycle paragraphs (.forge/cycle-id, .forge/size) moves verbatim from the fail-silent section to directly after the Checklist, so that the block starts inside the first 20,000 bytes re-attached after a compaction. The Step 4 and Step 6 blocks cannot also start under that byte and stay where they were"
+    }
+  ],
+  "fix_round_1": {
+    "note": "#344 fix round 1. Not read by `conserve`; a record for review. F1: the step 6 and step 11 checklist lines and the 08-spec-review.md index line are `adds` of WP-4 whose text was replaced in place above (step 6 now names references/08-spec-review.md; step 11 names it and references/external-finding-verification.md; the index line names steps 6 and 11). m2: the `How to use this skill` compaction bullet, also a WP-4 add, was replaced in place to say which fail-silent blocks start inside the re-attached part."
+  },
+  "fix_round_2": {
+    "note": "#344 fix round 2 (R3). Not read by `conserve`; a record for review. Fourteen lines that WP-4 or fix round 1 ADDED to SKILL.md above the Step 1 cycle-start block were shortened in place in the `adds` entries above (the `How to use this skill` intro and its four bullets; the index lines of 01-intake.md, 02-design-team.md, 05-escalation.md, 06-present-and-doc.md, amendment.md, external-finding-verification.md and superpowers-tracked.md; the step 6 and step 11 checklist pointer lines), so that the block's closing fence ends at or under byte 19,700 of SKILL.md. No kept or moved line was reworded; every reference and step a line named is still named."
+  }
+}

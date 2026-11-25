@@ -1,7 +1,7 @@
 ---
 name: hostinger-hosting
-description: Use when managing websites on Hostinger hosting — hPanel navigation, WordPress staging environment, LiteSpeed Cache configuration, PHP version management, SSH access (port 65002), DNS zone editor, SSL/TLS certificates, email setup (IMAP/SMTP settings, SPF/DKIM/DMARC), backup and restore, Hostinger CDN, Node.js deployment, cron jobs, Git integration, file manager, database management, migration to/from Hostinger, or troubleshooting Hostinger-specific errors (500, SSL loops, upload limits).
-disambiguation: The Hostinger PLATFORM — hPanel, staging, LiteSpeed, PHP versions, host-level limits. Administering the WordPress application itself, on any host, is wordpress-admin.
+description: Use when managing websites on Hostinger hosting — hPanel navigation, WordPress staging environment, LiteSpeed Cache configuration, PHP version management, SSH access (port 65002), DNS zone editor, SSL/TLS certificates, email setup (IMAP/SMTP settings, SPF/DKIM/DMARC), backup and restore, Hostinger CDN, Node.js deployment, cron jobs, Git integration, file manager, database management, migration to/from Hostinger, or troubleshooting Hostinger-specific errors (500, SSL loops, upload limits). ALSO covers the programmatic arm — the Hostinger REST API and the official hostinger-api-mcp server (scoped binaries, HOSTINGER_API_TOKEN, cache purge, theme/plugin deploy, DNS) for automating anything the console does by hand.
+disambiguation: The Hostinger PLATFORM — hPanel, staging, LiteSpeed, PHP versions, host-level limits, and Hostinger's own API/MCP. Administering the WordPress application itself, on any host, is wordpress-admin.
 ---
 
 # Hostinger Hosting
@@ -328,6 +328,138 @@ Provide domain name + admin credentials. Hostinger handles the rest.
 6. Update wp-config.php: DB_NAME, DB_USER, DB_PASSWORD, DB_HOST (`localhost`)
 7. Update `siteurl`/`home` in wp_options if domain changed
 8. Follow DNS cutover process
+
+## Programmatic Access — API and MCP
+
+> **Everything above this section is the console.** Hostinger also has a REST API and an official
+> MCP server, so most of what this skill describes as "click here in hPanel" has a scriptable
+> equivalent. **Reach for the API when the task repeats, must be verifiable, or runs in a
+> deploy pipeline; reach for hPanel when the task is one-off or exploratory.**
+
+### Which surface for which task
+
+| Task | Surface | Why |
+|---|---|---|
+| Purge CDN / website cache after a deploy | **API** | Must run on every deploy; a forgotten manual purge ships stale CSS to every visitor |
+| Deploy a theme or plugin | **API** | Repeatable, and the response is checkable — FTP silently succeeds on partial uploads |
+| DNS record changes | **API** | Reviewable as a diff; the zone editor has no history |
+| Read PHP version / limits / info | **API** | Cheap to assert in CI against what the code expects |
+| Create staging, first-time SSL, plan changes | **hPanel** | One-off, and the console is the documented path |
+| Anything you cannot yet name the endpoint for | **hPanel** | Do not guess endpoints — see the verification rule below |
+
+### Authentication
+
+Token: **hPanel → Profile → Account Information → API → Generate token**, with an explicit expiry.
+
+```bash
+# ~/.secrets/<project>.env  (0600, never in a repo)
+export HOSTINGER_API_TOKEN="..."
+```
+
+`HOSTINGER_API_TOKEN` is the current variable and **always takes precedence — when it is set, no
+OAuth code runs at all.** `API_TOKEN` is a deprecated alias scheduled for removal; do not write it
+into new config. OAuth 2.0 + PKCE is available interactively (`--login` / `--logout`, credentials at
+`~/.config/hostinger-mcp/credentials.json`) but **is not supported in `--http` mode**, so any
+headless or piped use needs the token.
+
+### MCP server — verified against a real account (2026-09-29, `hostinger-api-mcp` 2.4.0)
+
+<!-- FRESHNESS:v1
+volatility: high
+anchors:
+  - kind: tool_version
+    subject: hostinger-api-mcp
+    verified_against: 2.4.0
+    verified_on: 2026-09-29
+  - kind: date_review
+    subject: hostinger-mcp-surface
+    review_by: 2026-12-29
+-->
+
+```bash
+npx -y -p hostinger-api-mcp@2.4.0 hostinger-hosting-mcp   # or npm install -g; engines: node >= 20
+```
+
+**What the server actually serves (enumerated over stdio, `tools/list`):** every binary — the unified
+`hostinger-api-mcp` and each scoped one (`hostinger-hosting-mcp`, `-wordpress-`, `-dns-`, …) — exposes
+the same **three meta-tools**, not one tool per endpoint:
+
+| Tool | Does |
+|---|---|
+| `search` | Finds API operations by keyword (`{"query": "clear website cache", "limit": 5}`) and returns each one's operation name and `inputSchema`. Needs no token. |
+| `execute` | Runs one operation: `{"operation": "<name from search>", "params": {…flat path/query/body params…}}` |
+| `multi-execute` | Up to 20 operations in order, stopping at the first failure; `"$steps.<i>.<path>"` feeds an earlier result into a later step |
+
+So the old "48 / 35 / 281 tools, stay under the ~100-tool host ceiling" advice is obsolete: tool count
+is 3 whichever binary you run. The scoped binaries still matter as **least privilege** — each limits
+which operations `search` / `execute` can reach — so a site operator still takes `hostinger-hosting-mcp`
+(+ `-wordpress-`, `-dns-` as needed), not the unified server. Always `search` for the operation name
+rather than hard-coding one: names changed between releases (see the table below).
+
+Transport is stdio by default; `--http [--host H] [--port P]` streams over HTTP and **requires the
+token**. A hosted remote endpoint also exists (`claude mcp add --transport http hostinger
+https://mcp.hostinger.com`) — it sends your account traffic through Hostinger's endpoint rather than
+your own process, which is a trust decision, not just a convenience one.
+
+### Operations worth knowing (names as served by 2.4.0)
+
+| Operation | Inputs | Verified on a shared-hosting account? |
+|---|---|---|
+| `hosting_websites_list` | — | **Yes** (2026-09-29, read-only): returned the account's websites |
+| `hosting_cache_clear-website` | `username`, `domain`, `directory` | **Yes, via the REST API** (a consumer project's cron purges LiteSpeed + CDN after deploys, 2026-09-24/25). Also purges the Hostinger CDN when CDN is on — the fix for "CDN is manual-purge only". Was `hosting_clearWebsiteCacheV1` in older releases. |
+| `hosting_php_info` | `username`, `domain` | Listed; not yet called |
+| `hosting_deploy-wordpress-theme` | `domain`, `slug`, `themePath` (a LOCAL directory), `activate` | **Yes, with a proven rollback** (2026-09-30, on a non-production site — see the recipe below). `hosting_deploy-wordpress-plugin` (`domain`, `slug`, `pluginPath`) has the same shape; not called. |
+| `hosting_deploy-static-website` · `hosting_websites_deploy-static-site-archive` | `domain`, `archivePath` / `username`, `domain`, `archive_path` | Listed; not yet called |
+| `hosting_import-wordpress-website` | per `search` | Listed; "may take a while" — treat as async |
+
+### Theme deploy with a proven rollback (verified 2026-09-30)
+
+Run this on a **non-production** site first (a temporary `*.hostingersite.com` site on the same
+account is ideal); production gets it only after the recipe has passed there.
+
+| Step | Operation (binary) | Check |
+|---|---|---|
+| 0. Record the current state | `wordpress_installations_list` {`domain`} gives the install `id` (= `software`) and `username`; `wordpress_themes_list-installed` {`username`, `software`} (wordpress) | note the theme with `status: active`; fetch the homepage |
+| 1. Deploy + activate | `hosting_deploy-wordpress-theme` {`domain`, `slug`, `themePath`, `activate: true`} (hosting) | returns per-file results; `list-installed` shows the new theme active; the homepage serves it |
+| 2. **Roll back** | `wordpress_themes_activate` {`username`, `software`, `theme`: the recorded original} (wordpress) | `list-installed` shows the original active; the homepage serves it again |
+| 3. Clean up (optional) | `wordpress_themes_uninstall` {`username`, `software`, `themes`: [slug]} (wordpress) | the slug is gone from `list-installed` |
+
+Observed behaviour: the deploy uploads the files through a staging directory with a random suffix
+(`<slug>-XXXXXXXX`) and then installs the theme under `<slug>`. Activate and uninstall answer
+`"Request accepted"`, so they are ASYNCHRONOUS: re-read `list-installed` (and the page) before
+treating a step as done. Deploying replaces the theme's files, so rolling back by re-activating the
+previous theme only works when the new theme has a NEW slug; redeploying an existing slug overwrites
+it and needs a copy of the old files to go back.
+
+### HARD-RULE — verify the surface against the account, never against the marketing
+
+**Hostinger's own pages disagree with each other about what the API covers.** The MCP tutorial page
+describes the scope as VPS, domains, DNS and billing *only* — no shared hosting, no WordPress, no
+files, no cache. The repository README described 48 hosting tools and 35 WordPress tools including
+cache purge and theme deploys — and the 2.4.0 server serves neither shape: it serves three meta-tools
+(above). **The server's own `tools/list` and `search` are the only authority**, and the disagreement
+is the point:
+
+- **Never tell a user a Hostinger capability exists because a docs page or a blog post said so.**
+  Confirm it against *their* account and *their* plan, and say plainly when you have not.
+- **Plan and product gate the surface.** `hostinger-vps-mcp` is useless on shared hosting;
+  `hostinger-agency-hosting-mcp` needs an Agency plan. A tool being listed is not a tool you can call.
+- **A live-looking MCP endpoint can return empty for every query.** Observed in the wild on a
+  Hostinger-generated `llms.txt` advertising a store MCP that answered `[]` to everything. Absence
+  of results is not proof of an empty account — it may be an unprovisioned or wrong endpoint.
+  Distinguish *"queried, genuinely empty"* from *"queried, got nothing back"* before reporting either.
+
+### Anti-patterns specific to the API
+
+| Don't | Why |
+|---|---|
+| Install the unified server by default | It reaches every operation on the account; take the scoped binary for the task (least privilege) |
+| Hard-code an operation name from docs or memory | Names change between releases (`hosting_clearWebsiteCacheV1` → `hosting_cache_clear-website`); `search` first |
+| Put the token in `.mcp.json`, `wp-config.php` or any repo file | It is an account-wide credential. `~/.secrets/<project>.env` at 0600, referenced as `${HOSTINGER_API_TOKEN}` |
+| Generate a token with no expiry | Hostinger asks for one; an immortal token is an immortal breach |
+| Use `API_TOKEN` in new config | Deprecated alias, scheduled for removal |
+| Assume the API replaces FTP deploys before testing a rollback | Verify you can restore the previous theme *before* making the API the deploy path |
+| Rely on OAuth in a scripted context | Not supported in `--http` mode, and interactive login cannot run headless |
 
 ## Anti-Patterns
 

@@ -1,0 +1,159 @@
+{
+  "note": "Output of visual-doctrines (kind opaque): what studio_axes.axis_table reads from each doctrine file, and the distance between the two. The test holds this file equal to a fresh parse.",
+  "axes": [
+    [
+      "type",
+      [
+        "one-family",
+        "two-roles",
+        "display-led"
+      ]
+    ],
+    [
+      "colour",
+      [
+        "neutral-accent",
+        "tonal",
+        "colour-field"
+      ]
+    ],
+    [
+      "density",
+      [
+        "airy",
+        "compact",
+        "clustered"
+      ]
+    ],
+    [
+      "motion",
+      [
+        "still",
+        "feedback",
+        "authored"
+      ]
+    ],
+    [
+      "layout",
+      [
+        "single-column",
+        "column-grid",
+        "broken-grid"
+      ]
+    ],
+    [
+      "imagery",
+      [
+        "content-only",
+        "supporting",
+        "art-directed"
+      ]
+    ],
+    [
+      "ornament",
+      [
+        "none",
+        "structural",
+        "thematic"
+      ]
+    ]
+  ],
+  "minimum": 3,
+  "tables": {
+    "web-craft-restrained": {
+      "type": {
+        "value": "one-family",
+        "also": [
+          "two-roles"
+        ]
+      },
+      "colour": {
+        "value": "neutral-accent",
+        "also": [
+          "tonal"
+        ]
+      },
+      "density": {
+        "value": "airy",
+        "also": [
+          "compact"
+        ]
+      },
+      "motion": {
+        "value": "feedback",
+        "also": [
+          "still"
+        ]
+      },
+      "layout": {
+        "value": "column-grid",
+        "also": [
+          "single-column"
+        ]
+      },
+      "imagery": {
+        "value": "content-only",
+        "also": []
+      },
+      "ornament": {
+        "value": "structural",
+        "also": [
+          "none"
+        ]
+      }
+    },
+    "web-craft-expressive": {
+      "type": {
+        "value": "display-led",
+        "also": [
+          "two-roles"
+        ]
+      },
+      "colour": {
+        "value": "colour-field",
+        "also": [
+          "tonal"
+        ]
+      },
+      "density": {
+        "value": "clustered",
+        "also": []
+      },
+      "motion": {
+        "value": "authored",
+        "also": []
+      },
+      "layout": {
+        "value": "broken-grid",
+        "also": [
+          "column-grid"
+        ]
+      },
+      "imagery": {
+        "value": "art-directed",
+        "also": [
+          "supporting"
+        ]
+      },
+      "ornament": {
+        "value": "thematic",
+        "also": []
+      }
+    }
+  },
+  "differing": [
+    "type",
+    "colour",
+    "density",
+    "motion",
+    "layout",
+    "imagery",
+    "ornament"
+  ],
+  "disjoint": [
+    "density",
+    "motion",
+    "imagery",
+    "ornament"
+  ]
+}

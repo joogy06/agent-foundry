@@ -89,6 +89,45 @@ class TestInterpretDeprecation(unittest.TestCase):
             self.assertEqual(out.successor, "foo-ng")
             self.assertEqual(out.confidence_level, "interpretive")
 
+    def test_agy_fallback_is_sandboxed_pinned_and_flag_ordered(self):
+        # #367 fix round 1: the agy fallback runs `agy --sandbox --mode plan --model <seat_model pin> -p`,
+        # with the model resolved through seat_model and stdin closed.
+        import json
+        import subprocess
+        import sys
+        from dep_currency_check import llm_fallback as lf
+        log = self.bin_dir / "argv.json"
+        p = self.bin_dir / "agy"
+        p.write_text(
+            "#!" + sys.executable + "\n"
+            "import json, os, sys\n"
+            f"json.dump({{'argv': sys.argv[1:], 'stdin': sys.stdin.read(), 'cwd_entries': os.listdir()}}, "
+            f"open({str(log)!r}, 'w'))\n"
+            "print('{\"is_deprecated\": true, \"successor\": \"foo-ng\", "
+            "\"urgency\": \"near-term\", \"evidence\": \"use foo-ng\"}')\n", encoding="utf-8")
+        p.chmod(0o755)
+        os.environ["PATH"] = str(self.bin_dir)  # no codex: the agy arm runs
+        out = interpret_deprecation("This package is deprecated; use foo-ng instead of it. "
+                                    "Migration is recommended.", "old-pkg", prefer="agy")
+        self.assertIsNotNone(out)
+        got = json.loads(log.read_text(encoding="utf-8"))
+        want = subprocess.run([sys.executable, str(lf.SEAT_MODEL_PY), "argv", "--role", "consultant_support",
+                               "--provider", "agy"], capture_output=True, text=True).stdout.split()
+        self.assertEqual(want[0], "--model")
+        self.assertEqual(got["argv"][:5], ["--sandbox", "--mode", "plan", *want])
+        self.assertEqual(got["argv"][5], "-p")
+        self.assertEqual(len(got["argv"]), 7)
+        self.assertEqual(got["stdin"], "")
+        self.assertEqual(got["cwd_entries"], [])       # #366: the workspace is an empty directory
+
+    def test_agy_fallback_is_skipped_when_the_model_cannot_be_resolved(self):
+        from unittest import mock
+        from dep_currency_check import llm_fallback as lf
+        with mock.patch.object(lf, "_agy_available", return_value=True), \
+                mock.patch.object(lf, "_agy_model_pin", return_value=None), \
+                mock.patch.object(lf.subprocess, "run", side_effect=AssertionError("agy ran unpinned")):
+            self.assertIsNone(lf._try_agy("prompt"))
+
     def test_fallback_skipped_on_short_text(self):
         out = interpret_deprecation("short", "x")
         self.assertIsNone(out)

@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "studio-verdict.v1",
+  "title": "studio-verdict.v1",
+  "description": "The record of one creative-studio judgement. The RUNNER writes `runner` and the identity fields (scripts/studio_verdict.py skeleton); the CRITIC fills `critic`. scripts/studio_verdict.py check reads this file for the shape and adds the rules a schema cannot say; each rule is named in the description of the field it guards. Keywords used here are limited to the ones the checker implements (tests/test_studio_verdict.py holds that).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "profile", "work_kind", "mode", "borrow_max", "runner", "critic"],
+  "properties": {
+    "schema_version": {"const": "studio-verdict.v1"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"},
+    "profile": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$"},
+    "work_kind": {
+      "description": "rendered: floor rows carry viewport and element. text: floor rows carry a text locator.",
+      "enum": ["rendered", "text"]
+    },
+    "mode": {
+      "description": "full: two reads, the second with the order swapped. light: one read.",
+      "enum": ["full", "light"]
+    },
+    "borrow_max": {
+      "description": "From the profile. `critic.borrowed` may not hold more entries (borrow_over_max).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "runner": {"$ref": "#/$defs/runner"},
+    "critic": {"$ref": "#/$defs/critic"}
+  },
+  "$defs": {
+    "variant_id": {"type": "string", "pattern": "^variant-[1-9][0-9]?$"},
+    "text_locator": {
+      "description": "A place in a text variant: the heading it sits under (empty for the whole document) and the paragraph number under that heading (0 for the whole section).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heading", "paragraph"],
+      "properties": {
+        "heading": {"type": "string"},
+        "paragraph": {"type": "integer", "minimum": 0}
+      }
+    },
+    "floor_row": {
+      "description": "One neutral-floor measurement of one variant. Rendered work: viewport and element are required. Text work: locator is required (floor_row_scope). A variant is ELIGIBLE when every blocking row of its latest capture has result pass; not_run is not a pass.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "variant", "blocking", "result"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$"},
+        "variant": {"$ref": "#/$defs/variant_id"},
+        "blocking": {"type": "boolean"},
+        "result": {"enum": ["pass", "fail", "not_run"]},
+        "viewport": {"type": "integer", "minimum": 1},
+        "element": {"type": "string", "minLength": 1},
+        "locator": {"$ref": "#/$defs/text_locator"},
+        "measured": {"type": ["number", "string", "null"]},
+        "threshold": {"type": ["number", "string", "null"]}
+      }
+    },
+    "runner": {
+      "description": "Written by the runner. `check` refuses a record whose runner part or identity fields differ from the skeleton it is given (runner_part_altered).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variants", "read_orders", "floor_rows", "recaptures"],
+      "properties": {
+        "variants": {
+          "description": "Unlabelled ids variant-1..variant-N, each once and in sequence (variant_ids). Nothing here says which seat or house made a variant.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "evidence"],
+            "properties": {
+              "id": {"$ref": "#/$defs/variant_id"},
+              "direction_contract": {"type": "string", "minLength": 1},
+              "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        },
+        "read_orders": {
+          "description": "The randomised order of each read. Each is a permutation of the variant ids; full mode holds two, the second the first reversed; light mode holds one (read_order).",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/variant_id"}}
+        },
+        "floor_rows": {"type": "array", "items": {"$ref": "#/$defs/floor_row"}},
+        "recaptures": {
+          "description": "Later captures of a repaired variant, in sequence 1, 2, ... (for text work: the claim check re-run). A re-capture must carry every blocking row of the variant's first capture, by row id and, for rendered work, width (repair_recapture_incomplete); a variant whose latest re-capture is incomplete is not eligible.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sequence", "variant", "evidence", "floor_rows"],
+            "properties": {
+              "sequence": {"type": "integer", "minimum": 1},
+              "variant": {"$ref": "#/$defs/variant_id"},
+              "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "floor_rows": {"type": "array", "items": {"$ref": "#/$defs/floor_row"}}
+            }
+          }
+        }
+      }
+    },
+    "borrow": {
+      "description": "A named part of a LOSING variant that the winner re-makes. Every card says what the part is and why it is worth having. fragment: a locator of the kind of work, markup (a selector) for rendered work and text (a heading and a paragraph) for written work, and nothing else (borrow_locator). system: anchor; rendered work anchors in direction_contract or root_style, text work in direction_contract, outline or term_set (borrow_anchor). move: technique and an evidence_region of the kind of work: for rendered work evidence (a reference the runner recorded for that variant), with or without area, and never text; for written work text and nothing else (borrow_move). `from` is a losing variant (borrow_source).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "kind", "what", "why"],
+      "properties": {
+        "from": {"$ref": "#/$defs/variant_id"},
+        "kind": {"enum": ["fragment", "system", "move"]},
+        "what": {"type": "string", "minLength": 1},
+        "why": {
+          "description": "The line of the brief or the rubric criterion this part serves. The winner re-makes the part from this card.",
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "markup": {"type": "string", "minLength": 1},
+            "text": {"$ref": "#/$defs/text_locator"}
+          }
+        },
+        "anchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["in", "name"],
+          "properties": {
+            "in": {"enum": ["direction_contract", "root_style", "outline", "term_set"]},
+            "name": {"type": "string", "minLength": 1}
+          }
+        },
+        "technique": {"type": "string", "minLength": 1},
+        "evidence_region": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {"type": "string", "minLength": 1},
+            "area": {"type": "string", "minLength": 1},
+            "text": {"$ref": "#/$defs/text_locator"}
+          }
+        }
+      }
+    },
+    "critic": {
+      "description": "Filled by the critic. The skeleton leaves could_not_judge and open_to_user null: the critic must replace each with a list, which may be empty.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reads", "tells", "rubric", "outcome", "winner", "selected_for_repair", "repair", "no_award", "borrowed", "rejected", "could_not_judge", "open_to_user"],
+      "properties": {
+        "reads": {
+          "description": "One entry per read order, numbered from 1 (reads_mismatch). pick is the variant that read chose, or null when it found no winner. When two reads pick differently, open_to_user must hold an order_flip entry (flip_not_open_to_user).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["read", "pick"],
+            "properties": {
+              "read": {"type": "integer", "minimum": 1},
+              "pick": {"type": ["string", "null"], "pattern": "^variant-[1-9][0-9]?$"}
+            }
+          }
+        },
+        "tells": {
+          "description": "Per variant, what was judged against that variant's OWN direction contract. One entry per variant (tells_missing). A tell names an axis of that contract; it never compares variants. A run may give the critic blocking floor rows of its own to fill. Each is exactly one entry per variant whose axis is the row id, with held true as a pass: `first-screen` (first_screen_row_missing, winner_fails_first_screen) and, in a run with a truth pack, `unlisted-statements`, false when the draft states a fact that is on no claim list and not in the truth pack (unlisted_statements_row_missing, winner_states_an_unlisted_fact). The winner's entry must hold.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variant", "tells"],
+            "properties": {
+              "variant": {"$ref": "#/$defs/variant_id"},
+              "tells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["axis", "held", "observation"],
+                  "properties": {
+                    "axis": {"type": "string", "minLength": 1},
+                    "held": {"type": "boolean"},
+                    "observation": {"type": "string", "minLength": 1},
+                    "evidence": {"type": "string", "minLength": 1}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "rubric": {
+          "description": "The comparison by visitor mode and brief: the only ground on which variants are compared. Not empty when the outcome is winner (rubric_empty). At least one row favours the winner (winner_not_favoured), and `favours` names a variant of this record or `none` (rubric_favours_unknown).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["criterion", "visitor_mode", "favours", "reason"],
+            "properties": {
+              "criterion": {"type": "string", "minLength": 1},
+              "visitor_mode": {"enum": ["persuade", "operate", "read", "experience"]},
+              "favours": {"type": "string", "pattern": "^(variant-[1-9][0-9]?|none)$"},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "outcome": {
+          "description": "winner needs an eligible winner (winner_ineligible) or a confirmed repair. no_award is required when no variant is eligible (no_award_required).",
+          "enum": ["winner", "no_award"]
+        },
+        "winner": {
+          "description": "A variant id when the outcome is winner (winner_missing, winner_unknown); null when it is no_award (winner_with_no_award). It is one of the reads' picks (winner_not_picked). Its LATEST capture passes every blocking row, or it is a confirmed repair (winner_ineligible): a variant that passed first and fails after a re-capture cannot win as it stands. A winner that has any re-capture was changed after the verdict opened: it is accepted only with `repair` naming its LATEST re-capture, rejudged and confirmed both true, whatever its first capture said (winner_not_rejudged).",
+          "type": ["string", "null"],
+          "pattern": "^variant-[1-9][0-9]?$"
+        },
+        "selected_for_repair": {
+          "description": "true: the winner failed a blocking row and was picked to be repaired. Accepted only with `repair` pointing at the winner's LATEST re-capture, that re-capture passing every blocking row, and rejudged and confirmed both true (repair_no_recapture, repair_recapture_fails, repair_recapture_incomplete, repair_not_rejudged).",
+          "type": "boolean"
+        },
+        "repair": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["recapture", "rejudged", "confirmed"],
+          "properties": {
+            "recapture": {"type": "integer", "minimum": 1},
+            "rejudged": {"type": "boolean"},
+            "confirmed": {"type": "boolean"}
+          }
+        },
+        "no_award": {
+          "description": "Required with outcome no_award, null otherwise. all_fail_blocking only when no variant is eligible; otherwise brief_line_unmet with the line of the brief no variant met (no_award_unexplained).",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": {
+            "reason": {"enum": ["all_fail_blocking", "brief_line_unmet"]},
+            "brief_line": {"type": "string", "minLength": 1}
+          }
+        },
+        "borrowed": {
+          "description": "Empty with no_award (borrow_without_winner).",
+          "type": "array",
+          "items": {"$ref": "#/$defs/borrow"}
+        },
+        "rejected": {
+          "description": "Losing variants nothing is taken from, each with the reason. Every losing variant is in borrowed or here; with no_award every variant is here (loser_unaccounted). The winner is never here (rejected_unknown).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variant", "reason"],
+            "properties": {
+              "variant": {"$ref": "#/$defs/variant_id"},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "could_not_judge": {
+          "description": "What the critic could not judge from the evidence. Required; may be an empty list.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["what", "why"],
+            "properties": {
+              "what": {"type": "string", "minLength": 1},
+              "why": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "open_to_user": {
+          "description": "Questions only the user can settle. Required; may be an empty list.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "question"],
+            "properties": {
+              "kind": {"enum": ["order_flip", "taste_call", "brief_gap", "other"]},
+              "question": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

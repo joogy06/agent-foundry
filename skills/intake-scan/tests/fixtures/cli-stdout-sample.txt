@@ -1,0 +1,26 @@
+intake-scan: scan
+id: q20261011T120000Z-0a0b0c0d
+kind: skill
+verdict: caution
+  because: caution-finding (one or more caution findings)
+  because: optional-gap (part of the target was not covered)
+files: 5 stored, 0 not stored
+isolation: bwrap
+findings: block 0, caution 1, info 0, excepted 0
+  SS-SC4  caution  x1  a SkillSpector static rule matched
+      at f003:1
+gaps: block 0, caution 3
+  language-not-analysed  coverage  caution  x1  one or more executable files are in a language with no static analysis here (anything that is not Python)
+      files f005
+  deps-advisory-lookup-failed  deps  caution  x1  the advisory service could not be reached or did not answer for every dependency
+      files f003
+  osv-subcheck-not-run  skillspector  caution  x1  the scanner's own advisory lookup cannot run without network; covered by the dependency check
+scanners:
+  harness-rules  ran  required  in-process  inspected 5
+  secrets-catalog  ran  required  in-process  inspected 5
+  skillspector  ran  required  bwrap  inspected 5
+  bandit  ran  optional  bwrap  inspected 1
+  deps  ran  optional  in-process  inspected 1
+record: QUARANTINE/q20261011T120000Z-0a0b0c0d/record.json
+triage sheet (for a person): QUARANTINE/q20261011T120000Z-0a0b0c0d/triage.md
+next: a person reads the triage sheet, then: intake.py triage q20261011T120000Z-0a0b0c0d --accept --reason "..." (or --reject), then adopt

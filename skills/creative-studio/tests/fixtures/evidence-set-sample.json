@@ -1,0 +1,31 @@
+{
+  "schema_version": "studio-evidence.v1",
+  "capture": {"status": "ok", "gap": null, "detail": null},
+  "sandbox": {"state": "on", "confirmed": true, "method": "seccomp-bpf filter on every renderer process", "reason": null},
+  "request_scope": "variant-directory",
+  "offline_emulation": true,
+  "viewports": [{"width": 390, "height": 844}, {"width": 768, "height": 1024}, {"width": 1280, "height": 800}],
+  "floor_rows": [
+    {"id": "contrast-text", "blocking": true, "result": "pass", "viewport": 390, "element": "body > header:nth-of-type(1) > p:nth-of-type(1)", "measured": 16.2, "threshold": 4.5},
+    {"id": "contrast-large-text", "blocking": true, "result": "pass", "viewport": 390, "element": "main:nth-of-type(1) > section:nth-of-type(1) > h2:nth-of-type(1)", "measured": 8.9, "threshold": 3},
+    {"id": "contrast-unmeasured", "blocking": false, "result": "pass", "viewport": 390, "element": "html", "measured": 0, "threshold": 0},
+    {"id": "body-size", "blocking": true, "result": "pass", "viewport": 390, "element": "main:nth-of-type(1) > section:nth-of-type(1) > p:nth-of-type(1)", "measured": 18, "threshold": 16},
+    {"id": "overflow-x", "blocking": true, "result": "pass", "viewport": 390, "element": "html", "measured": 0, "threshold": 0},
+    {"id": "motion-reduced", "blocking": true, "result": "pass", "viewport": 390, "element": "html", "measured": 0, "threshold": 0},
+    {"id": "page-weight", "blocking": true, "result": "pass", "viewport": 390, "element": "html", "measured": 2876, "threshold": 3000000},
+    {"id": "line-length", "blocking": false, "result": "pass", "viewport": 390, "element": "main:nth-of-type(1) > section:nth-of-type(1) > p:nth-of-type(1)", "measured": 38.4, "threshold": 100}
+  ],
+  "tiles": ["tiles/w390/s01-t01.png", "tiles/w390/s02-t01.png", "tiles/w390/s02-t02.png"],
+  "motion_frames": ["motion/w390/f01-0000ms.png", "motion/w390/f02-0400ms.png"],
+  "tile_index": [
+    {"file": "tiles/w390/s01-t01.png", "viewport": 390, "section": 1, "element": "body > header:nth-of-type(1)", "scroll_y": 0},
+    {"file": "tiles/w390/s02-t01.png", "viewport": 390, "section": 2, "element": "body > main:nth-of-type(1) > section:nth-of-type(1)", "scroll_y": 412},
+    {"file": "tiles/w390/s02-t02.png", "viewport": 390, "section": 2, "element": "body > main:nth-of-type(1) > section:nth-of-type(1)", "scroll_y": 1256}
+  ],
+  "requests": {"inside": ["index.html"], "outside": [], "truncated": false},
+  "fonts_rendered": [{"family": "Liberation Serif", "glyphs": 1480}],
+  "variant_fonts": {"families": 0, "glyphs": 0},
+  "counts": [{"viewport": 390, "text_elements": 9, "body_paragraphs": 3, "running_animations": 0}],
+  "warnings": [],
+  "tool_versions": {"capture": "1", "python": "3.13.0", "chrome": "Chrome/154.0.0.0", "puppeteer_core": "24.43.1", "node": "v22.0.0"}
+}

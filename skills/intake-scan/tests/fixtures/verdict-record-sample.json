@@ -1,0 +1,181 @@
+{
+  "schema": "intake-verdict-record-sample.v1",
+  "note": "What the policy builds from scan-evidence-sample.json, with `now` fixed. A test rebuilds it and compares. The verdict is block because of the two block-rule hits (H2, H7); with those excepted or absent it would be caution, whatever SkillSpector's own score says.",
+  "now": "2026-10-11T12:00:05Z",
+  "record": {
+    "schema": "intake-verdict.v1",
+    "id": "q20261011T120000Z-0a0b0c0d",
+    "created": "2026-10-11T12:00:05Z",
+    "verdict": "block",
+    "reasons": [
+      "block-rule-hit",
+      "caution-finding"
+    ],
+    "subject": {
+      "kind": "skill",
+      "source": {
+        "type": "folder",
+        "target": "downloads/sample-skill"
+      },
+      "commit": null,
+      "tree_digest": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f"
+    },
+    "inventory_digest": "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+    "versions": {
+      "rules": "1",
+      "policy": "1",
+      "tools": {
+        "bandit": "1.9.4",
+        "deps": "0.1.0",
+        "skillspector": "2.12.0"
+      }
+    },
+    "isolation": "bwrap",
+    "findings": [
+      {
+        "rule": "H2",
+        "class": "block",
+        "file": "f003",
+        "line": 0,
+        "scanner": "harness-rules"
+      },
+      {
+        "rule": "H7",
+        "class": "block",
+        "file": "f005",
+        "line": 0,
+        "scanner": "harness-rules"
+      },
+      {
+        "rule": "C8",
+        "class": "caution",
+        "file": "f004",
+        "line": 3,
+        "scanner": "harness-rules"
+      },
+      {
+        "rule": "SS-LP3",
+        "class": "caution",
+        "file": "f001",
+        "line": 1,
+        "scanner": "skillspector"
+      },
+      {
+        "rule": "SS-P1",
+        "class": "caution",
+        "file": "f001",
+        "line": 6,
+        "scanner": "skillspector"
+      },
+      {
+        "rule": "SS-TM1",
+        "class": "caution",
+        "file": "f002",
+        "line": 2,
+        "scanner": "skillspector"
+      },
+      {
+        "rule": "SS-TM1",
+        "class": "caution",
+        "file": "f004",
+        "line": 3,
+        "scanner": "skillspector"
+      }
+    ],
+    "coverage": {
+      "files": {
+        "entries": 5,
+        "stored": 4,
+        "omitted": 1
+      },
+      "uncovered": [],
+      "partial": [],
+      "language_gap": [],
+      "scanners": [
+        {
+          "scanner": "harness-rules",
+          "state": "ran",
+          "required": true,
+          "isolation": "in-process",
+          "files_inspected": 4,
+          "files_partial": 0
+        },
+        {
+          "scanner": "secrets-catalog",
+          "state": "ran",
+          "required": true,
+          "isolation": "in-process",
+          "files_inspected": 4,
+          "files_partial": 0
+        },
+        {
+          "scanner": "skillspector",
+          "state": "ran",
+          "required": true,
+          "isolation": "bwrap",
+          "files_inspected": 4,
+          "files_partial": 0
+        },
+        {
+          "scanner": "bandit",
+          "state": "ran",
+          "required": false,
+          "isolation": "bwrap",
+          "files_inspected": 1,
+          "files_partial": 0
+        },
+        {
+          "scanner": "deps",
+          "state": "ran",
+          "required": false,
+          "isolation": "in-process",
+          "files_inspected": 0,
+          "files_partial": 0
+        }
+      ]
+    },
+    "gaps": [],
+    "evidence": {
+      "secrets-catalog": {
+        "checks": 11,
+        "hits_over_cap": 0,
+        "unknown_checks": 0
+      },
+      "skillspector": {
+        "completeness_status": "complete",
+        "coverage_percent": 100.0,
+        "exit_status": 1,
+        "issues": 3,
+        "recommendation": "DO_NOT_INSTALL",
+        "score": 100,
+        "severity": "CRITICAL"
+      },
+      "bandit": {
+        "exit_status": 0,
+        "python_files": 1,
+        "results": 0,
+        "severity_counts": {}
+      },
+      "deps": {
+        "advisories": 0,
+        "answered": 0,
+        "dependencies": 0,
+        "malicious": 0,
+        "manifests": 0
+      }
+    },
+    "counts": {
+      "findings": {
+        "block": 2,
+        "caution": 5,
+        "info": 0,
+        "excepted": 0
+      },
+      "gaps": {
+        "block": 0,
+        "caution": 0
+      }
+    },
+    "review": []
+  }
+}

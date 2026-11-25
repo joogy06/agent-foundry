@@ -23,9 +23,11 @@ and a one-line summary is appended to rot-history.jsonl.
 
 CLI:
   rot_scan.py [--root <skills-root>] [--agents <agents-root>] [--inventory <inv.json>]
-              [--today YYYY-MM-DD] [--json] [--refresh]
+              [--today YYYY-MM-DD] [--json] [--refresh] [--no-write]
   --refresh just re-runs the scan and rewrites the report (alias for the default;
             exists so the nudge/launcher can say `rot_scan.py --refresh`).
+  --no-write scans without writing the report. The override flags (--root, --agents,
+            --inventory, --today) require it: an override never writes the live report.
 
 stdlib-only, deterministic (modulo today's date + runtime_ms). Writes ONLY under
 ~/.claude/state/freshness/. (D1: no skill-write path.)
@@ -224,10 +226,14 @@ def _grade_freshness(rel: str, parsed: dict, inv: dict, today: date) -> list[dic
         elif kind == "model_id":
             out.append(_f(rel, "VAGUE", a.get("subject"), "model_id", "medium",
                           "model-ID anchor (no model registry in v1)"))
-        elif kind == "status_snapshot":
+        elif kind in ("status_snapshot", "external_fact"):
+            # external_fact (a vendor-owned fact with source_url) ages by its review_by like a
+            # snapshot. Ungraded, a 90-day anchor on a fast-moving surface never turned RED.
+            # No parseable review_by: VAGUE, so an undatable anchor is counted, never silent.
             deadline = a.get("review_by")
-            if deadline:
-                out.append(_grade_deadline(rel, deadline, "status_snapshot", vol, today, "high"))
+            graded = _grade_deadline(rel, deadline, kind, vol, today, "high") if deadline else None
+            out.append(graded or _f(rel, "VAGUE", a.get("subject"), kind, "medium",
+                                    f"{kind} anchor has no parseable review_by"))
     return [o for o in out if o is not None]
 
 
@@ -393,7 +399,11 @@ def _f(rel, verdict, anchor, kind, confidence, detail) -> dict:
 
 def iter_targets(skills_root: Path, agents_root: Path, exclude_fixtures: bool = True):
     if skills_root.is_dir():
-        for f in sorted(skills_root.rglob("*.md")):
+        # Pruned inside the walk as well, so an excluded alias cannot hide the live skill it points at.
+        pruned = {"archive", "__pycache__", ".pytest_cache", "node_modules"}
+        if exclude_fixtures:
+            pruned |= {"fixtures", "tests"}
+        for f in _fresh.walk_files(skills_root, ("*.md",), pruned):
             parts = set(f.parts)
             # Always skip vendored / archive / cache noise.
             if parts & {"archive", "__pycache__", ".pytest_cache", "node_modules"}:
@@ -474,7 +484,7 @@ def write_report(report: dict) -> None:
                     "files_scanned", "counts", "runtime_ms", "last_success")}
         fd = os.open(str(HISTORY_FILE), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         try:
-            os.write(fd, (json.dumps(summary, separators=(",", ":"), sort_keys=True) + "\n").encode())
+            os.write(fd, (json.dumps(summary, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8"))
         finally:
             os.close(fd)
     except OSError:
@@ -491,6 +501,15 @@ def main(argv=None) -> int:
     p.add_argument("--refresh", action="store_true", help="re-run + rewrite report (default behaviour)")
     p.add_argument("--no-write", action="store_true", help="do not write report (dry)")
     args = p.parse_args(argv)
+    overrides = [flag for flag, value in (("--root", args.root), ("--agents", args.agents),
+                                          ("--inventory", args.inventory), ("--today", args.today))
+                 if value]
+    if overrides and not args.no_write:
+        # A fixture or partial scan, a different inventory, or a backdated --today (which hides
+        # RED findings) written over the live report would read as a fresh, successful library
+        # scan and silence the staleness alarm. Only the default scan writes the live report.
+        p.error(f"{', '.join(overrides)} scan something other than the live library today; "
+                "pass --no-write (an override never writes the live report)")
 
     skills_root = Path(args.root) if args.root else SKILLS_ROOT
     agents_root = Path(args.agents) if args.agents else AGENTS_ROOT
@@ -521,4 +540,5 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from portable_cli import run_cli  # noqa: E402  (#251 stream hardening; sibling module)
+    sys.exit(run_cli(main))

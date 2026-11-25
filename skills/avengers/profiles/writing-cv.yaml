@@ -14,26 +14,48 @@ description: >
   holds clarity and human voice; the user-advocate argues the hiring-manager /
   recruiter perspective; the skeptic (adversary) red-teams every claim for
   truthfulness and defensibility (nothing survives that the candidate cannot
-  substantiate in an interview). The arbiter returns ONE positioning direction
+  substantiate in an interview); the architect (agy) holds the structure and
+  narrative coherence of the whole package. The arbiter returns ONE positioning direction
   plus a mandatory attributed dissent record; rendering is handed to career-*.
 
 # --- Roster resolution (refs into roster/<seat_id>.yaml) ---
 seats:
   - ref: wordsmith
-    provider: claude
+    provider: claude          # the paired Claude main-tier seat (D15): card seat_weight main -> seat_model consultant_main -> the Claude main tier
     effort: default
   - ref: user-advocate
-    provider: agy             # the hiring-manager / recruiter perspective
-    effort: default
+    provider: codex          # AMENDMENT 3 (D25) moved this seat from agy to codex for the hiring-manager / recruiter perspective; #368 restored agy as an ADDED seat (architect below), so this stays codex. Support weight -> seat_model consultant_support -> the codex support-tier literal (model_roster CODEX_SUPPORT), beside the codex std skeptic.
+    effort: medium           # the consultant_support codex effort; the support tier @ medium (ceiling 1200)
+    seat_weight: support     # EXPLICIT: a codex seat defaults to the main row (consultant_main, the codex std tier); this is the seat that takes the SUPPORTING model class
   - ref: skeptic
     provider: codex
-    effort: xhigh            # red-teams claim truthfulness; NEVER 'high'
+    effort: challenger_floor # red-teams claim truthfulness; seat-class challenger floor (codex -> xhigh)
     adversarial_role: true
+  - ref: architect
+    provider: agy            # #368: agy (Gemini 4 Argon) returns as an ADDED deliberation seat — structure and narrative coherence across CV, cover letter and profile, the one lens this profile lacked. Pattern 1 (--sandbox, inline brief, < /dev/null); egress_redaction below applies to its packets.
+    effort: default
+    seat_weight: main        # #368: a deliberating seat -> seat_model consultant_main -> agy -high unsized; a sized convene serves model_roster.AGY_LEVEL_BY_SIZE (light -low, medium -medium, complex -high)
+
+# D23 (design §3.4, a user decision) + AMENDMENT 3 (D25, jc8): this profile's arbiter is THE CLAUDE SUPPORT TIER IN A
+# SEPARATE SESSION. TOP-LEVEL key: it relaxes the provider-exclusion rule for this profile to "the arbiter's MODEL
+# differs from every seat's model, and it runs in its own session" (convene.declared_arbiter / resolve_arbiter).
+arbiter_independence: separate-session
 
 arbiter:
-  prefer: wordsmith          # claude; provider != skeptic(codex) adversary
-  provider_must_not_equal_adversarial: true
-  effort_on_codex: max
+  # DECLARED arbiter, NEW at AMENDMENT 3 (jc8). WHY IT HAD TO BE DECLARED HERE: with agy gone (D25; #368 brought
+  # agy back as a seat, and D23 still bars it from judging) this profile's only non-adversarial provider was claude, so the SELECTION algorithm would seat a Claude main-tier arbiter beside the
+  # main-tier wordsmith — one model judging its own output, which is exactly the participant-judge separation D23
+  # exists to protect. Declaring claude/consultant_support restores it: the support tier is no seat's model (wordsmith
+  # on the main tier, user-advocate the codex support tier, skeptic the codex std tier, architect agy (#368)), and a shared model still fails CLOSED.
+  # CONSEQUENCE, derived not copied: the arbiter term drops from the selected `arbiter` row (the Claude main tier, 1200) to
+  # consultant_support (the Claude support tier, 600), so the floor drops 6000 -> 5400. See budgets below.
+  # THE ARBITER'S OBLIGATIONS (D23): it must cite evidence for each ruling; it may abstain; and it must send
+  # unresolved material disputes to the user. The plan's arbiter object carries them to the chair.
+  provider: claude
+  role: consultant_support
+  prefer: wordsmith          # INERT under v2: not read by convene (labelled history; claude, provider != skeptic(codex) adversary)
+  provider_must_not_equal_adversarial: true  # INERT under v2, and superseded for this profile by D23's declared arbiter (labelled history)
+  effort_on_codex: max       # consumed ONLY by a codex ratification arbiter; moot while the declared arbiter is claude
 
 # --- Phase parameters (design §4) ---
 phases:
@@ -80,6 +102,18 @@ memory:
 
 # --- Budgets (design §4/§7) ---
 budgets:
-  max_seat_calls: 10
-  wall_clock_s: 900
+  # max_seat_calls = N diverge + N x max_cycles cross-exam + N converge + 1 arbiter (convene.estimate's rough
+  # plan) = 4 + 4 + 4 + 1 = 13. #368 re-derived it 10 -> 13 for the added agy seat.
+  max_seat_calls: 13
+  # wall_clock_s is set explicitly to the convene.wall_clock_budget floor (S081 I12, plan L2), RE-DERIVED by
+  # WP-D3 AFTER AMENDMENT 3's composition settled, under the D24 raised codex caps, so the shipped profile
+  # does not record a raise note on every run. Floor = arbiter timeout + 2 x the slowest external (codex/agy)
+  # member seat = DECLARED arbiter claude consultant_support (the Claude support tier) 600 + 2 x 2400 (the SLOWEST external is
+  # the codex skeptic at challenger_floor -> xhigh: codex_model.timeout_for -> 2400 for the codex std and support
+  # tiers alike; the codex user-advocate at consultant_support/medium is 1200 and the #368 agy architect 600, and the formula
+  # takes the slowest, not the sum) = 5400. #368 RE-DERIVED it: the added agy seat is not the slowest, so it did not move. IT WAS 6000 at WP-D3's first run, under the SELECTED claude `arbiter` row
+  # (the Claude main tier, 1200); the declaration (jc8) is the whole of the 600-second difference — the member term did not
+  # move. Re-derive it if a seat's provider or effort, the arbiter, or a role timeout changes. A value below
+  # the floor is raised at plan build with a note, so a legal call is never truncated.
+  wall_clock_s: 5400
   max_cycles: 1

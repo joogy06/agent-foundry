@@ -1,0 +1,125 @@
+{
+  "schema_version": "studio-profile.v1",
+  "name": "website-page",
+  "artefact": "a website page",
+  "work_kind": "rendered",
+  "private": false,
+  "max_agents": 17,
+  "borrow_max": 3,
+  "brief": {
+    "required": [
+      "subject",
+      "visitor",
+      "action"
+    ],
+    "optional": [
+      "proof",
+      "sections",
+      "pinned",
+      "notes"
+    ]
+  },
+  "constraints": {
+    "tier": "light",
+    "loads": [
+      "seo-keyword-strategist",
+      "seo-structure-architect",
+      "seo-meta-optimizer",
+      "conversion-psychology",
+      "audience-experience-design"
+    ],
+    "asks": [
+      "Search intent: what a visitor searched for to land here, and the headings that answer it.",
+      "The one action the page leads to, and where it must be reachable from.",
+      "The proof the page must carry before the action is asked for.",
+      "The visitor's task: what they came to do or decide, in their words.",
+      "The information order: what the visitor needs first, next and last to finish that task.",
+      "The key states the page needs (for example empty, loading, error, selected, success) and what each must tell the visitor."
+    ]
+  },
+  "functions": [
+    {
+      "id": "visual",
+      "axis_set": "visual",
+      "output": "index.html",
+      "seats": [
+        {
+          "id": "visual-a",
+          "loads": [
+            "family:visual-craft-restrained"
+          ],
+          "doctrine": "references/doctrine.md"
+        },
+        {
+          "id": "visual-b",
+          "loads": [
+            "family:visual-craft-expressive"
+          ],
+          "doctrine": "references/doctrine.md"
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "axis_set": "copy",
+      "output": "copy.md",
+      "attached_to": "visual",
+      "seats": [
+        {
+          "id": "copy-a",
+          "loads": [
+            "family:copy-plain"
+          ],
+          "school_file": "business-writing/references/school-plain.md",
+          "format_file": "content-writer/references/format-page-copy.md"
+        },
+        {
+          "id": "copy-b",
+          "loads": [
+            "family:copy-voiced"
+          ],
+          "school_file": "content-writer/references/school-voiced.md",
+          "format_file": "content-writer/references/format-page-copy.md"
+        }
+      ]
+    }
+  ],
+  "baseline": {
+    "first_runs": 3
+  },
+  "evidence": {
+    "capture": true
+  },
+  "critic": {
+    "skill": "design-critique",
+    "references": [
+      "references/critic-brief.md",
+      "references/neutral-floor.md",
+      "references/rubric.md"
+    ]
+  },
+  "finish": [
+    {
+      "id": "ux-review",
+      "tier": "medium",
+      "loads": [
+        "ux-reviewer"
+      ],
+      "asks": "review the finished page in `final/` for usability and accessibility against the visitor's task, the information order and the key states in `constraints.md`, and fix what a review can fix without changing the design."
+    }
+  ],
+  "retries": {
+    "distance_redo": 1,
+    "remake_round": 1
+  },
+  "light": {
+    "drops": [
+      "second_read",
+      "winner_remake",
+      "finish",
+      "remake_round",
+      "distance_redo",
+      "attached_seats"
+    ]
+  }
+}

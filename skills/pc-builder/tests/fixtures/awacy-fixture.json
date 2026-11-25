@@ -1,0 +1,18 @@
+{
+  "schema": "awacy-snapshot.v1",
+  "source_url": "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json",
+  "as_of": "2026-09-27",
+  "stale_after_days": 30,
+  "block_after_days": 60,
+  "note": "Test fixture: a handful of real entries from the 2026-09-27 download.",
+  "counts": {"Denied": 2, "Broken": 1, "Supported": 2, "Running": 1, "Planned": 1},
+  "games": [
+    {"name": "Fortnite", "status": "Denied"},
+    {"name": "Valorant", "status": "Denied"},
+    {"name": "PUBG: Battlegrounds", "status": "Broken"},
+    {"name": "Counter-Strike 2", "status": "Supported"},
+    {"name": "Dota 2", "status": "Supported"},
+    {"name": "Elden Ring", "status": "Running"},
+    {"name": "Example Planned Game", "status": "Planned"}
+  ]
+}

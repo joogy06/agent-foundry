@@ -53,7 +53,7 @@ _DETECTION_RULES = [
     # exposes no documented session/host marker env var, and the antigravity-cli
     # skill does not name one. The entry below is a placeholder name kept so the
     # detection structure is intact; replace "ANTIGRAVITY_CLI_SESSION_ID" with the
-    # real marker once verified (check `agy` runtime env, e.g. `agy -p "env | sort"`).
+    # real marker once verified (check `agy` runtime env, e.g. `agy --sandbox --mode plan --model <seat_model pin> -p "env | sort"`).
     ("ANTIGRAVITY_CLI_SESSION_ID", None, "antigravity-cli", "ANTIGRAVITY_CLI_SESSION_ID set (TODO(agy): confirm)"),
 
     # Copilot CLI — set by `copilot` on launch (newer @github/copilot)

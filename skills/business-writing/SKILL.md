@@ -2,10 +2,17 @@
 name: business-writing
 description: "Use when writing anything at work that needs a reader to decide, approve, act or understand — emails, Teams and Slack messages, one-pagers, proposals, status updates, executive summaries, slide text and meeting requests. Covers leading with the outcome rather than the chronology, naming the ask, the so-what test, structure for skim-readers, subject and first lines, delivering bad news, register by audience, and cutting to length without losing the point."
 disambiguation: "The WRITING itself, across every workplace surface — structure, order, concision, tone, the ask. Deck narrative and slide design are presentation-narrative and presentation-styling; blog and editorial content is content-writer; condensing something that already exists is summarize; removing AI-typical patterns from a draft you own is human-voice-writing; getting the finished thing in front of the decision-maker is career-advocacy."
+family: copy-plain
 ---
 
 # Business writing — outcome first
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: business-writing-guidance
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.**
 
@@ -172,3 +179,8 @@ Length is a symptom.
 - **Bulleted arguments** that lose the reasoning between the points.
 - **Unexpanded acronyms.**
 - **Sending the first draft** without cutting a third.
+
+## In a creative-studio run
+
+A copy seat that loads this skill writes under `references/school-plain.md`: the school's axis table, its
+process and its refuse list, which the studio inlines in the seat's brief.

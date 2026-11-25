@@ -32,7 +32,7 @@ The preferred entry point is the **codex plugin** (`~/.claude/plugins/cache/open
 ### Raw `codex exec` pattern (when slash commands don't fit)
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 timeout 600 codex exec --ephemeral -s read-only \
   -o "$CODEX_WORK/result.md" \
   "Review this skill draft at [PATH]. Output: deploy / revise / rewrite."
@@ -49,7 +49,7 @@ Always wrap with `timeout`. Long-running Codex tasks may exit non-zero before wr
 
 ## Calling Antigravity (agy) from Claude Code
 
-The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (sole delegate — the gemini CLI was retired from this ecosystem 2026-07-25). `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), but the host convention remains to OMIT it — the Antigravity-account default model is used.
+The Antigravity CLI (`agy`) is this host's PRIMARY second-opinion / challenger / research delegate (sole delegate — the gemini CLI was retired from this ecosystem 2026-07-25). `agy` authenticates itself (Antigravity account, config under `~/.antigravity/`); there is no API-key env prefix. agy ≥1.0.5 HAS a `--model` flag (and an `agy models` subcommand), and the host convention is to PIN it on every call, resolved through `seat_model.py argv --role <role> --provider agy` (only the roster's agy family is allowed; the account default may be a forbidden one). The `model-eval-pack` skill alone passes `--model` literally, to measure a model.
 
 ### Via the `agy` CLI directly
 For headless invocations or shell scripts:
@@ -58,17 +58,23 @@ For headless invocations or shell scripts:
 # Availability check (run BEFORE delegating agy work)
 command -v agy && agy --version
 
+# Resolve the model first; `&&` keeps agy from ever running with an empty $AGY_MODEL
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
 # Headless single prompt — output is plain text on stdout
-agy -p "summarise this codebase" < /dev/null
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "<self-contained prompt>" < /dev/null)
 
-# Scope the run to one or more directories (repeatable)
-agy --add-dir ./src -p "find all the public API entry points" < /dev/null
+# Give it files inline, read first: an advisory call has no repo in its workspace, and piped stdin never reaches the model
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+C="$(tail -n +1 src/*.py)" && (d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "find all the public API entry points in:
+$C" < /dev/null)
 
 # Raise the wait timeout for long runs (default 5m0s)
-agy --print-timeout 15m -p "deep analysis of this codebase" < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan --print-timeout 15m $AGY_MODEL -p "<long self-contained prompt>" < /dev/null)
 
-# Restricted-terminal run; auto-approve tool calls only in a fully-headless context
-agy --sandbox --dangerously-skip-permissions -p "..." < /dev/null
+# Pattern 2: full shell and git, no containment, so a throwaway directory only (never a live repo)
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --dangerously-skip-permissions $AGY_MODEL -p "..." < /dev/null)
 ```
 
 `agy -p` returns **plain text** on stdout — parse the text, not JSON fields; there are no structured response fields. Model self-identification is unreliable; if you need to confirm which model served a call, append a `served_by` probe line to the prompt rather than trusting any self-reported identity.
@@ -80,7 +86,7 @@ See the `antigravity-cli` skill for the full surface.
 | From | Pattern |
 |---|---|
 | Codex CLI | `codex` reads `~/.codex/skills/` (symlinked from `~/.claude/skills/`) and `~/.codex/AGENTS.md` |
-| Antigravity CLI (agy) | Scope context into a run with `agy --add-dir <path>` (repeatable). `# TODO(agy): verify equivalent` — no verified `agy` skills-directory or settings-migration mechanism |
+| Antigravity CLI (agy) | Work that needs tools can widen a throwaway run with `agy --add-dir <path>` (repeatable); advisory calls take no `--add-dir` and get their content inline (#366). `# TODO(agy): verify equivalent` — no verified `agy` skills-directory or settings-migration mechanism |
 | GitHub Copilot CLI | No skills concept. Reference Claude skills via `AGENTS.md` or wrap as MCP servers in `~/.copilot/mcp-config.json`. See `gh-copilot-cli` skill |
 | Shell script | `claude -p --bare` for CI-safe invocation |
 | GitHub Actions | `references/github-actions.md` |

@@ -1,0 +1,36 @@
+{
+  "schema": "intake-staged-change-sample.v1",
+  "note": "Benign shape sample of what arm 6 of the pre-commit hook judges: the paths one commit stages, with the staged content of each, and the ledger as staged. Tests write these into a throwaway git repo and stage them; a sample that trips a block rule is built at test time, never stored here.",
+  "ledger": {
+    "schema": "intake-ledger.v1",
+    "entries": [],
+    "exceptions": []
+  },
+  "changes": [
+    {
+      "status": "A",
+      "path": "skills/sample-skill/SKILL.md",
+      "mode": "100644",
+      "text": "---\nname: sample-skill\ndescription: Sample skill for the enforcement tests.\n---\n\n# Sample skill\n\nPlain prose.\n"
+    },
+    {
+      "status": "A",
+      "path": "skills/sample-skill/references/notes.md",
+      "mode": "100644",
+      "text": "# Notes\n\nPlain prose.\n"
+    },
+    {
+      "status": "A",
+      "path": "docs/notes.md",
+      "mode": "100644",
+      "text": "Outside the four roots: never read by the arm.\n"
+    }
+  ],
+  "expect": {
+    "exit": 1,
+    "units_without_entry": [
+      "skills/sample-skill"
+    ],
+    "block_rule_hits": 0
+  }
+}

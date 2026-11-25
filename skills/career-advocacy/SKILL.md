@@ -7,6 +7,12 @@ disambiguation: "The TACTICAL layer — the specific moves that get work seen an
 
 # Career advocacy — getting seen, and getting things through
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: career-advocacy-guidance
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Volatile figures live in `career-coach/references/market-snapshot-2026-06.md`.
 

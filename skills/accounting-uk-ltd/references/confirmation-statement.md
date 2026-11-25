@@ -1,5 +1,11 @@
 # Confirmation statement (CS01) — a separate annual obligation
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: uk-confirmation-statement
+    review_by: "2027-04-06"
+-->
 <!-- REVIEW-BY: 2027-04-06 -->
 **REVIEW-BY: 2027-04-06** · verified 2026-07-29.
 

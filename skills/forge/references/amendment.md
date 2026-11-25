@@ -1,5 +1,20 @@
 # Forge Amendment Mode (S029 §7.3)
 
+Out of band, not a checklist step — previous: bob's contract-scope pause cycle; next: return `{amended_map_path, deltas_resolved}` to bob.
+There is no return to the SKILL.md checklist: the paused cycle's own steps resume in bob.
+
+## Contents
+
+- Amendment Mode (S029): trigger, budget key and size, authority, what forge does and does not do
+- 1. Entry signature
+- 2. Amendment dialogue protocol
+- 3. Drafting the amended map (helper call)
+- 4. Output contract — what forge returns to bob
+- 5. Worked example — SQL-table-D delta
+- 6. HARD-RULEs for forge in amendment mode (summary)
+- 6b. Post-amendment obligation: re-pin the retro-scan baseline
+- 7. Cross-references
+
 This reference describes how forge handles `mode=amendment` invocations from
 bob during a contract-scope pause cycle. Forge does NOT enter amendment mode
 on its own — bob spawns it after `G_CONTRACT_SCOPE` has flagged a critical
@@ -8,6 +23,52 @@ undeclared artifact and the pause-state machine has reached `MAP_UPDATING`.
 > **Authority**: USER IS SOLE AUTHORITY for amendments. Forge cannot
 > self-approve. Bob cannot self-approve. Forge proposes the amended map
 > shape based on user decisions; bob signs/applies/restarts. (Q3b lock.)
+
+---
+
+## Amendment Mode (S029)
+
+This section runs only when bob spawns forge with `mode=amendment` during a contract-scope pause cycle. It is **not a numbered step** in the main checklist — Step 9 (Spawn bob) remains in place. Amendment Mode is an out-of-band invocation that handles a specific bob-initiated pause-state subprotocol.
+
+**Trigger.** Bob's `G_CONTRACT_SCOPE` gate has flagged a critical undeclared artifact during a WP boundary or `INTEGRATED → VERIFIED` re-check; bob has acknowledged the pause and reached `MAP_UPDATING`. Bob then spawns forge with:
+
+```
+mode: amendment
+project_root: <abs path>
+contract_map_path: <abs path to current signed progress/contract-map.yaml>
+gaps_dir: <abs path to .ledger/scope-deltas/>
+pause_epoch: <epoch returned by claims.request_scope_pause>
+```
+
+**Budget key and size.** Amendment mode runs inside the paused cycle: it does not run Step 1, Step 4 or Step 6 and must not write or delete `.forge/cycle-id`, `.forge/cycle-base` or `.forge/size`, so any codex call it makes shares that cycle's budget AND that cycle's size. Re-writing the size here would re-point the paused cycle's codex main seats mid-cycle; deleting it would silently promote them back to `complex`. The paused cycle's own Step 4 already decided it.
+
+**Authority — USER IS SOLE AUTHORITY (Q3b lock).** Forge cannot self-approve any amendment. Bob cannot self-approve. Both only mechanically apply user-approved decisions. There are **no waivers** — the only legal bypass for `G_CONTRACT_SCOPE` is a user-approved amendment of the signed contract map.
+
+**What forge does in amendment mode.**
+1. Load the helper from `~/.claude/skills/_meta/forge_amendment_helper.py`.
+2. Read all undecided scope_delta records: `fah.read_undecided_deltas(project_root)`.
+3. For each record, present a structured prompt to the user (path, artifact_kind, severity, requesting_wp, detection_point, closest declared component(s)) with decision options: **a**mend (add path to a component's `source_paths`), **e**xclude (add to top-level `excluded_paths`), **d**efer (leave undecided — escalate or HALT), **r**eject (forge proposes nothing for this delta; bob's pause cycle will time out → ROLLBACK).
+4. Build a `decisions` list from the user's input.
+5. Call `fah.draft_amendment(contract_map_path, decisions)` to obtain amended-YAML text. The helper bumps `revision` (rev_N → rev_N+1) and is a **pure function** — no I/O, no signing.
+6. Write the proposal to a non-canonical path (recommended: `<project_root>/.forge/amendment-rev-<N>.yaml.proposal`). **Forge never overwrites `progress/contract-map.yaml`.**
+7. Return `fah.return_to_bob(amended_path, deltas_resolved)` to bob — a dict `{amended_map_path, deltas_resolved}`.
+
+**What forge does NOT do** (these are bob's responsibilities, enforced by static-scan tests on the helper):
+- Compute or modify the HMAC signature, touch `.forge/session.key`, or write `progress/contract-map.yaml.sig`.
+- Write to `progress/integration-ledger.md`, `.ledger/claims/`, `.ledger/deltas/`, or any subpath under `.ledger/`.
+- Call `scope_delta.update_status` (bob's hand-off step at 8.7).
+- Call `pause_state.transition_to`, `pause_state.request_pause`, or any other pause-state mutator (CB4: only `scope_reaction.handle` may call `pause_state.request_pause`; bob orchestrates the rest).
+- Run G2 as the authoritative check — bob runs G2 again on receipt before signing.
+
+**Reference.** Full protocol detail (entry signature, dialogue script, output contract, worked SQL-table-D example, HARD-RULEs) lives in `references/amendment.md`. Read that doc before handling any `mode=amendment` invocation.
+
+**Cross-references:**
+- Helper: `~/.claude/skills/_meta/forge_amendment_helper.py` (CONTRACT-C1).
+- Schema: `~/.claude/skills/_meta/schemas/scope_delta.v1.json` (CONTRACT-A2).
+- Bob hot path: `~/.claude/agents/bob.md` HARD-RULE 6, Step 4.6, Step 8.7.
+- Pause state machine: `~/.claude/skills/_meta/pause_state.py` (CONTRACT-A0).
+- Reaction (only legal pause-state caller): `~/.claude/skills/_meta/scope_reaction.py` (CONTRACT-B2).
+- Design doc: `docs/plans/2026-04-26-contract-scope-enforcement-keystone-design.md` §7.3.
 
 ---
 

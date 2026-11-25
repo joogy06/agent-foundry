@@ -46,8 +46,10 @@ import collections
 import copy
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -2549,13 +2551,18 @@ _AGY_TEMPLATE_FALLBACK = """\
 # agy — host directive (Antigravity CLI global context)
 
 You are `agy` (the Antigravity CLI): the PRIMARY second-opinion / challenger /
-research delegate for the primary coding agent. Invoked headlessly as
-`agy -p "<self-contained prompt>"`.
+research delegate for the primary coding agent. Invoked headlessly from an
+empty working directory as
+`agy --sandbox --mode plan --model <pinned slug> -p "<self-contained prompt>"`.
 
-- STDIN must be closed or piped: `timeout 600 agy -p "..." < /dev/null`
+- STDIN must be closed (agy waits on it; content goes inline in -p, never by pipe):
+  `(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan --model <pinned slug> -p "..." < /dev/null)`
   (headless agy reads non-TTY stdin until EOF and otherwise hangs).
-- No model flag by convention — use the Antigravity-account-configured model.
+- The caller pins the model: `--model <slug>` before `-p`, resolved through the
+  seat registry (seat_model.py argv --role <role> --provider agy).
 - Account auth under ~/.antigravity/ — no API-key/env prefix needed.
+- Advise only: unless the prompt explicitly grants writes, change nothing; your
+  stdout is your deliverable.
 - Plain text out. Be a genuine challenger, not a rubber stamp. Stay on the
   prompt. Be decision-grade and concise.
 """
@@ -2634,7 +2641,9 @@ def _atomic_write_text(path: Path, text: str) -> None:
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     tmp = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        # newline="": write the text's own line endings, so a Windows install
+        # does not turn LF into CRLF (the hashes and byte compares assume LF).
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
@@ -2653,17 +2662,49 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+# At most this many backups of one file are kept (`.bak`, `.bak.1`, ...); the
+# oldest are pruned once a new one is written (#318 user-scoped round).
+MAX_BACKUPS = 5
+
+
+def _existing_backups(path: Path) -> list:
+    """(index, Path) of every backup of `path`, oldest first: `.bak` is index 0,
+    `.bak.N` is index N."""
+    found = []
+    for cand in path.parent.glob(path.name + ".bak*"):
+        suffix = cand.name[len(path.name) + len(".bak"):]
+        if suffix == "":
+            found.append((0, cand))
+        elif suffix.startswith(".") and suffix[1:].isdigit():
+            found.append((int(suffix[1:]), cand))
+    return sorted(found)
+
+
 def _backup(path: Path) -> "Path | None":
-    """copy2 `path` -> `path + '.bak'`. Returns the backup Path, or None on
-    failure — in which case the caller MUST refuse to modify the original (never
-    overwrite without a good backup; mirrors install_agy's data-loss guard)."""
+    """Copy `path` to a NEW backup and return it, or None on failure — in which
+    case the caller MUST refuse to modify the original (never overwrite without a
+    good backup; mirrors install_agy's data-loss guard).
+
+    An earlier backup is never overwritten: the first is `.bak`, later ones
+    `.bak.N` numbered past the highest existing one. At most MAX_BACKUPS are
+    kept; the oldest are pruned AFTER the new one is safely written. A symlink
+    is backed up AS a link, so a dangling one can be backed up too."""
     path = Path(path)
-    backup = path.with_suffix(path.suffix + ".bak")
+    existing = _existing_backups(path)
+    if not existing:
+        backup = path.with_name(path.name + ".bak")
+    else:
+        backup = path.with_name(path.name + f".bak.{existing[-1][0] + 1}")
     try:
-        shutil.copy2(path, backup)
-        return backup
+        shutil.copy2(path, backup, follow_symlinks=not path.is_symlink())
     except OSError:
         return None
+    for _, old in _existing_backups(path)[:-MAX_BACKUPS]:
+        try:
+            old.unlink()
+        except OSError:
+            pass  # pruning is best-effort; the new backup is already in place
+    return backup
 
 
 def install_agy(gemini_home: Path, force: bool = False, dry_run: bool = False) -> bool:
@@ -2945,6 +2986,76 @@ def merge_missing_session_start_hooks(settings: dict, os_key: str | None = None,
     return added
 
 
+#: The permission rules the intake commands need (#350). `ask`: a person sees and approves
+#: every override, triage decision and exception. The leading `*` is what lets one rule
+#: match `python3 /abs/path/intake.py override ...` and a relative spelling alike; a
+#: `cd ... && ...` prefix is covered because an ask rule applies when ANY subcommand of a
+#: compound command matches it. `deny`: the quarantine holds what a scan target wrote
+#: (file names, snippets, scanner text), so Claude's file tools do not read it. The deny
+#: rule is a speed bump, not a boundary: a script that opens the file itself is not stopped.
+#: Syntax checked against https://code.claude.com/docs/en/permissions on 2026-10-12.
+INTAKE_PERMISSION_RULES = (
+    ("ask", "Bash(*intake.py override*)"),
+    ("ask", "Bash(*intake.py triage*)"),
+    ("ask", "Bash(*intake.py except*)"),
+    ("deny", "Read(~/.foundry/quarantine/**)"),
+)
+
+#: The permission rules the mail-scan skill needs (#351), in the same form. `ask`: a
+#: person sees and approves every override of a mail verdict, and every Edit or Write
+#: under the default state root (so the override log is not appended around the prompt).
+#: `deny`: a view is text an unknown sender wrote, and the key is what records and
+#: override lines are sealed with, so Claude's file tools read neither. The same limits
+#: hold as above: a rule matches the command as it is normally typed and the file tools
+#: only; a script that opens the file itself, or a state root moved with --root or
+#: $FOUNDRY_MAILSCAN_ROOT, is not covered (`mailscan.py doctor` warns for a moved root).
+#: The second Bash rule covers the module form (`python3 -m mailscan override ...`), which
+#: the first, written on the file name, does not match (#351 fix round 1, review C F8).
+#: These rules bind Claude Code: Codex and agy get the skill without them.
+MAILSCAN_PERMISSION_RULES = (
+    ("ask", "Bash(*mailscan.py override*)"),
+    ("ask", "Bash(*mailscan*override*)"),
+    ("ask", "Edit(~/.foundry/mail-scan/**)"),
+    ("deny", "Read(~/.foundry/mail-scan/views/**)"),
+    ("deny", "Read(~/.foundry/mail-scan/key)"),
+)
+
+#: Every rule the merge adds, in the order the template lists them per bucket.
+PERMISSION_RULES = INTAKE_PERMISSION_RULES + MAILSCAN_PERMISSION_RULES
+
+
+def merge_missing_permission_rules(settings: dict) -> list:
+    """PURE merge core, the permission-rule twin of merge_missing_session_start_hooks:
+    mutate `settings` IN PLACE, appending each PERMISSION_RULES rule that its
+    `permissions.<bucket>` list does not hold, and return the added (bucket, rule) pairs.
+
+    Dedup identity = the exact rule string. Nothing is removed, reordered or rewritten:
+    every other rule, `permissions.allow`, `defaultMode` and every other key stay as they
+    are. The whole shape is checked BEFORE the first change, so a refusal leaves
+    `settings` exactly as it was.
+
+    Raises TypeError on a wrong-shaped object (root not a dict; `permissions` not a
+    dict; `permissions.ask` or `permissions.deny` present and not a list)."""
+    if not isinstance(settings, dict):
+        raise TypeError(f"settings root must be a JSON object, got {type(settings).__name__}")
+    permissions = settings.get("permissions", {})
+    if not isinstance(permissions, dict):
+        raise TypeError("settings['permissions'] must be a JSON object")
+    for bucket in sorted({b for b, _rule in PERMISSION_RULES}):
+        if bucket in permissions and not isinstance(permissions[bucket], list):
+            raise TypeError(f"settings['permissions']['{bucket}'] must be a list")
+
+    added = []
+    for bucket, rule in PERMISSION_RULES:
+        if rule in permissions.get(bucket, []):
+            continue
+        permissions.setdefault(bucket, []).append(rule)
+        added.append((bucket, rule))
+    if added:
+        settings["permissions"] = permissions
+    return added
+
+
 # ---------------------------------------------------------------------------
 # canonical-config-provenance (WP-005, §6.C4.6 + §11 A1)
 #
@@ -2959,6 +3070,11 @@ def merge_missing_session_start_hooks(settings: dict, os_key: str | None = None,
 # Destination filename -> manifest key. The manifest is keyed by FILENAME so
 # the accessor reads literally as `canonical.<file>.sha256` (§6.C4.6).
 CANONICAL_CONFIG_FILES = ("CLAUDE.md", "settings.json")
+
+# Repo-relative source of ~/.claude/CLAUDE.md (#318). The repo-root CLAUDE.md is
+# foundry-lab's own project file and is never installed. The manifest key stays
+# the destination filename, "CLAUDE.md".
+GLOBAL_CLAUDE_MD_SOURCE = Path("global") / "CLAUDE.md"
 
 # Verdicts. `absent` is separated from `customized` because it authorizes a
 # write while carrying no risk (there is nothing to destroy), whereas
@@ -3064,6 +3180,70 @@ def _record_canonical(canonical_out: "dict | None", filename: str,
         pass
 
 
+# Top-level settings the merge path adds to a customised settings.json when they
+# are ABSENT (#344). The value comes from the bundled template, so there is one
+# source for it. A key that is present is the user's, whatever its value: it is
+# never changed, never reported, and never a reason to write the file.
+ADD_IF_ABSENT_SETTINGS = ("skillListingBudgetFraction",)
+
+
+def _absent_template_settings(current: dict, template_text: str) -> dict:
+    """{key: template value} for each ADD_IF_ABSENT_SETTINGS key the template
+    carries and `current` lacks. Empty when the template cannot be parsed: a
+    broken template must not turn into a guess about what to add."""
+    try:
+        template = json.loads(template_text)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(template, dict):
+        return {}
+    return {k: template[k] for k in ADD_IF_ABSENT_SETTINGS
+            if k in template and k not in current}
+
+
+def _append_top_level_key_text(text: str, key: str, value) -> "str | None":
+    """Return `text` (a JSON object) with `"key": value` appended as its LAST
+    top-level member and every existing character kept, or None when that
+    cannot be done safely.
+
+    This exists so that adding one setting to a file the user wrote does not
+    re-serialise the file: indentation, line endings, key order, spacing and
+    unescaped non-ASCII all stay as they were. The new member copies the
+    whitespace that precedes the first member, so it lines up with the rest.
+
+    The result is checked, not trusted: it must parse to exactly the original
+    members, in order, followed by the new one. Anything else (not an object,
+    the key already present, a splice that parses differently) returns None
+    and the caller falls back to a plain re-serialise."""
+    try:
+        original = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(original, dict) or key in original:
+        return None
+    opening = text.find("{")
+    closing = text.rstrip().rfind("}")
+    if opening < 0 or closing != len(text.rstrip()) - 1 or text[:opening].strip():
+        return None
+    body = text[opening + 1:closing]
+    member = json.dumps(key) + ": " + json.dumps(value)
+    if not body.strip():
+        new_text = text[:opening + 1] + member + text[opening + 1:]
+    else:
+        lead = body[:len(body) - len(body.lstrip())]
+        last = opening + 1 + len(body.rstrip())
+        new_text = text[:last] + "," + lead + member + text[last:]
+    try:
+        parsed = json.loads(new_text)
+    except ValueError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if list(parsed.items()) != list(original.items()) + [(key, value)]:
+        return None
+    return new_text
+
+
 def install_settings(claude_home: Path, force_global: bool = False,
                      dry_run: bool = False,
                      canonical_prev: "dict | None" = None,
@@ -3076,6 +3256,9 @@ def install_settings(claude_home: Path, force_global: bool = False,
       - present, valid, differs        → inject ONLY the missing canonical hooks
                                          (.bak first, atomic); every other user
                                          value (model, defaultMode, …) untouched.
+                                         Also adds each ADD_IF_ABSENT_SETTINGS key
+                                         that is absent (#344); a value already
+                                         there, whatever it is, is never changed.
                                          --force_global → .bak + overwrite whole.
       - present, malformed / wrong-shape → leave UNTOUCHED, loud warning, return
                                          False (never crash, never false-"done").
@@ -3210,7 +3393,27 @@ def install_settings(claude_home: Path, force_global: bool = False,
         print(f"      Fix it, or re-run with --force-global-config to replace it (a .bak is written first).")
         return False
 
-    if not added:
+    # The intake (#350) and mail-scan (#351) permission rules: appended when absent, nothing
+    # else in `permissions` touched. A wrong-shaped `permissions` object is left exactly as
+    # it is and SAID SO -- the hooks above are still injected, because refusing the
+    # whole file over one odd key would leave the box with no SessionStart hooks too.
+    try:
+        added_rules = merge_missing_permission_rules(current)
+    except TypeError as exc:
+        added_rules = []
+        print(f"    ⚠ {target}: the permissions object is the wrong shape ({exc}) — left UNTOUCHED.")
+        print("      The intake and mail-scan ask rules and Read deny rules were NOT added:")
+        for bucket, rule in PERMISSION_RULES:
+            print(f"        permissions.{bucket}: {rule}")
+
+    # Read AFTER the hook merge (which has already rejected a non-object root)
+    # and from the parsed file, so "absent" means absent from what the user has.
+    pending = _absent_template_settings(current, template_text)
+
+    def _setting(key) -> str:
+        return f"{json.dumps(key)}: {json.dumps(pending[key])}"
+
+    if not added and not pending and not added_rules:
         # Differs in some non-hook key, but all 6 hooks already present — leave it.
         print(f"    = {target} has all 6 SessionStart hooks already — leaving your other settings as-is")
         return True
@@ -3218,18 +3421,407 @@ def install_settings(claude_home: Path, force_global: bool = False,
     if dry_run:
         for cmd in added:
             print(f"    would add SessionStart hook: {cmd}")
+        for key in pending:
+            print(f"    would add setting {_setting(key)} to {target} "
+                  f"(absent; an existing value is never changed)")
+        for bucket, rule in added_rules:
+            print(f"    would add permission rule to permissions.{bucket}: {rule}")
         return True
     backup = _backup(target)
     if backup is None:
         print(f"    ⚠ could not write backup of {target}; refusing to modify")
         return False
     print(f"    backup -> {backup}")
+
+    if not added and not added_rules:
+        # Only settings are missing: splice them into the user's own text so
+        # every other byte of the file stays as it was. The hook merge above
+        # changed nothing in this case, so `current_bytes` is still the truth.
+        new_text = current_bytes.decode("utf-8")
+        for key, value in pending.items():
+            new_text = _append_top_level_key_text(new_text, key, value) if new_text is not None else None
+        if new_text is not None:
+            _atomic_write_text(target, new_text)
+            for key in pending:
+                print(f"    + added setting {_setting(key)} to {target} "
+                      f"(absent before; every other byte preserved; previous saved to {backup.name})")
+            return True
+        current.update(pending)
+        _atomic_write_text(target, json.dumps(current, indent=2) + "\n")
+        for key in pending:
+            print(f"    + added setting {_setting(key)} to {target} "
+                  f"(absent before; file re-serialised, other settings preserved; "
+                  f"previous saved to {backup.name})")
+        return True
+
+    # Hooks or permission rules are missing: the file is re-serialised, as it always
+    # was on this path. Any absent setting rides the same write (one backup, one write).
+    current.update(pending)
     _atomic_write_text(target, json.dumps(current, indent=2) + "\n")
-    print(f"    + injected {len(added)} missing SessionStart hook(s) into {target} "
-          f"(other settings preserved; previous saved to {backup.name})")
+    if added:
+        print(f"    + injected {len(added)} missing SessionStart hook(s) into {target} "
+              f"(other settings preserved; previous saved to {backup.name})")
     for cmd in added:
         print(f"        + {cmd}")
+    if added_rules:
+        print(f"    + added {len(added_rules)} permission rule(s) to {target} "
+              f"(every other key and rule preserved; previous saved to {backup.name})")
+    for bucket, rule in added_rules:
+        print(f"        + permissions.{bucket}: {rule}")
+    for key in pending:
+        print(f"    + added setting {_setting(key)} to {target} (absent before)")
     return True
+
+
+# ---------------------------------------------------------------------------
+# install-intake-check (#350)
+#
+# The pre-commit hook judges what a commit adds. This judges what is about to be
+# INSTALLED, whatever route it took into the source tree -- which is what catches
+# content committed with --no-verify, or never committed at all.
+# ---------------------------------------------------------------------------
+
+INTAKE_LEDGER_REL = "skills/_meta/intake-ledger.json"
+INTAKE_HELPER_REL = "skills/intake-scan/scripts/intake_ledger.py"
+INTAKE_ROOTS = ("skills", "agents", "commands", "workflows")
+INTAKE_MAX_LISTED = 20
+#: Exit codes of a refused run. 2: the source tree fails the check. 3: the check could
+#: not be run (helper missing or crashing, ledger malformed) -- refused all the same.
+EXIT_INTAKE_REFUSED = 2
+EXIT_INTAKE_ERROR = 3
+#: A path made of these characters only is printed; any other prints as a stand-in.
+_INTAKE_PLAIN_PATH = re.compile(r"^[A-Za-z0-9._/@+-]{1,200}$")
+
+
+def _intake_show(path: str, il=None, doc=None, sha256: str = "") -> str:
+    """A path of the source tree as it may be printed. The helper decides when it can: a
+    file inside an ADOPTED unit shows as its unit and a digest, because its name was
+    chosen by the source it came from."""
+    show = getattr(il, "show_path", None)
+    if show is not None:
+        return show(doc, path, sha256)
+    return path if _INTAKE_PLAIN_PATH.match(path) else "(name withheld)"
+
+
+def _load_intake_ledger(repo_root: Path):
+    """The SOURCE TREE's ledger module, loaded by path. Never the home copy: the tree
+    being installed is judged by the rules it ships."""
+    name = "_foundry_install_intake_ledger"
+    spec = importlib.util.spec_from_file_location(name, str(repo_root / INTAKE_HELPER_REL))
+    if spec is None or spec.loader is None:
+        raise ImportError("no loader for the intake helper")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+def _intake_ignored_count(repo_root: Path) -> "int | None":
+    """How many git-ignored files sit under the four roots, or None outside a checkout.
+    They are counted and reported, not scanned (#350 JC-3)."""
+    if not (repo_root / ".git").exists():
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files", "-o", "-i", "--exclude-standard", "-z",
+             "--", *INTAKE_ROOTS], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return sum(1 for chunk in proc.stdout.split(b"\x00") if chunk)
+
+
+def _intake_listed(label: str, rows: list) -> None:
+    print(f"  {label}: {len(rows)}")
+    for row in rows[:INTAKE_MAX_LISTED]:
+        print(f"      {row}")
+    if len(rows) > INTAKE_MAX_LISTED:
+        print(f"      (+{len(rows) - INTAKE_MAX_LISTED} more)")
+
+
+def intake_source_check(repo_root: Path) -> int:
+    """Run block rules H1 to H9 and H11 over the skills, agents, commands and workflows of the
+    source tree, against its intake ledger. Prints what it found and what is in force. H7
+    includes the layout of a git repository under any directory name, judged over the whole
+    tree; such a path takes no exception and no override.
+
+    Returns 0 when the tree may be installed (or has no ledger: one line, skipped),
+    EXIT_INTAKE_REFUSED on an unexcepted hit or a unit with no entry, EXIT_INTAKE_ERROR
+    when the check could not be run. Reads only; the same in every placement mode and
+    under --dry-run.
+
+    The file set is tracked plus untracked-and-not-ignored files in a git checkout, and
+    every file on disk in a tree that is not one (a published bundle)."""
+    print("[intake check]")
+    if not (repo_root / INTAKE_LEDGER_REL).is_file():
+        print(f"  = no intake ledger in this source tree ({INTAKE_LEDGER_REL}) — check skipped")
+        return 0
+
+    step = "finding the intake helper"
+    # No bytecode: a __pycache__ written beside the helper would be a compiled file in
+    # the very tree being judged, and the next run over a non-git tree would refuse it.
+    write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if not (repo_root / INTAKE_HELPER_REL).is_file():
+            raise FileNotFoundError(INTAKE_HELPER_REL)
+        step = "loading the intake helper"
+        il = _load_intake_ledger(repo_root)
+        step = "running the block rules against the ledger"
+        result = il.verify(str(repo_root))
+        step = "listing the exceptions and overrides in force"
+        state = il.status(str(repo_root))
+        doc = il.load(str(repo_root))
+        describe = il._rules().describe
+    except Exception as exc:  # fail closed: a tree with a ledger is never installed unchecked
+        fixed = str(exc) if type(exc).__module__ == "_foundry_install_intake_ledger" else ""
+        print(f"  ✗ the intake check could not run. Failing step: {step}"
+              f"{' — ' + fixed if fixed else ''} ({type(exc).__name__})")
+        print(f"    This source tree has an intake ledger ({INTAKE_LEDGER_REL}), so the check")
+        print(f"    is required; expected the helper at {INTAKE_HELPER_REL}.")
+        return EXIT_INTAKE_ERROR
+    finally:
+        sys.dont_write_bytecode = write_bytecode
+
+    ignored = _intake_ignored_count(repo_root)
+    if ignored is None:
+        print(f"  files checked: {result.files} (every file under the four roots)")
+    else:
+        print(f"  files checked: {result.files} (tracked, plus untracked and not ignored); "
+              f"git-ignored and NOT scanned: {ignored}")
+    _intake_listed("exceptions in force", [
+        f"{exc['rule']}  {_intake_show(exc['path'], il, doc, exc['sha256'])}" for exc in state["exceptions"]])
+    if state.get("block_entries"):
+        _intake_listed("units entered at a block verdict",
+                       [_intake_show(unit) for unit in state["block_entries"]])
+    _intake_listed("overrides in force", [
+        f"{line['record_id']}  "
+        f"{_intake_show(line['unit']) if line.get('unit') else '(in the quarantine)'}"
+        for line in state["overrides"]])
+    if result.stale_exceptions:
+        _intake_listed("exceptions that no longer match their file", [
+            f"{exc['rule']}  {_intake_show(exc['path'], il, doc, exc['sha256'])}"
+            for exc in result.stale_exceptions])
+    if result.ok:
+        print("  ✓ no block-rule hit without an exception; every unit has a ledger entry")
+        return 0
+
+    rows = []
+    for hit in result.hits:
+        try:
+            text = describe(hit.rule_id)
+        except KeyError:
+            text = "a block rule"
+        where = ("(the file set)" if hit.path == "-"
+                 else f"{_intake_show(hit.path, il, doc, hit.sha256)}:{hit.line}")
+        rows.append(f"{hit.rule_id}  {where}  {text}")
+    if rows:
+        _intake_listed("✗ block-rule hits with no exception or override", rows)
+    if result.missing_entries:
+        _intake_listed("✗ units with no ledger entry",
+                       [_intake_show(unit) for unit in result.missing_entries])
+    print("    Details: python3 skills/intake-scan/scripts/intake.py verify")
+    return EXIT_INTAKE_REFUSED
+
+
+# Shipped with global/CLAUDE.md so an install WITHOUT git history (a public
+# bundle, a zip) can still recognise an older distributed copy. One sha256 per
+# line, LF spelling; generated by `global_revision_manifest_text()` and held
+# equal to git history by tests/installer/test_claude_md_adoption.py.
+GLOBAL_CLAUDE_MD_REVISIONS = Path("global") / "CLAUDE.md.revisions.sha256"
+
+
+def _git_out(repo_root: Path, *args: str, data: "bytes | None" = None) -> "bytes | None":
+    """stdout of a git command in `repo_root`, or None on any failure. Never raises."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo_root), *args], input=data,
+                           capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _post_image_blobs(raw: bytes) -> list:
+    """Post-image blob ids from `git log --raw --no-abbrev` output, oldest last."""
+    blobs = []
+    for line in raw.decode("ascii", "replace").splitlines():
+        parts = line.split()
+        if line.startswith(":") and len(parts) >= 4 and parts[3].strip("0"):
+            blobs.append(parts[3])
+    return blobs
+
+
+def distributed_global_revision_blobs(repo_root: Path) -> "list | None":
+    """Blob contents of every DISTRIBUTED revision of the global rules, or None
+    when git history is unavailable.
+
+    Only two sources count (#318 fix round 2), both on HEAD's first-parent line:
+      - global/CLAUDE.md revisions (the split commit onward);
+      - root CLAUDE.md revisions from BEFORE the split commit, when the root
+        file was the global file.
+    Never other refs, the stash, side branches, or the post-split root file,
+    which is foundry-lab's project file: a home copy matching one of those is
+    not a copy the installer ever shipped, so it must stay "customised"."""
+    src = GLOBAL_CLAUDE_MD_SOURCE.as_posix()
+    if _git_out(repo_root, "rev-parse", "--verify", "-q", "HEAD") is None:
+        return None
+    raw = _git_out(repo_root, "log", "--first-parent", "--format=", "--raw", "--no-abbrev",
+                   "--no-renames", "HEAD", "--", src)
+    if raw is None:
+        return None
+    blobs = _post_image_blobs(raw)
+    added = _git_out(repo_root, "log", "--first-parent", "--diff-filter=A", "--format=%H",
+                     "HEAD", "--", src)
+    split = added.decode("ascii").split()[-1] if added and added.split() else None
+    if split and _git_out(repo_root, "rev-parse", "--verify", "-q", split + "^") is not None:
+        pre = _git_out(repo_root, "log", "--first-parent", "--format=", "--raw", "--no-abbrev",
+                       "--no-renames", split + "^", "--", "CLAUDE.md")
+        if pre is None:
+            return None
+        blobs += _post_image_blobs(pre)
+    if not blobs:
+        return []
+    ids = sorted(set(blobs))
+    out = _git_out(repo_root, "cat-file", "--batch", data=("\n".join(ids) + "\n").encode("ascii"))
+    if out is None:
+        return None
+    bodies, pos = [], 0
+    while pos < len(out):
+        nl = out.index(b"\n", pos)
+        header = out[pos:nl].split()
+        pos = nl + 1
+        if len(header) != 3 or header[1] != b"blob":
+            continue
+        size = int(header[2])
+        bodies.append(out[pos:pos + size])
+        pos += size + 1
+    return bodies
+
+
+def _lf_sha(body: bytes) -> str:
+    return hashlib.sha256(body.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def global_revision_manifest_text(repo_root: Path) -> "str | None":
+    """The content GLOBAL_CLAUDE_MD_REVISIONS must hold: the LF sha256 of every
+    distributed revision plus the current global/CLAUDE.md, sorted. None
+    without git history."""
+    bodies = distributed_global_revision_blobs(repo_root)
+    if bodies is None:
+        return None
+    try:
+        bodies = bodies + [(Path(repo_root) / GLOBAL_CLAUDE_MD_SOURCE).read_bytes()]
+    except OSError:
+        pass
+    digests = set()
+    for body in bodies:
+        digests.add(_lf_sha(body))
+        # A public copy is the SCRUBBED text (publish-config.json), and a public
+        # install without history can only recognise it through this manifest.
+        for scrubbed in _publish_scrub_variants(repo_root, body):
+            digests.add(_lf_sha(scrubbed))
+    return "".join(d + "\n" for d in sorted(digests))
+
+
+def _publish_scrub_variants(repo_root: Path, body: bytes) -> list:
+    """`body` with the publish scrubs for the global file applied, if any apply.
+    Reads publish-config.json when it exists (it does not ship publicly). Never raises."""
+    try:
+        cfg = json.loads((Path(repo_root) / "publish-config.json").read_text(encoding="utf-8"))
+        text = body.decode("utf-8")
+    except (OSError, ValueError, UnicodeDecodeError):
+        return []
+    out = text
+    for scrub in cfg.get("scrubs", []) if isinstance(cfg, dict) else []:
+        if isinstance(scrub, dict) and scrub.get("file") in ("CLAUDE.md", GLOBAL_CLAUDE_MD_SOURCE.as_posix()):
+            reps = [r for r in scrub.get("replacements", [])
+                    if isinstance(r, dict) and isinstance(r.get("find"), str) and isinstance(r.get("replace"), str)]
+            # Longest find first, exactly as publish_prep.apply_scrubs does, so a
+            # find that is a prefix of another cannot pre-empt it.
+            for r in sorted(reps, key=lambda r: -len(r["find"])):
+                out = out.replace(r["find"], r["replace"])
+    return [out.encode("utf-8")] if out != text else []
+
+
+def _read_revision_manifest(repo_root: Path) -> "frozenset | None":
+    """The shipped GLOBAL_CLAUDE_MD_REVISIONS digests, or None when absent. Never raises."""
+    try:
+        lines = (Path(repo_root) / GLOBAL_CLAUDE_MD_REVISIONS).read_text(encoding="utf-8").split()
+    except OSError:
+        return None
+    return frozenset(d for d in lines if len(d) == 64 and all(c in "0123456789abcdef" for c in d))
+
+
+def _known_global_revision_hashes(repo_root: Path) -> "tuple[frozenset, str]":
+    """(LF sha256 digests of every distributed revision of the global rules,
+    source), where source names what was consulted: "git", "manifest",
+    "git+manifest" or "none".
+
+    Git history and the shipped GLOBAL_CLAUDE_MD_REVISIONS manifest are UNIONED
+    (#318 user-scoped round): a shallow clone, or a bundle committed inside
+    another repository, has an incomplete git set, and the manifest carries the
+    same trust as install.py beside it. Git revisions are also taken in their
+    publish-scrubbed spelling, so a private checkout recognises a home copy that
+    was installed from the public bundle. Compare a home copy with _sha256_lf,
+    so a CRLF copy matches its LF revision. An empty set adopts nothing: the
+    copy stays "customised". Never raises."""
+    digests, sources = set(), []
+    bodies = distributed_global_revision_blobs(repo_root)
+    if bodies:
+        sources.append("git")
+        for body in bodies:
+            digests.add(_lf_sha(body))
+            for scrubbed in _publish_scrub_variants(repo_root, body):
+                digests.add(_lf_sha(scrubbed))
+    manifest = _read_revision_manifest(repo_root)
+    if manifest is not None:
+        sources.append("manifest")
+        digests |= manifest
+    return frozenset(digests), ("+".join(sources) or "none")
+
+
+def regen_global_revision_manifest(repo_root: Path) -> int:
+    """Rewrite GLOBAL_CLAUDE_MD_REVISIONS from git history (`--regen-global-manifest`).
+
+    The text is computed and validated BEFORE the destination is opened, and
+    written atomically, so a failure never leaves an empty or partial manifest.
+    Refuses (exit 1) without git history, and on a shallow clone, whose history
+    is incomplete."""
+    shallow = _git_out(repo_root, "rev-parse", "--is-shallow-repository")
+    if shallow is not None and shallow.strip() == b"true":
+        print("✗ refusing: this is a shallow clone, so its history is incomplete.")
+        return 1
+    text = global_revision_manifest_text(repo_root)
+    if not text or any(len(line) != 64 for line in text.splitlines()):
+        print("✗ refusing: no git history for global/CLAUDE.md, so there is nothing to write.")
+        return 1
+    dest = Path(repo_root) / GLOBAL_CLAUDE_MD_REVISIONS
+    _atomic_write_text(dest, text)
+    print(f"✓ wrote {dest} ({len(text.splitlines())} digests)")
+    return 0
+
+
+def _sha256_lf(path: Path) -> "str | None":
+    """sha256 of a file's bytes with CRLF normalised to LF, or None. Never raises."""
+    try:
+        return _lf_sha(Path(path).read_bytes())
+    except OSError:
+        return None
+
+
+def _is_legacy_root_link(target: Path, repo_root: Path) -> bool:
+    """True when `target` is a symlink that resolves to the repo-root CLAUDE.md,
+    the pre-#318 layout. Never raises; an unresolvable link is not legacy."""
+    try:
+        return (Path(target).is_symlink()
+                and Path(target).resolve() == (Path(repo_root) / "CLAUDE.md").resolve())
+    except OSError:
+        return False
 
 
 def install_claude_md(repo_root: Path, claude_home: Path, force_global: bool = False,
@@ -3239,13 +3831,22 @@ def install_claude_md(repo_root: Path, claude_home: Path, force_global: bool = F
     """Wire ~/.claude/CLAUDE.md (forge routing, autonomy, session-start checks).
 
     Monolithic doc — no partial merge (§3):
-      - absent                    → write (copy the repo CLAUDE.md, atomic).
-      - present, byte-identical   → skip.
+      - absent (and not a link)   → write (copy the repo global/CLAUDE.md, atomic).
+      - present, identical        → skip; a missing or stale record is re-recorded.
+      - a symlink (differs; also a dangling one)
+                                  → never written through: a link to the
+                                    repo-root file (pre-#318) is migrated to a
+                                    regular file; any other link needs
+                                    --force-global-config. Backed up as a link.
       - present, differs, hash matches recorded provenance
-                                  → auto-update (.bak first). NEW in WP-005.
-      - present, differs          → leave untouched (note: customised — use
-                                    --force-global-config). --force_global → .bak
-                                    + overwrite.
+                                  → auto-update. NEW in WP-005.
+      - present, differs, equals a DISTRIBUTED revision (git first-parent
+        history, else the shipped revisions manifest) → refresh (#318).
+      - present, differs otherwise → leave untouched (customised; the message
+                                    names --force-global-config). --force_global
+                                    → backup + overwrite.
+    Every replacement writes a numbered backup first (.bak, .bak.1, ...; the
+    newest MAX_BACKUPS are kept).
 
     Having no merge path makes provenance matter MORE here than for
     settings.json, not less: without it the only options for a differing file
@@ -3256,23 +3857,31 @@ def install_claude_md(repo_root: Path, claude_home: Path, force_global: bool = F
     `canonical_out` is populated on whole-file writes only (§11 A1).
 
     Byte-compare (read_bytes), not text — CRLF-safe. Returns False only on a
-    genuine failure (repo CLAUDE.md missing, or a backup could not be written)."""
-    src = repo_root / "CLAUDE.md"
+    genuine failure (repo global/CLAUDE.md missing, or a backup could not be written).
+
+    The source is `global/CLAUDE.md`, not the repo-root `CLAUDE.md` (#318): the
+    root file is foundry-lab's short project file, and installing it as the
+    global rules would drop every global rule from every project."""
+    src = repo_root / GLOBAL_CLAUDE_MD_SOURCE
     target = claude_home / "CLAUDE.md"
 
     if not src.exists():
-        print(f"    ⚠ repo CLAUDE.md missing ({src}) — cannot wire global instructions")
+        print(f"    ⚠ repo global/CLAUDE.md missing ({src}) — cannot wire global instructions")
         return False
     try:
         expected_text = src.read_text(encoding="utf-8")
-        expected_bytes = src.read_bytes()
     except OSError as exc:
         print(f"    ⚠ could not read {src} ({exc}) — skipping CLAUDE.md wiring")
         return False
 
     recorded = read_canonical_hash(canonical_prev, "CLAUDE.md")
+    expected_hash = hashlib.sha256(expected_text.encode("utf-8")).hexdigest()
+    # Compare with the text as the installer WRITES it (LF, see _atomic_write_text),
+    # not the raw source bytes, which a Windows checkout may hold as CRLF.
+    expected_bytes = expected_text.encode("utf-8")
+    is_link = target.is_symlink()
 
-    if not target.exists():
+    if not target.exists() and not is_link:
         if dry_run:
             print(f"    would write {target} (create-if-absent)")
             return True
@@ -3283,45 +3892,77 @@ def install_claude_md(repo_root: Path, claude_home: Path, force_global: bool = F
 
     try:
         if target.read_bytes() == expected_bytes:
-            print(f"    = {target} already at repo content — skipping")
+            # Adopt: content equal to what the installer would write carries no
+            # user edit, so recording its hash is safe, and it is what lets the NEXT
+            # global edit refresh this copy instead of leaving it stale as
+            # "customised". A missing OR stale record is re-recorded (#318 fix
+            # rounds 1-2). A link is not adopted: it follows its target.
+            if not dry_run and not is_link and recorded != expected_hash:
+                _record_canonical(canonical_out, "CLAUDE.md", expected_text, "adopt")
+                print(f"    = {target} already at repo content — provenance recorded (adopted)")
+            else:
+                print(f"    = {target} already at repo content — skipping")
             return True
     except OSError:
-        pass  # fall through and treat as differing
+        pass  # dangling link or unreadable: fall through and treat as differing
 
-    # --- present + differs + provenance says WE wrote it → auto-update (D6) ---
-    if (not force_global
-            and classify_canonical_provenance(target, recorded) == PROVENANCE_UNMODIFIED):
+    def _replace(kind: str, note: str) -> bool:
         if dry_run:
-            print(f"    would refresh {target} (hash matches recorded installer output; .bak first)")
+            print(f"    would back up {target} and {note}")
             return True
         backup = _backup(target)
         if backup is None:
-            print(f"    ⚠ could not write backup of {target}; refusing to refresh")
+            print(f"    ⚠ could not write backup of {target}; refusing to replace it")
             return False
         print(f"    backup -> {backup}")
         _atomic_write_text(target, expected_text)
-        _record_canonical(canonical_out, "CLAUDE.md", expected_text, "auto-update")
-        print(f"    + refreshed {target} (was unmodified installer output; "
-              f"previous saved to {backup.name})")
+        _record_canonical(canonical_out, "CLAUDE.md", expected_text, kind)
+        print(f"    + {note}: {target} (previous saved to {backup.name})")
         return True
+
+    # --- a symlink, dangling or not, is never written through (#318 fix rounds 1-2) ---
+    # Before #318 some homes linked ~/.claude/CLAUDE.md to the repo-root file.
+    # That file is now the short project file, so the link no longer delivers
+    # the global rules; and a copy through the link would overwrite the repo.
+    # A link into the repo-root file is the legacy layout and is migrated; any
+    # other link (including a dangling one) is the user's and needs
+    # --force-global-config. Either way the link is backed up AS a link and
+    # replaced by a regular file (os.replace swaps the link itself).
+    if is_link:
+        legacy = _is_legacy_root_link(target, repo_root)
+        if not legacy and not force_global:
+            try:
+                dest = os.readlink(target)
+            except OSError:
+                dest = "?"
+            print(f"    ⚠ {target} is a symlink to {dest} — leaving as-is")
+            print(f"      (use --force-global-config to replace it with a regular file; a backup is written first)")
+            return True
+        return _replace("symlink-migrate" if legacy else "force",
+                        "replaced the symlink with the global instructions"
+                        + (" (legacy repo-root link)" if legacy else " (--force-global-config)"))
+
+    if force_global:
+        return _replace("force", "overwrote with the global instructions (--force-global-config)")
+
+    # --- provenance says WE wrote it → auto-update (D6) ---
+    if classify_canonical_provenance(target, recorded) == PROVENANCE_UNMODIFIED:
+        return _replace("auto-update", "refreshed (was unmodified installer output)")
+
+    # --- customised by provenance, but byte-equal to a DISTRIBUTED revision ---
+    # A copy installed before provenance existed, or whose record went stale, has
+    # no matching record and would read as customised forever. If it equals a
+    # revision the installer shipped (git history, or the shipped manifest when
+    # there is no history), it holds no user edit: refresh it.
+    known, source = _known_global_revision_hashes(repo_root)
+    if _sha256_lf(target) in known:
+        return _replace("adopt-refresh",
+                        f"refreshed (was a past distributed revision, per {source})")
 
     # Present and different — user-customised.
-    if not force_global:
-        print(f"    ⚠ {target} exists and differs (customised) — leaving as-is")
-        print(f"      (use --force-global-config to overwrite; a .bak is written first)")
-        return True
-
-    if dry_run:
-        print(f"    would back up {target} -> {target.name}.bak and overwrite (--force-global-config)")
-        return True
-    backup = _backup(target)
-    if backup is None:
-        print(f"    ⚠ could not write backup of {target}; refusing to overwrite")
-        return False
-    print(f"    backup -> {backup}")
-    _atomic_write_text(target, expected_text)
-    _record_canonical(canonical_out, "CLAUDE.md", expected_text, "force")
-    print(f"    + overwrote {target} (--force-global-config; previous saved to {backup.name})")
+    print(f"    ⚠ {target} differs from global/CLAUDE.md and matches no distributed revision "
+          f"(checked {source}; customised or unknown) — leaving as-is")
+    print(f"      Run with --force-global-config to replace it (a backup is written first).")
     return True
 
 
@@ -3492,6 +4133,70 @@ ln -sfn ~/.copilot/copilot-instructions.md <project>/.github/copilot-instruction
 """
 
 
+#: A skill holding this file at its root is never mirrored to Codex (the affordance-advisor
+#: contamination rationale; bootstrap-environment.py step 8 honours the same sentinel).
+NO_CODEX_SENTINEL = ".no-codex-symlink"
+
+
+def mirror_codex_skills(claude_home: Path, codex_home: Path, dry_run: bool = False) -> dict:
+    """The Codex skill mirror (#367 WP-C): one DIRECTORY symlink per installed skill,
+    `<codex_home>/skills/<name>` -> `<claude_home>/skills/<name>`, so Codex reads the live tree.
+
+    ADD-ONLY and never destructive: a missing link is created; a link already pointing at the skill is
+    kept; anything else at that path (a Codex-native skill, a copy, a link elsewhere) is left alone
+    and reported as a conflict. A skill holding NO_CODEX_SENTINEL is not mirrored. Nothing is done
+    when `codex_home` does not exist (Codex not installed). Returns a dict of name lists:
+    added / kept / excluded / conflicts, plus `skipped` (a reason) when nothing was looked at.
+    """
+    out: dict = {"added": [], "kept": [], "excluded": [], "conflicts": []}
+    source = claude_home / "skills"
+    if not codex_home.is_dir():
+        out["skipped"] = f"{codex_home} does not exist (Codex not installed)"
+        return out
+    if not source.is_dir():
+        out["skipped"] = f"{source} does not exist"
+        return out
+    target = codex_home / "skills"
+    if not dry_run:
+        target.mkdir(parents=True, exist_ok=True)
+    for skill in sorted(source.iterdir()):
+        if not skill.is_dir() or not (skill / "SKILL.md").is_file():
+            continue
+        if (skill / NO_CODEX_SENTINEL).exists():
+            out["excluded"].append(skill.name)
+            continue
+        dest = target / skill.name
+        if dest.is_symlink() or dest.exists():
+            try:
+                same = dest.is_symlink() and dest.resolve() == skill.resolve()
+            except OSError:
+                same = False
+            out["kept" if same else "conflicts"].append(skill.name)
+            continue
+        if not dry_run:
+            try:
+                dest.symlink_to(skill.resolve(), target_is_directory=True)
+            except OSError as exc:
+                out["conflicts"].append(f"{skill.name} ({exc})")
+                continue
+        out["added"].append(skill.name)
+    return out
+
+
+def _report_codex_mirror(result: dict, dry_run: bool = False) -> None:
+    if "skipped" in result:
+        print(f"  - Codex mirror skipped: {result['skipped']}")
+        return
+    verb = "would add" if dry_run else "added"
+    added = result["added"]
+    print(f"  ✓ Codex mirror: {verb} {len(added)} skill link(s), kept {len(result['kept'])}, "
+          f"excluded {len(result['excluded'])} ({NO_CODEX_SENTINEL})"
+          + (f": {', '.join(added)}" if added else ""))
+    if result["conflicts"]:
+        print(f"  ⚠ Codex mirror left {len(result['conflicts'])} path(s) alone (not a link to the skill): "
+              + ", ".join(result["conflicts"]))
+
+
 def mirror_copilot_skills(repo_root: Path, copilot_home: Path, mode: str,
                           force: bool = False) -> tuple[int, int]:
     """OPT-IN mirror of skills into ~/.copilot/skills/ (same pattern as the
@@ -3650,6 +4355,74 @@ def install_copilot(repo_root: Path, force: bool = False,
 
 GIT_HOOK_MARKER = "# managed-by: foundry-lab/skills/secret-scanning/hooks"
 
+#: Why the git hooks are NOT protecting the target repo this run (#260). A failed or
+#: refused security-hook install is a security control failure, not an optional-feature
+#: miss: it is repeated in a loud banner at the very END of the run, where it cannot
+#: scroll away. The exit status is unchanged (user decision 2026-09-30).
+_SECURITY_DEGRADED: list[str] = []
+#: Set when a real install run is about to start; cleared once install_git_hooks runs.
+#: Still set at the end = the run stopped (an abort or an exception) before the hook step.
+_HOOKS_PENDING: list[tuple[Path, bool]] = []   # (target repo, named explicitly by --git-hooks)
+
+
+def _security_degraded(reason: str) -> None:
+    _SECURITY_DEGRADED.append(reason)
+
+
+def _safe_print(line: str) -> None:
+    """Final reporting never replaces the run's own outcome with an I/O error."""
+    for stream in (sys.stdout, sys.__stderr__):
+        try:
+            print(line, file=stream, flush=True)
+            return
+        except Exception:
+            continue
+
+
+def _final_security_report(dry_run: bool) -> bool:
+    """Print the banner if warranted; True when it was. Never raises."""
+    try:
+        print_security_degraded(dry_run=dry_run)
+        return bool(_SECURITY_DEGRADED)
+    except Exception:
+        if _SECURITY_DEGRADED:
+            _safe_print("!! SECURITY DEGRADED: " + "; ".join(_SECURITY_DEGRADED))
+        return bool(_SECURITY_DEGRADED)
+
+
+def reset_security_state() -> None:
+    """Per-invocation: a previous in-process run's reasons never reach this run's banner."""
+    _SECURITY_DEGRADED.clear()
+    _HOOKS_PENDING.clear()
+
+
+def print_security_degraded(dry_run: bool = False) -> None:
+    """The end-of-run banner, printed only when a hook install failed or was refused."""
+    for target, explicit in _HOOKS_PENDING:
+        try:
+            if _hooks_already_active(target):
+                continue      # not refreshed, but the hooks already there still scan
+            if not explicit:
+                try:
+                    (target / ".git").stat()
+                except (FileNotFoundError, NotADirectoryError):
+                    continue  # a GENUINELY absent .git: an implicit non-repo is never degraded
+        except Exception:
+            pass              # cannot tell: report it (fail closed), never skip silently
+        _security_degraded(f"the install stopped before the git-hooks step; hooks in {target} "
+                           "were not placed or refreshed")
+    _HOOKS_PENDING.clear()
+    if not _SECURITY_DEGRADED:
+        return
+    print("!" * 60)
+    lead = "A REAL RUN WOULD LEAVE SECURITY DEGRADED" if dry_run else "SECURITY DEGRADED"
+    print(f"!!  {lead}: the secrets-scan git hooks are NOT fully active.")
+    for reason in _SECURITY_DEGRADED:
+        print(f"!!    - {reason}")
+    print("!!  Commits or pushes gated by the hooks named above are NOT scanned for secrets.")
+    print("!!  Fix the cause above and re-run the installer (or --no-git-hooks to opt out).")
+    print("!" * 60)
+
 GIT_HOOKS = (
     ("pre-commit", "pre_commit.py"),
     ("pre-push", "pre_push.py"),
@@ -3679,8 +4452,127 @@ def _hook_shebang() -> str:
     return "#!" + str(exe)
 
 
+def _read_or_none(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _approved_hook_body(repo_root: Path, src_name: str) -> str | None:
+    """The shipped hook body (without its shebang), or None when the source is unreadable."""
+    try:
+        body = (Path(repo_root) / "skills" / "secret-scanning" / "hooks" / src_name).read_text(
+            encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    if body.startswith("#!"):
+        body = body.split("\n", 1)[1] if "\n" in body else ""
+    return body
+
+
+def _managed_hook_present(dst: Path, approved_body: str | None) -> bool:
+    """An existing hook that is EXACTLY what this installer places (a shebang line, the
+    marker, then the approved body) and that git will run. A marker plus a comment naming
+    secrets-scan is not proof of a scan (#260 reserve review N6), so with no approved body
+    to compare against, nothing is certified."""
+    if approved_body is None:
+        return False
+    text = _read_or_none(dst)
+    if text is None or not _is_executable(dst):
+        return False
+    lines = text.split("\n", 2)
+    return (len(lines) == 3 and lines[0].startswith("#!") and lines[1] == GIT_HOOK_MARKER
+            and lines[2] == approved_body)
+
+
+def _scanner_resolves(target_repo: Path) -> bool:
+    """The hooks find their scanner in the repo or under ~/.claude; without it pre-push
+    fails OPEN, so hooks with no scanner are not protection (#260 reserve review N5)."""
+    return ((target_repo / "scripts" / "secrets-scan.py").is_file()
+            or (Path.home() / ".claude" / "skills" / "secret-scanning" / "scripts"
+                / "secrets-scan.py").is_file())
+
+
+def _git_hooks_path(target_repo: Path) -> tuple[Path | None, str]:
+    """Where git RUNS hooks for `target_repo`: (path, "") or (None, reason).
+
+    Asked of git itself: `rev-parse --git-path hooks` honours core.hooksPath AND a linked
+    worktree's common directory. Following the worktree's `gitdir:` pointer and appending
+    /hooks put the hooks where git never runs them (#260 reserve review N3).
+    """
+    # Plain --git-path (git >= 2.5): NOT --path-format=absolute, which git < 2.31 does not
+    # know -- it echoes the flag back with exit 0, and the hooks landed in a directory named
+    # "--path-format=absolute" (user-round review). A relative answer is relative to -C.
+    rc, out = run_probe(["git", "-C", str(target_repo), "rev-parse", "--git-path", "hooks"])
+    answer = out.strip()
+    if rc == 0 and answer and not answer.startswith("-") and "\n" not in answer:
+        path = Path(answer).expanduser()
+        return (path if path.is_absolute() else target_repo / path), ""
+    return None, f"git could not say where hooks run for {target_repo} (exit {rc})"
+
+
+def _hooks_already_active(target_repo: Path) -> bool:
+    """Every managed hook is in place where git runs hooks, exact, executable, and its
+    scanner resolves."""
+    try:
+        (target_repo / ".git").stat()
+    except OSError:
+        return False
+    hooks_dir, _why = _git_hooks_path(target_repo)
+    if hooks_dir is None or not _scanner_resolves(target_repo):
+        return False
+    return all(_managed_hook_present(hooks_dir / name, _approved_hook_body(REPO_ROOT, src))
+               for name, src in GIT_HOOKS)
+
+
+def _is_executable(path: Path) -> bool:
+    if os.name == "nt":
+        return path.is_file()           # Windows has no exec bit; git runs hooks via sh
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def _writable_dir(directory: Path) -> bool:
+    """Whether `directory` (or, if absent, its nearest existing parent) can be written."""
+    probe = directory
+    while not probe.exists():
+        if probe.parent == probe:
+            return False
+        probe = probe.parent
+    return probe.is_dir() and os.access(probe, os.W_OK | os.X_OK)
+
+
 def install_git_hooks(repo_root: Path, target_repo: Path, *, force: bool = False,
-                      dry_run: bool = False) -> bool:
+                      dry_run: bool = False, explicit: bool = False,
+                      scanner_planned: bool = False) -> bool:
+    """Install the hooks; ANY exception is a degraded outcome, never a silent one (#260).
+
+    The target leaves _HOOKS_PENDING only once its outcome is accounted for -- placed, or a
+    degraded reason recorded -- so an error part-way through can never end the run quietly.
+    """
+    target = Path(target_repo).expanduser()
+    try:
+        return _install_git_hooks(repo_root, target, force=force, dry_run=dry_run,
+                                  explicit=explicit, scanner_planned=scanner_planned)
+    except Exception as exc:  # noqa: BLE001 - reported below, never swallowed silently
+        # The one-line reason goes in the banner; the traceback (tee'd into the run log)
+        # keeps a regression in this code visible (#260 reserve review N2).
+        traceback.print_exc()
+        print(f"  ⚠ git hooks for {target} not placed: {type(exc).__name__}: {exc}")
+        _security_degraded(f"hooks for {target} not placed: {type(exc).__name__}: {exc}")
+        return False
+    except BaseException as exc:
+        # Ctrl-C / SystemExit mid-step: record it, then let it propagate (N1). The banner
+        # still prints from main()'s finally.
+        _security_degraded(f"hooks for {target} not placed: interrupted ({type(exc).__name__})")
+        raise
+    finally:
+        _HOOKS_PENDING[:] = [p for p in _HOOKS_PENDING if p[0] != target]
+
+
+def _install_git_hooks(repo_root: Path, target_repo: Path, *, force: bool = False,
+                       dry_run: bool = False, explicit: bool = False,
+                       scanner_planned: bool = False) -> bool:
     """Install the Python pre-commit and pre-push hooks into `target_repo`.
 
     Wired into the installer because of #250: on the Windows laptop `.git/hooks/`
@@ -3701,47 +4593,58 @@ def install_git_hooks(repo_root: Path, target_repo: Path, *, force: bool = False
     target_repo = Path(target_repo).expanduser()
 
     git_dir = target_repo / ".git"
-    if not git_dir.exists():
+    # stat(), not exists(): exists() answers False for a path it may not inspect (EACCES),
+    # which would turn an unreadable repo into a silent "not a git repo" (re-review F1).
+    try:
+        git_dir.stat()
+        is_repo = True
+    except (FileNotFoundError, NotADirectoryError):
+        is_repo = False
+    except OSError as exc:
+        print(f"  ⚠ cannot inspect {git_dir} ({exc}) — no hooks placed")
+        _security_degraded(f"cannot inspect {git_dir}: {exc}")
+        return False
+    if not is_repo:
         print(f"  = {target_repo} is not a git repo — no hooks placed")
+        if explicit:   # asked for by --git-hooks: the requested repo is unprotected (#260)
+            _security_degraded(f"--git-hooks {target_repo} is not a git repo")
         return False
 
-    # A worktree/submodule .git is a FILE pointing at the real dir.
-    if git_dir.is_file():
-        try:
-            pointer = git_dir.read_text(encoding="utf-8").strip()
-            if pointer.startswith("gitdir:"):
-                git_dir = (target_repo / pointer.split(":", 1)[1].strip()).resolve()
-        except OSError:
-            print(f"  ⚠ cannot read {git_dir} — no hooks placed")
-            return False
-
-    # core.hooksPath wins over .git/hooks when set; writing to the wrong one
-    # places a file git will never run, which looks exactly like success.
-    hooks_dir = git_dir / "hooks"
-    rc, out = run_probe(["git", "-C", str(target_repo), "config", "--get", "core.hooksPath"])
-    if rc == 0 and out.strip():
-        configured = Path(out.strip()).expanduser()
-        hooks_dir = configured if configured.is_absolute() else (target_repo / configured)
-        print(f"  i core.hooksPath is set — installing into {hooks_dir}")
+    # Ask git where it RUNS hooks: core.hooksPath and a linked worktree's common dir both
+    # decide it, and writing anywhere else places a file git never runs, which looks
+    # exactly like success (#260 reserve review N3).
+    hooks_dir, why = _git_hooks_path(target_repo)
+    if hooks_dir is None:
+        print(f"  ⚠ {why} — no hooks placed")
+        _security_degraded(why)
+        return False
+    if hooks_dir != git_dir / "hooks":
+        print(f"  i git runs hooks from {hooks_dir} — installing there")
 
     src_dir = repo_root / "skills" / "secret-scanning" / "hooks"
     scanner_repo = target_repo / "scripts" / "secrets-scan.py"
     scanner_home = Path.home() / ".claude" / "skills" / "secret-scanning" / "scripts" / "secrets-scan.py"
-    if not scanner_repo.is_file() and not scanner_home.is_file():
+    if not scanner_repo.is_file() and not scanner_home.is_file() and not (dry_run and scanner_planned):
         print("  ⚠ REFUSING to install git hooks: no secrets-scan.py resolves")
         print(f"      looked in: {scanner_repo}")
         print(f"                 {scanner_home}")
         print("      An inert hook would claim protection it cannot provide.")
+        _security_degraded(f"hooks refused for {target_repo}: no secrets-scan.py resolves")
         return False
 
     shebang = _hook_shebang()
     placed = 0
     for hook_name, src_name in GIT_HOOKS:
         src = src_dir / src_name
-        if not src.is_file():
-            print(f"  ⚠ {src_name} missing from the repo — {hook_name} not placed")
-            continue
         dst = hooks_dir / hook_name
+        try:
+            body = src.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            # Without the source there is nothing to certify an existing hook against (N6).
+            print(f"  ⚠ {src_name} unreadable ({exc}) — {hook_name} not placed or verified")
+            _security_degraded(f"{hook_name} in {target_repo} not placed or verified: "
+                               f"{src_name} unreadable")
+            continue
 
         if dst.exists():
             existing = ""
@@ -3753,25 +4656,73 @@ def install_git_hooks(repo_root: Path, target_repo: Path, *, force: bool = False
                 # Somebody else's hook. Never clobber it silently.
                 backup = dst.with_name(f"{hook_name}.bak-{_utc_stamp()}")
                 if not dry_run:
-                    shutil.copy2(dst, backup)
+                    try:
+                        shutil.copy2(dst, backup)
+                    except OSError as exc:
+                        print(f"  ⚠ cannot back up the existing {hook_name} ({exc}) — left as-is")
+                        _security_degraded(f"{hook_name} not placed in {target_repo}: "
+                                           f"backup of the existing hook failed ({exc})")
+                        continue
                 print(f"  i existing unmanaged {hook_name} backed up to {backup.name}")
 
-        body = src.read_text(encoding="utf-8")
         if body.startswith("#!"):
             body = body.split("\n", 1)[1] if "\n" in body else ""
         content = shebang + "\n" + GIT_HOOK_MARKER + "\n" + body
 
+        current = _read_or_none(dst)
         if dry_run:
+            # Model the real run: a current, executable hook is left alone; otherwise the
+            # file (or its directory) must be replaceable. os.access is a forecast, not a
+            # guarantee -- the real run records any failure it meets.
+            if current == content and _is_executable(dst):
+                print(f"  = {hook_name} current → {dst} (dry run)")
+                placed += 1
+                continue
+            if hooks_dir.exists() and not hooks_dir.is_dir():
+                print(f"  ⚠ {hooks_dir} is not a directory — git hooks are disabled there")
+                _security_degraded(f"{hook_name}: core.hooksPath {hooks_dir} is not a directory "
+                                   "(hooks disabled)")
+                continue
+            if current is None and not dst.exists():
+                replaceable = _writable_dir(hooks_dir)            # a new file: needs the dir
+            else:
+                ours = current is not None and GIT_HOOK_MARKER in current
+                # In-place rewrite needs the FILE writable; backing up an unmanaged hook
+                # also needs the directory (#260 reserve review N4).
+                replaceable = os.access(dst, os.W_OK) and (ours or _writable_dir(hooks_dir))
+            if not replaceable:
+                print(f"  ⚠ {dst} does not look writable — a real run may not place {hook_name}")
+                _security_degraded(f"{hook_name}: {dst} does not look writable (forecast)")
+                continue
             print(f"  + {hook_name} → {dst} (dry run)")
             placed += 1
             continue
 
-        hooks_dir.mkdir(parents=True, exist_ok=True)
-        dst.write_text(content, encoding="utf-8")
+        if current == content and _is_executable(dst):
+            print(f"  = {hook_name} current → {dst}")   # nothing to write; still active
+            placed += 1
+            continue
+        if hooks_dir.exists() and not hooks_dir.is_dir():
+            print(f"  ⚠ {hooks_dir} is not a directory — git hooks are disabled there")
+            _security_degraded(f"{hook_name}: core.hooksPath {hooks_dir} is not a directory "
+                               "(hooks disabled)")
+            continue
+        try:
+            hooks_dir.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            print(f"  ⚠ could not write {dst} ({exc}) — {hook_name} not placed")
+            _security_degraded(f"{hook_name} not placed in {target_repo}: {exc}")
+            continue
         try:
             dst.chmod(0o755)
         except OSError:
             pass  # no exec bit on Windows; git runs it via its shell regardless
+        if not _is_executable(dst):
+            # POSIX git skips a hook without its execute bit ("hook was ignored").
+            print(f"  ⚠ {dst} is not executable — git will ignore {hook_name}")
+            _security_degraded(f"{hook_name} in {target_repo} is not executable; git ignores it")
+            continue
         print(f"  ✓ {hook_name} → {dst}")
         placed += 1
 
@@ -4423,6 +5374,9 @@ def main() -> int:
                         help="report optional-capability readiness and exit. Says what is "
                              "missing, what stops working without it, and the exact install "
                              "command for this machine.")
+    parser.add_argument("--regen-global-manifest", action="store_true",
+                        help="maintainers: rewrite global/CLAUDE.md.revisions.sha256 from git "
+                             "history after editing global/CLAUDE.md, then exit. Installs nothing.")
     parser.add_argument("--rollback", metavar="RUN_ID", default=None,
                         help="undo a previous run: replays that run's archive journal in "
                              "reverse, restoring the tree byte-for-byte. Archives live under "
@@ -4444,9 +5398,29 @@ def main() -> int:
 
     # §8b: tee all output to a run-log (on by default; --no-log opts out;
     # --log overrides the path). The logger NEVER aborts the install.
-    with RunLogger(sys.argv, log_path=args.log, enabled=not args.no_log,
-                   repo_root=REPO_ROOT, header_title="agent-foundry installer"):
-        return _run(args)
+    dry = bool(getattr(args, "dry_run", False))
+    failed = False
+    degraded = False
+    try:
+        with RunLogger(sys.argv, log_path=args.log, enabled=not args.no_log,
+                       repo_root=REPO_ROOT, header_title="agent-foundry installer"):
+            try:
+                return _run(args)
+            except Exception:
+                # #260 re-review: print the traceback HERE, before the banner, so the banner
+                # (not a traceback) ends the output; exit 1, as an uncaught exception would.
+                traceback.print_exc()
+                failed = True
+            finally:
+                # EVERY end of the run -- normal, early return or exception -- ends with the
+                # degraded-security banner when the hooks are not fully active.
+                degraded = _final_security_report(dry)
+    finally:
+        if degraded:   # the log footer printed after the banner: one line so it stays last
+            _safe_print("!! " + ("A REAL RUN WOULD LEAVE SECURITY DEGRADED" if dry
+                                 else "SECURITY DEGRADED") + " — see the banner above.")
+    if failed:
+        return 1
 
 
 # ---------------------------------------------------------------------------
@@ -4519,6 +5493,151 @@ def _load_optional_deps():
         return mod
     except Exception:
         return None
+
+
+#: How long the reader may keep draining after a timeout kill before it is abandoned.
+_STREAM_DRAIN_GRACE_S = 5.0
+
+
+def _child_env_utf8() -> dict:
+    """The child's environment: UTF-8 and unbuffered (#268 review). A piped Python child
+    otherwise writes the ANSI code page on Windows (garbling a `C:\\Users\\José` path in
+    the console and the log) and block-buffers, so nothing appears until it exits."""
+    return dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+
+
+def _kill_tree(proc, budget_s: float = _STREAM_DRAIN_GRACE_S) -> None:
+    """Kill a STILL-RUNNING (unreaped) `proc` and everything it started. Never raises.
+
+    pip's build-isolation helpers, and cmd.exe -> node under `npm.cmd` on Windows, can
+    outlive the direct child and hold the output pipe open (#268 review). Call it only
+    before `proc` is reaped: after that its pid may be recycled, so killpg / taskkill
+    could hit an unrelated process (fix round 2).
+    """
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           stdin=subprocess.DEVNULL, timeout=max(budget_s, 0.1))
+        elif proc.returncode is None:  # never a reaped (recyclable) pid -- re-review N-3
+            import signal as _signal
+            os.killpg(proc.pid, _signal.SIGKILL)  # the child leads its own session
+    except Exception:
+        pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+
+
+def _run_streamed(cmd, timeout: float) -> int:
+    """Run `cmd` with its output going through OUR stdout, line by line (#268).
+
+    `subprocess.run(cmd)` let pip inherit the console handle, so the install log
+    (a tee on Python's sys.stdout) never saw pip's output -- blind at the step most
+    likely to fail. Here stdout+stderr are piped and re-printed, so the console
+    and the log both get them.
+
+    Stopping (D21 fix rounds 1-2): on POSIX the child leads its own session, so its
+    tree can be killed as a group. At `timeout` -- or when the installer itself is
+    interrupted (Ctrl-C) -- the still-running tree is killed, and cleanup shares ONE
+    `_STREAM_DRAIN_GRACE_S` deadline; then TimeoutExpired (or the interrupt) is
+    raised. On a normal exit nothing is killed: the reader gets the grace to drain,
+    then is abandoned and prints nothing more. A descendant that outlives a normally
+    exiting child is left alone, as `subprocess.run` always did.
+    """
+    import threading as _threading
+    import time as _time
+
+    kwargs = {} if os.name == "nt" else {"start_new_session": True}
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+        text=True, encoding="utf-8", errors="replace", bufsize=1, env=_child_env_utf8(),
+        **kwargs,
+    )
+    abandoned = _threading.Event()
+
+    sink_dead = []
+
+    def _pump():
+        # Keep DRAINING whatever happens to the printing side (re-review N-1): a reader
+        # that stops reading leaves the child, or a surviving descendant, blocked on a
+        # full pipe. Abandoned or with a dead stdout, lines are read and dropped.
+        try:
+            for line in proc.stdout:
+                if abandoned.is_set() or sink_dead:
+                    continue
+                try:
+                    print("    " + line.rstrip("\r\n"), flush=True)
+                except Exception:
+                    sink_dead.append(True)
+        except (OSError, ValueError):
+            pass
+
+    reader = _threading.Thread(target=_pump, daemon=True)
+    reader.start()
+
+    def _stop_and_drain():
+        deadline = _time.monotonic() + _STREAM_DRAIN_GRACE_S
+        _kill_tree(proc, deadline - _time.monotonic())
+        try:
+            proc.wait(timeout=max(deadline - _time.monotonic(), 0.01))
+        except subprocess.TimeoutExpired:
+            pass
+        reader.join(max(deadline - _time.monotonic(), 0.0))
+        abandoned.set()
+
+    try:
+        rc = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _stop_and_drain()
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    except BaseException:
+        # Ctrl-C / SystemExit while pip runs: the child is in its own session and
+        # never saw the terminal's SIGINT, so it must be stopped here (review N1/F2).
+        _stop_and_drain()
+        raise
+    reader.join(_STREAM_DRAIN_GRACE_S)
+    abandoned.set()
+    if not reader.is_alive():
+        proc.stdout.close()  # re-review N-6; a still-draining reader keeps it open
+    return rc
+
+
+def _fresh_readiness_digest(mod) -> None:
+    """Print the readiness digest from a FRESH interpreter (#268).
+
+    Checking in-process right after pip reports what pip just installed as
+    MISSING on a fresh box: CPython puts the user-site directory on sys.path at
+    startup only if it already exists (site.addusersitepackages), and that very
+    pip run is what created it. importlib.invalidate_caches() does not help --
+    the directory is never on sys.path. A new process sees it.
+
+    Only a fresh check that exits 0 AND prints a digest is trusted. Anything else
+    says so, then prints the in-process digest LABELLED as possibly stale.
+    """
+    mod_path = REPO_ROOT / "skills" / "_meta" / "optional_deps.py"
+    why = None
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(mod_path), "report", "--digest"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL, env=_child_env_utf8(), timeout=120,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        proc, why = None, f"{type(exc).__name__}: {exc}"
+    if proc is not None and proc.returncode == 0 and proc.stdout.strip():
+        print(proc.stdout.rstrip("\n"))
+        if proc.stderr.strip():
+            print(proc.stderr.rstrip("\n"))
+        return
+    if why is None:
+        last = (proc.stderr.strip().splitlines() or ["no output"])[-1]
+        why = f"exit {proc.returncode}: {last}"
+    print(f"  (fresh readiness check failed -- {why})")
+    print("  (the in-process check below may list libraries installed THIS run as missing;")
+    print("   re-run `python install.py --extras-report` for an accurate reading)")
+    mod.main(["report", "--digest"])
 
 
 def _extras_preflight(args) -> None:
@@ -4634,12 +5753,12 @@ def run_extras(args) -> None:
         for cmd in commands:
             print(f"\n$ {' '.join(cmd)}")
             try:
-                proc = subprocess.run(cmd, timeout=EXTRAS_INSTALL_TIMEOUT)
-                if proc.returncode != 0:
+                returncode = _run_streamed(cmd, EXTRAS_INSTALL_TIMEOUT)
+                if returncode != 0:
                     # A failed optional install is a reported outcome, not an
                     # installer failure. The user may be offline, behind a proxy,
                     # or on a machine where installing is simply not permitted.
-                    print(f"  ⚠ exit {proc.returncode} — capability stays unavailable.")
+                    print(f"  ⚠ exit {returncode} — capability stays unavailable.")
                     print("    The harness is unaffected; skills needing it will say so.")
             except subprocess.TimeoutExpired:
                 print(f"  ⚠ timed out after {EXTRAS_INSTALL_TIMEOUT}s — capability stays "
@@ -4648,13 +5767,14 @@ def run_extras(args) -> None:
                 print(f"  ⚠ could not run it ({exc}) — capability stays unavailable.")
 
         print()
-        mod.main(["report", "--digest"])
+        _fresh_readiness_digest(mod)
     except Exception as exc:
         # Belt and braces: no failure in this block may change the install's outcome.
         print(f"optional-dependency step skipped ({exc})")
 
 
 def _run(args) -> int:
+    reset_security_state()
     banner()
     print()
 
@@ -4665,6 +5785,10 @@ def _run(args) -> int:
     if getattr(args, "rollback", None):
         rb_home = Path(args.claude_home).expanduser() if args.claude_home else DEFAULT_CLAUDE_HOME
         return rollback_run(rb_home, args.rollback)
+
+    # ---- --regen-global-manifest: a maintainer step, touches nothing else ----
+    if getattr(args, "regen_global_manifest", False) is True:
+        return regen_global_revision_manifest(REPO_ROOT)
 
     # ---- --preview: the OS x tool matrix, then exit ----
     # Before the scan, and deliberately runnable for an OS this is not: the harness
@@ -4814,6 +5938,27 @@ def _run(args) -> int:
         print(line)
     dry_run = bool(getattr(args, "dry_run", False))
 
+    # ---- Intake check (#350) — BEFORE any write, in every placement mode ----
+    #
+    # link, move and mc all end with the same content live under a config home, so
+    # the check is the same for all three and sits above the point where they
+    # diverge. It runs under --dry-run too: a preview that hid a refusal would
+    # promise an install the real run then declines.
+    print()
+    intake_rc = intake_source_check(REPO_ROOT)
+    if intake_rc:
+        places_units = ("claude" in targets or "gemini" in targets
+                        or ("copilot" in targets and bool(args.mirror_copilot_skills)))
+        if not places_units:
+            print("  (no selected target places skills, agents, commands or workflows — continuing)")
+        elif dry_run:
+            print("  dry run: a real run would be REFUSED here, before anything is placed.")
+            return intake_rc
+        else:
+            print("  REFUSING to install: this source tree does not pass the intake check.")
+            print("    NOTHING has been installed, replaced, or removed.")
+            return intake_rc
+
     # ---- Paths ----
     claude_home = Path(args.claude_home).expanduser() if args.claude_home else DEFAULT_CLAUDE_HOME
     gemini_home = Path(args.gemini_home).expanduser() if args.gemini_home else DEFAULT_GEMINI_HOME
@@ -4960,12 +6105,15 @@ def _run(args) -> int:
             # dry run that recorded provenance would make the next real run
             # believe it had written a file it never wrote.
             dry_canonical_prev = (read_manifest(claude_home) or {}).get("canonical")
-            install_claude_md(REPO_ROOT, claude_home,
-                              force_global=bool(args.force_global_config), dry_run=True,
-                              canonical_prev=dry_canonical_prev)
+            dry_claude_md_ok = install_claude_md(REPO_ROOT, claude_home,
+                                                 force_global=bool(args.force_global_config), dry_run=True,
+                                                 canonical_prev=dry_canonical_prev)
             install_settings(claude_home,
                              force_global=bool(args.force_global_config), dry_run=True,
                              canonical_prev=dry_canonical_prev)
+            print("  [codex mirror]")
+            _report_codex_mirror(mirror_codex_skills(claude_home, claude_home.parent / ".codex",
+                                                     dry_run=True), dry_run=True)
         if "agy" in targets:
             print("[agy]")
             install_agy(gemini_home, force=bool(args.force), dry_run=True)
@@ -4981,8 +6129,22 @@ def _run(args) -> int:
             print("[git hooks]")
             install_git_hooks(REPO_ROOT,
                               Path(getattr(args, "git_hooks", None) or REPO_ROOT),
-                              force=bool(args.force), dry_run=True)
+                              force=bool(args.force), dry_run=True,
+                              explicit=bool(getattr(args, "git_hooks", None)),
+                              # a real Claude run installs the scanner BEFORE the hook step
+                              # a real Claude run places the scanner BEFORE the hook step --
+                              # only into the ~/.claude the hook reads, and --skip-existing
+                              # keeps an existing secret-scanning dir as it is (N8)
+                              scanner_planned=("claude" in targets
+                                               and claude_home.resolve()
+                                               == (Path.home() / ".claude").resolve()
+                                               and not (bool(args.skip_existing) and (
+                                                   claude_home / "skills" / "secret-scanning"
+                                               ).exists())))
         print()
+        if "claude" in targets and not dry_claude_md_ok:
+            print("dry run: ~/.claude/CLAUDE.md could NOT be wired (see above) — a real run would fail.")
+            return 1
         print("dry run complete — nothing was changed.")
         return 0
 
@@ -4991,7 +6153,14 @@ def _run(args) -> int:
             print("cancelled.")
             return 0
 
+    # #260: from here on a real run is committed to placing the hooks; if it stops before
+    # the hook step (an abort or an exception), the end-of-run banner says so.
+    if not getattr(args, "no_git_hooks", False):
+        _HOOKS_PENDING.append((Path(getattr(args, "git_hooks", None) or REPO_ROOT).expanduser(),
+                               bool(getattr(args, "git_hooks", None))))
+
     # ---- Execute ----
+    claude_md_ok = True   # set by the claude target's [environment] step below
     # Default: replace existing skills/agents/commands. `--skip-existing` keeps them.
     # `--force` forces agy.md / copilot-instructions.md overwrite (with .bak).
     skip_existing = bool(args.skip_existing)
@@ -5061,8 +6230,8 @@ def _run(args) -> int:
         # carries provenance forward instead of dropping it.
         canonical_prev = (previous_manifest or {}).get("canonical")
         canonical_new = dict(canonical_prev) if isinstance(canonical_prev, dict) else {}
-        install_claude_md(REPO_ROOT, claude_home, force_global=force_global,
-                          canonical_prev=canonical_prev, canonical_out=canonical_new)
+        claude_md_ok = install_claude_md(REPO_ROOT, claude_home, force_global=force_global,
+                                         canonical_prev=canonical_prev, canonical_out=canonical_new)
         ok = install_settings(claude_home, force_global=force_global,
                               canonical_prev=canonical_prev, canonical_out=canonical_new)
         install_optional_manifests(REPO_ROOT, claude_home, archive=archive)
@@ -5081,6 +6250,9 @@ def _run(args) -> int:
                   f"are missing under {claude_home/'skills'} — inert until installed:")
             for cmd in missing:
                 print(f"        {cmd}")
+        # #367 WP-C: the Codex skill mirror, beside the home the skills were placed in (add-only).
+        print("  [codex mirror]")
+        _report_codex_mirror(mirror_codex_skills(claude_home, claude_home.parent / ".codex"))
     # Non-Claude targets receive placement_mode, NEVER the raw `mode` — the
     # cleanup decision is made here, per root, rather than carried inside a
     # string. Each skills MIRROR now gets the same provenance-gated cleanup the
@@ -5123,7 +6295,8 @@ def _run(args) -> int:
         hook_target = Path(getattr(args, "git_hooks", None) or REPO_ROOT)
         print("[git hooks]")
         install_git_hooks(REPO_ROOT, hook_target,
-                          force=force, dry_run=args.dry_run)
+                          force=force, dry_run=args.dry_run,
+                          explicit=bool(getattr(args, "git_hooks", None)))
     if "agy" in targets:
         print("[agy]")
         install_agy(gemini_home, force=force)
@@ -5223,6 +6396,17 @@ def _run(args) -> int:
             print(f"    undo this run with:  python3 install.py --rollback {run_id}")
 
     print()
+
+    # ---- The global instructions are what ACTIVATE the ecosystem (#318 fix round 1) ----
+    # A missing global/CLAUDE.md (or a failed backup) used to be printed and then
+    # ignored, so an install with no ~/.claude/CLAUDE.md still exited 0.
+    # The optional extras still run first (#318 fix round 2), so the one failure
+    # reported is the real one and nothing else is silently skipped.
+    if not claude_md_ok:
+        run_extras(args)
+        print("✗ ~/.claude/CLAUDE.md was NOT installed (see the [environment] lines above).")
+        print("  Everything else ran; the global rules are missing.")
+        return 1
 
     # ---- First `mc` run with no provenance: baseline written, cleanup deferred ----
     #

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "avengers/session-plan.v2",
   "title": "avengers session-plan (v2)",
-  "description": "The frozen, fully-resolved flat plan a convene run materializes (design §4/§5/§8). v2 (WP-2): the arbiter is a fresh, persona-free, deliberation-EXTERNAL cold-context CALL (not a promoted seat). The arbiter object DROPS `seat`, ADDS {is_external, cold_context, path: clean|fallback}, and KEEPS the runtime-load-bearing {provider, effort, guard_stack} (`constraint` optional). Seats no longer REQUIRE `can_arbitrate` (it is inert under v2 — no seat ever adjudicates). v1 is NOT mutated so a resumed mid-flight v1 plan can't silently misvalidate. Written by scripts/convene.py; validated by the bundled stdlib mini-validator (subset of JSON Schema: type/required/properties/items/enum/const/additionalProperties/minItems/minimum). This is DATA/machine state (stdlib JSON), never executed.",
+  "description": "The frozen, fully-resolved flat plan a convene run materializes (design §4/§5/§8). v2 (WP-2): the arbiter is a fresh, persona-free, deliberation-EXTERNAL cold-context CALL (not a promoted seat). The arbiter object DROPS `seat`, ADDS {is_external, cold_context, path: clean|fallback}, and KEEPS the runtime-load-bearing {provider, effort, guard_stack} (`constraint` optional). Seats no longer REQUIRE `can_arbitrate` (it is inert under v2 — no seat ever adjudicates). v1 is NOT mutated so a resumed mid-flight v1 plan can't silently misvalidate. S081 (2026-09-14) edits v2 ADDITIVELY and without a version bump: seats and the arbiter gain the OPTIONAL `model` / `served_model` (string or null), and the effort enum drops `minimal` (no listed codex model supports it) and adds `high` (no tier is retired). Optional means a v2 plan written before the change carries no new required key, so it still validates and resumes; only a plan that pinned `minimal` would fail the enum. S081 amendment 1 D6 (2026-09-15) edits v2 ADDITIVELY again, no version bump: seat items gain the OPTIONAL `substitute_for` / `substitution_reason` / `requested_model`, present only on a codex seat convene re-seated on claude at plan build because astra could not serve it; a plan without them still validates. #282 r14 (2026-09-15) edits v2 ADDITIVELY again, no version bump: seat items and the arbiter gain the OPTIONAL `provenance` object (closed inside: requested_selector, resolved_model, source, roster_fetched_at, and frozen_slug only under a freeze); a plan without it still validates. #282 fix round 1 F15 (2026-09-16) edits v2 ADDITIVELY again, no version bump: the `provenance` object gains the OPTIONAL boolean `roster_invalid`, present as true only when the pin was resolved against an unreadable roster (in a fail-closed convene, only a codex freeze can be \u2014 it is honoured unvalidated as the operator's emergency override); a plan without it still validates. convene.py validates at build only. Written by scripts/convene.py; validated by the bundled stdlib mini-validator (subset of JSON Schema: type/required/properties/items/enum/const/additionalProperties/minItems/minimum). This is DATA/machine state (stdlib JSON), never executed.",
   "type": "object",
   "required": [
     "schema", "session_id", "created_at", "profile", "profile_sha256",
@@ -53,13 +53,19 @@
         "properties": {
           "seat_id": { "type": "string" },
           "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
-          "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+          "effort": { "type": "string", "enum": ["low", "medium", "high", "xhigh", "max", "default"] },
           "seat_class": { "type": "string" },
           "effort_note": { "type": ["string", "null"] },
+          "model": { "type": ["string", "null"], "description": "OPTIONAL. The model convene resolved for this seat at plan build (skills/_meta/seat_model.py by role) — the REQUESTED model, frozen into the plan." },
+          "served_model": { "type": ["string", "null"], "description": "OPTIONAL. The model the provider REPORTED serving for this seat's call (codex stderr banner; agy/claude self-report is labelled as such). Null or absent until observed; never back-filled from `model`." },
           "adversarial_role": { "type": "boolean" },
           "can_arbitrate": { "type": "boolean" },
           "fallback_ok": { "type": "boolean" },
-          "guard_stack": { "type": "string" }
+          "guard_stack": { "type": "string" },
+          "substitute_for": { "type": "string", "enum": ["codex"], "description": "OPTIONAL (S081 amendment 1 D6). Present only on a seat convene RE-SEATED at plan build because astra could not serve its codex call: the seat is then provider claude on seat_model consultant_main. Absent on every other seat." },
+          "substitution_reason": { "type": "string", "description": "OPTIONAL. Why the codex seat was substituted, a codex_quota.SUBSTITUTION_REASONS token, one of rate_limit_reached | quota_exhausted (a fresh rollout reading), cli_missing (no codex binary on PATH), no_eligible_model (the codex roster lists no eligible TOP model for the seat's effort). Present only with substitute_for." },
+          "requested_model": { "type": ["string", "null"], "description": "OPTIONAL. The codex model the seat would have used (null when no eligible model exists). Present only with substitute_for." },
+          "provenance": { "type": "object", "description": "OPTIONAL (#282 r14; #282 fix round 1 F15). The seat_model pin provenance of the model convene resolved for this call, persisted at plan build: requested_selector (the role selector, e.g. TOP@xhigh), resolved_model (the resolver's choice before any env layer), source (freeze | env | roster | harness_literal), roster_fetched_at (the fetched_at of the roster the choice was made from; null when none was read), only when source is freeze frozen_slug (the seat-model-pins.json `top` as written), and roster_invalid (true, and absent otherwise) when the pin was resolved against a roster that could not be read — in a fail-closed convene only a codex FREEZE can be, since a freeze is honoured unvalidated as the operator's emergency override while every other codex path raises roster_invalid. A substituted seat carries the provenance of the Claude pin that serves it. #291 (2026-09-23, additive, no version bump): roster_rev, the model_roster REVISION the pin was resolved under, OPTIONAL and present only on Claude and codex-std pins, so a plan or record written before it still validates. Closed: no other key (live meter and event keys are not persisted).", "required": ["requested_selector", "resolved_model", "source", "roster_fetched_at"], "additionalProperties": false, "properties": { "requested_selector": { "type": "string" }, "resolved_model": { "type": "string" }, "source": { "type": "string", "enum": ["freeze", "env", "roster", "harness_literal"] }, "roster_fetched_at": { "type": ["string", "null"] }, "frozen_slug": { "type": "string" }, "roster_invalid": { "type": "boolean" }, "roster_rev": { "type": "integer", "minimum": 1 } } }
         }
       }
     },
@@ -69,15 +75,18 @@
       "required": ["provider", "effort", "guard_stack", "is_external", "cold_context", "path"],
       "properties": {
         "provider": { "type": "string", "enum": ["codex", "claude", "agy"] },
-        "effort": { "type": "string", "enum": ["minimal", "low", "medium", "xhigh", "max", "default"] },
+        "effort": { "type": "string", "enum": ["low", "medium", "high", "xhigh", "max", "default"] },
         "seat_class": { "type": "string" },
+        "model": { "type": ["string", "null"], "description": "OPTIONAL. The model convene resolved for the arbiter call at plan build (seat_model role `arbiter`) — the REQUESTED model." },
+        "served_model": { "type": ["string", "null"], "description": "OPTIONAL. The model the provider REPORTED serving for the arbiter call. Null or absent until observed; never back-filled from `model`." },
         "guard_stack": { "type": "string" },
         "is_external": { "type": "boolean" },
         "cold_context": { "type": "boolean" },
         "path": { "type": "string", "enum": ["clean", "fallback"] },
         "fallback_arbiter_residual": { "type": "boolean" },
         "excluded_authorship": { "type": "string" },
-        "constraint": { "type": "string" }
+        "constraint": { "type": "string" },
+        "provenance": { "type": "object", "description": "OPTIONAL (#282 r14; #282 fix round 1 F15). The seat_model pin provenance of the model convene resolved for this call, persisted at plan build: requested_selector (the role selector, e.g. TOP@xhigh), resolved_model (the resolver's choice before any env layer), source (freeze | env | roster | harness_literal), roster_fetched_at (the fetched_at of the roster the choice was made from; null when none was read), only when source is freeze frozen_slug (the seat-model-pins.json `top` as written), and roster_invalid (true, and absent otherwise) when the pin was resolved against a roster that could not be read — in a fail-closed convene only a codex FREEZE can be, since a freeze is honoured unvalidated as the operator's emergency override while every other codex path raises roster_invalid. A substituted seat carries the provenance of the Claude pin that serves it. #291 (2026-09-23, additive, no version bump): roster_rev, the model_roster REVISION the pin was resolved under, OPTIONAL and present only on Claude and codex-std pins, so a plan or record written before it still validates. Closed: no other key (live meter and event keys are not persisted).", "required": ["requested_selector", "resolved_model", "source", "roster_fetched_at"], "additionalProperties": false, "properties": { "requested_selector": { "type": "string" }, "resolved_model": { "type": "string" }, "source": { "type": "string", "enum": ["freeze", "env", "roster", "harness_literal"] }, "roster_fetched_at": { "type": ["string", "null"] }, "frozen_slug": { "type": "string" }, "roster_invalid": { "type": "boolean" }, "roster_rev": { "type": "integer", "minimum": 1 } } }
       }
     },
     "quorum": {

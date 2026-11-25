@@ -1,19 +1,6 @@
 ---
 name: avengers
-description: >
-  Use when a decision, design, claim, or deliverable needs STRUCTURED CONTENTION
-  from a standing team of AI members with deliberately conflicting incentives and
-  mixed providers (Claude / Codex / agy) — sustained addressed dialogue, not a
-  single-agent monologue and not a one-shot tournament. The deliberation surface
-  of the orchestration layer and a sibling of forge: it convenes per task from
-  declarative composition profiles, runs blind-diverge → docket → cross-examine →
-  converge → arbiter, and returns ONE decision / deliverable / forge_brief with a
-  mandatory attributed dissent record and actionable trip-wires. Trigger on:
-  "convene the team", "deliberate on X", "ratify this decision", "have the panel
-  weigh in", "red-team this with the standing team", "get conflicting expert
-  takes", "avengers on this". NOT for hierarchical execution (that is bob +
-  agent-teams) and NOT for ephemeral idea tournaments (that is
-  adversarial-team-brainstorm).
+description: "Standing-team deliberation by structured contention: seats with conflicting incentives across Claude, Codex and agy cross-examine a decision, design or claim and return one outcome with attributed dissent. Triggers: 'convene the team', 'deliberate on X', 'ratify this decision', 'have the panel weigh in', 'red-team this with the standing team', 'avengers on this'. Not for execution or tournaments."
 ---
 
 # avengers — Standing AI Deliberation Team
@@ -39,8 +26,11 @@ convened per task from declarative profiles. **Deliberation, not delegation.**
 >   become **opt-in DATA** (a profile with no pins resolves a valid ≥2-family staffing).
 > - **Seat-class effort semantics** — effort pins resolve per `(provider, seat-class)`;
 >   a challenger provider-swap off codex no longer crashes the resolver (it records a
->   "no anti-sycophancy floor for this provider" note). The retired tier `high` stays
->   rejected.
+>   "no anti-sycophancy floor for this provider" note). **No tier is retired** (S081,
+>   2026-09-14): `high` resolves like any other codex tier. The 2026-07-11 finding that
+>   `high` never beat `medium` is kept as a model-scoped advisory note for
+>   `gpt-5.6-sol` only, and the seat-class tiers are recorded as PROVISIONAL on any
+>   other codex model.
 > - **External, SEATLESS, cold-context arbiter** — the provider is SELECTED (never a
 >   promoted seat); no seat both ballots and adjudicates. Clean/fallback paths;
 >   `fallback_arbiter_residual` flagged; all-adversarial fails CLOSED.
@@ -107,20 +97,104 @@ ONLY unsatisfiable case → fail CLOSED (`ConveneError`, no run, no spend). `can
 on seats is INERT under v2. The adjudication prior is editable `capability-priors.yaml`
 DATA (fail-open to built-ins). The arbiter synthesizes over ALL positions (never drops
 one) on an authorship-anonymized docket.
+DECLARED ARBITER (D23, S081 revision 4). A profile may instead DECLARE its arbiter:
+`arbiter: {provider: claude, role: consultant_support}` (the Claude support tier, through the
+`seat_model` row) with the top-level `arbiter_independence: separate-session`. For that profile
+the provider-exclusion rule is RELAXED to: the arbiter's MODEL differs from every member seat's
+model (a shared model fails CLOSED; the `-high` and `-medium` of one agy family version count as one
+model), and it runs in its OWN SESSION — a fresh context that never held a member seat's turns
+(its Claude label says so, and the chair spawns it that way). Context independence stands in for
+provider independence; a provider that deliberated keeps `path: fallback` with the residual
+flagged. The declared arbiter's obligations travel on the plan's arbiter object: it must cite
+evidence for each ruling, it may abstain, and it must send unresolved material disputes to the
+user. The arbiter block is a closed vocabulary: an unknown key, half a declaration (a provider /
+role without `arbiter_independence`, or the reverse), a declared provider unavailable at plan
+build, or a declared arbiter with no eligible model fails CLOSED — a declaration is never silently
+ignored and never replaced by the selection. A profile that declares nothing resolves exactly as
+above.
 </HARD-RULE>
 
 <HARD-RULE>
 GUARD STACKS ARE RESOLVER-INJECTED INVARIANTS, not per-prompt discipline. Every
-external seat call uses its pinned stack verbatim:
-- codex: `timeout <T> codex exec --ephemeral -s read-only -c model_reasoning_effort=<tier> "…" < /dev/null`
-  — per-call effort PINS (xhigh floor for challenger/ballot/arbiter seats; max for
-  ratification-arbiter calls with `timeout 1200`); the tier `high` is RETIRED and
-  MUST be rejected by validation; retry once on capacity.
-- agy: `timeout 600 agy --sandbox [flags-before -p] -p "…" < /dev/null`
-  — advisory-only preamble; NO `--add-dir` in v1; `git status --short` tripwire
-  after any repo exposure.
-A `served_by` probe rides every external call and is recorded as provider-REPORTED
-(not verified). Zero un-pinned codex calls.
+external seat call uses its pinned stack verbatim, and every Claude seat is spawned
+with the model its label names:
+- codex: `timeout <T> codex exec -s read-only -m <slug> -c model_reasoning_effort=<tier> "…" < /dev/null`
+  — the MODEL `-m <slug>` comes from `skills/_meta/seat_model.py` (codex member seats →
+  `consultant_main` whatever their `seat_weight`, a codex arbiter → `arbiter`), resolved
+  FAIL-CLOSED: a seat that cannot be pinned is a `ConveneError`, never an unpinned call.
+  No `--ephemeral` on ANY codex seat (#302): TOP and support seats alike run metered, so
+  every seat's rollout records quota (and its prompt persists — no secrets in a brief). `<T>` = `codex_model.timeout_for(slug, tier)`, the ONE
+  codex timeout owner. Per-call effort PINS from `{low, medium, high, xhigh, max}`
+  (xhigh floor for challenger/ballot/arbiter seats; max for ratification-arbiter calls, whose
+  floor-table ceiling is 1200). `high` RESOLVES — no tier is retired; for
+  `gpt-5.6-sol` @ `high` the plan records the measured note "never beat medium —
+  benchmark 2026-07-11, 14 scored runs" (advisory and model-scoped, never a rejection).
+  Retry once on capacity.
+- agy: `(d="$(mktemp -d)" && cd "$d" && timeout <T> agy --sandbox --mode plan --model <slug> [flags-before -p] -p "…" < /dev/null)`
+  — `--model <slug>` via `seat_model.py` (member seats by `seat_weight`: `main` →
+  `consultant_main` = TOP-argon `-high`, otherwise `consultant_support` = TOP-argon
+  `-medium`; the arbiter → `arbiter` = TOP-argon `-high`; the agy family rule —
+  `model_roster.AGY_FAMILY`, rev 6 argon — enforced in code);
+  `<T>` from the seat_model role row (600); advisory-only preamble; NO `--add-dir` in v1. The
+  stack carries `--mode plan` (no native writes) and starts in an empty temp directory, so no repo
+  is in the seat's workspace: its whole brief goes inline (#366, measured on agy 1.4.12).
+- claude: a host-native spawn, not a shell CLI, so the stack is a LABEL the chair reads:
+  `(claude host seat · model=<alias> via seat_model <role> · effort=<e> · non-CLI spawn, timeout <T>s)`.
+  The seat resolves a REAL model from `seat_model.py` by `seat_weight` (`main` →
+  `consultant_main` = the Claude main tier, otherwise `consultant_support` = the Claude support tier;
+  a Claude arbiter → `arbiter` = the Claude main tier, or a DECLARED arbiter's own role, e.g.
+  `consultant_support` = the Claude support tier (tier values: `skills/_meta/model_roster.py`), whose
+  label adds `· separate session: …`), fail-closed like the other providers; `<T>` from the role row
+  (600, arbiter 1200). The chair spawns the seat with that model; the kernel does not
+  dispatch the label.
+`seat_weight` is an optional top-level roster-card field (`main` | `support`, default
+`support`; a profile seat entry may override it; any other value fails closed). Every
+seat and the arbiter carry the plan-time resolved `model`; the optional `served_model`
+slot holds what the provider REPORTED serving. A `served_by` probe rides every external
+call and is recorded as provider-REPORTED (not verified). Zero un-pinned codex calls.
+- CODEX UNAVAILABLE → PLAN-TIME CLAUDE MAIN-TIER SUBSTITUTE (S081 amendment 1 D6, which named it "astra unavailable"). When the plan is
+  built, `convene.py` makes ONE availability evaluation (a fresh `rate_limit_reached` /
+  `quota_exhausted` codex rollout reading, or no `codex` binary on PATH) and checks each
+  codex member seat for "no eligible TOP model for this effort". A codex seat codex cannot
+  serve is re-seated as a Claude seat on `consultant_main` (the Claude main tier) WHATEVER its
+  `seat_weight`, keeps its `adversarial_role`, declares `fallback_ok` (so a one-family plan
+  still passes the structural floor) and records `substitute_for: codex`,
+  `substitution_reason` and `requested_model` — BEFORE the structural validate. The arbiter
+  is then chosen with codex EXCLUDED from both paths (nothing left → fail CLOSED). Never a
+  codex std or support model: every codex model draws the same quota. A plan-wide outage re-seats every codex seat; since
+  #368 every profile seats agy, so every profile's codex outage still leaves a Claude + Google round. The
+  OpenAI provider gap is named on the ONE pre-spend review line, e.g.
+  `codex unavailable (rate_limit_reached): skeptic, operator served by claude/<Claude main tier> — provider gap: openai; arbiter recomputed`
+  (the live line names the model the tier resolves to).
+  Only a persisted (non-`--dry-run`) convene records one `deliberation` substitution row per
+  substituted seat in `~/.claude/projects/<slug>/astra-budget.jsonl` (reviewed 2026-09-28).
+  **Quota wait (#322 fix round 1).** When the reason is QUOTA (`quota_exhausted` / `rate_limit_reached`)
+  the pre-spend review adds `CODEX_QUOTA_WAIT: avengers <session> (reason …; wait_advice wait|notify;
+  resets_in_s …; seats …)`. The lead acts on it BEFORE the persisted convene, by the codex-orchestration
+  `CODEX_QUOTA_WAIT` steps: with `notify`, `codex_quota.py notify-claim` and on its exit 0 push the
+  notification; then `codex_quota.py await-reset --cycle-id <session>` in a BACKGROUND call; exit 0 →
+  re-run the `--dry-run` once (codex back on its seats); any other exit → convene as planned, with the
+  Claude stand-in.
+- ADMIT-GATED AT PLAN BUILD (S081 revision 4, WP-D2 — closes I11). The session id is minted before
+  the substitution, and each codex seat is admit-gated once: admitted in-process at plan build by
+  `codex_quota.admit("deliberation", <session id>, size=…, model_class=…)`, ONE decision per model
+  class per session. Four of the five shipped profiles seat two codex seats (a `consultant_main` seat and
+  a `consultant_support` seat, both std-class since the astra reserve), so they take one std-class
+  `deliberation` admission per session; research-synthesis takes one. A refusal — `budget_spent`,
+  `budget_store_unavailable` or an unavailable token (a ≥70% `threshold` too, until #322 retired it) — re-seats the seat through the
+  SAME substitution with the decision's reason, and codex is excluded from the arbiter selection.
+  The decision's `admission_id` sits on the seat, beside `substitute_for` / `substitution_reason` /
+  `requested_model` (not inside `provenance`). `--dry-run` and a bare `build_session_plan` decide
+  check-only and write nothing (no row, no store, no `.lock`); a persisted convene records the
+  admission and any substitution row, both keyed on the session id. `--size light|medium|complex`
+  sizes the codex seat (absent = complex, D17).
+  HONEST LIMITS: the session's `deliberation` admissions (one per model class) cover every turn, so a
+  trip-wire that trips mid-session is not seen by the frozen plan; a spent forge `consult` budget
+  substitutes nothing (a different key and use); an invalid freeze pin is a broken resolver and fails
+  closed, never a substitution; agy seats are unchanged; a persisted build that fails after its
+  admission keeps that row, so a retry with the same session id is refused `budget_spent` (re-run with
+  a fresh `--session-id`); and there is NO mid-session re-seating — a codex stack that fails after the
+  plan is frozen keeps today's no-show handling (the plan froze its arbiter), a recorded gap.
 </HARD-RULE>
 
 <HARD-RULE>
@@ -138,6 +212,79 @@ every standing-memory entry is stamped with its writing provider; an INHERITED e
 assembly ("the previous skeptic (codex) recorded …"), converting the cross-provider
 first-person confabulation hazard into calibration metadata.
 </HARD-RULE>
+
+## Composition (D15, D23)
+
+Four of the five shipped profiles seat two codex seats (a `consultant_main` seat and a `consultant_support`
+seat: two models, ONE std model class since the astra reserve) and research-synthesis seats one; every profile
+seats exactly ONE `consultant_main` codex seat, always paired with a Claude main-tier seat in the same
+profile. **Since the astra reserve (roster rev 4, 2026-09-27) the visionary codex seat is the codex std tier
+(Sol @ `xhigh`), no longer astra:** codex TOP is kept for the escalation seat and complex code review, and no
+avengers seat — member or codex arbiter — reaches it. The design-level Sol → TOP retry (U2) is not wired into
+convene yet (a follow-up task): an avengers codex failure keeps the existing D6 path. In the three idea profiles codex is the VISIONARY LEAD and a Claude main-tier skeptic holds
+the adversary; in coding-ratification and writing-cv codex keeps the adversarial skeptic seat. The
+arbiter column is what convene resolves for each profile as shipped (provider and `seat_model` role in
+brackets).
+
+<!-- composition-table:start (test_convene.py pins these rows to the profiles on disk) -->
+| Profile | codex seats | paired Claude main-tier seat | agy seat | arbiter |
+|---|---|---|---|---|
+| business-ideation | operator (support), architect (visionary lead) | skeptic, economist | user-advocate (main) | Claude support tier (claude consultant_support), separate session |
+| research-synthesis | architect (visionary lead) | skeptic | operator (support) | Claude support tier (claude consultant_support), separate session |
+| website-ux | user-advocate (support), architect (visionary lead) | skeptic | operator (main) | Claude support tier (claude consultant_support), separate session |
+| coding-ratification | skeptic (adversary), operator (support) | architect | user-advocate (main) | Claude main tier (claude arbiter), selected, fallback path |
+| writing-cv | user-advocate (support), skeptic (adversary) | wordsmith | architect (main) | Claude support tier (claude consultant_support), separate session |
+<!-- composition-table:end -->
+
+- **agy is a deliberation seat in every profile again (#368, 2026-10-24).** Amendment 3 (D25) had removed
+  agy from every profile but `research-synthesis`, on the previous agy family's evidence; on Gemini 4 Argon (#365, #367:
+  deliberation equal to Opus, slower) #368 ADDED one agy seat to each of the other four, keeping every
+  existing seat: business-ideation `user-advocate` (the customer's voice), website-ux `operator`
+  (build-and-run feasibility), writing-cv `architect` (structure and narrative coherence),
+  coding-ratification `user-advocate` (whoever uses or maintains the result). These seats are
+  `seat_weight: main` (`consultant_main` → `-high` unsized; a sized convene serves
+  `model_roster.AGY_LEVEL_BY_SIZE`: light `-low`, medium `-medium`, complex `-high`), Pattern 1 only
+  (`--sandbox --mode plan` from an empty cwd, inline brief, `< /dev/null`). research-synthesis keeps its support-weight operator.
+  agy never arbitrates a healthy session (D23, below), and astra and the benched Claude family are not
+  seated.
+- **Codex took the seats agy vacated at amendment 3, and keeps them.** A profile may hold TWO codex seats of different MODELS: a `main` card on seat_model
+  `consultant_main` (the codex std tier, Sol — the visionary lead) and a `support` card on
+  `consultant_support` (the codex support tier literal). Both are the std class since the astra reserve,
+  so a session takes one std-class `deliberation` admission per session (`codex_quota.BUDGET_LIMITS
+  {"top": 1, "std": 1}`, once per model class per session) whose row lists every seat model and role it covers (`models` /
+  `roles`, #302); a refused codex seat falls back to a fresh **Claude main-tier** seat (D18), not to the
+  support tier. A home-tier codex freeze no longer reaches any avengers seat (F8). **Exception, stated so the
+  class claim stays honest:** the class follows the resolving row AND the roster — when the vendor ranks the
+  std model TOP (a reordered roster, or a stale roster whose recorded TOP is the std model) the Sol literal IS
+  the roster TOP and is billed `top`, so that session's admission is a TOP one (seat_model.pin_model_class).
+- **agy never arbitrates a healthy session** (`convene.ARBITER_INELIGIBLE_PROVIDERS`, scoped by D29).
+  Removing agy's seats is exactly what would have qualified it for the CLEAN arbiter path, so the bar
+  is explicit rather than incidental. It applies only while no provider is excluded: a session that has
+  already lost a provider (codex unavailable, a codex seat substituted or refused, or codex excluded for
+  lack of an eligible arbiter model) keeps agy as the last-resort arbiter instead of failing closed —
+  `coding-ratification` on a codex refusal resolves agy `gemini-4-argon-high` on the fallback path
+  (agy holds a seat there since #368; it was the clean path while D25 left agy seatless). A
+  declared arbiter is not selection and does not consult the bar (no shipped profile declares agy).
+  **Since #368 every profile is a three-provider deliberation (Claude + codex + agy) and every
+  healthy-session arbiter is Claude** — the declared Claude support tier in a separate session, or a recorded fallback
+  residual for `coding-ratification`. A session whose codex arm is refused no longer has a Claude-only
+  deliberation: every profile's codex outage still leaves a Claude + Google round, and its dissent
+  record must name the OpenAI gap. (Under D25 the four agy-free profiles fell to Claude-only; that was
+  the price #368 removed.)
+- **business-ideation declares its arbiter** since amendment 3. It could not before: its economist seat
+  resolved the Claude support tier (then `opus`), the model a declared `consultant_support` arbiter
+  resolves, and the relaxed rule refuses an arbiter that shares a seat's model. D26 moved the economist
+  to the Claude main tier (`seat_weight: main`),
+  so the rule keeps its full teeth instead of being narrowed to fit the profile.
+- **TRIP-WIRE (§4.9), all three idea profiles:** if the user overturns the arbiter's decision in 2 of a
+  profile's first 3 flipped sessions, revert that profile. NO AUTOMATED COUNTER EXISTS: neither convene
+  nor the run record tracks an overturned decision, so a person counts these sessions by hand.
+- **Convergence in the idea profiles (CONV-1):** where an idea profile's outcome is ONE chosen direction
+  (`business-ideation` and `website-ux` on a `decision` outcome), the arbiter chooses it under CONV-1
+  (`~/.claude/skills/_meta/convergence-rule.md`); the rule is defined there and is not restated here. The
+  decision record names the winning direction and each borrowed part with the seat it came from.
+  `research-synthesis` falls under that rule's exclusions, as does any session that fails its applicability
+  test. The mandatory dissent record is unchanged either way.
 
 ## The dialogue protocol
 
@@ -256,11 +403,12 @@ admissibility + shipped adversarial fixtures + chair adjudication — never clai
 ## Files (v1 + v2 surface)
 
 - `SKILL.md` — this file (slim parent + the §9 UX surface).
-- `references/` — `dialogue-protocol.md` (§4 phase machine), `convene-contract.md`
-  (§8 input contract + external arbiter + run-record), `outcome-routing.md` (§8 output
-  router + `avengers_brief` schema), `intent-artifact.md` (v2 §5 steward `intent.md`
-  contract), `memory-policy.md` + `trust-boundary.md` (§5/§6), `reuse-map.md` (alf
-  blast-radius map), `v2-deferred-backlog.md` (v2 deferred items — nothing silent).
+- `references/dialogue-protocol.md` (§4 phase machine), `references/convene-contract.md`
+  (§8 input contract + external arbiter + run-record), `references/outcome-routing.md` (§8
+  output router + `avengers_brief` schema), `references/intent-artifact.md` (v2 §5 steward
+  `intent.md` contract), `references/memory-policy.md` + `references/trust-boundary.md`
+  (§5/§6), `references/reuse-map.md` (alf blast-radius map),
+  `references/v2-deferred-backlog.md` (v2 deferred items — nothing silent).
 - `scripts/` — `kernel.py` (phases/budgets/quorum/atomic append), `convene.py`
   (fail-closed resolver → frozen session-plan v2, external seatless arbiter,
   `run-record.json`, evidence-request path), `seat_prompt.py` (7-section trust envelope;

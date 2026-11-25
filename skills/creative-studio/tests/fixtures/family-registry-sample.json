@@ -1,0 +1,28 @@
+{
+  "note": "Input of studio-wiring (kind opaque): the five studio families as skill_resolve reads them from the frontmatter of skills/*/SKILL.md, and the skill that declares each. Every family is a top-level `family:` line, as the library's other families are.",
+  "source": "skill_resolve.build_index(skills/)['families'], the five studio families only",
+  "families": {
+    "visual-craft-restrained": [
+      "web-craft-restrained"
+    ],
+    "visual-craft-expressive": [
+      "web-craft-expressive"
+    ],
+    "copy-plain": [
+      "business-writing"
+    ],
+    "copy-voiced": [
+      "content-writer"
+    ],
+    "social": [
+      "social-post"
+    ]
+  },
+  "declared_by": {
+    "web-craft-restrained": "visual-craft-restrained",
+    "web-craft-expressive": "visual-craft-expressive",
+    "business-writing": "copy-plain",
+    "content-writer": "copy-voiced",
+    "social-post": "social"
+  }
+}

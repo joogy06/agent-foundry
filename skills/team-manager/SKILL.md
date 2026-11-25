@@ -127,11 +127,15 @@ installed, so both had been degrading silently.)
 
 ### Spawn Prompt Checklist
 
-When spawning a specialist, ALWAYS include:
-- [ ] What to build (specific deliverable)
+When spawning a specialist, ALWAYS include (the full block: `skills/_meta/spawn-brief.md`):
+<!-- spawn-brief.v1 id=team-manager.specialist -->
+- [ ] Goal: what to build (specific deliverable), for whom, why
 - [ ] Design doc path (so they can reference the full spec)
 - [ ] Files they own (explicit list)
-- [ ] Acceptance criteria
+- [ ] Non-goals: files they do not own; what must not change
+- [ ] Open questions: none mid-task — decide, note the assumption, proceed; a material one goes to you before they start
+- [ ] Done when: the WP's acceptance criteria (and the DW-n it covers), checkable by someone else
+- [ ] Stop when: done-when holds; or 2 fix rounds after review are spent (then escalate to you); or blocked
 - [ ] Session control reminder ("read session_control.md first")
 - [ ] Dev environment info (if applicable — e.g., "test on [dev URL from PROJECT.md]")
 - [ ] Backup reminder (if modifying existing files — "backup files before editing")

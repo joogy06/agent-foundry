@@ -44,14 +44,14 @@ AGY_VERSION="$(printf '%s' "$AGY_VERSION_RAW" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+
 ok "found: $AGY_VERSION_RAW (parsed: ${AGY_VERSION:-unknown})"
 echo
 
-# 2. capture help surface (agy has a small surface — no model flag, account-auth)
+# 2. capture help surface (agy has a small surface — account-auth; --model pinned per call)
 printf "2) capturing help to %s\n" "$WORK_DIR"
 agy --help > "$WORK_DIR/agy-help.txt" 2>&1 || { err "agy --help failed"; exit 4; }
 COMMANDS="$(grep -oE '^\s+[a-z][a-z-]+' "$WORK_DIR/agy-help.txt" | tr -d ' ' | sort -u | tr '\n' ' ')"
 ok "commands: ${COMMANDS:-none extracted}"
-# sanity: agy must NOT have grown a -m/--model flag (host directive depends on its absence)
-if grep -qE '(^|\s)(-m|--model)\b' "$WORK_DIR/agy-help.txt"; then
-  warn "agy --help now mentions -m/--model — the 'no model flag' host directive may need review"
+# sanity: every agy call pins --model through seat_model, so the flag must still exist
+if ! grep -qE '(^|\s)--model\b' "$WORK_DIR/agy-help.txt"; then
+  warn "agy --help no longer mentions --model — every pinned agy call would break; review the host directive"
 fi
 echo
 
@@ -75,8 +75,17 @@ echo
 # EOF BEFORE the model call — an open never-EOF stdin (background/harness/cron shells)
 # hangs agy forever at 0 bytes, and --print-timeout does NOT fire (print-phase only).
 # Hang signature: exit 124 + empty output when stdin is left open in a background shell.
-# Rule: EVERY headless agy call gets `< /dev/null` (or piped input) + a shell timeout.
-STDIN_PROBE="$(timeout 25 agy -p 'Reply with exactly: STDIN-OK' < /dev/null 2>/dev/null || true)"
+# Rule: EVERY headless agy call gets `< /dev/null` + a shell timeout; content goes inline in -p.
+# The probe is pinned like every agy call: the model comes from seat_model, never a literal.
+SEAT_MODEL_PY="$SKILL_DIR/../_meta/seat_model.py"
+AGY_MODEL="$(python3 "$SEAT_MODEL_PY" argv --role consultant_support --provider agy 2>/dev/null || true)"
+STDIN_PROBE=""
+if [ -z "$AGY_MODEL" ]; then
+  warn "seat_model could not resolve the agy model (consultant_support); stdin probe not run"
+else
+  # $AGY_MODEL unquoted on purpose: it is the two-word fragment `--model <slug>`.
+  STDIN_PROBE="$(d="$(mktemp -d)" && cd "$d" && timeout 25 agy --sandbox --mode plan $AGY_MODEL -p 'Reply with exactly: STDIN-OK' < /dev/null 2>/dev/null || true)"
+fi
 if printf '%s' "$STDIN_PROBE" | grep -q 'STDIN-OK'; then
   ok "stdin-guarded headless call works (< /dev/null)"
 else

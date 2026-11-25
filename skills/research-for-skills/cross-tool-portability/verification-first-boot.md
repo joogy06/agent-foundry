@@ -2,6 +2,13 @@
 
 A checklist to run when you publish a new cross-tool skill, to confirm it actually works in all four CLIs.
 
+## Contents
+
+- When to run this
+- Checklist
+- Continuous verification (in alf sweeps)
+- Anti-patterns
+
 ## When to run this
 
 - After authoring a new cross-tool skill
@@ -43,8 +50,9 @@ Expected: skill loads, body is read.
 agy plugin list | grep <skill-name>   # TODO(agy): verify exact list output / skill granularity
 # Should appear if agy surfaces imported skills individually
 
-# Test a query that should trigger it (agy takes no model flag and no env-key prefix)
-agy -p "<sample query>"
+# Test a query that should trigger it (model pinned through seat_model; no env-key prefix)
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "<sample query>" < /dev/null)
 # Output is plain text on stdout — parse text, not JSON.
 ```
 
@@ -113,13 +121,13 @@ Expected: ≤500.
 
 If over: split detail into `references/*.md`.
 
-### 8. Check the description leads with trigger language
+### 8. Check the description opens with the subject
 
 ```bash
 sed -n '/^description:/p' ~/.claude/skills/<skill-name>/SKILL.md
 ```
 
-Expected: starts with "Use when ..." or similar.
+Expected: opens with the skill's subject, says what it does and when to use it, and does not start with "Use when".
 
 ### 9. Check anti-patterns table is present
 

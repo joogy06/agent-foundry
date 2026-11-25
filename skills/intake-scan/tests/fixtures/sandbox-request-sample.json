@@ -1,0 +1,21 @@
+{
+  "schema": "intake-sandbox-request-sample.v1",
+  "note": "Benign shape sample of a sandbox request: the scanner command written with in-sandbox paths, the host directories to bind, and a time limit. The host paths are placeholders; tests build real directories in a temp directory.",
+  "argv": [
+    "/usr/bin/python3",
+    "-c",
+    "print('stand-in scanner')"
+  ],
+  "target_dir": "/placeholder/extracted-target",
+  "work_dir": "/placeholder/work",
+  "toolchain_dir": "/placeholder/intake-tools/sample-tool/venv",
+  "conf_dir": null,
+  "timeout_s": 60,
+  "in_sandbox": {
+    "target": "/target",
+    "toolchain": "/tools/venv",
+    "out": "/out",
+    "conf": "/conf",
+    "home": "/home/sandbox"
+  }
+}

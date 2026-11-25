@@ -48,6 +48,9 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import skill_frontmatter  # noqa: E402  (sibling module: custom keys, either layout)
+
 DEFAULT_THRESHOLD = 0.30
 DEFAULT_SKILLS_ROOT = Path.home() / ".claude" / "skills"
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "skill-overlap-baseline.json"
@@ -202,7 +205,15 @@ def _has_boundary(skills_root: Path, name: str) -> bool:
         return False
     end = raw.find("\n---", 3)
     front = raw[3:end if end > 0 else len(raw)]
-    return any(line.startswith(("disambiguation:", "applies_when:")) for line in front.splitlines())
+    # Presence at the top level or under `metadata:` (#344). Two copies that disagree raise
+    # FrontmatterConflict; a form the reader will not guess at is no boundary, and says so.
+    for key in ("disambiguation", "applies_when"):
+        try:
+            if skill_frontmatter.has(front, key, path=fp):
+                return True
+        except skill_frontmatter.FrontmatterUnsupported as exc:
+            print(f"skill_overlap: {exc} -- not counted as a boundary", file=sys.stderr)
+    return False
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -233,10 +244,14 @@ def main(argv: List[str] | None = None) -> int:
         # where neither skill says anything about its neighbour is pure suppression, and a
         # baseline that can absorb undifferentiated pairs silently turns into a snooze
         # button on the exact signal it was built to raise.
-        undifferentiated = [
-            (a, b) for _, a, b in pairs
-            if not (_has_boundary(args.skills_root, a) or _has_boundary(args.skills_root, b))
-        ]
+        try:
+            undifferentiated = [
+                (a, b) for _, a, b in pairs
+                if not (_has_boundary(args.skills_root, a) or _has_boundary(args.skills_root, b))
+            ]
+        except skill_frontmatter.FrontmatterConflict as exc:
+            print(f"skill_overlap: {exc} — refusing to baseline", file=sys.stderr)
+            return 2
         if undifferentiated:
             print(
                 f"skill_overlap: refusing to baseline {len(undifferentiated)} pair(s) where neither "

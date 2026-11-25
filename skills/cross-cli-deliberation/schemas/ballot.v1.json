@@ -33,7 +33,7 @@
       "required": ["command", "exit_code", "timeout_s", "stdin_closed"],
       "additionalProperties": false,
       "properties": {
-        "command": { "type": "string", "description": "args-supplied; MUST carry the guard set (agy --sandbox / codex -s read-only, < /dev/null, timeout)." },
+        "command": { "type": "string", "description": "args-supplied; MUST carry the guard set (agy --sandbox --mode plan / codex -s read-only, < /dev/null, timeout)." },
         "exit_code": { "type": ["integer", "null"] },
         "timeout_s": { "type": "integer" },
         "stdin_closed": { "type": "boolean" }

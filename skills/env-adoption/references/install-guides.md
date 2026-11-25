@@ -18,7 +18,7 @@ Post-install: `codex --version` to verify. Configure at `~/.codex/config.toml`.
 |-----------|----------------|
 | All | `agy install` / `agy update` (binary at `~/.local/bin/agy`) — see the `antigravity-cli` skill for the full procedure |
 
-Auth: via the Antigravity account; config lives under `~/.antigravity/`. `agy` authenticates itself — there is NO API-key env var and NO `GOOGLE_CLOUD_PROJECT` prefix at the call layer. Headless single-prompt usage is `agy -p "<prompt>"` (plain-text stdout); see the `antigravity-cli` skill.
+Auth: via the Antigravity account; config lives under `~/.antigravity/`. `agy` authenticates itself — there is NO API-key env var and NO `GOOGLE_CLOUD_PROJECT` prefix at the call layer. Headless single-prompt usage is `AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "<prompt>" < /dev/null)` (plain-text stdout); see the `antigravity-cli` skill.
 
 ## GitHub CLI (gh)
 

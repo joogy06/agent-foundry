@@ -2,12 +2,22 @@
 
 Ready-to-use templates for common Codex delegation scenarios. Copy and customize.
 
+## Contents
+
+- Challenger Review Brief
+- Approach Explorer Brief
+- Research Brief
+- Escalation Brief (When Claude Is Stuck)
+- Prototyping Brief
+- Code Review Brief
+- Structured Output Brief
+
 ---
 
 ## Challenger Review Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 cat > "$CODEX_WORK/brief-challenger.md" << 'BRIEF'
 # Challenger Review Brief
@@ -44,7 +54,7 @@ timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
 ## Approach Explorer Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
   -o "$CODEX_WORK/approach.md" \
@@ -61,7 +71,7 @@ Be opinionated — recommend the best approach and explain why." < /dev/null \
 ## Research Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 timeout 600 codex exec --ephemeral --skip-git-repo-check \
   -o "$CODEX_WORK/research.md" \
@@ -82,7 +92,7 @@ Cite sources where possible." < /dev/null \
 ## Escalation Brief (When Claude Is Stuck)
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 cat > "$CODEX_WORK/escalation-brief.md" << 'BRIEF'
 # Escalation: Claude agents are stuck on [PROBLEM]
@@ -112,7 +122,7 @@ timeout 600 codex exec --ephemeral -C "$PROJECT_DIR" -s read-only \
 ## Prototyping Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 mkdir -p "$CODEX_WORK/prototype"
 
 timeout 1200 codex exec --ephemeral \
@@ -134,7 +144,7 @@ After creating the prototype, summarize what you built and how to run it." < /de
 ## Code Review Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Built-in review command
 codex review --uncommitted \
@@ -155,7 +165,7 @@ codex review --uncommitted \
 ## Structured Output Brief
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Create a JSON schema for structured responses
 cat > "$CODEX_WORK/schema.json" << 'EOF'

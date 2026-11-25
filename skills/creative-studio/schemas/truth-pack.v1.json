@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "truth-pack.v1",
+  "title": "truth-pack.v1",
+  "description": "The facts a written piece may state. An article run takes one with its brief; scripts/studio_claims.py matches every figure, unit, name and date of a draft to an entry here, and anything it cannot match is unsupported. The pack is the user's: the studio never adds an entry. scripts/studio_claims.py reads THIS file for the shape through the validator of scripts/studio_verdict.py, so only the keywords that validator implements are used here; the rule a schema cannot say (entry ids are unique: entry_id_twice) is in studio_claims.pack_problems.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "truth-pack.v1"
+    },
+    "subject": {
+      "description": "What the pack is about, in a few words.",
+      "type": "string",
+      "minLength": 1
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "fact",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "description": "The id a claim list and a ruling name this entry by.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "fact": {
+            "description": "The fact as stated, in one or two sentences.",
+            "type": "string",
+            "minLength": 3
+          },
+          "figures": {
+            "description": "Every figure of the fact, each with its unit. A draft's figure matches when the value is equal, sign included, and the unit is the same (a figure written with no unit matches only an entry figure with no unit). Where a product has two figures in one unit, in one entry or in two, each stands under a condition: the runner matches such a figure only when the statement puts it beside a word that the `fact` writes in that figure's clause and not in the other's (`at low load` against `at full load`), and otherwise the statement waits for a ruling. So write the fact with words of its own beside each figure.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "value"
+              ],
+              "properties": {
+                "value": {
+                  "description": "The number as digits. A value below nought starts with a minus: `-5`.",
+                  "type": "string",
+                  "pattern": "^[-−]?[0-9][0-9.,]*$"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "names": {
+            "description": "The product, model and other proper names the fact is about, as they are written. The runner matches a figure of this entry only for a statement that says one of these names, and every name the statement says must be listed here. Write every spelling of a product on each of its entries. A fact that several products share is one entry that names all of them. An entry with no name supports no statement by itself: it can only be named in a ruling.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "date": {
+            "description": "When the fact holds or was measured: a year, a month and year, or a full date.",
+            "type": "string",
+            "minLength": 4
+          },
+          "source": {
+            "description": "Where the fact comes from. The hand-over prints it beside every claim the entry supports.",
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    }
+  }
+}

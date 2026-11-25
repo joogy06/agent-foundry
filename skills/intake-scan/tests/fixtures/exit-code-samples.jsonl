@@ -1,0 +1,17 @@
+{"command": "scan", "outcome": "verdict pass", "exit": 0}
+{"command": "scan", "outcome": "verdict caution", "exit": 1}
+{"command": "scan", "outcome": "verdict block", "exit": 2}
+{"command": "scan", "outcome": "the target could not be acquired: a block record with a named gap", "exit": 2}
+{"command": "scan", "outcome": "an internal error: a block record is still written", "exit": 3}
+{"command": "scan", "outcome": "the quarantine directory cannot be written: no record", "exit": 3}
+{"command": "scan --local", "outcome": "a block-rule hit with no exception: the record is written, the ledger entry is not", "exit": 2}
+{"command": "adopt | triage | override | except", "outcome": "done and logged", "exit": 0}
+{"command": "adopt | triage | override | except", "outcome": "refused by the ledger rules", "exit": 2}
+{"command": "verify", "outcome": "ok", "exit": 0}
+{"command": "verify", "outcome": "a hit with no exception, or a unit with no entry", "exit": 2}
+{"command": "verify | status | adopt", "outcome": "the ledger is missing or malformed", "exit": 3}
+{"command": "baseline", "outcome": "every block-rule hit is excepted", "exit": 0}
+{"command": "baseline", "outcome": "block-rule hits with no exception remain", "exit": 2}
+{"command": "toolchain check", "outcome": "every tool matches its pin", "exit": 0}
+{"command": "toolchain check", "outcome": "a tool is missing or does not match", "exit": 2}
+{"command": "any", "outcome": "a command line that is not understood", "exit": 3}

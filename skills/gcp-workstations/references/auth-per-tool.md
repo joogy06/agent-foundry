@@ -36,10 +36,11 @@ The runtime service account on the workstation needs `roles/aiplatform.user`.
 ## Antigravity CLI (agy) → Antigravity account login
 
 ```bash
-agy -p "say hello" < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "say hello" < /dev/null)
 ```
 
-agy authenticates via its own Antigravity account, with config under `~/.antigravity/` (and `~/.gemini/antigravity-cli/`). There is NO API-key env var pattern at the call layer — agy takes neither a `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` env prefix nor a `-m <model>` flag. It exposes one configured model, so there is no Vertex ADC / metadata-server routing to manage and no model-tier downgrade to guard against.
+agy authenticates via its own Antigravity account, with config under `~/.antigravity/` (and `~/.gemini/antigravity-cli/`). There is NO API-key env var pattern at the call layer — agy takes no `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` env prefix, so there is no Vertex ADC / metadata-server routing to manage. The model is pinned with `--model` on every call, resolved through `seat_model` (see the `antigravity-cli` skill): only the roster's agy family is allowed, and the account default may be a forbidden one.
 
 TODO(agy): confirm agy install + auth on GCP Workstation. Unlike Claude Code, agy does NOT use the workstation metadata server / Vertex ADC; the one-time account login flow on a headless cloud VM is unverified — expect a copy-paste device-code or browser-redirect step similar to the Codex / Copilot flows below (see `references/gotchas-and-fixes.md` for the headless-OAuth workarounds). The agy config directory lives in `$HOME` so the login persists across restarts.
 

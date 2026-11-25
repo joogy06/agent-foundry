@@ -30,14 +30,21 @@ def test_live_counts_applies_exclusions(tmp_path):
     (root / "skills" / "forge").mkdir(parents=True)
     (root / "skills" / "env-readiness").mkdir(parents=True)
     (root / "skills" / "entrepreneur-webstore").mkdir(parents=True)  # excluded
+    for n in ("forge", "env-readiness", "entrepreneur-webstore"):
+        (root / "skills" / n / "SKILL.md").write_text("x")
+    (root / "skills" / "_meta").mkdir()                                 # no SKILL.md
+    (root / "workflows").mkdir()
+    (root / "workflows" / "a.js").write_text("x")
+    (root / "workflows" / "README.md").write_text("x")
     (root / "agents").mkdir(parents=True)
     (root / "agents" / "bob.md").write_text("x")
     (root / "agents" / "alf.md").write_text("x")
-    cfg = {"source": {"root": str(root), "subdirs": ["skills", "agents"]},
+    cfg = {"source": {"root": str(root), "subdirs": ["skills", "agents", "workflows"]},
            "exclusions": ["skills/entrepreneur-webstore"]}
     c = m.live_counts(cfg)
     assert c["skills"] == 2, c   # 3 dirs minus 1 excluded
     assert c["agents"] == 2, c
+    assert c["workflows"] == 1, c   # README.md is not a workflow
 
 
 def test_readme_fixes_stale_counts_and_bumps_version(tmp_path):

@@ -1,6 +1,6 @@
 ---
 name: agent-teams
-description: Use when forge or bob needs to split work across multiple parallel agent teams — topology selection, team sizing, cross-team dependencies, inbox/outbox coordination, and result aggregation.
+description: "Parallel agent-team orchestration: topology selection, team sizing, cross-team dependencies, inbox/outbox coordination and result aggregation. Use when forge or bob needs to split work across several agent teams."
 ---
 
 # Agent Teams — Multi-Team Orchestration Engine
@@ -322,53 +322,7 @@ Before spawning ANY team, create the .forge directory:
 |   +-- outbox.md             # Messages FROM team (team lead writes)
 ```
 
-### contracts.md
-
-Pre-populate with ALL known interface contracts between teams:
-
-```markdown
-# Interface Contracts
-
-## [Contract Name] (owner: Team-{id}, work_package: {id})
-Status: DRAFT | PUBLISHED
-```typescript
-// The interface definition
-```
-Consumers: Team-{id}, Team-{id}
-```
-
-### deps.md
-
-```markdown
-# Cross-Team Dependencies
-
-| ID | From (needs) | Provider | Artifact | Status |
-|----|-------------|----------|----------|--------|
-| DEP-001 | Team-A:WP-003 | Team-B:WP-007 | User model | WAITING |
-```
-
-### session_control.md
-
-```markdown
-# File Ownership
-
-| File/Directory | Owner | Status |
-|---------------|-------|--------|
-| src/auth/** | Team-A | ACTIVE |
-| src/models/** | Team-B | ACTIVE |
-| src/routes/** | Team-C | ACTIVE |
-```
-
-### Write Ownership Rules
-
-| File | Writer | Readers |
-|------|--------|---------|
-| contracts.md | You only | All teams |
-| deps.md | You only | All teams |
-| team-X/manifest.md | You (at spawn) | Team-X |
-| team-X/inbox.md | You only | Team-X lead |
-| team-X/outbox.md | Team-X lead only | You |
-| session_control.md | You (setup), team leads (claim/release) | All |
+The formats of `contracts.md`, `deps.md` and `session_control.md`, and the write ownership table (who writes and who reads each coordination file), are in `references/coordination-files.md`. Read it before you create these files.
 
 **Concurrency model: convention-based file ownership.** Teams share one repo unless spawned with `isolation: "worktree"`. File ownership in session_control.md is a coordination convention, not a hard lock. When `isolation_preference: "worktree"` is set in the input, spawn team leads with `isolation: "worktree"` in the Agent call to give each team an isolated copy. Otherwise, rely on non-overlapping file scopes and accept residual collision risk on shared files (config, tests, generated code).
 
@@ -376,12 +330,23 @@ Consumers: Team-{id}, Team-{id}
 
 ### Team Lead Spawn Prompt (~600 tokens)
 
+The `[CONTRACT]` block is `skills/_meta/spawn-brief.md` filled for this team; Done when comes from the WPs' `acceptance_criteria` and the DWs they `covers`.
+
+<!-- spawn-brief.v1 id=agent-teams.lead -->
 ```
 Agent(name: "team-{id}-lead", subagent_type: "general-purpose", prompt: """
 [TEAM_MANIFEST]
 team_id: {id}
 team_name: "{descriptive name}"
 objective: "{team's specific goal}"
+
+[CONTRACT]
+Goal: {the team's outcome, for whom, why}
+Non-goals: {files and WPs outside this team's scope; what must not change}
+Open questions: none may be returned mid-run — decide, note the assumption in your outbox, proceed;
+  a question that would change the work materially goes to your outbox as BLOCKED before you start.
+Done when: {every assigned WP's acceptance_criteria hold; cite the DW-n each WP covers}
+Stop when: done-when holds; or 2 fix rounds on a WP are spent (then BLOCKED to your outbox); or blocked.
 
 [SCOPE]
 work_packages: {list of assigned WP ids and descriptions}
@@ -409,35 +374,7 @@ file_locks: .forge/session_control.md
 """)
 ```
 
-### Outbox Format (team leads write this)
-
-```markdown
-## [HH:MM:SS] STATUS_UPDATE
-task_id: {id}
-status: COMPLETE | IN_PROGRESS | BLOCKED
-artifact: {file path if applicable}
-summary: {1-2 sentences}
-cross_team_note: {any published interface or dependency need}
-
-## [HH:MM:SS] TEAM_COMPLETE
-tasks_completed: {N}/{total}
-artifacts: {list of file paths}
-decisions_made: {key decisions}
-```
-
-### Inbox Format (you write this)
-
-```markdown
-## [HH:MM:SS] DEPENDENCY_RESOLVED
-from_team: {id}
-artifact: {description}
-location: see contracts.md section "{name}"
-action: unblock task {id}
-
-## [HH:MM:SS] PRIORITY_CHANGE
-reason: {why}
-action: {what the team should do differently}
-```
+The outbox format (team leads write it) and the inbox format (you write it) are in `references/coordination-files.md`. Read it before the first inbox write or outbox read.
 
 ## Step 6: Monitor and Coordinate
 

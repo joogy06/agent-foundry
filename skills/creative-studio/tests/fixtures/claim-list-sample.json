@@ -1,0 +1,309 @@
+{
+  "note": "Output of studio-claims (kind opaque): the claim list studio_claims.check writes for article-draft-sample.md against the truth pack below, with no rulings: one comparison waits for a ruling and so counts as unsupported. The test holds `claim_list` equal to a fresh check. The cards are invented for the fixture.",
+  "truth_pack": {
+    "schema_version": "truth-pack.v1",
+    "subject": "two sample graphics cards (invented for the fixture)",
+    "entries": [
+      {
+        "id": "card-900-memory",
+        "fact": "The Example Card 900 has 24 GB of memory.",
+        "figures": [
+          {
+            "value": "24",
+            "unit": "GB"
+          }
+        ],
+        "names": [
+          "Example Card 900"
+        ],
+        "source": "sample specification sheet, page 2"
+      },
+      {
+        "id": "card-900-power",
+        "fact": "The Example Card 900 draws 300 W at full load.",
+        "figures": [
+          {
+            "value": "300",
+            "unit": "W"
+          }
+        ],
+        "names": [
+          "Example Card 900"
+        ],
+        "date": "March 2026",
+        "source": "sample bench note 7"
+      },
+      {
+        "id": "card-700-memory",
+        "fact": "The Example Card 700 has 16 GB of memory.",
+        "figures": [
+          {
+            "value": "16",
+            "unit": "GB"
+          }
+        ],
+        "names": [
+          "Example Card 700"
+        ],
+        "source": "sample specification sheet, page 5"
+      },
+      {
+        "id": "card-700-power",
+        "fact": "The Example Card 700 draws 350 W at full load.",
+        "figures": [
+          {
+            "value": "350",
+            "unit": "W"
+          }
+        ],
+        "names": [
+          "Example Card 700"
+        ],
+        "date": "March 2026",
+        "source": "sample bench note 4"
+      }
+    ]
+  },
+  "outline": [
+    "What the card gives you",
+    "What it costs to run"
+  ],
+  "length": [
+    60,
+    400
+  ],
+  "claim_list": {
+    "schema_version": "studio-claim-list.v1",
+    "variant": "variant-1",
+    "truth_pack": true,
+    "front": {
+      "title": "Which sample card suits a small case",
+      "description": "What the Example Card 900 gives a builder with a small case, and what it costs to run.",
+      "structured-data": "TechArticle"
+    },
+    "claims": [
+      {
+        "id": "c-aa501f9059",
+        "locator": {
+          "heading": "Which sample card suits a small case",
+          "paragraph": 1
+        },
+        "sentence": "The Example Card 900 fits a small case and has 24 GB of memory.",
+        "kinds": [
+          "figure",
+          "name"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-900-memory"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-d584a8cd0e",
+        "locator": {
+          "heading": "What the card gives you",
+          "paragraph": 1
+        },
+        "sentence": "The Example Card 900 has 24 GB of memory.",
+        "kinds": [
+          "figure",
+          "name"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-900-memory"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-d898be2f24",
+        "locator": {
+          "heading": "What the card gives you",
+          "paragraph": 1
+        },
+        "sentence": "The older Example Card 700 has 16 GB of memory.",
+        "kinds": [
+          "figure",
+          "name"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-700-memory"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-ceb80ce799",
+        "locator": {
+          "heading": "What the card gives you",
+          "paragraph": 2
+        },
+        "sentence": "Example Card 900 24 GB",
+        "kinds": [
+          "figure",
+          "name"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-900-memory"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-d95d5c8b02",
+        "locator": {
+          "heading": "What the card gives you",
+          "paragraph": 2
+        },
+        "sentence": "Example Card 700 16 GB",
+        "kinds": [
+          "figure",
+          "name"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-700-memory"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-ed773d50f3",
+        "locator": {
+          "heading": "What it costs to run",
+          "paragraph": 1
+        },
+        "sentence": "The Example Card 900 draws 300 W at full load, measured in March 2026.",
+        "kinds": [
+          "figure",
+          "name",
+          "date"
+        ],
+        "status": "supported",
+        "match": "literal",
+        "entries": [
+          "card-900-power"
+        ],
+        "unmatched": []
+      },
+      {
+        "id": "c-34ea2557b7",
+        "locator": {
+          "heading": "What it costs to run",
+          "paragraph": 2
+        },
+        "sentence": "It draws less power than the Example Card 700.",
+        "kinds": [
+          "name",
+          "comparison"
+        ],
+        "status": "unsupported",
+        "match": null,
+        "entries": [],
+        "unmatched": [
+          "comparison"
+        ]
+      }
+    ],
+    "placeholders": [
+      {
+        "locator": {
+          "heading": "What it costs to run",
+          "paragraph": 1
+        },
+        "labelled": true,
+        "text": "the current price of the Example Card 900"
+      }
+    ],
+    "link_slots": [
+      {
+        "locator": {
+          "heading": "What the card gives you",
+          "paragraph": 3
+        },
+        "text": "how much memory a card needs -> memory guide"
+      }
+    ],
+    "unresolved": [
+      "c-34ea2557b7"
+    ],
+    "repetition": [],
+    "outline": {
+      "required": [
+        "What the card gives you",
+        "What it costs to run"
+      ],
+      "missing": [],
+      "met": true
+    },
+    "length": {
+      "words": 123,
+      "band": [
+        60,
+        400
+      ],
+      "met": true
+    },
+    "summary": {
+      "claims": 7,
+      "supported": 6,
+      "unsupported": 1,
+      "unresolved": 1,
+      "placeholders": 1,
+      "unlabelled_placeholders": 0,
+      "link_slots": 1,
+      "repeated_statements": 0
+    },
+    "floor_rows": [
+      {
+        "id": "no-unsupported-claims",
+        "blocking": true,
+        "result": "fail",
+        "locator": {
+          "heading": "What it costs to run",
+          "paragraph": 2
+        },
+        "measured": 1,
+        "threshold": 0
+      },
+      {
+        "id": "no-unlabelled-placeholder",
+        "blocking": true,
+        "result": "pass",
+        "locator": {
+          "heading": "",
+          "paragraph": 0
+        },
+        "measured": 0,
+        "threshold": 0
+      },
+      {
+        "id": "outline-met",
+        "blocking": true,
+        "result": "pass",
+        "locator": {
+          "heading": "",
+          "paragraph": 0
+        },
+        "measured": 0,
+        "threshold": 0
+      },
+      {
+        "id": "length-band-met",
+        "blocking": false,
+        "result": "pass",
+        "locator": {
+          "heading": "",
+          "paragraph": 0
+        },
+        "measured": 123,
+        "threshold": "60-400"
+      }
+    ]
+  }
+}

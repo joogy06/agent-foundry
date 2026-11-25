@@ -215,7 +215,7 @@ If no budget: record measurement as initial baseline.
 
 ### Review Checklist
 
-- [ ] Code matches the plan/design
+- [ ] Code matches the plan/design, and every Done when criterion (DW-n) is met with evidence
 - [ ] Tests pass (evidence shown)
 - [ ] Security checklist completed
 - [ ] Documentation updated
@@ -254,8 +254,11 @@ When forge is running a team, this lifecycle applies to **every specialist task*
 3. Specialist tests → shows output
 4. Specialist runs security checklist → completes applicable items
 5. Specialist documents → updates relevant docs
-6. Challenger reviews → checks all gates
+6. Challenger reviews → checks all gates, and reviews the work against the brief's **Done when**
 7. Only THEN is the task marked complete
+
+<!-- contract:loop id=development-lifecycle.review bound=2 on_exhaust=user -->
+**The review loop is bounded (#313).** The challenger reviews against Done when; at most **2 fix rounds**, each followed by a re-review of the fix, then the user decides — never a third automatic round. Findings outside Done when are filed as tasks, except verified critical or major findings, which follow forge D21 (fixed even outside Done when). Exhausting the bound is a stop, never a pass. Inside a forge cycle this loop is nested in the D21 round and does not multiply its bound.
 
 Forge's existing quality gates map directly:
 - Code Review = Phase 6 (REVIEW)

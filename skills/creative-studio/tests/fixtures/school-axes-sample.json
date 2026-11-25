@@ -1,0 +1,135 @@
+{
+  "note": "Output of copy-schools (kind opaque): what studio_axes.axis_table reads from each school file, and the distance between the two. The test holds this file equal to a fresh parse.",
+  "axes": [
+    [
+      "opening",
+      [
+        "answer-first",
+        "context-first",
+        "scene-first"
+      ]
+    ],
+    [
+      "claims",
+      [
+        "figure-led",
+        "qualified",
+        "verdict-led"
+      ]
+    ],
+    [
+      "rhythm",
+      [
+        "even",
+        "varied",
+        "staccato"
+      ]
+    ],
+    [
+      "person",
+      [
+        "impersonal",
+        "second-person",
+        "first-person"
+      ]
+    ],
+    [
+      "proof-placement",
+      [
+        "beside-claim",
+        "after-argument",
+        "in-story"
+      ]
+    ],
+    [
+      "call-to-action",
+      [
+        "up-front",
+        "at-each-step",
+        "at-close"
+      ]
+    ]
+  ],
+  "tables": {
+    "business-writing": {
+      "opening": {
+        "value": "answer-first",
+        "also": []
+      },
+      "claims": {
+        "value": "figure-led",
+        "also": [
+          "qualified"
+        ]
+      },
+      "rhythm": {
+        "value": "even",
+        "also": []
+      },
+      "person": {
+        "value": "impersonal",
+        "also": [
+          "second-person"
+        ]
+      },
+      "proof-placement": {
+        "value": "beside-claim",
+        "also": []
+      },
+      "call-to-action": {
+        "value": "up-front",
+        "also": []
+      }
+    },
+    "content-writer": {
+      "opening": {
+        "value": "scene-first",
+        "also": [
+          "context-first"
+        ]
+      },
+      "claims": {
+        "value": "verdict-led",
+        "also": []
+      },
+      "rhythm": {
+        "value": "varied",
+        "also": [
+          "staccato"
+        ]
+      },
+      "person": {
+        "value": "first-person",
+        "also": [
+          "second-person"
+        ]
+      },
+      "proof-placement": {
+        "value": "in-story",
+        "also": [
+          "after-argument"
+        ]
+      },
+      "call-to-action": {
+        "value": "at-close",
+        "also": []
+      }
+    }
+  },
+  "differing": [
+    "opening",
+    "claims",
+    "rhythm",
+    "person",
+    "proof-placement",
+    "call-to-action"
+  ],
+  "disjoint": [
+    "opening",
+    "claims",
+    "rhythm",
+    "proof-placement",
+    "call-to-action"
+  ],
+  "minimum": 3
+}

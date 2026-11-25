@@ -6,6 +6,12 @@ disambiguation: The SHAPE of the agentic system — agent vs workflow, which pat
 
 # Agentic architecture
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: agentic-framework-positions
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Framework positions move fast; the patterns below have been stable for
 roughly two years and the framework names have not.

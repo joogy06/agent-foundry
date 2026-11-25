@@ -1,6 +1,7 @@
 ---
 name: content-writer
 description: Use when creating blog posts, articles, editorial content, or any long-form written content for websites. Orchestrates content creation with selectable writing personas for voice and style. Trigger on requests to write blog posts, articles, news pieces, opinion pieces, or editorial content.
+family: copy-voiced
 ---
 
 # Content Writer
@@ -99,7 +100,7 @@ Content must serve both readers AND search engines:
 | **H1** | One per page, includes primary keyword naturally |
 | **H2/H3** | Logical hierarchy, keyword variations where natural |
 | **Internal links** | Link to relevant products/pages on site (2-5 per post) |
-| **Image alt text** | Descriptive, include keyword where relevant |
+| **Image alt text** | Descriptive, include keyword where relevant; standard in `image-alt-text` (bulk: `image-alt-pipeline`, search: `image-seo`) |
 | **URL slug** | Short, keyword-rich, hyphenated |
 
 **SEO must not break voice.** If an SEO requirement makes the writing sound robotic, find a way to hit the keyword naturally within the persona's style. Never stuff keywords.
@@ -199,3 +200,10 @@ description: One-line description of voice and best use cases
 
 - `business-writing` — internal and stakeholder writing (email, message, one-pager, proposal,
   status update). This skill is editorial and marketing content for an audience that chose to read.
+
+## In a creative-studio run
+
+In a creative-studio run the school file (`references/school-voiced.md`) takes the place of the persona: no persona is loaded and none is asked for, unless the run's brief names one.
+The studio inlines that school file and one format file in the seat's brief: `references/format-article.md`
+for an article, `references/format-page-copy.md` for the words of a page. The format files carry no voice and
+are read by both copy schools.

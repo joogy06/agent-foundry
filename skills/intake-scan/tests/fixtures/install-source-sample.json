@@ -1,0 +1,66 @@
+{
+  "schema": "intake-install-source-sample.v1",
+  "note": "Benign shape sample of what the install check judges: the files of a source tree under the four enforced roots, and its ledger. Digests are placeholders (the check does not hash-match an entry). Tests write the tree into a temp directory and install it into a throwaway --claude-home; a file that trips a block rule is added at test time, never stored here.",
+  "ledger": {
+    "schema": "intake-ledger.v1",
+    "entries": [
+      {
+        "unit": "agents/sample-agent.md",
+        "kind": "skill",
+        "record_id": "u-agents.sample-agent.md-000000000001",
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+        "verdict": "pass",
+        "unsigned_caution": false,
+        "origin": "local",
+        "time": "2026-10-11T12:00:00Z",
+        "exceptions": []
+      },
+      {
+        "unit": "commands/sample-command.md",
+        "kind": "skill",
+        "record_id": "u-commands.sample-command.md-000000000002",
+        "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+        "verdict": "pass",
+        "unsigned_caution": false,
+        "origin": "local",
+        "time": "2026-10-11T12:00:00Z",
+        "exceptions": []
+      },
+      {
+        "unit": "skills/sample-skill",
+        "kind": "skill",
+        "record_id": "u-skills.sample-skill-000000000003",
+        "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+        "verdict": "pass",
+        "unsigned_caution": false,
+        "origin": "local",
+        "time": "2026-10-11T12:00:00Z",
+        "exceptions": []
+      },
+      {
+        "unit": "workflows/sample-flow.js",
+        "kind": "skill",
+        "record_id": "u-workflows.sample-flow.js-000000000004",
+        "digest": "4444444444444444444444444444444444444444444444444444444444444444",
+        "verdict": "pass",
+        "unsigned_caution": false,
+        "origin": "local",
+        "time": "2026-10-11T12:00:00Z",
+        "exceptions": []
+      }
+    ],
+    "exceptions": []
+  },
+  "files": {
+    "skills/sample-skill/SKILL.md": "---\nname: sample-skill\ndescription: Sample skill for the enforcement tests.\n---\n\n# Sample skill\n\nPlain prose.\n",
+    "skills/sample-skill/references/notes.md": "# Notes\n\nPlain prose.\n",
+    "skills/_meta/gates.py": "# support file: covered by the block rules, needs no ledger entry\n",
+    "agents/sample-agent.md": "---\nname: sample-agent\ndescription: Sample agent for the enforcement tests.\n---\n\nPlain prose.\n",
+    "commands/sample-command.md": "Plain prose for a sample command.\n",
+    "workflows/sample-flow.js": "// a sample workflow\nexport default async function run() { return 0; }\n"
+  },
+  "expect": {
+    "exit": 0,
+    "units": 4
+  }
+}

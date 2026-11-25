@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pc-builder/needs-input.v1",
+  "title": "Ambiguity-gate result (pc_check.py --context-gate)",
+  "description": "Structured result for callers that cannot ask a question (DB workers, batch jobs). status needs_input means: do not generate; route the question to whoever can answer it. Exit 0 for ok, 3 for needs_input.",
+  "type": "object",
+  "required": ["schema", "status", "missing", "question"],
+  "properties": {
+    "schema": {"type": "string", "enum": ["needs-input.v1"]},
+    "status": {"type": "string", "enum": ["ok", "needs_input"]},
+    "missing": {"type": "array", "items": {"type": "string", "enum": ["use_case", "band", "workload"]}},
+    "invalid": {"type": "array", "items": {"type": "string"}, "description": "Supplied values that are not known ids."},
+    "question": {"type": "string", "description": "One compact question covering every missing input; empty when status is ok."},
+    "known": {
+      "type": "object",
+      "properties": {
+        "use_cases": {"type": "array", "items": {"type": "string"}},
+        "bands": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

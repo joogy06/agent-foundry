@@ -108,7 +108,8 @@ rot_stale() {
   local f="$STATE_FRESH/rot-report.json"
   [ -f "$f" ] || return 0
   local age_days
-  age_days=$(( ( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) ) / 86400 ))
+  # GNU stat first, BSD/macOS stat second (#241): without the fallback every file reads as epoch-old on a Mac.
+  age_days=$(( ( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0) ) / 86400 ))
   [ "$age_days" -gt 7 ]
 }
 

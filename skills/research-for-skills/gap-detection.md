@@ -4,6 +4,14 @@ Canonical protocol for detecting missing skills and triggering creation. Referen
 
 ---
 
+## Contents
+
+- 5-Step Protocol
+- Gap State Machine
+- Pre-Session Proactive Scan
+- Integration Notes
+- Anti-Patterns
+
 ## 5-Step Protocol
 
 ### Step 1: IDENTIFY

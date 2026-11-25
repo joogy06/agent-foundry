@@ -6,6 +6,12 @@ disambiguation: The NEXT.JS framework — routing, rendering modes, caching, ser
 
 # Next.js — App Router
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: nextjs-version-claims
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29 against Next.js 16.2.7.** This framework changes fast and has reversed a major
 default once already — re-check before relying on a version claim.

@@ -194,10 +194,10 @@ The exact schema of the JSONL events is **`[UNVERIFIED]`** — capture sample ou
 |---|---|---|
 | `claude -p` | `agy -p` — **all flags BEFORE `-p`**, prompt LAST, and `< /dev/null` is mandatory | `copilot -p` |
 | `--output-format json` | (none — plain text on stdout only; callers must parse text) | `--output-format json` (JSONL) |
-| `--permission-mode bypassPermissions` | `--dangerously-skip-permissions` — still runs inside `--sandbox` | `--yolo` / `--allow-all` |
-| `--permission-mode plan` | (none) | (no direct equivalent — use `--available-tools` to limit to read-only set) |
+| `--permission-mode bypassPermissions` | `--dangerously-skip-permissions` — no containment: shell and git run, a throwaway directory only (#366) | `--yolo` / `--allow-all` |
+| `--permission-mode plan` | `--mode plan` (no native writes, no shell) | (no direct equivalent — use `--available-tools` to limit to read-only set) |
 | `--allowedTools` | (not verified — do not assume; see `antigravity-cli` §Not verified) | `--allow-tool[=...]` |
 | `--add-dir` | `--add-dir` | `--add-dir` |
-| `--bare` (CI-safe minimal) | `--sandbox` (advisory/read-only default) | `--allow-all-tools --no-custom-instructions` (closest) |
+| `--bare` (CI-safe minimal) | `--sandbox --mode plan` from an empty cwd (advisory default) | `--allow-all-tools --no-custom-instructions` (closest) |
 | `--from-pr` | (none) | (none — use `gh pr view` and pipe) |
 | `--max-budget-usd` | (none) | (none — use `--max-autopilot-continues` for cap on continuations) |

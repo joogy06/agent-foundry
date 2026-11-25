@@ -1,0 +1,150 @@
+{
+  "note": "Output of studio-wiring (kind opaque): the families resolved, the loads of the four shipped profiles and the skills they reach, the new skills counted against the limit of five, and the listing-budget estimate before and after the cycle. `listing_budget` is a record of 2026-10-12 (skill_audit.py listing-budget --json on the tree at the cycle base 17a2519b, read through git archive, and on the tree as built); the other keys are held equal to a fresh report by the test.",
+  "families": {
+    "visual-craft-restrained": [
+      "web-craft-restrained"
+    ],
+    "visual-craft-expressive": [
+      "web-craft-expressive"
+    ],
+    "copy-plain": [
+      "business-writing"
+    ],
+    "copy-voiced": [
+      "content-writer"
+    ],
+    "social": [
+      "social-post"
+    ]
+  },
+  "profiles": {
+    "article": {
+      "loads": [
+        "seo-keyword-strategist",
+        "seo-content-strategist",
+        "seo-structure-architect",
+        "seo-meta-optimizer",
+        "ai-search-optimizer",
+        "family:copy-plain",
+        "family:copy-voiced",
+        "human-voice-writing"
+      ],
+      "skills": [
+        "ai-search-optimizer",
+        "business-writing",
+        "content-writer",
+        "creative-studio",
+        "human-voice-writing",
+        "seo-content-strategist",
+        "seo-keyword-strategist",
+        "seo-meta-optimizer",
+        "seo-structure-architect"
+      ]
+    },
+    "cv": {
+      "loads": [
+        "career-positioning",
+        "career-application-writer",
+        "human-voice-writing"
+      ],
+      "skills": [
+        "career-application-writer",
+        "career-positioning",
+        "creative-studio",
+        "human-voice-writing"
+      ]
+    },
+    "social-post": {
+      "loads": [
+        "family:social",
+        "family:copy-plain",
+        "social-post",
+        "family:copy-voiced",
+        "human-voice-writing"
+      ],
+      "skills": [
+        "business-writing",
+        "content-writer",
+        "creative-studio",
+        "human-voice-writing",
+        "social-post"
+      ]
+    },
+    "website-page": {
+      "loads": [
+        "seo-keyword-strategist",
+        "seo-structure-architect",
+        "seo-meta-optimizer",
+        "conversion-psychology",
+        "audience-experience-design",
+        "family:visual-craft-restrained",
+        "family:visual-craft-expressive",
+        "family:copy-plain",
+        "family:copy-voiced",
+        "ux-reviewer",
+        "design-critique"
+      ],
+      "skills": [
+        "audience-experience-design",
+        "business-writing",
+        "content-writer",
+        "conversion-psychology",
+        "design-critique",
+        "seo-keyword-strategist",
+        "seo-meta-optimizer",
+        "seo-structure-architect",
+        "ux-reviewer",
+        "web-craft-expressive",
+        "web-craft-restrained"
+      ]
+    }
+  },
+  "new_skills": [
+    "creative-studio",
+    "design-critique",
+    "social-post",
+    "web-craft-expressive",
+    "web-craft-restrained"
+  ],
+  "new_skill_count": 5,
+  "new_skill_limit": 5,
+  "descriptions": {
+    "creative-studio": 216,
+    "design-critique": 224,
+    "web-craft-restrained": 238,
+    "web-craft-expressive": 247,
+    "social-post": 246
+  },
+  "listing_budget": {
+    "estimate": true,
+    "measured": "2026-10-12",
+    "base": "17a2519b00cbf60a25e3e469d2616d64dcb391e8",
+    "before": {
+      "skills": 249,
+      "budget_chars": 8000,
+      "names_only_chars": 5812,
+      "all_descriptions_chars": 128138,
+      "description_chars_total": 122326,
+      "description_chars_mean": 491.3,
+      "fraction_needed_for_all": 0.1602
+    },
+    "after": {
+      "skills": 254,
+      "budget_chars": 8000,
+      "names_only_chars": 5923,
+      "all_descriptions_chars": 129420,
+      "description_chars_total": 123497,
+      "description_chars_mean": 486.2,
+      "fraction_needed_for_all": 0.1618
+    },
+    "added_chars": 1282,
+    "new_description_chars": {
+      "creative-studio": 216,
+      "design-critique": 224,
+      "web-craft-restrained": 238,
+      "web-craft-expressive": 247,
+      "social-post": 246
+    },
+    "per_entry_limit": 250
+  }
+}

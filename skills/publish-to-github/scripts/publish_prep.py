@@ -63,6 +63,7 @@ STAGING_DIR_DEFAULT = Path('/tmp') / f'claude-skills-public-{TIMESTAMP}'
 ALWAYS_EXCLUDE_PATTERNS = [
     '*.before-*',
     '*.bak',
+    '*.bak-*',                # dated hand backups (e.g. file.py.bak-20260916-argv)
     '*.bak.*',                # timestamped forensic backups (e.g. file.bak.20260520T132009Z
                               # produced by the wiki skill's hash-verified-writes HARD-RULE)
     '.DS_Store',
@@ -330,7 +331,15 @@ def copy_tree_with_exclusions(src_root, staging_root, source_root, exclusions):
     source_root is the directory we're computing relative paths from."""
     copied = []
     skipped = []
-    for root, dirs, files in os.walk(src_root):
+    # Follow directory symlinks: an installed tree is often a set of links into a repo, and a
+    # walk that does not follow them stages none of it. `seen` (real paths) stops link loops.
+    seen = set()
+    for root, dirs, files in os.walk(src_root, followlinks=True):
+        real = os.path.realpath(root)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
         rel_root = Path(root).relative_to(source_root)
 
         # Filter subdirectories in-place
@@ -354,13 +363,15 @@ def copy_tree_with_exclusions(src_root, staging_root, source_root, exclusions):
             dst_file = staging_root / rel_f
             dst_file.parent.mkdir(parents=True, exist_ok=True)
 
-            if src_file.is_symlink():
-                link_target = os.readlink(str(src_file))
-                if dst_file.exists():
-                    dst_file.unlink()
-                os.symlink(link_target, str(dst_file))
+            if dst_file.is_symlink() or dst_file.exists():
+                dst_file.unlink()
+            if src_file.is_symlink() and not src_file.exists():
+                # Dangling link: keep it so the extended scan reports it.
+                os.symlink(os.readlink(str(src_file)), str(dst_file))
             else:
-                shutil.copy2(src_file, dst_file)
+                # Copy the content, never the link. A staged link pointing into the live tree
+                # would let the scrub phase write through it into the live files.
+                shutil.copy2(src_file, dst_file, follow_symlinks=True)
             copied.append(str(rel_f))
 
     return copied, skipped
@@ -408,11 +419,23 @@ def apply_scrubs(staging_root, scrubs):
         replacements = scrub['replacements']
         file_path = staging_root / relpath
 
-        if not file_path.exists():
+        if not file_path.exists() and not file_path.is_symlink():
             results.append({
                 'file': relpath,
                 'status': 'missing',
                 'notes': [],
+            })
+            continue
+
+        # Never write outside staging: a symlink (or a path escaping via ..) would carry the
+        # scrub into the live tree.
+        real_root = Path(os.path.realpath(staging_root))
+        real_file = Path(os.path.realpath(file_path))
+        if file_path.is_symlink() or not real_file.is_relative_to(real_root):
+            results.append({
+                'file': relpath,
+                'status': 'refused-outside-staging',
+                'notes': [f'resolves to {real_file}, outside the staging dir; not written'],
             })
             continue
 
@@ -867,6 +890,10 @@ def main():
             print(yellow(f'  ! {r["file"]} (binary, skipped)'))
             for n in r['notes']:
                 print(f'      {n}')
+        elif r['status'] == 'refused-outside-staging':
+            print(red(f'  ✗ {r["file"]} (refused: outside staging)'))
+            for n in r['notes']:
+                print(f'      {n}')
 
     # --- Phase 3: bundle external files ---
     header('Phase 3: bundle external files (README, docs, etc.)')
@@ -902,6 +929,9 @@ def main():
                     print(f'      {n}')
             elif r['status'] == 'no-change':
                 print(f'  = {r["file"]} (no changes)')
+            elif r['status'] == 'refused-outside-staging':
+                print(red(f'  ✗ {r["file"]} (refused: outside staging)'))
+        scrub_results = scrub_results + rerun
 
     # --- Phase 4: write .gitignore ---
     header('Phase 4: write .gitignore')
@@ -978,6 +1008,14 @@ def main():
         print(red(f'  ⚠  {len(comp_unexplained)} live skill(s) dropped from staging with no exclusion '
                   '— refusing to report success.'))
         print(red('     Missing: ' + ', '.join(comp_unexplained)))
+        return 1
+
+    refused = [r['file'] for r in scrub_results if r['status'] == 'refused-outside-staging']
+    if refused:
+        print()
+        print(red(f'  ⚠  {len(refused)} scrub target(s) resolve outside staging and were not '
+                  'scrubbed — refusing to report success.'))
+        print(red('     ' + ', '.join(refused)))
         return 1
 
     if verify_status not in ('clean', 'skipped-unsafe'):

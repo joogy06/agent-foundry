@@ -6,6 +6,12 @@ disambiguation: REACT itself — components, hooks, the compiler, render behavio
 
 # React
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: react-version-claims
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29 against React 19.2.7.** React moves fast — re-check before relying on a version
 claim.

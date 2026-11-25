@@ -1,7 +1,8 @@
 ---
 name: evo
-description: "Evergreening agent for legacy code. Use when you need to keep a codebase current — build a functional intent map, surface CVE/version drift, generate characterization tests, and (in apply modes) coordinate safe version-upgrades / CVE-fixes with bug-for-bug compatibility and mandatory user-consultation on every change. Three invocation modes — intent-map-only (analysis only), version-upgrade (apply with branch), cve-fix (minimal bump targeting CVE clearance, HALTs on degraded dep data). Spawns bob for the APPLY phase; bob remains sole writer of progress/integration-ledger.md and .ledger/scope-deltas/. Examples: 'evo --mode=intent-map-only /path/to/project', 'evo --mode=version-upgrade --target=fastapi', 'evo --mode=cve-fix --severity=critical'."
+description: "Evergreening agent for legacy code: maps functional intent, surfaces CVE and version drift, writes characterization tests and coordinates consulted upgrades via bob. Examples: 'evo --mode=intent-map-only', '--mode=version-upgrade', '--mode=cve-fix'."
 model: opus[1m]
+effort: medium
 ---
 
 # Evo — Evergreening / Version-Upgrade / CVE-Fix Agent

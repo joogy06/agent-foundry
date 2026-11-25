@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://foundry-lab.local/schemas/execution-report.v1.json",
   "title": "execution-report.v1",
-  "description": "S055 §6.3 — the schema-mapped Execution Report bob emits when the spawn context supplies a structured-output schema. Producer: bob stages / bob standalone. Consumed by the main loop, forge Step 9, evo-apply, alf Step 6. The `needs.kind` enum is THE machine-readable escalation channel of the whole inversion. Host-neutral data.",
+  "description": "S055 §6.3 — the schema-mapped Execution Report bob emits when the spawn context supplies a structured-output schema. Producer: bob stages / bob standalone. Consumed by the main loop, forge Step 9, evo-apply, alf Step 6. The `needs.kind` enum is THE machine-readable escalation channel of the whole inversion; the OPTIONAL `escalation` block (S081 D3) carries the ladder rung the next attempt should use. Host-neutral data.",
   "type": "object",
   "required": ["status", "built", "files_changed", "verification"],
   "additionalProperties": false,
@@ -44,13 +44,70 @@
             "plan-recompile",
             "budget-floor",
             "user-decision",
-            "needs_inline_verification"
+            "needs_inline_verification",
+            "capability-failure",
+            "escalation-diagnosis",
+            "clarification"
           ]
         },
         "payload": { "type": ["object", "array", "string", "null"] }
       }
     },
+    "escalation": {
+      "type": "object",
+      "description": "S081 D3 (revision 4) — the rung the NEXT attempt should use, as decided by skills/_meta/escalation.py. OPTIONAL and additive: a report without it means exactly what it meant before. `next_rung` is escalation.RUNGS; a producer filling this from NextRung.to_dict() must map its `rung` key onto `next_rung`. additionalProperties is false ON PURPOSE — it turns that spelling drift into a loud validation failure instead of an escalation block whose rung bob-serial-exec can never read.",
+      "required": ["next_rung", "task_key", "attempt_id"],
+      "additionalProperties": false,
+      "properties": {
+        "next_rung": {
+          "enum": ["opus", "takeover", "fable", "diagnosis", "user", "none"],
+          "description": "escalation.READABLE_RUNGS: escalation.RUNGS plus the legacy alias `fable`. `opus`/`takeover` are RETRY rungs the workflow re-runs on; `diagnosis` and `user` are terminal and surface a needs block. `fable` is the pre-#291 spelling of `takeover` (the rung was renamed after the role, not a model): still accepted so a report written before the rename validates, and never written by escalation.py."
+        },
+        "task_key": { "type": "string", "description": "escalation.py's key: plan_id:wp_id." },
+        "attempt_id": { "type": "integer", "minimum": 1, "description": "1-based, DERIVED by escalation.record() from the history on disk — never supplied by a caller." }
+      }
+    },
     "known_issues": { "type": "array", "items": { "type": "string" } },
     "how_to_verify": { "type": "array", "items": { "type": "string" } }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "#313 section 5: a clarification is a question returned in PREFLIGHT, before any mutation. It is PARTIAL, changes no file, and carries at most three questions, each saying how the work would change, plus the default taken if unanswered. It is never an attempt and never escalates (escalation.NEVER_ESCALATES).",
+      "if": {
+        "required": ["needs"],
+        "properties": { "needs": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "clarification" } } } }
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "PARTIAL" },
+          "files_changed": { "maxItems": 0 },
+          "needs": {
+            "required": ["payload"],
+            "properties": {
+              "payload": {
+                "type": "object",
+                "required": ["questions", "default_if_unanswered"],
+                "properties": {
+                  "questions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "required": ["question", "work_changes_if"],
+                      "properties": {
+                        "question": { "type": "string", "minLength": 1 },
+                        "work_changes_if": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  },
+                  "default_if_unanswered": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

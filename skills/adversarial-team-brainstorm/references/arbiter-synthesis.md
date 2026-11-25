@@ -70,7 +70,9 @@ For each Round 3 output, decide if it survives:
 If fewer than `max_total_outputs` survive, that's fine — the primitive returns what it has. Do NOT
 inflate the list with marginal outputs to hit a target count.
 
-## Step 2: Hybridization
+## Step 2: Merge near-duplicates
+
+A portfolio is an exclusion of the convergence rule CONV-1 (`~/.claude/skills/_meta/convergence-rule.md`): this step ranks and keeps several outputs and merges only near-duplicates; it does not pick one winner.
 
 When two or more teams produced similar outputs, the arbiter MAY hybridize them:
 

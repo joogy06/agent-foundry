@@ -1,0 +1,199 @@
+{
+  "schema": "intake-scan-evidence.v1",
+  "note": "Benign shape sample of what a scan hands to the policy, for the file set of inventory-sample.json. The SkillSpector report is the one in adapter-report-sample.json and carries the tool's highest score on purpose: the verdict below does not come from it.",
+  "id": "q20261011T120000Z-0a0b0c0d",
+  "subject": {
+    "kind": "skill",
+    "source": {
+      "type": "folder",
+      "target": "downloads/sample-skill",
+      "ref": null
+    },
+    "commit": null,
+    "tree_digest": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f"
+  },
+  "inventory_digest": "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+  "rules_version": "1",
+  "files": [
+    {
+      "id": "f001",
+      "stored": true,
+      "executable": false,
+      "python": false
+    },
+    {
+      "id": "f002",
+      "stored": true,
+      "executable": true,
+      "python": true
+    },
+    {
+      "id": "f003",
+      "stored": true,
+      "executable": false,
+      "python": false
+    },
+    {
+      "id": "f004",
+      "stored": true,
+      "executable": false,
+      "python": false
+    },
+    {
+      "id": "f005",
+      "stored": false,
+      "executable": false,
+      "python": false
+    }
+  ],
+  "reports": [
+    {
+      "scanner": "harness-rules",
+      "ran": true,
+      "isolation": "in-process",
+      "tool_version": "1",
+      "findings": [
+        {
+          "rule": "H2",
+          "class": "block",
+          "file": "f003",
+          "line": 0,
+          "scanner": "harness-rules"
+        },
+        {
+          "rule": "C8",
+          "class": "caution",
+          "file": "f004",
+          "line": 3,
+          "scanner": "harness-rules"
+        },
+        {
+          "rule": "H7",
+          "class": "block",
+          "file": "f005",
+          "line": 0,
+          "scanner": "harness-rules"
+        }
+      ],
+      "files_inspected": [
+        "f001",
+        "f002",
+        "f003",
+        "f004"
+      ],
+      "files_partial": [],
+      "gaps": [],
+      "evidence": {}
+    },
+    {
+      "scanner": "skillspector",
+      "ran": true,
+      "isolation": "bwrap",
+      "tool_version": "2.12.0",
+      "findings": [
+        {
+          "rule": "SS-P1",
+          "class": "caution",
+          "file": "f001",
+          "line": 6,
+          "scanner": "skillspector"
+        },
+        {
+          "rule": "SS-TM1",
+          "class": "caution",
+          "file": "f002",
+          "line": 2,
+          "scanner": "skillspector"
+        },
+        {
+          "rule": "SS-TM1",
+          "class": "caution",
+          "file": "f004",
+          "line": 3,
+          "scanner": "skillspector"
+        },
+        {
+          "rule": "SS-LP3",
+          "class": "caution",
+          "file": "f001",
+          "line": 1,
+          "scanner": "skillspector"
+        }
+      ],
+      "files_inspected": [
+        "f001",
+        "f002",
+        "f003",
+        "f004"
+      ],
+      "files_partial": [],
+      "gaps": [],
+      "evidence": {
+        "exit_status": 1,
+        "score": 100,
+        "severity": "CRITICAL",
+        "recommendation": "DO_NOT_INSTALL",
+        "completeness_status": "complete",
+        "coverage_percent": 100.0,
+        "issues": 3
+      }
+    },
+    {
+      "scanner": "bandit",
+      "ran": true,
+      "isolation": "bwrap",
+      "tool_version": "1.9.4",
+      "findings": [],
+      "files_inspected": [
+        "f002"
+      ],
+      "files_partial": [],
+      "gaps": [],
+      "evidence": {
+        "exit_status": 0,
+        "python_files": 1,
+        "results": 0,
+        "severity_counts": {}
+      }
+    },
+    {
+      "scanner": "secrets-catalog",
+      "ran": true,
+      "isolation": "in-process",
+      "tool_version": null,
+      "findings": [],
+      "files_inspected": [
+        "f001",
+        "f002",
+        "f003",
+        "f004"
+      ],
+      "files_partial": [],
+      "gaps": [],
+      "evidence": {
+        "checks": 11,
+        "unknown_checks": 0,
+        "hits_over_cap": 0
+      }
+    },
+    {
+      "scanner": "deps",
+      "ran": true,
+      "isolation": "in-process",
+      "tool_version": "0.1.0",
+      "findings": [],
+      "files_inspected": [],
+      "files_partial": [],
+      "gaps": [],
+      "evidence": {
+        "manifests": 0,
+        "dependencies": 0,
+        "answered": 0,
+        "advisories": 0,
+        "malicious": 0
+      }
+    }
+  ],
+  "gaps": [],
+  "excepted": []
+}

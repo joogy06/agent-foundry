@@ -16,7 +16,8 @@ Security is not optional. OWASP Top 10 vulnerabilities remain the primary attack
 | Scenario | Method | Library |
 |----------|--------|---------|
 | Web app with sessions | Session + cookies | Flask-Login |
-| SPA + API | JWT (access + refresh) | flask-jwt-extended / python-jose |
+| SPA + API on the same origin | Session + HttpOnly cookie (no tokens in the browser), CSRF protection | Flask-Login / Starlette sessions; passkeys: `spa-auth-webauthn` |
+| SPA + API on another origin, or mobile / third-party clients | JWT (access + refresh) | flask-jwt-extended / python-jose |
 | Enterprise SSO | OAuth 2.0 / OIDC | **Authlib** (recommended) |
 | Legacy enterprise | SAML 2.0 | python3-saml (OneLogin) |
 | Machine-to-machine | Client Credentials / mTLS | Authlib / httpx |

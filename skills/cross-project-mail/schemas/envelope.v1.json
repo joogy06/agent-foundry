@@ -105,6 +105,12 @@
       "maxItems": 16,
       "uniqueItems": true
     },
+    "dedupe_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Optional. Topic key recorded by `cpmail send --dedupe`: --dedupe-key, else the subject, casefolded with whitespace collapsed."
+    },
     "ack_state": {
       "enum": ["unread", "read", "acked"],
       "description": "Recipient-side state. Mutated in place via `cpmail ack`. Acked messages move to .acked/."

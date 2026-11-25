@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mail-scan-config.v1",
+  "title": "Mail scan config",
+  "description": "What a consumer tells mail-scan about itself: its own addresses, the provider whose Authentication-Results header may be trusted, the hosts and phone numbers a draft may hold, where replies to a sender go, an optional knowledge pack and canary, and the size bound of a message. Written inside the subset of JSON Schema that the interpreter of intake-scan reads. That subset cannot state a lower length, a list length or an upper number, and its pattern test accepts a line break after the last character, so the loader checks those bounds and the exact form of every value in code as well; the code is the authority and this file is its description.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "own_addresses"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mail-scan-config.v1"
+    },
+    "own_addresses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/address"
+      }
+    },
+    "provider_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authserv_id"
+      ],
+      "properties": {
+        "authserv_id": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "validated_on": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    "allowed_hosts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/host"
+      }
+    },
+    "approved_phones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/phone"
+      }
+    },
+    "reply_to_map": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/address"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/address"
+      }
+    },
+    "knowledge_pack": {
+      "type": "string",
+      "maxLength": 4096,
+      "pattern": "^[^\\x00]+$"
+    },
+    "canary": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "[^\\s]"
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "address": {
+      "type": "string",
+      "maxLength": 320,
+      "pattern": "^[^\\s<>()\\[\\]\\\\,;:\"@\\x00-\\x1f\\x7f]+@[^\\s<>()\\[\\]\\\\,;:\"@\\x00-\\x1f\\x7f]+$"
+    },
+    "host": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[^\\s/?#@:\\\\<>\"'|\\x00-\\x1f\\x7f]+\\.[^\\s/?#@:\\\\<>\"'|\\x00-\\x1f\\x7f]+$"
+    },
+    "phone": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "[0-9]"
+    }
+  }
+}

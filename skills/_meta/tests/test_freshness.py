@@ -183,5 +183,65 @@ class TestDeadlineIdempotency(unittest.TestCase):
         self.assertEqual(due, [])
 
 
+_EXTERNAL_BLOCK = """<!-- FRESHNESS:v1
+volatility: high
+anchors:
+  - kind: external_fact
+    subject: vendor-billing-policy
+    source_url: https://example.invalid/policy
+    verified_on: 2026-08-06
+    review_by: 2026-11-04
+-->"""
+
+
+class TestExternalFact(unittest.TestCase):
+    """`external_fact` — a fact a THIRD PARTY owns, which cannot rot in a file we read.
+
+    Registered because a real one slipped: a `claude -p` billing change was announced,
+    then paused, and nothing in the harness tracked either event. The kind therefore
+    requires a source to re-verify against and a date it was last confirmed — an anchor
+    saying only 'check something, somewhere' is the prose reminder it replaces.
+    """
+
+    def test_lints_clean_when_complete(self):
+        parsed = fr.parse_freshness_yaml(_EXTERNAL_BLOCK.split("\n", 1)[1].rsplit("\n-->", 1)[0])
+        self.assertEqual(fr.lint_block(parsed), [])
+
+    def test_missing_source_url_and_verified_on_both_warn(self):
+        parsed = {"anchors": [{"kind": "external_fact", "subject": "s",
+                               "review_by": "2026-12-01"}]}
+        warns = fr.lint_block(parsed)
+        self.assertTrue(any("source_url" in w for w in warns), warns)
+        self.assertTrue(any("verified_on" in w for w in warns), warns)
+
+    def test_missing_review_by_warns(self):
+        # Without a date it can never become due — the silent-failure case.
+        parsed = {"anchors": [{"kind": "external_fact", "subject": "s",
+                               "source_url": "u", "verified_on": "2026-08-06"}]}
+        self.assertTrue(any("review_by" in w for w in fr.lint_block(parsed)))
+
+    def test_lands_in_by_deadline_carrying_subject_and_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "_meta").mkdir()
+            (root / "_meta" / "external-facts.md").write_text(
+                f"# reg\n{_EXTERNAL_BLOCK}\n", encoding="utf-8")
+            idx = fr.build_index(root, root / "no-agents")
+            self.assertEqual(len(idx["by_deadline"]), 1)
+            row = idx["by_deadline"][0]
+            self.assertEqual(row["kind"], "external_fact")
+            self.assertEqual(row["subject"], "vendor-billing-policy")
+            self.assertEqual(row["source_url"], "https://example.invalid/policy")
+            self.assertEqual(row["verified_on"], "2026-08-06")
+
+    def test_high_volatility_gets_the_60_day_horizon(self):
+        # The boundary, both directions — a horizon that never fires and one that
+        # always fires are the same defect wearing different clothes.
+        idx = {"by_deadline": [{"target": "t", "date": "2026-11-04",
+                                "kind": "external_fact", "volatility": "high"}]}
+        self.assertEqual(fr.deadlines_within_horizon(idx, date(2026, 9, 4), 30), [])
+        self.assertEqual(len(fr.deadlines_within_horizon(idx, date(2026, 9, 6), 30)), 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

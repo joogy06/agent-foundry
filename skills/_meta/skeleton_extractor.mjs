@@ -22,9 +22,9 @@
 //
 // The subprocess NEVER writes files. Python wrapper owns persistence.
 //
-// puppeteer-core resolution: ESM's native resolver does NOT honor NODE_PATH
-// the way CommonJS does. We support three ways to locate puppeteer-core, in
-// order of precedence:
+// puppeteer-core and Chrome are found, and the launch options built, by the shared
+// chrome_launch.mjs (#352, JC-3). ESM's native resolver does NOT honor NODE_PATH the way
+// CommonJS does, so that module tries, in order of precedence:
 //   1. SKELETON_EXTRACTOR_PUPPETEER_PATH env var — absolute path to the
 //      puppeteer-core package directory (passed by the Python wrapper when
 //      running under trusted_runner).
@@ -34,30 +34,17 @@
 //      `NODE_PATH=/.../node_modules` invocation still works.
 
 import fs from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
 
-async function loadPuppeteer() {
-  const explicit = process.env.SKELETON_EXTRACTOR_PUPPETEER_PATH;
-  if (explicit) {
-    // Absolute path; import the package entry directly.
-    const pkgJsonPath = path.join(explicit, "package.json");
-    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
-    const entry = pkgJson.module || pkgJson.main || "index.js";
-    const mod = await import(path.join(explicit, entry));
-    return mod.default || mod;
-  }
-  try {
-    const mod = await import("puppeteer-core");
-    return mod.default || mod;
-  } catch (_e1) {
-    // CJS fallback — honors NODE_PATH and classic module lookup.
-    const require = createRequire(import.meta.url);
-    return require("puppeteer-core");
-  }
-}
+import { launchChrome, loadPuppeteer } from "./chrome_launch.mjs";
 
-const puppeteer = await loadPuppeteer();
+const puppeteer = await loadPuppeteer({
+  envVars: ["SKELETON_EXTRACTOR_PUPPETEER_PATH"],
+  fallbackDirs: [],
+});
+
+// This extractor has always run Chrome without its sandbox. That choice is unchanged here,
+// but it is now explicit and stamped (on stderr: stdout is the draft and nothing else).
+const NO_SANDBOX_REASON = "skeleton-extractor reads a local mockup and has always launched without the sandbox";
 
 // --- read stdin as a single JSON blob ---------------------------------------
 async function readStdinJson() {
@@ -128,12 +115,15 @@ async function extract(payload) {
   const tokenIndex = buildTokenIndex(tokens || {});
 
   const fileUrl = "file://" + mockupHtml;
-  const browser = await puppeteer.launch({
-    executablePath: "/bin/google-chrome",
+  const { browser, stamp } = await launchChrome(puppeteer, {
+    chromePath: "/bin/google-chrome",
     headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    sandbox: false,
+    noSandboxReason: NO_SANDBOX_REASON,
+    args: ["--disable-dev-shm-usage"],
     defaultViewport: { width: bps[0], height: 900 },
   });
+  process.stderr.write(`[skeleton_extractor] chrome sandbox: ${stamp.state} (${stamp.reason})\n`);
 
   // Per-element accumulator keyed by stable selector. Value: {selector, role, bboxPerBp, tokensRawPerBp, interactions, slotGuesses}
   const byKey = new Map();

@@ -233,6 +233,7 @@ Vite / testing material serves both modern and enterprise builds.
 | State management | [state-management.md](state-management.md) | NgRx (store, effects, selectors) for Angular, Redux Toolkit for React, guidance on global vs local vs server-cache state |
 | API, auth, and forms | [api-auth-forms.md](api-auth-forms.md) | HttpClient typed responses, Axios with TanStack Query, GraphQL/Apollo Client, OpenAPI code generation, OAuth2 PKCE flows (Angular and React), role-based UI rendering, Angular reactive forms, React Hook Form with Zod validation |
 | Components and styling | [component-styling.md](component-styling.md) | Smart/container vs presentational components, compound component pattern, Storybook documentation, Tailwind CSS configuration, responsive Grid/Flexbox layouts, CSS custom properties theming |
+| SSE, supply chain, one-origin serving | `sse-live-data.md`, `supply-chain-hygiene.md`, `vite-behind-api.md` | SSE to TanStack Query; pins, scans, SRI; SPA fallback, OpenAPI client |
 | Testing, build, and a11y | [testing-build-a11y.md](testing-build-a11y.md) | Jest + Testing Library (React), Jasmine + Angular testing, Playwright E2E, Mock Service Worker (MSW), Vite 8 (Rolldown) build config, Nx monorepo, GitHub Actions CI/CD, environment variables, WCAG 2.1 |
 
 ---
@@ -288,7 +289,7 @@ decide the mode from content behavior first, static-first by default.
 | Headless WordPress data boundary | `wordpress-developer` (§ Headless / Hybrid Boundary) |
 | Headless WooCommerce storefront boundary | `woocommerce-developer` (§ Headless Storefront) |
 | Core Web Vitals measurement / profiling | `performance` |
-| Trading-application UI surfaces | `trading-dashboard-ux` |
+| Trading UI; operator consoles; passkey auth | `trading-dashboard-ux`, `operator-console-ux`, `spa-auth-webauthn` |
 | Experience / UX design (pre-build brief) | `audience-experience-design` |
 | An LLM feature in the app (retrieval, agents, API cost) | `rag-architecture`, `agentic-architecture`, `llm-api-optimization` |
 | Java backend (Spring Boot, REST APIs) | `java-backend`, `java-spring-boot` |

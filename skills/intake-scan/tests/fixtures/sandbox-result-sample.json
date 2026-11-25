@@ -1,0 +1,39 @@
+{
+  "schema": "intake-sandbox-result-sample.v1",
+  "note": "Benign shape samples of a sandbox result. exit_status is the scanner's own status and is evidence only. With no usable bwrap nothing runs: isolation is none and gap names why.",
+  "results": [
+    {
+      "isolation": "bwrap",
+      "ran": true,
+      "exit_status": 0,
+      "timed_out": false,
+      "out_dir": "/placeholder/work/out",
+      "stdout_path": "/placeholder/work/stdout.txt",
+      "stderr_path": "/placeholder/work/stderr.txt",
+      "duration_s": 0.25,
+      "gap": null
+    },
+    {
+      "isolation": "bwrap",
+      "ran": true,
+      "exit_status": null,
+      "timed_out": true,
+      "out_dir": "/placeholder/work/out",
+      "stdout_path": "/placeholder/work/stdout.txt",
+      "stderr_path": "/placeholder/work/stderr.txt",
+      "duration_s": 60.0,
+      "gap": "scanner-timeout"
+    },
+    {
+      "isolation": "none",
+      "ran": false,
+      "exit_status": null,
+      "timed_out": false,
+      "out_dir": null,
+      "stdout_path": null,
+      "stderr_path": null,
+      "duration_s": 0.0,
+      "gap": "sandbox-unavailable"
+    }
+  ]
+}

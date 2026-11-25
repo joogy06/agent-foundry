@@ -220,7 +220,7 @@ ollama run llama3.1:8b "Summarise: ..."    # interactive
 ### Custom Modelfiles
 
 ```bash
-OLLAMA_WORK=$(mktemp -d /tmp/ollama-XXXXXXXXXX)
+OLLAMA_WORK=$(mktemp -d /tmp/ollama-XXXXXXXXXX) || exit 1
 cat > "$OLLAMA_WORK/Modelfile" <<'EOF'
 FROM llama3.1:8b
 PARAMETER temperature 0.7

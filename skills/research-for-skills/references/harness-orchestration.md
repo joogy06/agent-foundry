@@ -11,6 +11,16 @@ The canonical orchestration conventions live in `~/.claude/workflows/README.md`
 `~/.claude/skills/env-adoption/references/context-detection.md`. This file does
 NOT restate them — it teaches a skill author how to comply.
 
+## Contents
+
+- The capability model
+- The three-layer pattern (HO-3 fallback-first)
+- Companion-workflow decision table (HO-6)
+- Schema-twin rule (HO-5 / G-W2)
+- Ledger / worktree hazards
+- Cross-model phrasing guide (HO-7 host-neutral)
+- Anti-patterns
+
 ## The capability model
 
 | # | Question | Answered by | Lifecycle |
@@ -60,7 +70,7 @@ gate verdicts.> On any fast-path failure, fall back to the portable flow below.
 ```markdown
 Every external-CLI field group carries the W-EXT envelope (invocation /
 raw_transcript / transcript_path / transcript_sha256 / served_by / absence).
-EVERY composed command includes `agy --sandbox` (#157), `codex exec -s
+EVERY composed command includes `agy --sandbox --mode plan` (#157), `codex exec -s
 read-only`, `< /dev/null` (#135/#155), and a shell `timeout`. Command custody is
 args-supplied — no workflow file embeds an external-CLI command line. NOTE
 (WP-2): agy is UNREACHABLE from workflow stages — pre-launch the transcript

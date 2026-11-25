@@ -2,6 +2,14 @@
 
 Reference file for advanced Codex integration patterns. Load when needed — the core SKILL.md has the essentials.
 
+## Contents
+
+- Handover Patterns via Session-Scoped Temp Directories: Pattern 1 (simple), Pattern 2 (structured handover), Pattern 3 (parallel tasks)
+- Progress Tracking: long-running tasks, the progress file convention
+- Skill Injection Pattern: when to inject or let Codex discover, multi-skill injection
+- Codex as MCP Server
+- Temp File Naming Convention, cleanup
+
 ---
 
 ## Handover Patterns via Session-Scoped Temp Directories
@@ -16,10 +24,14 @@ Reference file for advanced Codex integration patterns. Load when needed — the
 > calls (raise `timeout` to 1200). Never inherit the config default (TUI-persisted). Retry
 > once on `Selected model is at capacity`. See SKILL.md "Reasoning-Effort Tiers".
 
+> **ROLE-BOUND CALLS DROP `--ephemeral` (#302):** the patterns below are generic, role-less examples and keep
+> `--ephemeral`; a call that pins a `seat_model` codex role (any TOP role or `consultant_support`) follows the
+> SKILL.md "Seat Models" rule instead and runs WITHOUT `--ephemeral`, so its rollout meters the quota.
+
 ### Pattern 1: Claude → Codex → Claude (Simple)
 
 ```
-1. CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+1. CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 2. Claude writes context to $CODEX_WORK/task.md
 3. Claude calls: timeout 600 codex exec --ephemeral -o "$CODEX_WORK/result.md" \
      "Read $CODEX_WORK/task.md and follow the instructions inside" < /dev/null
@@ -30,7 +42,7 @@ Reference file for advanced Codex integration patterns. Load when needed — the
 ### Pattern 2: Structured Handover (Complex Tasks)
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Step 1: Claude writes a task brief
 cat > "$CODEX_WORK/brief-challenger.md" << 'BRIEF'
@@ -76,7 +88,7 @@ timeout 600 codex exec --ephemeral -C /path/to/project \
 ### Pattern 3: Parallel Codex Tasks
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Launch multiple Codex tasks simultaneously using background processes
 # Each writes to its own output file
@@ -116,7 +128,7 @@ wait $PID1 $PID2 $PID3
 ### For Long-Running Tasks
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Use --json to monitor progress in real time
 timeout 1200 codex exec --ephemeral --skip-git-repo-check --json \
@@ -146,7 +158,7 @@ jq 'select(.type=="turn.completed") | .usage' \
 
 ```bash
 # Reuse $CODEX_WORK from the long-running task block above, or create a new one:
-# CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+# CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # For multi-step tasks, have Codex write progress to a tracking file
 cat > "$CODEX_WORK/task-progress.md" << 'EOF'
@@ -174,7 +186,7 @@ timeout 1200 codex exec --ephemeral -C /path/to/project \
 For critical tasks where Codex MUST apply specific skill knowledge, inject the skill content directly into the brief. This guarantees Codex reads it (rather than hoping it discovers the symlinked file).
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Inject skill into brief for guaranteed context
 SKILL_CONTENT=$(cat ~/.claude/skills/woocommerce-developer/SKILL.md)
@@ -208,7 +220,7 @@ cat "$CODEX_WORK/brief-woo-review.md" | codex exec --ephemeral \
 ### Multi-Skill Injection (for complex tasks)
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 
 # Combine multiple skills into one brief
 cat > "$CODEX_WORK/brief-complex.md" << 'HEADER'
@@ -266,7 +278,7 @@ This gives Claude Code a `codex` MCP tool for delegation — but `codex exec` vi
 
 ```bash
 # Create a session-scoped directory for all Codex outputs
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 # e.g. /tmp/codex-a1b2c3d4e5
 
 # All files go under $CODEX_WORK/ with descriptive names:

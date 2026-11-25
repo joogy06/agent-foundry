@@ -14,7 +14,7 @@
 // invalidates the cache — a resumed evo-apply with changed decisions re-runs bob
 // instead of replaying a stale cached report.
 //
-// SCHEMA-TWIN: execution-report.v1 sha256:10b6a2240c98ba61
+// SCHEMA-TWIN: execution-report.v1 sha256:713410884380b2c6
 
 export const meta = {
   name: "evo-apply",

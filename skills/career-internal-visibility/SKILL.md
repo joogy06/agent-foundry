@@ -7,6 +7,12 @@ disambiguation: The INTERNAL half — goals, evidence, the review cycle, the int
 
 # Career: internal visibility
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: internal-visibility-guidance
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Volatile figures live in `career-coach/references/market-snapshot-2026-06.md`,
 per family convention — this file carries the qualitative claim.

@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pc-builder/findings.v1",
+  "title": "pc_check.py output",
+  "type": "object",
+  "required": [
+    "schema",
+    "rules_version",
+    "exit_code",
+    "summary",
+    "findings",
+    "recommended_psu_w",
+    "psu_sizing",
+    "mode",
+    "incomplete"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "findings.v1"
+      ]
+    },
+    "rules_version": {
+      "type": "string"
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [
+        0,
+        2,
+        3
+      ],
+      "description": "0 ok, 2 a HARD finding (or a publish blocker), 3 incomplete under --final."
+    },
+    "use_case": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "band": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "HARD",
+        "WARN",
+        "INFO"
+      ],
+      "properties": {
+        "HARD": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "WARN": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "INFO": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "message",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Rule id from rules.v1.json."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "HARD",
+              "WARN",
+              "INFO"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "label",
+              "url"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "enum": [
+                  "V",
+                  "S",
+                  "I"
+                ]
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Present when the check could not run; lists the missing inputs."
+          }
+        }
+      }
+    },
+    "recommended_psu_w": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Smallest catalog size >= max(DC/0.80, gpu.min_system_psu_w). Null when CPU or GPU power is unknown."
+    },
+    "psu_sizing": {
+      "type": "object",
+      "properties": {
+        "dc_w": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hard_minimum_w": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "DC/0.90; below this is HARD."
+        },
+        "recommended_min_w": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "DC/0.80; below this is WARN."
+        },
+        "maker_min_system_psu_w": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "recommended_psu_w": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "quiet_target_w": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "DC/0.70; optional quiet target, INFO only."
+        },
+        "catalog_w": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "check",
+        "final",
+        "publish-gate"
+      ]
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "HARD checks that could not run (non-empty only under --final blocks publication).",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "missing"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "publish_blockers": {
+      "type": "array",
+      "description": "Present in publish-gate mode; any entry blocks publication.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "message",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "HARD"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "label",
+              "url"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "enum": [
+                  "V",
+                  "S",
+                  "I"
+                ]
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,9 +5,12 @@
 #   probe.sh check [--inventory-only] [--force] [--silent] [--json]
 #   probe.sh get <jq-path>
 #   probe.sh setup
+#   probe.sh intake-toolchain       (print the intake scanner toolchain state as JSON)
 #
 # State files:
 #   ~/.claude/state/inventory.json                  (persistent: tools, versions, tier)
+#   ~/.claude/state/agy-models.json                 (persistent: agy roster cache, agy-models.v1)
+#   ~/.foundry/intake-tools/                        (READ ONLY: install metadata of the pinned intake scanners)
 #   $XDG_RUNTIME_DIR/env-adoption/session-<id>.json (volatile: auth, MCP)
 #
 # Designed to complete in under 3 seconds.
@@ -23,6 +26,22 @@ SESSION_DIR="$RUNTIME_DIR/env-adoption"
 STALENESS_HOURS=24
 INVENTORY_SCHEMA_VERSION=3
 SESSION_SCHEMA_VERSION=3
+
+# agy roster cache (S081 design §4.3, I17). Read by _meta/seat_model.py (agy TOP-<family>
+# selection; design §4.3 also has _meta/freshness_nudge.py read it). Written ONLY
+# here: the readers do local file reads only (freshness_nudge's charter forbids
+# subprocesses). Refreshed on the inventory-refresh path, reusing STALENESS_HOURS.
+# `agy models` is a roster listing, not a model call.
+AGY_MODELS_FILE="$HOME/.claude/state/agy-models.json"
+AGY_MODELS_SCHEMA="agy-models.v1"
+AGY_MODELS_TIMEOUT_S=5
+
+# Intake scanner toolchain (#350). The pinned scanners live under ~/.foundry/intake-tools
+# (or $FOUNDRY_INTAKE_TOOLS). Their state is read from install metadata by intake-scan's
+# own `toolchain.py check`, which starts no scanner and no venv interpreter.
+PROBE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INTAKE_TOOLCHAIN_HELPER="$PROBE_DIR/../../intake-scan/scripts/toolchain.py"
+INTAKE_TOOLCHAIN_TIMEOUT_S=5
 
 # Harness version gates (orchestration surfaces — S055 workflow-adoption keystone).
 # These are the ONLY numbers gating Q1 (host capability); every consumer reads
@@ -87,6 +106,95 @@ inventory_age_hours() {
   echo $(( (now - mtime) / 3600 ))
 }
 
+# ── agy roster cache ───────────────────────────────────────────────────────────
+
+# agy_models_cache_is_current -> exit 0 iff the cache exists, is younger than
+# STALENESS_HOURS (mtime, same clock as inventory_age_hours) AND is a readable
+# agy-models.v1 document with a non-empty models list. A young but invalid cache
+# is NOT current, so a corrupt file heals on the next refresh path.
+agy_models_cache_is_current() {
+  [ -f "$AGY_MODELS_FILE" ] || return 1
+  local mtime now
+  mtime=$(stat -c %Y "$AGY_MODELS_FILE" 2>/dev/null || stat -f %m "$AGY_MODELS_FILE" 2>/dev/null) || return 1
+  case "$mtime" in ''|*[!0-9]*) return 1 ;; esac
+  now=$(date +%s) || return 1
+  [ $(( (now - mtime) / 3600 )) -lt "$STALENESS_HOURS" ] || return 1
+  jq -e --arg schema "$AGY_MODELS_SCHEMA" \
+    '.schema == $schema and (.models | type == "array" and length > 0)' \
+    "$AGY_MODELS_FILE" >/dev/null 2>&1
+}
+
+# refresh_agy_models_cache <force 0|1> <agy version or empty>
+# Writes AGY_MODELS_FILE = {"schema":"agy-models.v1","fetched_at":ISO-Z,
+# "agy_version":str,"models":[slug,...]} from `agy models`.
+#
+# BEST-EFFORT, NEVER BREAKS THE PROBE. The caller runs it as `... || true`, which
+# also disables `set -e` inside it, so every step checks its own status. On ANY
+# failure (agy/timeout/jq missing, non-zero exit, timeout, empty output, no
+# parseable slug, write error) it returns non-zero, prints nothing, removes its
+# temp files, and leaves an existing cache byte-identical (the new document is
+# written to a temp file in the same directory and renamed over the cache only
+# once complete).
+#
+# `agy models` runs with stdin CLOSED (`< /dev/null`) and a shell timeout: headless
+# agy reads non-TTY stdin to EOF before doing anything, and in a harness shell that
+# EOF never comes (#135). Output goes to a FILE, not a command substitution, so a
+# stray grandchild holding stdout open cannot hold the probe past the timeout.
+# No `timeout` binary -> skip the refresh (never run agy unbounded).
+#
+# Parsing: the first tab-separated column of each line, surrounding whitespace and
+# CR trimmed, kept only when it is ONE slug-shaped token ([A-Za-z0-9][A-Za-z0-9._:+-]*,
+# C locale); blank lines and prose such as "Fetching available models..." are
+# dropped; duplicates keep their first position. Every listed slug is stored,
+# the agy family rule (model_roster.AGY_FAMILY) is enforced by the reader (seat_model), not here.
+refresh_agy_models_cache() {
+  local force="${1:-0}" agy_version="${2:-}"
+  command -v agy >/dev/null 2>&1 || return 1
+  command -v timeout >/dev/null 2>&1 || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  if [ "$force" != "1" ] && agy_models_cache_is_current; then
+    return 0
+  fi
+  [ -n "$agy_version" ] || agy_version="unknown"
+
+  local dir raw slugs doc
+  dir=$(dirname "$AGY_MODELS_FILE") || return 1
+  mkdir -p "$dir" 2>/dev/null || return 1
+  raw=$(mktemp "$dir/.agy-models.raw.XXXXXX" 2>/dev/null) || return 1
+  slugs=$(mktemp "$dir/.agy-models.slugs.XXXXXX" 2>/dev/null) || { rm -f "$raw"; return 1; }
+  doc=$(mktemp "$dir/.agy-models.json.XXXXXX" 2>/dev/null) || { rm -f "$raw" "$slugs"; return 1; }
+
+  if ! timeout "$AGY_MODELS_TIMEOUT_S" agy models < /dev/null > "$raw" 2>/dev/null; then
+    rm -f "$raw" "$slugs" "$doc"; return 1
+  fi
+  if ! LC_ALL=C awk -F'\t' '
+      {
+        s = $1
+        sub(/^[[:space:]]+/, "", s)
+        sub(/[[:space:]]+$/, "", s)
+        if (s ~ /^[A-Za-z0-9][A-Za-z0-9._:+-]*$/ && !(s in seen)) { seen[s] = 1; print s }
+      }' "$raw" > "$slugs" 2>/dev/null || [ ! -s "$slugs" ]; then
+    rm -f "$raw" "$slugs" "$doc"; return 1
+  fi
+  if ! jq -R -n \
+      --arg schema "$AGY_MODELS_SCHEMA" \
+      --arg fetched_at "$(now_iso)" \
+      --arg agy_version "$agy_version" \
+      '{schema: $schema, fetched_at: $fetched_at, agy_version: $agy_version, models: [inputs]}' \
+      < "$slugs" > "$doc" 2>/dev/null \
+     || ! jq -e '.models | length > 0' "$doc" >/dev/null 2>&1; then
+    rm -f "$raw" "$slugs" "$doc"; return 1
+  fi
+  rm -f "$raw" "$slugs"
+  # mktemp creates 0600; give the cache the mode a plain `>` redirect would get
+  # (0666 & ~umask), like inventory.json. Cosmetic: a chmod failure is not a failure.
+  chmod "$(printf '%o' $(( 0666 & ~$(umask) )))" "$doc" 2>/dev/null || true
+  if ! mv -f "$doc" "$AGY_MODELS_FILE" 2>/dev/null; then
+    rm -f "$doc"; return 1
+  fi
+  return 0
+}
+
 # ── tool detection ─────────────────────────────────────────────────────────────
 
 detect_tool() {
@@ -141,6 +249,36 @@ native_teams_env_gate() {
 # booleans from the Claude version probed in the SAME run (no second binary
 # call). Fail-closed: empty/unparseable version => workflow_tool/native_teams
 # false, agent_spawn false. (S055 §3.2)
+# detect_intake_toolchain — one JSON object on stdout, exit 0 always:
+#   {state, root, tools: {<tool>: {state, version_pinned, version_found,
+#                                  revision_pinned, revision_found, reasons}}}
+# state: "present"    every pinned tool is installed and matches its pin
+#        "mismatched" a tool is installed but differs from its pin, or is incomplete
+#        "missing"    a tool is not installed (and none is mismatched)
+#        "unknown"    the helper is absent or gave no usable answer (reason says which)
+# An absent toolchain is a STATE, never an error: the probe goes on either way.
+detect_intake_toolchain() {
+  local raw=""
+  if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$INTAKE_TOOLCHAIN_HELPER" ]; then
+    jq -n '{state: "unknown", reason: "helper-absent", root: null, tools: {}}'
+    return 0
+  fi
+  # Exit 1 from the helper means "not all ok" and still carries the JSON.
+  raw=$(timeout "$INTAKE_TOOLCHAIN_TIMEOUT_S" python3 "$INTAKE_TOOLCHAIN_HELPER" check --json 2>/dev/null) || true
+  printf '%s' "$raw" | jq -e '
+    if (type == "object") and ((.tools | type) == "object") and ((.tools | length) > 0) then
+      {root: .root,
+       tools: (.tools | map_values({state, version_pinned, version_found,
+                                    revision_pinned, revision_found, reasons}))}
+      | ([.tools[].state]) as $s
+      | {state: (if ($s | all(. == "ok")) then "present"
+                 elif ($s | any(. == "mismatch" or . == "incomplete")) then "mismatched"
+                 elif ($s | any(. == "missing")) then "missing"
+                 else "unknown" end)} + .
+    else error("unusable") end' 2>/dev/null \
+    || jq -n '{state: "unknown", reason: "check-failed", root: null, tools: {}}'
+}
+
 detect_harness() {
   local cv="${1:-}"
   local workflow_tool="false" native_teams="false" agent_spawn="false"
@@ -264,11 +402,17 @@ do_check() {
     claude_version=$(printf '%s' "$claude_j" | jq -r '.version // empty' 2>/dev/null) || claude_version=""
     harness_j=$(detect_harness "$claude_version")
 
+    # Intake scanner toolchain (#350): metadata read only, never an error.
+    local intake_toolchain_j
+    intake_toolchain_j=$(detect_intake_toolchain) || intake_toolchain_j=""
+    [ -n "$intake_toolchain_j" ] || intake_toolchain_j='{"state":"unknown","reason":"check-failed","root":null,"tools":{}}'
+
     # Build inventory JSON
     local inv
     inv=$(jq -n \
       --argjson claude "$claude_j" \
       --argjson harness "$harness_j" \
+      --argjson intake_toolchain "$intake_toolchain_j" \
       --argjson codex "$codex_j" \
       --argjson agy "$agy_j" \
       --argjson copilot "$copilot_j" \
@@ -292,6 +436,7 @@ do_check() {
         version: 2,
         last_probed: $last_probed,
         harness: $harness,
+        intake_toolchain: $intake_toolchain,
         tools: {
           claude: $claude,
           codex: $codex,
@@ -352,6 +497,18 @@ do_check() {
       # inventory write (which would otherwise clobber it), it is time-boxed, and its
       # exit code is ignored — a readiness failure must never break the probe.
       timeout 10 python3 "$HOME/.claude/skills/_meta/optional_deps.py" merge-inventory --quiet >/dev/null 2>&1 || true
+    fi
+
+    # agy roster cache (S081 WP-R05, design §4.3): only when THIS run found agy
+    # installed. Same contract as the writers above — its status is ignored and it
+    # prints nothing, so the probe's output and exit code are exactly what they
+    # would have been without it. Its own staleness check (STALENESS_HOURS, --force)
+    # keeps `agy models` from running on every refresh.
+    local agy_installed_now agy_version_now
+    agy_installed_now=$(printf '%s' "$agy_j" | jq -r '.installed' 2>/dev/null) || agy_installed_now="false"
+    if [ "$agy_installed_now" = "true" ]; then
+      agy_version_now=$(printf '%s' "$agy_j" | jq -r '.version // empty' 2>/dev/null) || agy_version_now=""
+      refresh_agy_models_cache "$force" "$agy_version_now" >/dev/null 2>&1 || true
     fi
   fi
 
@@ -732,7 +889,8 @@ case "$cmd" in
   get)     do_get "$@" ;;
   context) do_context "$@" ;;
   setup)   do_setup "$@" ;;
-  *)       die "unknown command: $cmd. Usage: probe.sh {check|get|context|setup} [flags]" ;;
+  intake-toolchain) detect_intake_toolchain ;;
+  *)       die "unknown command: $cmd. Usage: probe.sh {check|get|context|setup|intake-toolchain} [flags]" ;;
 esac
 
 # <!-- FRESHNESS:v1

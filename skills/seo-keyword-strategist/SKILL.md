@@ -1,34 +1,48 @@
 ---
 name: seo-keyword-strategist
-description: Use when researching keywords, mapping search intent, building topic clusters, detecting keyword cannibalization, or optimizing content for entity-based search. Covers keyword strategy, intent classification, clustering, and cannibalization diagnosis.
+description: SEO keyword strategy - keyword research, search-intent classification, entity-first targeting, SERP-based clustering, cannibalisation diagnosis and zero-click strategy. Use when researching keywords, mapping intent to pages, building clusters or diagnosing pages competing for the same query.
 family: seo
 ---
 
 # SEO Keyword Strategist
 
+<!-- FRESHNESS:v1
+volatility: medium
+anchors:
+  - kind: date_review
+    subject: seo-keyword-strategist-review
+    review_by: 2027-03-26
+-->
+
+## Verify before you assert
+
+Dated facts here carry a FRESHNESS anchor: past its `review_by`, fetch the `source_url` live before
+stating it. The full rules: `ai-search-optimizer` → "Verify before you assert".
+
+
 ## Overview
 
-Keywords are entity pointers, not density targets. Google's Knowledge Graph holds 54+ billion entities and 1.6+ trillion facts. Modern keyword strategy is about mapping content to entities and intent, not counting keyword occurrences.
+Keywords are entity pointers, not density targets. Google's Knowledge Graph holds tens of billions of entities (Google figures reported May 2024) [I]. Modern keyword strategy is about mapping content to entities and intent, not counting keyword occurrences.
 
 ## Dead Metrics — Stop Using These
 
 | Myth | Reality |
 |------|---------|
-| **Keyword density 0.5-1.5%** | No correlation with rankings (2026 study, 1,536 results). Google uses NLP, not word counting |
+| **Keyword density targets** (the old 0.5-1.5% rule) | No correlation with rankings in published correlation studies [I]. Google uses NLP, not word counting |
 | **LSI keywords** | Confirmed myth. John Mueller: "There's no such thing as LSI keywords." Use "semantically related terms" instead |
 | **Content scoring tools predict rankings** | Correlation 0.17-0.30 (weak). Use for gap finding, not score chasing |
-| **Search volume is accurate** | Google Keyword Planner overestimates 54% of the time. Use volumes as directional only |
+| **Search volume is accurate** | Keyword Planner and tool volumes are rounded estimates that often overstate. Use them as directional only. Buying third-party volume and competitor data: `seo-data-analyst` → references/third-party-seo-data.md |
 
 ## Intent Classification
 
-| Intent | % of Searches | Content Type | AI Overview Risk |
+| Intent | Share of searches | Content Type | AI Overview Risk |
 |--------|--------------|--------------|-----------------|
-| **Informational** | 52.65% | Guides, how-tos, explainers | HIGH — AI answers directly |
-| **Navigational** | 32.15% | Brand/product pages | LOW — users want specific site |
-| **Commercial** | 14.51% | Comparisons, reviews, "best X" | MEDIUM — sweet spot for clicks |
-| **Transactional** | 0.69% | Product/checkout pages | LOW — users want to buy |
+| **Informational** | Largest | Guides, how-tos, explainers | HIGH — AI answers directly |
+| **Navigational** | Large | Brand/product pages | LOW — users want specific site |
+| **Commercial** | Smaller | Comparisons, reviews, "best X" | MEDIUM — sweet spot for clicks |
+| **Transactional** | Smallest | Product/checkout pages | LOW — users want to buy |
 
-**Priority**: Target commercial intent keywords — high conversion potential, not fully absorbed by AI Overviews. Informational head terms are increasingly zero-click (58.5% US, 83% when AI Overviews appear).
+**Priority**: Target commercial intent keywords — high conversion potential, not fully absorbed by AI Overviews. Informational head terms are increasingly zero-click, more so when an AI Overview appears.
 
 ## Entity-First Keyword Strategy
 
@@ -82,26 +96,26 @@ Flag: queries where count(page) > 1 AND positions swap frequently
 
 | Signal | Action |
 |--------|--------|
-| Position swapping, same intent | **Consolidate** — merge weaker into stronger, 301 redirect. Case studies show +200-466% traffic |
+| Position swapping, same intent | **Consolidate** — merge weaker into stronger, 301 redirect. Published case studies report large gains (directional) |
 | Different intents, both stable | **Leave it** — keyword diversification is beneficial |
 | Same intent, one clearly dominant | **Re-optimize** — change weaker page to target different cluster |
 
 ## Zero-Click Strategy
 
-58.5% of US searches result in zero clicks. When AI Overviews appear, 83% zero-click.
+Most US Google searches end without a click to any website (SparkToro zero-click study, 2024) [I]; AI Overviews push that further on informational queries. AI Mode queries do not appear in Search Console query data (the Generative AI report has no queries); Bing Webmaster AI Performance "grounding queries" are the only first-party prompt-like data [V https://blogs.bing.com/webmaster/February-2026/Introducing-AI-Performance-in-Bing-Webmaster-Tools-Public-Preview].
 
 - For informational keywords: optimize for AI Overview citation as brand visibility (even without clicks)
 - For commercial keywords: these retain higher CTR — prioritize them
-- Track CTR alongside rankings — #1 with 0.6% CTR on an AIO query may be less valuable than #5 without AIO
+- Track CTR alongside rankings — #1 on an AI Overview query can earn fewer clicks than #5 without one
 
-## Anti-Patterns
+## Anti-patterns
 
 | Don't | Why |
 |-------|-----|
 | Target keyword density percentages | Dead metric — no ranking correlation |
 | Use "LSI keyword" tools | LSI is a myth; use topical gap analysis instead |
 | Chase content scoring tool numbers | 0.17-0.30 correlation; score ≠ ranking |
-| Trust search volume precision | 54% overestimated; use as directional only |
+| Trust search volume precision | Estimates that often overstate; directional only |
 | Create separate pages for same-cluster keywords | Causes cannibalization; one cluster = one page |
 | Treat all multi-page rankings as cannibalization | Often beneficial; check for actual harm first |
-| Ignore zero-click data | 58.5% of searches get no clicks; factor into strategy |
+| Ignore zero-click data | Most searches end without a click; factor it in |

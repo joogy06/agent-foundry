@@ -1,14 +1,34 @@
 ---
 name: seo-content-strategist
-description: Use when planning content strategy, writing SEO-optimized content, auditing existing content quality, identifying content decay, deciding whether to create, update, consolidate, or delete pages, or building topical authority through content clusters.
+description: SEO content strategy - planning topic clusters, writing helpful content, auditing quality, detecting content decay, and the refresh, consolidate or delete decision, with Google's helpful-content and AI-content rules. Use when planning, writing, auditing or refreshing site content for search.
 family: seo
 ---
 
 # SEO Content Strategist
 
+<!-- FRESHNESS:v1
+volatility: medium
+anchors:
+  - kind: date_review
+    subject: seo-content-strategist-review
+    review_by: 2027-03-26
+  - kind: external_fact
+    subject: google-2026-updates
+    source_url: https://status.search.google.com/products/rGHU1u87FJnkP6W2GwMi/history
+    verified_on: 2026-09-27
+    review_by: 2026-12-26
+    claim: "2026: Mar core (03-27), May core (05-21), spam updates Mar/Jun/Aug and Sep (rolling from 2026-09-24)."
+-->
+
+## Verify before you assert
+
+Dated facts here carry a FRESHNESS anchor: past its `review_by`, fetch the `source_url` live before
+stating it. The full rules: `ai-search-optimizer` → "Verify before you assert".
+
+
 ## Overview
 
-Unified content workflow: plan → write → audit → refresh. Google's Helpful Content system is now embedded in core ranking (March 2024) — not a separate signal. Weak content anywhere on the site hurts everything. Topic clusters drive 30-43% more traffic and 3.2x more AI citations than standalone content.
+Unified content workflow: plan → write → audit → refresh. Google's Helpful Content system is now embedded in core ranking (March 2024) — not a separate signal. Weak content anywhere on the site hurts everything. Topic clusters beat standalone articles for coverage and internal linking. Google's 2026 core updates (March and May) and the September 2026 spam update (rolling from 2026-09-24) are listed on the Search status dashboard [V https://status.search.google.com/products/rGHU1u87FJnkP6W2GwMi/history]; read a traffic change against those dates first.
 
 ## Content Planning
 
@@ -23,24 +43,19 @@ Unified content workflow: plan → write → audit → refresh. Google's Helpful
 ### Prioritization
 
 - Topical relevance to core expertise > search volume
-- **HubSpot warning**: Lost 81% traffic y/y from publishing off-topic content (celebrity quotes, resignation letters). Multi-factor (algorithm + AI Overviews + off-topic), but the lesson stands: stay in your lane
-- Target commercial intent keywords first (14.51% of searches, highest conversion potential, not fully absorbed by AI)
+- **HubSpot warning**: its blog lost much of its traffic after years of off-topic content (celebrity quotes, resignation letters). Multi-factor (algorithm + AI Overviews + off-topic), but the lesson stands: stay in your lane
+- Target commercial intent keywords first (a small share of searches, the highest conversion potential, least absorbed by AI answers)
 - Include content updates in the calendar — not just new content
 
-### Content ROI Timelines
+### Timelines and cadence
 
-| Phase | Timeline |
-|-------|----------|
-| Initial traffic signals | 3-6 months |
-| Revenue impact | 4-9 months |
-| Break-even | 6-12 months |
-| Competitive industries | 12-18 months |
+ROI timelines and refresh cadence by content type (heuristics): [references/timelines-and-cadence.md](references/timelines-and-cadence.md).
 
 ### Programmatic SEO (Use With Caution)
 
 - Best for: large datasets, 10K+ long-tail variations, unique data
-- Minimum: **500 unique words per page**, 30%+ differentiation between pages
-- **60% of implementations fail.** 1 in 3 hit traffic cliffs within 18 months
+- Minimum (heuristic): **500 unique words per page** and a clearly different body on every page
+- Many implementations fail, often with a traffic cliff months later when thin pages are reassessed
 - Progressive rollout: start small, monitor weekly, prune monthly
 
 ## Content Writing
@@ -55,8 +70,8 @@ Unified content workflow: plan → write → audit → refresh. Google's Helpful
 ### AI Content Rules
 
 - Google does **not** penalize AI content automatically — quality matters
-- March 2024 update deindexed 837 sites — **100% showed AI content signs**
-- 86.5% of top-ranking pages use some AI, but with heavy human editing
+- The March 2024 update deindexed hundreds of sites, largely mass AI-content sites
+- Many top-ranking pages use some AI, with heavy human editing
 - Rule: AI drafting + human expertise, original data, first-person experience = OK. AI-only paraphrase of existing sources = penalized
 
 ### Content Length by Intent
@@ -84,14 +99,14 @@ Unified content workflow: plan → write → audit → refresh. Google's Helpful
 - Short paragraphs: 2-4 sentences
 - 2-5 contextual internal links per 1,000 words
 - Question-based H2/H3 headings for AI extraction
-- 120-180 words between headings (70% more ChatGPT citations vs <50 words)
+- Sections of a few short paragraphs between headings: neither one-liners nor walls of text
 
 ## Content Auditing
 
 ### Audit Checklist (Priority Order)
 
 1. **Indexation health** — GSC for not-indexed pages, crawl errors
-2. **Content decay** — Pages losing >20% traffic over 3-6 months
+2. **Content decay** — Pages losing >20% traffic over 3-6 months (heuristic threshold)
 3. **Thin content** — Pages <500 words with nothing unique
 4. **Cannibalization** — Multiple pages competing for same terms
 5. **E-E-A-T gaps** — Missing author attribution, uncited sources
@@ -105,7 +120,7 @@ Unified content workflow: plan → write → audit → refresh. Google's Helpful
 | Site Size | Frequency |
 |-----------|-----------|
 | Small (<100 pages) | Every 6 months |
-| Medium (100-1K pages) | Quarterly (top 20%); annual full audit |
+| Medium (100-1K pages) | Quarterly for top performers (heuristic: top 20%); annual full audit |
 | E-commerce / high-traffic | Quarterly minimum; monthly top-performer checks |
 
 ## Content Refresh & Decay
@@ -113,7 +128,7 @@ Unified content workflow: plan → write → audit → refresh. Google's Helpful
 ### Detecting Decay (GSC Method)
 
 Compare 3-month periods year-over-year. Flag pages with:
-- Clicks down 20%+ AND position dropped 2+ spots = **competitive loss → substantive refresh**
+- Clicks down 20%+ AND position dropped 2+ spots = **competitive loss → substantive refresh** (heuristic thresholds)
 - Clicks down, position stable = **SERP feature crowding → refresh meta/title**
 - Impressions down, everything stable = **demand shift → consider new angle or consolidation**
 
@@ -131,9 +146,9 @@ Content published within 3 months is too fresh to diagnose for decay.
 
 ### Refresh Rules
 
-- Minimum **20-30% content change** for Google to consider it "refreshed"
+- Make a **substantive** change (new facts, sections, data), not a cosmetic edit
 - **Never just change the date** — Google detects this and may demote
-- Display only **one date visibly** (most recent update) — showing both datePublished and dateModified caused 22% CTR drop (single study, but directional)
+- Display only **one date visibly** (most recent update); two dates can confuse readers and the snippet (single study, directional)
 - Keep schema `dateModified` accurate
 - **Always keep the same URL** — changing URLs loses accumulated authority
 - Submit to Search Console for re-indexing after substantial refresh
@@ -141,27 +156,14 @@ Content published within 3 months is too fresh to diagnose for decay.
 
 ### Refresh ROI
 
-- HubSpot: **+106%** organic views from refreshing old posts
-- GoInflow: **+268%** organic clicks from e-commerce refresh
-- Refreshed content delivered 268% growth vs 22% from new pages
-- 51% of companies report updating content is more effective than creating new
+- Published case studies (HubSpot, GoInflow) report large organic gains from refreshing existing pages; treat them as directional and measure your own before/after in Search Console
 
-### Content Freshness by Type
-
-| Type | Refresh Cadence |
-|------|----------------|
-| Product pages (pricing/inventory) | Weekly or as-needed |
-| "Best of" / comparison posts | Every 3-6 months |
-| Technology guides | Every 3-6 months |
-| Data/statistics posts | Annually |
-| Evergreen how-to guides | Every 12-18 months |
-
-## Anti-Patterns
+## Anti-patterns
 
 | Don't | Why |
 |-------|-----|
-| Publish off-topic content for traffic | HubSpot lost 81% — Google penalizes topical drift |
-| Output pure AI content without human expertise | 100% of March 2024 deindexed sites had AI content |
+| Publish off-topic content for traffic | Google rewards topical focus; HubSpot's losses are the cautionary tale |
+| Output pure AI content without human expertise | Mass AI content was the pattern in the March 2024 deindexing |
 | Hit arbitrary word count targets | Intent match > length. Short can outrank long |
 | Update dates without substantive changes | Google detects fake freshness; may demote |
 | Delete underperforming pages without checking | Check backlinks, consolidation potential first |

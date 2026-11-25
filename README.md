@@ -2,16 +2,16 @@
 
 A curated collection of skills and agents for [Claude Code CLI](https://claude.ai/code), covering software engineering, DevOps, data engineering, infrastructure administration, and workflow orchestration.
 
-> **Version:** 1.6.0 · **Last published:** 2026-07-26 (v1.5.0) · **225 skills · 6 agents · 8 workflows · 2 commands**
+> **Version:** 1.7.0 · **Last published:** 2026-11-25 · **261 skills · 6 agents · 9 workflows · 2 commands**
 > See the [Changelog](#changelog) for what changed in each release.
 
 ---
 
 ## What's Inside
 
-- **225 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **web-experience pair** (`modern-frontend` — the promoted canonical frontend skill: Vite/Next rendering-mode selection, RSC-first App Router, CWV build budgets, debugging, with `java-frontend` living on as an enterprise-scoped compatibility stub; and `audience-experience-design` — the generative sibling of ux-reviewer that turns audience, intent, and emotional/trust response into buildable design decisions for web, apps, and reports), the **trading-engineering pair** (`trading-automation-runtime`, `trading-dashboard-ux` — the unattended-bot process lifecycle with halts that persist across restarts, gateway-fenced single-instance enforcement, and a crash-consistent drain; plus the trading-surface UX where a mis-shown side or a stale quote is a monetary loss), the **equity day-trading family** (`equity-broker-execution`, `equity-scanning-and-watchlists`, `equity-trading-compliance`, `trade-journaling-and-review` — real-broker order execution with a fail-closed exposure-intent gate, universe screening, PDT/wash-sale/§475(f) compliance with a canonical pre-trade guard, and a live-fill journal), the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), and `cross-project-mail` (AI-agent messaging across sibling projects on one host)
+- **261 skills** — domain knowledge Claude loads on demand to help with specific tasks. Highlights include the **web-experience pair** (`modern-frontend` — the promoted canonical frontend skill: Vite/Next rendering-mode selection, RSC-first App Router, CWV build budgets, debugging, with `java-frontend` living on as an enterprise-scoped compatibility stub; and `audience-experience-design` — the generative sibling of ux-reviewer that turns audience, intent, and emotional/trust response into buildable design decisions for web, apps, and reports), the **trading-engineering pair** (`trading-automation-runtime`, `trading-dashboard-ux` — the unattended-bot process lifecycle with halts that persist across restarts, gateway-fenced single-instance enforcement, and a crash-consistent drain; plus the trading-surface UX where a mis-shown side or a stale quote is a monetary loss), the **equity day-trading family** (`equity-broker-execution`, `equity-scanning-and-watchlists`, `equity-trading-compliance`, `trade-journaling-and-review` — real-broker order execution with a fail-closed exposure-intent gate, universe screening, PDT/wash-sale/§475(f) compliance with a canonical pre-trade guard, and a live-fill journal), the **legacy-comprehension family** (`lineage-extract-static`, `mainframe-lineage-parsers`, `legacy-code-intel`, `structure-recovery`, `intent-extract` — data/process lineage, deterministic COBOL/JCL/DB2 + Control-M → OpenLineage, SCIP-style symbol graphs, and record-structure recovery for legacy estates), `env-readiness` (read-only environment readiness doctor), `publish-to-github` (releasing this whole tree to public github safely), `visual-companion` (browser-based mockup/diagram review during design), `cross-project-mail` (AI-agent messaging across sibling projects on one host), `model-eval-pack` (deterministic tests that score an AI CLI model — agy, codex or claude — on capability, deliberation, harness flags and skill adherence), and the **image family** (`image-alt-text`, `image-alt-pipeline`, `image-seo` — the WCAG 2.2 alt text standard and audit rubric, catalogue-scale alt automation with guards, dry-run, rollback and a dated cost model, and image SEO signals with product-feed image rules)
 - **6 agents** — specialized sub-agents for execution, review/evolution, evergreening, task routing, and knowledge management
-- **8 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
+- **9 saved workflows** — committed `.js` orchestration scripts under `~/.claude/workflows/` (e.g. `bob-serial-exec`, `design-tournament`, `alf-sweep`) that parameterize the existing agents; main-loop-only on Claude Code, with a host-neutral serial fallback for every other host
 - **Slash commands** — short user-invoked workflows under `~/.claude/commands/` (e.g. `/exit-with-docs` to wrap up a session and update project docs)
 
 Skills are auto-discovered from frontmatter descriptions — you don't call them explicitly. Agents are invoked by name (`forge`, `bob`, `alf`, `pa`, `wiki`). Commands are invoked with a leading slash (e.g. `/exit-with-docs`).
@@ -166,7 +166,7 @@ If you'd rather not run a script:
 cp -r skills/* ~/.claude/skills/
 cp -r agents/*.md ~/.claude/agents/
 cp -r commands/*.md ~/.claude/commands/
-cp CLAUDE.md ~/.claude/CLAUDE.md
+cp global/CLAUDE.md ~/.claude/CLAUDE.md   # the global rules; the root CLAUDE.md is project-only
 ln -s ~/.claude/CLAUDE.md ~/.claude/AGENTS.md
 cp -r pa-server ~/.claude/pa-server
 ```
@@ -326,9 +326,9 @@ Backtesting with vectorbt/backtrader, kill switches, CCXT, intraday patterns, Fi
 <details>
 <summary><b>SEO & Marketing</b></summary>
 
-`seo-content-strategist` · `seo-keyword-strategist` · `seo-structure-architect` · `seo-meta-optimizer` · `seo-serp-optimizer` · `seo-authority-builder` · `seo-data-analyst` · `ai-search-optimizer` · `conversion-psychology` · `ecommerce-growth`
+`seo-content-strategist` · `seo-keyword-strategist` · `seo-structure-architect` · `seo-meta-optimizer` · `seo-serp-optimizer` · `seo-authority-builder` · `seo-data-analyst` · `ai-search-optimizer` · `conversion-psychology` · `ecommerce-growth` · `image-alt-text` · `image-alt-pipeline` · `image-seo`
 
-Full SEO stack including AI search optimization (ChatGPT/Gemini/Perplexity citations), schema markup, topic clusters, GSC/GA4 analytics.
+Full SEO stack including AI search optimization (ChatGPT/Gemini/Perplexity citations), schema markup, topic clusters, GSC/GA4 analytics, and image alt text and image SEO.
 </details>
 
 <details>
@@ -382,9 +382,9 @@ SPL queries, dashboards, Prometheus/Grafana/Loki, ELK stack, alerting.
 <details>
 <summary><b>CLI Tools & Integrations</b></summary>
 
-`claude-code-cli` · `gemini-cli` · `gh-copilot-cli` · `codex-orchestration` · `mcp-server-creator`
+`claude-code-cli` · `gemini-cli` · `gh-copilot-cli` · `codex-orchestration` · `antigravity-cli` · `model-eval-pack` · `mcp-server-creator`
 
-Claude Code CLI reference, Gemini CLI, GitHub Copilot CLI, Codex delegation, building MCP servers.
+Claude Code CLI reference, Gemini CLI, GitHub Copilot CLI, Codex delegation, the Antigravity CLI (agy), scoring AI CLI models with code-checked tests, building MCP servers.
 </details>
 
 <details>
@@ -462,6 +462,17 @@ See `skills/publish-to-github/SKILL.md` for the full workflow.
 ---
 
 ## Changelog
+
+### 1.7.0 — 2026-11-25
+- **`model-eval-pack` local model baseline**: `run_local_baseline.sh` scores a self-hosted model on an OpenAI-compatible server and records the hardware with it: 8 medium/hard coding tasks graded by hidden tests, a long-context coding task at about 117K and 228K tokens, parallel sessions measured as real speedup, and LiveCodeBench v6 (fixed seeded problem set, dataset downloaded at run time and never stored). One CSV row per run, a side-by-side comparison table, and a `local:` provider for the eval pack.
+- **`publish-to-github` handles a symlinked install**: it follows linked skill directories, copies content instead of links, refuses any scrub that would write outside the staging dir, excludes dated `*.bak-*` backups, and counts only directories with a `SKILL.md` as skills.
+- **`tool-radar`** (new, 2026-10-29): a standing reference library of external tools foundry has checked but may not use, one entry per tool with verified facts (VERIFIED/LIKELY/UNCERTAIN, source and read date), code vs weights/data licence, cost, MCP support and an adopt/trial/assess/hold ring; a generated `INDEX.md`; and a stdlib `radar.py` (`index`, `lint`, `stale`, `find`). Seeded with the five tools verified in #369 (VoiceStudio, OpenSEO, Qwen 3.8 27B, OpenCode, PhotoCraft) plus BMAD-METHOD, Git AI and KittenTTS. Skills 261 → 262.
+- **Image family** (`image-alt-text` parent, `image-alt-pipeline`, `image-seo`): platform-neutral alt text standard (WAI decision tree, reused images, audit rubric A1-A16), a plan/dry-run/apply alt pipeline that never overwrites human alt, with a WordPress + WooCommerce reference adapter and a dated Claude / OpenAI / Gemini cost per 1,000 images, and image SEO (sitemaps, markup, Merchant Center 500 x 500 from 2027-01-31). Skills 256 → 259.
+- **Operator-dashboard pair** (`operator-console-ux`, `spa-auth-webauthn`) plus three `modern-frontend` references (`sse-live-data.md`, `supply-chain-hygiene.md`, `vite-behind-api.md`): generic control-plane console UX (needs-you-now queue, approval cards bound to id + version, a destructive-action ladder of undo vs confirm vs typed confirm vs step-up, freshness, accessible kanban with dnd-kit keyboard and "Move to…" paths, command palette and mention type-ahead) and passkey auth for a same-origin SPA (SimpleWebAuthn 14 / py_webauthn 3 ceremonies, `__Host-` cookie sessions, Fetch Metadata + signed CSRF tokens, action-bound step-up, CSP and Trusted Types); SSE into TanStack Query, npm 12 supply-chain controls, and one-origin Vite serving with a typed OpenAPI client. Skills 259 → 261.
+- **`model-eval-pack`** ships as a skill (Claude, plus the Codex mirror `install.py` now places): fixed, code-scored cases for an AI CLI model (agy, codex or claude) on capability, multi-turn deliberation, harness flags and skill adherence, with a side-by-side scorecard. The strict `FINAL` scorer counts the word `final` once, after NFKC and zero-width removal.
+- **agy serves Gemini 4 Argon only**, its level set by task size (light `-low`, medium `-medium`, complex `-high`); flash is gone from every live recipe, and every agy call pins its model through the seat registry.
+- **`install.py` places the Codex skill mirror** (add-only directory links in `~/.codex/skills`, honouring `.no-codex-symlink`).
+- Skills 225 → 256, workflows 8 → 9.
 
 ### 1.6.1 — 2026-07-30
 - **Optional libraries install by DEFAULT** (`--no-extras` opts out). A failed optional install is still reported rather than fatal, so a locked-down machine gets a working harness either way. Readiness is announced *before* placement, not after.

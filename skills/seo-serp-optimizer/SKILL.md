@@ -1,29 +1,51 @@
 ---
 name: seo-serp-optimizer
-description: Use when optimizing content for featured snippets, People Also Ask, AI Overview citations, rich results, or any SERP feature. Covers snippet formats, PAA optimization, AI citation strategy, and the current rich results inventory.
+description: SERP features - featured snippets, People Also Ask, the rich results inventory, and choosing per query between snippet and AI Overview targeting, with the ads that now compete for the same space. Use when optimising content or markup to win a search-results feature; AI citation tactics are ai-search-optimizer and brand-trust levers are seo-authority-builder.
 family: seo
 ---
 
 # SEO SERP Optimizer
 
+<!-- FRESHNESS:v1
+volatility: high
+anchors:
+  - kind: date_review
+    subject: seo-serp-optimizer-review
+    review_by: 2027-03-26
+  - kind: external_fact
+    subject: ai-mode-ad-formats
+    source_url: https://blog.google/products/ads-commerce/google-marketing-live-search-ads/
+    verified_on: 2026-09-27
+    review_by: 2026-12-26
+    claim: "AI Mode ad formats (Conversational Discovery ads, Highlighted Answers, Direct Offers) beta; UK not stated."
+-->
+
+## Verify before you assert
+
+Dated facts here carry a FRESHNESS anchor: past its `review_by`, fetch the `source_url` live before
+stating it. The full rules: `ai-search-optimizer` → "Verify before you assert".
+
+
 ## Overview
 
-SERP features determine how your content appears in search results. Featured snippets get 42.9% CTR (vs 39.8% for standard #1). But AI Overviews are replacing snippets on many queries — strategy must target both. PAA boxes appear on 80%+ of queries with multiple slots available per SERP.
+SERP features decide how a result appears. Featured snippets still win clicks where they appear, but
+AI Overviews and AI Mode have replaced them on many queries, and ads now sit inside and around those
+answers. Target each query for the feature it actually shows.
 
 ## Featured Snippet Optimization
 
 ### Snippet Types (2026)
 
-| Type | Share | Optimal Format |
-|------|-------|---------------|
-| **Paragraph** | 70% | 40-60 words. Question as H2, answer in first 2-3 sentences. Definition format |
-| **List (ordered)** | ~18% | `<ol>` + `<li>`. 5-8 items, action verbs, uniform descriptions |
-| **List (unordered)** | ~5% | `<ul>` + `<li>`. Collections, features, examples. Header with "types of" or "examples of" |
-| **Table** | 7.3% | `<table>` HTML. 3-5 columns, 4-8 rows. Comparisons, specs, pricing. **Low competition** |
+| Type | Optimal Format |
+|------|---------------|
+| **Paragraph** (the most common) | 40-60 words. Question as H2, answer in first 2-3 sentences. Definition format |
+| **List (ordered)** | `<ol>` + `<li>`. 5-8 items, action verbs, uniform descriptions |
+| **List (unordered)** | `<ul>` + `<li>`. Collections, features, examples. Header with "types of" or "examples of" |
+| **Table** | `<table>` HTML. 3-5 columns, 4-8 rows. Comparisons, specs, pricing. Less contested |
 
 ### Key Rule
 
-**Check if target query triggers AI Overview before optimizing for featured snippet.** Featured snippets dropped from 34% to 18% on AI Overview SERPs. Different strategies needed.
+**Check if the target query triggers an AI Overview before optimising for a featured snippet.** Snippets appear far less often on AI Overview results, so the strategies differ.
 
 - Query WITHOUT AI Overview → optimize for featured snippet (high CTR value)
 - Query WITH AI Overview → optimize for AI Overview citation instead
@@ -34,7 +56,7 @@ Snippets are highly volatile and can change hands weekly during algorithm update
 
 ## People Also Ask (PAA)
 
-**80%+ of queries show PAA boxes** — massive opportunity with multiple slots per SERP. 63% of interactions happen on mobile.
+PAA boxes appear on a large share of queries, with several slots per results page, and most interactions are on mobile.
 
 ### Optimization
 
@@ -44,42 +66,17 @@ Snippets are highly volatile and can change hands weekly during algorithm update
 4. Check PAA for every target keyword — reveals content gaps and subtopics Google expects
 5. FAQ schema on pages with PAA-targeted Q&A sections (boosts eligibility even without rich results)
 
-## AI Overview Citation Strategy
+## AI Overview and AI Mode citation
 
-AI Overviews appear on 15-48% of searches (varies by query type and month). Only ~1% of users click AI Overview sources, but cited brands get +35% organic CTR (halo effect).
-
-### What Gets Cited
-
-| Factor | Impact |
-|--------|--------|
-| Structured data present | 65% of AI Mode cited pages include schema |
-| Statistics in content | +22% AI visibility |
-| Quotations in content | +37% AI visibility |
-| Content freshness (< 3 months) | Average 6 citations vs 3.6 for older |
-| 2,900+ word articles | 5.1 citations vs 3.2 for < 800 words |
-| Top-10 organic ranking | 38-54% of citations (declining — AI increasingly cites outside top 10) |
-
-### Answer Capsule
-
-Every key page needs a **direct answer in the first 40-60 words** after the H1:
-
-```
-BAD: "Welcome to our store! We offer a wide range of..."
-GOOD: "The best gaming PC for Fortnite under £1,000 is the Titan X,
-featuring an RTX 5060, Ryzen 5 9600X, and 32GB DDR5. It delivers
-144+ FPS at 1080p on competitive settings."
-```
-
-### Content Formats AI Prefers
-
-| Format | Citation Impact |
-|--------|----------------|
-| Comparison tables | HIGH — "X vs Y" queries |
-| Bullet/numbered lists | HIGH — 35% of product citations |
-| Q&A / FAQ format | HIGH — matches conversational queries |
-| H2/H3 + bullet structure | 40% more likely cited |
-| 120-180 words between headings | 70% more ChatGPT citations vs < 50 words |
-| Long unstructured paragraphs | LOW — avoid for product info |
+- **Answer capsules, formats assistants extract well, and what gets cited** are owned by
+  `ai-search-optimizer` (AEO section); this skill does not keep a second copy.
+- Brand levers such as preferred sources: `seo-authority-builder`.
+- **Measure it:** Search Console's Generative AI report gives AI-feature impressions per page, no
+  clicks and no queries [V https://support.google.com/webmasters/answer/16984139]. Method:
+  `ai-assistant-referrals`.
+- **Ads compete for the same space.** AI Mode ad formats (Conversational Discovery ads, Highlighted
+  Answers, Direct Offers) are in beta [V, anchor]. Paid placement is not a citation. Each
+  format's market status is a registry row (`ai-search-optimizer/data/surfaces.v1.json`, `channel: paid`).
 
 ## Rich Results Inventory (2026)
 
@@ -88,8 +85,9 @@ featuring an RTX 5060, Ryzen 5 9600X, and 32GB DDR5. It delivers
 | Schema | Rich Result | CTR Impact |
 |--------|------------|------------|
 | `Product` + `Offer` | Price, availability, merchant listings | Essential for e-commerce |
-| `AggregateRating` / `Review` | Star ratings in SERP | +20-35% CTR |
-| `BreadcrumbList` | Breadcrumb path (desktop only since Jan 2025) | Up to +30% CTR |
+| `AggregateRating` / `Review` | Star ratings in SERP | Higher CTR; follow the 2026-07-24 fake-review guideline |
+| `BreadcrumbList` | Breadcrumb path (desktop only since Jan 2025) | Context in the result |
+| `QAPage` / `DiscussionForumPosting` | Q&A and forum results (still supported) | UGC queries |
 | `VideoObject` | Video carousels, key moments | Video-specific SERPs |
 | `Article` | Article rich results | News/blog content |
 | `Event` | Event listings | Date/location display |
@@ -108,9 +106,7 @@ featuring an RTX 5060, Ryzen 5 9600X, and 32GB DDR5. It delivers
 **What this skill owns instead:** which SERP *feature* each schema can still win, and how
 to present for it. For whether a schema is alive at all, follow the link above.
 
-Rich results capture 58% of clicks when present (vs 41% for standard listings).
-
-## Anti-Patterns
+## Anti-patterns
 
 | Don't | Why |
 |-------|-----|
@@ -118,6 +114,7 @@ Rich results capture 58% of clicks when present (vs 41% for standard listings).
 | Write 200+ word snippet bait paragraphs | Optimal is 40-60 words for paragraph snippets |
 | Implement HowTo schema for rich results | Fully deprecated |
 | Assume snippet ownership is permanent | High volatility; monitor and refresh |
-| Ignore table format | Only 7.3% of snippets = lower competition |
-| Ignore PAA optimization | 80%+ of queries, multiple slots — biggest opportunity |
-| Skip answer capsule on key pages | First 40-60 words determine AI citation eligibility |
+| Ignore table format | Tables are less contested |
+| Ignore PAA optimisation | Several slots on many results pages |
+| Copy AEO tables from `ai-search-optimizer` | Two copies drift; link instead |
+| Count AI Mode ads as citations | Paid placement, not earned |

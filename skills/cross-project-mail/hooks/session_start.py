@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""cross-project-mail SessionStart hook — portable twin of session-start.sh (S075).
+"""cross-project-mail SessionStart hook -- the one implementation (S075; cpmail watch, 2026-10-30).
 
-Behaviourally identical to the bash version, in Python so it runs on Windows,
-where neither `bash` nor `find` can be assumed. The .sh stays as the POSIX
-default: it is already deployed and its command string is the dedup identity in
-settings.json, so replacing it everywhere would duplicate hooks on every
-existing install for no gain.
+`session-start.sh` execs this file, so both hook entries print identical lines.
+The .sh stays because its command string is the dedup identity in settings.json.
 
-Budget: <100ms. A directory listing and a count — no parsing, no mailbox reads.
+One `cpmail _hook-counts` call returns the project, the count of new messages
+(ack_state unread), the count read but not acked, and the project's watch
+setting. Only the non-zero parts are printed:
 
-ALWAYS EXITS 0. A session must never fail to start because the mail count could
-not be produced; silence is the correct degradation, and it is why every failure
-path here returns quietly rather than reporting.
+  [mail] 2 new for P: read and handle them before other work (cpmail list --new)
+  [mail] 13 read but not acked for P (cpmail list --unread)
+  [mail] watch is on for P: start "cpmail watch-loop" as a background task (run_in_background), restart it after each wake
+
+Budget: <100ms. ALWAYS EXITS 0. A session must never fail to start because the
+mail count could not be produced; silence is the correct degradation.
 """
 from __future__ import annotations
 
@@ -21,40 +23,45 @@ import sys
 from pathlib import Path
 
 
-def detect_project(cpmail: str) -> str:
-    """Ask the CLI, exactly as the bash hook does. Silent on any failure."""
+def hook_counts(cpmail: str) -> tuple[str, int, int, bool] | None:
+    """(project, new, read, watch_on) from the CLI, or None on any failure."""
     try:
-        p = subprocess.run([cpmail, "_detect-project"], capture_output=True,
+        p = subprocess.run([cpmail, "_hook-counts"], capture_output=True,
                            text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
-        return ""
-    return (p.stdout or "").strip() if p.returncode == 0 else ""
-
-
-def unread_count(inbox: Path) -> int:
-    """*.md directly under the inbox. Deliberately NOT recursive — .acked/ lives
-    beneath it and those messages are, by definition, no longer unread."""
+        return None
+    if p.returncode != 0:
+        return None
+    parts = (p.stdout or "").split()
+    if len(parts) != 4:
+        return None
+    project, new, read, watch = parts
     try:
-        return sum(1 for e in inbox.iterdir() if e.is_file() and e.suffix == ".md")
-    except OSError:
-        return 0
+        return project, int(new), int(read), watch == "on"
+    except ValueError:
+        return None
+
+
+def hook_lines(project: str, new: int, read: int, watch_on: bool) -> list[str]:
+    lines = []
+    if new > 0:
+        lines.append(f"[mail] {new} new for {project}: read and handle them before other work "
+                     f"(cpmail list --new)")
+    if read > 0:
+        lines.append(f"[mail] {read} read but not acked for {project} (cpmail list --unread)")
+    if watch_on:
+        lines.append(f'[mail] watch is on for {project}: start "cpmail watch-loop" as a background '
+                     f"task (run_in_background), restart it after each wake")
+    return lines
 
 
 def main() -> int:
-    mailbox = Path(os.environ.get("AI_MAILBOX", Path.home() / ".ai-mailbox"))
     cpmail = os.environ.get("CPMAIL_BIN", "cpmail")
-
-    project = detect_project(cpmail)
-    if not project:
+    got = hook_counts(cpmail)
+    if got is None:
         return 0
-
-    inbox = mailbox / "inbox" / project
-    if not inbox.is_dir():
-        return 0
-
-    n = unread_count(inbox)
-    if n > 0:
-        print(f"[mail] {n} unread for {project} (run: {cpmail} list --unread)")
+    for line in hook_lines(*got):
+        print(line)
     return 0
 
 

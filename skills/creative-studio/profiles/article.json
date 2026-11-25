@@ -1,0 +1,112 @@
+{
+  "schema_version": "studio-profile.v1",
+  "name": "article",
+  "artefact": "an article for a website",
+  "work_kind": "text",
+  "private": false,
+  "max_agents": 15,
+  "borrow_max": 3,
+  "brief": {
+    "required": [
+      "subject",
+      "reader",
+      "action",
+      "length",
+      "truth-pack"
+    ],
+    "optional": [
+      "level",
+      "sections",
+      "pinned",
+      "persona",
+      "notes"
+    ]
+  },
+  "constraints": {
+    "tier": "light",
+    "loads": [
+      "seo-keyword-strategist",
+      "seo-content-strategist",
+      "seo-structure-architect",
+      "seo-meta-optimizer",
+      "ai-search-optimizer"
+    ],
+    "asks": [
+      "Search intent: what the reader searched for to land on this piece, and what they came to decide or learn.",
+      "The search question: the one question the piece answers in its first screen, written as a single sentence.",
+      "Heading outline: the `Heading outline` section. Its heading line is `## Heading outline` and straight under it stands one list: one item per `##` heading the piece must carry, in order, each item the exact words of that heading and nothing else. The runner checks every draft against this list.",
+      "Terms to cover: the terms and entities the piece must use, and the ones to explain where they first appear.",
+      "Internal-link slots: a short name for each place the piece should link to within the site, and what the reader gets there.",
+      "Title and description: the length each must keep to, and the term each must carry.",
+      "Structured data: the schema.org type that fits the piece, and why."
+    ]
+  },
+  "functions": [
+    {
+      "id": "copy",
+      "axis_set": "copy",
+      "output": "article.md",
+      "seats": [
+        {
+          "id": "copy-a",
+          "loads": [
+            "family:copy-plain"
+          ],
+          "school_file": "business-writing/references/school-plain.md",
+          "format_file": "content-writer/references/format-article.md"
+        },
+        {
+          "id": "copy-b",
+          "loads": [
+            "family:copy-voiced"
+          ],
+          "school_file": "content-writer/references/school-voiced.md",
+          "format_file": "content-writer/references/format-article.md"
+        }
+      ]
+    }
+  ],
+  "evidence": {
+    "capture": false,
+    "text_check": {
+      "truth_pack": true,
+      "outline": true,
+      "length": true,
+      "first_screen": true
+    }
+  },
+  "claim_check": {
+    "tier": "light"
+  },
+  "critic": {
+    "reference": "creative-studio/references/text-critic.md",
+    "loads": [
+      "human-voice-writing"
+    ]
+  },
+  "finish": [
+    {
+      "id": "copy-pass",
+      "tier": "medium",
+      "loads": [
+        "human-voice-writing",
+        "seo-meta-optimizer"
+      ],
+      "asks": "give the finished article in `final/` a copy pass: remove prose that reads as produced by rote, tighten the title and the description to the lengths in `constraints.md`, and fix slips of grammar and spelling, without changing the piece's direction contract. Add no fact: a sentence you add or change that carries a number, a name, a comparison or a date is checked against the truth pack again before the hand-over."
+    }
+  ],
+  "retries": {
+    "distance_redo": 1,
+    "remake_round": 1
+  },
+  "light": {
+    "drops": [
+      "second_read",
+      "winner_remake",
+      "finish",
+      "remake_round",
+      "distance_redo",
+      "claim_seat"
+    ]
+  }
+}

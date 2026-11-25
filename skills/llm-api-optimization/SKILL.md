@@ -6,6 +6,12 @@ disambiguation: The API CALL — what you send, how it is cached and billed, and
 
 # LLM API optimisation
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: llm-api-pricing
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Prices, multipliers and TTLs move constantly and differ per provider —
 **every number below is a shape to reason with, and must be re-checked against current provider

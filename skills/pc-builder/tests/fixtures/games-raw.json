@@ -1,0 +1,5 @@
+[
+  {"url": "", "name": "Fortnite", "logo": "", "native": false, "status": "Denied", "anticheats": ["Easy Anti-Cheat"], "notes": [], "updates": []},
+  {"url": "", "name": "Counter-Strike 2", "logo": "", "native": true, "status": "Supported", "anticheats": ["VAC"], "notes": [], "updates": []},
+  {"url": "", "name": "PUBG: Battlegrounds", "logo": "", "native": false, "status": "Broken", "anticheats": ["BattlEye"], "notes": [], "updates": []}
+]

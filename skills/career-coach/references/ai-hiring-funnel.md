@@ -1,5 +1,11 @@
 # The machine-mediated hiring funnel
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: ai-hiring-funnel-mechanics
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Captured 2026-07-29.** Shared reference for the `career-*` family. **Qualitative mechanics here;
 every volatile number lives in `market-snapshot-2026-06.md`** with its own `AS_OF` tag.

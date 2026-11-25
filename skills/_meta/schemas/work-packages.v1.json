@@ -86,8 +86,15 @@
           "files": { "type": "array", "items": { "type": "string" } },
           "acceptance_criteria": {
             "type": "array",
+            "minItems": 1,
             "items": { "type": "string", "minLength": 1 },
-            "description": "Checkable statements feeding test plans + finalize (NEW in v1)."
+            "description": "Checkable statements feeding test plans + finalize (NEW in v1). #313 U3: this IS the WP's done-when, so it is never empty."
+          },
+          "covers": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^DW-[0-9]+$" },
+            "description": "#313: the design's Done-when ids (DW-n) this WP makes true. Optional in the schema; REQUIRED when the plan's design doc has a `## Done when` section, and the union over the plan must equal its non-integration DW set -- checked by `contract_lint.py check-plan` (rule C005) at plan emission. bob writes WP criteria but never changes a DW."
           },
           "skills": { "type": "array", "items": { "type": "string" } },
           "dependencies": { "type": "array", "items": { "type": "string" } },

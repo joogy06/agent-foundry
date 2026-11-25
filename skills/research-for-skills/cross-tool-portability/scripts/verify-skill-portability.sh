@@ -5,24 +5,34 @@
 # Use this on every cross-tool skill before publishing.
 #
 # Rules enforced:
-#   1. Frontmatter contains ONLY `name` and `description` (no extra keys)
+#   1. Every top-level frontmatter key is a specification key or a Claude Code
+#      key. The list is READ from skill_audit.py at run time (the audit's own
+#      tables); this script holds no copy of it. Custom data goes under
+#      `metadata:` as quoted strings.
 #   2. `name` matches ^[a-z0-9-]+$
 #   3. `name` is ≤64 chars
 #   4. `description` is a single string (not multi-line, not list)
-#   5. `description` is ≤1024 chars
-#   6. `description` leads with "Use when" or similar trigger language
+#   5. `description` is within the specification limit (warning over the
+#      audit's limit)
+#   6. `description` does not open with "Use when" (subject first)
 #   7. SKILL.md body is <500 lines
 #   8. All `references/<file>.md` links from SKILL.md resolve to existing files
-#   9. Anti-patterns table present (`## Anti-patterns` heading)
+#   9. Anti-patterns table present (`## Anti-patterns` heading, any letter case)
+#
+# The full standard is `skill_audit.py audit --only <name> --strict`; run it
+# after this script.
 #
 # Exit codes:
 #   0 — clean (all rules pass)
 #   1 — file not found / unreadable
 #   2 — frontmatter parse error
-#   3 — frontmatter rule violation (extra keys, bad name/description)
-#   4 — body too long
-#   5 — broken intra-skill link
-#   6 — missing anti-patterns table
+#   3 — rule violation (unknown key, bad name/description, body too long,
+#       broken link, missing anti-patterns table)
+#   7 — skill_audit.py (the key list) not found or unreadable
+#
+# Environment:
+#   SKILL_AUDIT_PY — path to skill_audit.py, when it is not at
+#                    <skills>/_meta/skill_audit.py beside this skill
 #
 # Usage:
 #   bash verify-skill-portability.sh <path/to/SKILL.md>
@@ -50,6 +60,11 @@ fi
 
 SKILL_DIR="$(cd "$(dirname "$SKILL_MD")" && pwd)"
 
+# The audit's tables are the one list of legal keys and limits. `pwd -P` so a
+# linked skill directory still resolves to the tree that holds _meta/.
+SKILLS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+AUDIT_PY="${SKILL_AUDIT_PY:-$SKILLS_ROOT/_meta/skill_audit.py}"
+
 printf "verify-skill-portability.sh\n"
 printf "  target: %s\n" "$SKILL_MD"
 printf "  dir   : %s\n\n" "$SKILL_DIR"
@@ -66,32 +81,56 @@ fi
 ok "frontmatter extracted ($(echo "$FRONTMATTER" | wc -l) lines)"
 echo
 
-# 2. check that frontmatter has ONLY `name` and `description` keys
+# 2. every top-level key is on the audit's list (read here, never copied)
 printf "2) frontmatter keys check\n"
-KEYS="$(echo "$FRONTMATTER" | grep -oE '^[a-zA-Z][a-zA-Z0-9_-]*:' | tr -d ':' | sort -u || true)"
-EXPECTED_KEYS="description
-name"
-ACTUAL_KEYS="$(echo "$KEYS" | sort -u)"
+READ_AUDIT='
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("skill_audit", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules["skill_audit"] = mod
+spec.loader.exec_module(mod)
+print("spec " + " ".join(mod.SPEC_KEYS))
+print("claude_code " + " ".join(mod.CLAUDE_CODE_KEYS))
+print("description_max %d" % mod.DESCRIPTION_SPEC_MAX_CHARS)
+print("description_limit %d" % mod.DESCRIPTION_LIMIT)
+'
+if ! AUDIT_DATA="$(python3 -c "$READ_AUDIT" "$AUDIT_PY" 2>/dev/null)"; then
+  err "cannot read the key list from skill_audit.py: $AUDIT_PY"
+  err "set SKILL_AUDIT_PY to its path; no key is accepted without the list"
+  exit 7
+fi
+audit_row() { echo "$AUDIT_DATA" | sed -n "s/^$1 //p" | tr ' ' '\n' | LC_ALL=C sort -u; }
+SPEC_LIST="$(audit_row spec)"
+CC_LIST="$(audit_row claude_code)"
+DESC_MAX="$(audit_row description_max)"
+DESC_LIMIT="$(audit_row description_limit)"
+if [ -z "$SPEC_LIST" ] || [ -z "$CC_LIST" ] || [ -z "$DESC_MAX" ] || [ -z "$DESC_LIMIT" ]; then
+  err "skill_audit.py gave no key list: $AUDIT_PY"
+  exit 7
+fi
+ALLOWED_LIST="$(printf '%s\n%s\n' "$SPEC_LIST" "$CC_LIST" | LC_ALL=C sort -u)"
+ACTUAL_KEYS="$(echo "$FRONTMATTER" | grep -oE '^[a-zA-Z_][a-zA-Z0-9_-]*[[:space:]]*:' | tr -d ': \t' | LC_ALL=C sort -u || true)"
 
-if [ "$ACTUAL_KEYS" = "$EXPECTED_KEYS" ]; then
-  ok "frontmatter contains only 'name' and 'description'"
+UNKNOWN="$(LC_ALL=C comm -23 <(echo "$ACTUAL_KEYS") <(echo "$ALLOWED_LIST"))"
+CC_USED="$(LC_ALL=C comm -12 <(echo "$ACTUAL_KEYS") <(echo "$CC_LIST"))"
+if [ -z "$UNKNOWN" ]; then
+  ok "every top-level key is a specification key or a Claude Code key"
 else
-  err "frontmatter has unexpected keys"
-  printf "    expected: name, description\n"
-  printf "    actual  : %s\n" "$(echo "$ACTUAL_KEYS" | tr '\n' ',' | sed 's/,$//')"
-  EXTRA="$(comm -23 <(echo "$ACTUAL_KEYS") <(echo "$EXPECTED_KEYS"))"
-  if [ -n "$EXTRA" ]; then
-    err "extra keys present (REMOVE THESE):"
-    echo "$EXTRA" | sed 's/^/      /'
-  fi
+  err "frontmatter has keys that are neither specification nor Claude Code keys:"
+  echo "$UNKNOWN" | sed 's/^/      /' >&2
+  err "custom data goes under 'metadata:' as quoted strings, for example:"
+  printf "      metadata:\n        %s: \"...\"\n" "$(echo "$UNKNOWN" | head -1)" >&2
   ERRORS=$((ERRORS + 1))
+fi
+if [ -n "$CC_USED" ]; then
+  warn "Claude Code key(s): $(echo "$CC_USED" | tr '\n' ' ')— read by Claude Code only; claude.ai upload and the Skills API accept specification keys only"
 fi
 echo
 
 # 3. extract name and description values
 printf "3) name and description values\n"
 NAME="$(echo "$FRONTMATTER" | grep -E '^name:' | head -1 | sed 's/^name:[[:space:]]*//' | sed 's/^"//; s/"$//' || true)"
-DESC="$(echo "$FRONTMATTER" | grep -E '^description:' | head -1 | sed 's/^description:[[:space:]]*//' | sed 's/^"//; s/"$//' || true)"
+DESC="$(echo "$FRONTMATTER" | grep -E '^description:' | head -1 | sed 's/^description:[[:space:]]*//' | sed 's/^"//; s/"$//' | sed "s/^'//; s/'\$//" || true)"
 
 if [ -z "$NAME" ]; then
   err "no 'name' field found"
@@ -129,17 +168,24 @@ echo
 # 5. description checks
 printf "5) description validation\n"
 if [ -n "$DESC" ]; then
-  if [ "${#DESC}" -le 1024 ]; then
-    ok "description length OK (${#DESC} ≤ 1024)"
+  if [ "${#DESC}" -le "$DESC_MAX" ]; then
+    ok "description length OK (${#DESC} ≤ $DESC_MAX)"
   else
-    err "description too long: ${#DESC} chars (max 1024)"
+    err "description too long: ${#DESC} chars (max $DESC_MAX)"
     ERRORS=$((ERRORS + 1))
   fi
+  if [ "${#DESC}" -gt "$DESC_LIMIT" ]; then
+    warn "description is ${#DESC} chars — the audit's limit is $DESC_LIMIT (aim for about 200)"
+  fi
   # Single line check (no embedded newlines after grep -E ^description: head -1)
-  if echo "$DESC" | grep -qE 'use when|use this skill when' -i; then
-    ok "description leads with trigger language ('Use when ...')"
+  if echo "$DESC" | grep -qiE '^use[[:space:]]+when'; then
+    err "description opens with 'Use when' — open with the subject, then what the skill does, then when to use it"
+    ERRORS=$((ERRORS + 1))
   else
-    warn "description does not lead with 'Use when ...' — may not trigger reliably"
+    ok "description does not open with 'Use when'"
+  fi
+  if ! echo "$DESC" | grep -qiE '(^|[^a-z])when([^a-z]|$)'; then
+    warn "description never says when to use the skill — add the situations that call for it"
   fi
 fi
 echo
@@ -181,7 +227,7 @@ echo
 
 # 8. anti-patterns table
 printf "8) anti-patterns table\n"
-if grep -qE '^## Anti-patterns' "$SKILL_MD"; then
+if grep -qiE '^## Anti-patterns' "$SKILL_MD"; then
   ok "anti-patterns section present"
 else
   err "no '## Anti-patterns' section found"
@@ -193,6 +239,7 @@ echo
 printf "Summary\n"
 if [ "$ERRORS" -eq 0 ]; then
   ok "PASS: $SKILL_MD is portable across Claude Code, Antigravity CLI (agy), Codex CLI, and (via AGENTS.md) GitHub Copilot CLI"
+  printf "  next, the full standard: python3 %s audit --root %s --only %s --strict\n" "$AUDIT_PY" "$(dirname "$SKILL_DIR")" "$(basename "$SKILL_DIR")"
   exit 0
 else
   err "FAIL: $ERRORS error(s) found"

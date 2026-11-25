@@ -1,0 +1,22 @@
+{
+  "note": "Input of studio-runner (kind opaque): one command line of the runner and the brief file it names. The brief's fields are the ones profiles/website-page.json lists.",
+  "argv": [
+    "plan",
+    "--profile",
+    "website-page",
+    "--brief",
+    "brief.json",
+    "--mode",
+    "full"
+  ],
+  "brief": {
+    "subject": "A landing page for a small workshop that repairs mechanical watches by post.",
+    "visitor": "Someone with one watch that has stopped, comparing two or three repairers before sending it away.",
+    "action": "Request a prepaid postal box.",
+    "proof": [
+      "the turnaround time",
+      "a named watchmaker",
+      "what happens when a repair is not possible"
+    ]
+  }
+}

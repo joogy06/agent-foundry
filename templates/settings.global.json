@@ -1,6 +1,19 @@
 {
   "permissions": {
-    "defaultMode": "auto"
+    "defaultMode": "auto",
+    "ask": [
+      "Bash(*intake.py override*)",
+      "Bash(*intake.py triage*)",
+      "Bash(*intake.py except*)",
+      "Bash(*mailscan.py override*)",
+      "Bash(*mailscan*override*)",
+      "Edit(~/.foundry/mail-scan/**)"
+    ],
+    "deny": [
+      "Read(~/.foundry/quarantine/**)",
+      "Read(~/.foundry/mail-scan/views/**)",
+      "Read(~/.foundry/mail-scan/key)"
+    ]
   },
   "hooks": {
     "SessionStart": [
@@ -71,5 +84,6 @@
   },
   "effortLevel": "xhigh",
   "tui": "fullscreen",
-  "skipWorkflowUsageWarning": true
+  "skipWorkflowUsageWarning": true,
+  "skillListingBudgetFraction": 0.03
 }

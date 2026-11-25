@@ -6,6 +6,12 @@ disambiguation: CONSUMING MCP servers from an application — selection, transpo
 
 # MCP integration
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: mcp-specification
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29 against the 2026-07-28 specification release announcement.** This revision
 landed one day before this file was written — **read the specification itself before migrating**, and

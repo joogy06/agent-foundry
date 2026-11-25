@@ -78,10 +78,13 @@ def live_counts(cfg: dict) -> dict:
         if not d.is_dir():
             continue
         if sub == "skills":
-            items = [c for c in d.iterdir() if c.is_dir()]
-        else:  # agents/commands = *.md files; workflows = *.* files
+            # A skill is a directory with a SKILL.md: `_meta` (infrastructure) and caches
+            # such as Claude Code's `synced/` are not skills.
+            items = [c for c in d.iterdir() if c.is_dir() and (c / "SKILL.md").is_file()]
+        else:  # agents/commands = *.md files; workflows = *.* files, minus the README
             items = [c for c in d.iterdir() if c.is_file()
-                     and not c.name.startswith(".") and c.suffix]
+                     and not c.name.startswith(".") and c.suffix
+                     and not (sub == "workflows" and c.name.lower().startswith("readme"))]
         n = sum(1 for c in items if not _excluded(f"{sub}/{c.name}", excl))
         if sub in out:
             out[sub] = n

@@ -38,7 +38,7 @@ provider:
   # this provider block resolves to affinity None -> resolve_seats ConveneError.
   affinity: agy
   fallback_ok: true
-  effort: default             # advisory-only guard stack (agy --sandbox)
+  effort: default             # advisory-only guard stack (agy --sandbox --mode plan)
 
 speak_when: "always — files a blind position from the requester-intent lens, pushes on drift in cross-exam, emits an intent-alignment assessment at converge (per-item pass|fail|unknown -> trip-wires). Does NOT decide, does NOT arbitrate."
 

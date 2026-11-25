@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:eab548d20897bbe7e66df97513620baff4a901d17a7fb7b72a1467d5c969569b",
+  "generated_by": "sample-data-scaffolding",
+  "note": "The input and the output of convergence-rule are kind opaque in the contract map, so the fixtures are written as-is, not generated.",
+  "components": {
+    "convergence-rule": {
+      "inputs": {
+        "citing_files": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/_meta/tests/fixtures/convergence/citing-files-sample.json",
+              "hash": "sha256:e44318575e7e5d0920addddda4f480677973c2f1d0653c5d2ba7ff70c1c3f2ae"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "rule_text": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/_meta/tests/fixtures/convergence/rule-text-sample.md",
+              "hash": "sha256:cacfd97db777e12460742ec9915c1029dd261c2e9bb995ec6d1b86d8597df29c"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

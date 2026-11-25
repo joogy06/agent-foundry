@@ -1,0 +1,26 @@
+{
+  "note": "Input of copy-schools (kind opaque): the two school files and the two format files the copy seats read, with the skill and family each school sits under. The cv profile's rivals are listed too: one skill, two angles.",
+  "schools": [
+    {
+      "skill": "business-writing",
+      "family": "copy-plain",
+      "school": "skills/business-writing/references/school-plain.md"
+    },
+    {
+      "skill": "content-writer",
+      "family": "copy-voiced",
+      "school": "skills/content-writer/references/school-voiced.md"
+    }
+  ],
+  "formats": [
+    "skills/content-writer/references/format-article.md",
+    "skills/content-writer/references/format-page-copy.md"
+  ],
+  "cv": {
+    "skill": "career-application-writer",
+    "angles": [
+      "impact-led",
+      "scope-led"
+    ]
+  }
+}

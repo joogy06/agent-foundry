@@ -62,8 +62,9 @@ invariant per design §7.5.)
 ## Output schema
 
 The output conforms to `~/.claude/skills/_meta/schemas/retro_scan.v1.json`
-(symlinked from `schemas/retro_scan.v1.json` in this skill). One source of
-truth — the schema is owned by S029 WP-2 and lives in `_meta/schemas/`.
+(`schemas/retro_scan.v1.json` in this skill is a byte-identical copy; a test
+keeps the two equal). One source of truth — the schema is owned by S029 WP-2
+and lives in `_meta/schemas/`.
 
 Top-level structure:
 

@@ -1,0 +1,2661 @@
+{
+  "schema": "pc-rules.v1",
+  "version": "2.4.0",
+  "as_of": "2026-09-27",
+  "review_by": "2026-12-27",
+  "stale_after_days": 120,
+  "block_after_days": 180,
+  "staleness_note": "pc_check warns (RULES_DATA_STALE) when as_of is older than stale_after_days and makes --final/--publish-gate incomplete after block_after_days. Refresh with references/refresh-procedure.md, then bump as_of.",
+  "research_base": "docs/research/2026-09-27-pc-builder-research.md",
+  "note": "Relationships, method and rules only. No product prices. Product specs and prices come from the caller's database at runtime; the tables below are cross-checks and fallbacks used only when a caller record omits a field. Labels: V = read on the source page, S = search excerpt, I = inference. Version 2.0.0 (2026-09-27 revise round): display-output and BIOS-support rules, final and publish-gate modes, the no-overkill PSU policy, maker-documented GPU power configurations, scoped VRAM and use-case rules.",
+  "severities": {
+    "HARD": "The build cannot work as specified. Exit code 2.",
+    "WARN": "The build works but is worse than it should be, or a check could not run.",
+    "INFO": "Context the page or the buyer should know."
+  },
+  "rules": [
+    {
+      "id": "CPU_BOARD_SOCKET",
+      "severity": "HARD",
+      "inputs": [
+        "cpu.socket",
+        "board.socket"
+      ],
+      "relation": "cpu.socket == board.socket",
+      "message": "CPU socket {cpu_socket} does not match board socket {board_socket}.",
+      "source": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/Socket_AM5"
+      }
+    },
+    {
+      "id": "BOARD_CHIPSET_SOCKET",
+      "severity": "HARD",
+      "inputs": [
+        "board.socket",
+        "board.chipset"
+      ],
+      "relation": "board.chipset in platforms.sockets[board.socket].chipsets",
+      "message": "Chipset {chipset} is not a {board_socket} chipset.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am5.html"
+      }
+    },
+    {
+      "id": "BOARD_MEMORY_TYPE_SOCKET",
+      "severity": "HARD",
+      "inputs": [
+        "board.socket",
+        "board.memory_type"
+      ],
+      "relation": "board.memory_type in platforms.sockets[board.socket].memory_types",
+      "message": "{board_socket} supports {allowed}, but the board is listed as {memory_type}.",
+      "source": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/LGA_1851"
+      }
+    },
+    {
+      "id": "RAM_TYPE_BOARD",
+      "severity": "HARD",
+      "inputs": [
+        "ram.type",
+        "board.memory_type"
+      ],
+      "relation": "ram.type == board.memory_type",
+      "message": "Memory is {ram_type} but the board takes {memory_type}; the modules will not fit.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+      }
+    },
+    {
+      "id": "CPU_CHIPSET_UNSUPPORTED",
+      "severity": "HARD",
+      "inputs": [
+        "cpu.family",
+        "board.chipset"
+      ],
+      "relation": "not (cpu.family, board.chipset) in platforms.unsupported_cpu_on_chipset",
+      "message": "{chipset} does not support {cpu_family} CPUs.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+      }
+    },
+    {
+      "id": "BIOS_CPU_SUPPORT",
+      "severity": "HARD",
+      "inputs": [
+        "board.bios.cpu_support_confirmed|board.bios.supported_cpus",
+        "cpu.model"
+      ],
+      "relation": "board.bios.cpu_support_confirmed == true or cpu.model in board.bios.supported_cpus",
+      "message": "The shipped board BIOS does not support {cpu_label}: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#addendum-2026-09-27-revise-round"
+      }
+    },
+    {
+      "id": "BIOS_MINIMUM",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.family",
+        "cpu.model",
+        "board.chipset",
+        "board.bios"
+      ],
+      "relation": "board.bios.cpu_support_confirmed or board.bios.agesa >= requirement.min_agesa",
+      "message": "{cpu_label} on {chipset} needs {requirement} (dated diagnostic guidance; confirmed support is what BIOS_CPU_SUPPORT checks).",
+      "source": {
+        "label": "I",
+        "url": "https://videocardz.com/newz/msi-releases-agesa-1-2-0-0-bios-for-amd-x670-b650-a620-improvements-for-ryzen-9000-cpus-and-geforce-rtx-40-gpus"
+      }
+    },
+    {
+      "id": "RAM_MODULES_SLOTS",
+      "severity": "HARD",
+      "inputs": [
+        "ram.modules",
+        "board.dimm_slots"
+      ],
+      "relation": "ram.modules <= board.dimm_slots",
+      "message": "{modules} memory modules but the board has {dimm_slots} DIMM slots.",
+      "source": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/LGA_1700"
+      }
+    },
+    {
+      "id": "AM5_FOUR_DIMMS",
+      "severity": "WARN",
+      "inputs": [
+        "board.socket",
+        "ram.modules"
+      ],
+      "relation": "not (board.socket == AM5 and ram.modules >= 4)",
+      "message": "4 DIMMs on AM5 drop the official memory speed to DDR5-3600 (5600 with 2). Use 2 larger modules.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9800x3d.html"
+      }
+    },
+    {
+      "id": "RAM_SPEED_OFFICIAL",
+      "severity": "INFO",
+      "inputs": [
+        "cpu.family",
+        "ram.modules",
+        "ram.speed"
+      ],
+      "relation": "ram.speed <= memory_official[cpu.family][dimm count]",
+      "message": "DDR speed {speed} is above the official {official} for {cpu_family} with {modules} DIMMs; it runs on an EXPO/XMP profile, not the CPU's rated spec.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9800x3d.html"
+      }
+    },
+    {
+      "id": "OC_CHIPSET_LOCKED",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.unlocked",
+        "board.chipset"
+      ],
+      "relation": "not (cpu.unlocked and board.chipset in platforms.oc_incapable_chipsets)",
+      "message": "{chipset} cannot overclock an unlocked K/X CPU; the unlocked premium buys nothing on this board.",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am5.html"
+      }
+    },
+    {
+      "id": "APU_GPU_LANES",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.model",
+        "gpu.lanes"
+      ],
+      "relation": "gpu.lanes <= apu_gpu_lanes[cpu.model]",
+      "message": "{cpu_model} gives a graphics card only x{apu_lanes} lanes; this x{gpu_lanes} card runs at x{apu_lanes}.",
+      "source": {
+        "label": "I",
+        "url": "https://www.techspot.com/review/2796-amd-ryzen-8700g/"
+      }
+    },
+    {
+      "id": "X8_LINK_GEN_LOW_VRAM",
+      "severity": "WARN",
+      "inputs": [
+        "gpu.lanes",
+        "gpu.pcie_gen",
+        "gpu.vram_gb",
+        "board.gpu_slot_pcie_gen"
+      ],
+      "relation": "not (effective_lanes <= 8 and gpu.vram_gb <= 8 and effective_gen < gpu.pcie_gen)",
+      "message": "An 8 GB x8 card on a PCIe {effective_gen}.0 link loses performance once VRAM overflows: measured -6% average (-7% 1% lows) on 4.0 and severe stutter on 3.0.",
+      "source": {
+        "label": "V",
+        "url": "https://www.techspot.com/review/3004-nvidia-rtx-5060-ti-pcie-benchmark/"
+      }
+    },
+    {
+      "id": "X8_LINK_GEN",
+      "severity": "INFO",
+      "inputs": [
+        "gpu.lanes",
+        "gpu.pcie_gen",
+        "gpu.vram_gb",
+        "board.gpu_slot_pcie_gen"
+      ],
+      "relation": "not (effective_lanes <= 8 and gpu.vram_gb > 8 and effective_gen < gpu.pcie_gen)",
+      "message": "This x8 card runs at PCIe {effective_gen}.0 instead of {gpu_gen}.0; little effect while VRAM is not exceeded.",
+      "source": {
+        "label": "V",
+        "url": "https://www.tomshardware.com/pc-components/gpus/nvidia-rtx-5060-ti-8gb-loses-up-to-10-percent-performance-when-using-pcie-4-0"
+      }
+    },
+    {
+      "id": "LANE_SHARING",
+      "severity": "WARN",
+      "inputs": [
+        "board.lane_sharing",
+        "storage[].slot"
+      ],
+      "relation": "no storage device occupies a board.lane_sharing trigger slot",
+      "message": "Storage in {slot} triggers board lane sharing: {effect}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "DISPLAY_OUTPUT",
+      "severity": "HARD",
+      "inputs": [
+        "gpu",
+        "cpu.igpu|platforms.igpu_rules(cpu.family, cpu.model)",
+        "board.display_outputs"
+      ],
+      "relation": "gpu present or (iGPU present and board.display_outputs >= 1); iGPU from cpu.igpu, else the igpu_rules; a conflict is unknown",
+      "message": "No display output: {detail}",
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/desktops/ryzen/7000-series/amd-ryzen-5-7500f.html"
+      }
+    },
+    {
+      "id": "IGPU_DATA_CONFLICT",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.igpu",
+        "cpu.family",
+        "cpu.model"
+      ],
+      "relation": "cpu.igpu agrees with the igpu_rules verdict when both are known",
+      "message": "iGPU data conflict: DB says {db}, platform rule says {rule} ({platform_rule}). Neither side is trusted until the record is corrected.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#addendum-2026-09-27-revise-round"
+      }
+    },
+    {
+      "id": "IGPU_CLASS",
+      "severity": "INFO",
+      "inputs": [
+        "gpu",
+        "cpu.family",
+        "cpu.model"
+      ],
+      "relation": "no discrete GPU and the iGPU class is known from the igpu_rules",
+      "message": "No discrete GPU: the iGPU is {text}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#addendum-2026-09-27-revise-round"
+      }
+    },
+    {
+      "id": "BOARD_CASE_FIT",
+      "severity": "HARD",
+      "inputs": [
+        "board.form_factor",
+        "case.board_form_factors"
+      ],
+      "relation": "board.form_factor in case.board_form_factors",
+      "message": "{form_factor} board does not fit a case that takes {case_boards}.",
+      "source": {
+        "label": "V",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "PSU_CASE_FIT",
+      "severity": "HARD",
+      "inputs": [
+        "psu.form_factor",
+        "case.psu_form_factors"
+      ],
+      "relation": "psu.form_factor in case.psu_form_factors or (psu.form_factor in {SFX, SFX-L} and ATX in case.psu_form_factors)",
+      "message": "{psu_ff} PSU does not fit a case that takes {case_psus}.",
+      "source": {
+        "label": "V",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "PSU_SFX_BRACKET",
+      "severity": "INFO",
+      "inputs": [
+        "psu.form_factor",
+        "case.psu_form_factors"
+      ],
+      "relation": "SFX/SFX-L unit in an ATX-only PSU bay",
+      "message": "{psu_ff} PSU in an ATX bay needs an SFX-to-ATX bracket; include it in the build.",
+      "source": {
+        "label": "V",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "GPU_CASE_LENGTH",
+      "severity": "HARD",
+      "inputs": [
+        "gpu.length_mm",
+        "case.gpu_max_length_mm"
+      ],
+      "relation": "gpu.length_mm <= case.gpu_max_length_mm",
+      "message": "GPU is {length} mm long; the case clears {max} mm.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "GPU_CASE_SLOTS",
+      "severity": "HARD",
+      "inputs": [
+        "gpu.slots",
+        "case.gpu_max_slots"
+      ],
+      "relation": "gpu.slots <= case.gpu_max_slots",
+      "message": "GPU is {slots} slots thick; the case allows {max}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "COOLER_CASE_FIT",
+      "severity": "HARD",
+      "inputs": [
+        "cooler.type",
+        "cooler.height_mm|cooler.radiator_mm",
+        "case.cpu_cooler_max_height_mm|case.radiator_mm_supported"
+      ],
+      "relation": "air: cooler.height_mm <= case.cpu_cooler_max_height_mm; aio: cooler.radiator_mm in case.radiator_mm_supported",
+      "message": "{detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "COOLER_SOCKET",
+      "severity": "HARD",
+      "inputs": [
+        "cpu.socket",
+        "cooler.sockets"
+      ],
+      "relation": "cpu.socket in cooler.sockets (LGA1851 accepts LGA1700 mounts)",
+      "message": "Cooler mounts list {sockets}, not {cpu_socket}.",
+      "source": {
+        "label": "V",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#physical-fit"
+      }
+    },
+    {
+      "id": "COOLER_REQUIRED",
+      "severity": "HARD",
+      "inputs": [
+        "cpu.box_cooler",
+        "cooler"
+      ],
+      "relation": "cooler present or cpu.box_cooler",
+      "message": "{cpu_label} ships without a cooler and the build has none.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#cooling"
+      }
+    },
+    {
+      "id": "COOLER_CAPACITY",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.ppt_w",
+        "cooler.class"
+      ],
+      "relation": "cpu.ppt_w <= cooling.class_max_w[cooler.class]",
+      "message": "{cooler_class} is sized for about {max} W sustained; this CPU sustains {ppt} W. {advice}",
+      "source": {
+        "label": "V",
+        "url": "https://gamersnexus.net/coolers/best-cpu-coolers-weve-tested-2025-thermals-noise-levels-value-26-coolers-tested"
+      }
+    },
+    {
+      "id": "PSU_BELOW_MINIMUM",
+      "severity": "HARD",
+      "inputs": [
+        "cpu.ppt_w",
+        "gpu.tbp_w",
+        "psu.rated_w",
+        "gpu.min_system_psu_w (optional)"
+      ],
+      "relation": "psu.rated_w >= DC / 0.90 and psu.rated_w >= gpu.min_system_psu_w",
+      "message": "{rated} W PSU is below the hard minimum: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#psu-formula-i"
+      }
+    },
+    {
+      "id": "PSU_BELOW_RECOMMENDED",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.ppt_w",
+        "gpu.tbp_w",
+        "psu.rated_w"
+      ],
+      "relation": "psu.rated_w >= DC / 0.80",
+      "message": "{rated} W runs the {dc} W DC load above 80% (recommended at least {rec_min} W, DC/0.80); it works but with little margin.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#psu-formula-i"
+      }
+    },
+    {
+      "id": "PSU_QUIET_TARGET",
+      "severity": "INFO",
+      "inputs": [
+        "cpu.ppt_w",
+        "gpu.tbp_w",
+        "psu.rated_w"
+      ],
+      "relation": "report DC / 0.70 as an optional quiet target",
+      "message": "Optional quiet target: about {quiet} W (DC/0.70) keeps the load near 70% for lower fan noise. Not required.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#psu-formula-i"
+      }
+    },
+    {
+      "id": "GPU_POWER_CONFIG",
+      "severity": "HARD",
+      "inputs": [
+        "gpu.supported_power_configs",
+        "psu.pcie_8pin_cables",
+        "psu.native_12v2x6",
+        "psu.native_12v2x6_cable_w"
+      ],
+      "relation": "the PSU can supply at least one of the card maker's documented power configurations",
+      "message": "The PSU cannot supply any power arrangement the card maker documents: {detail}",
+      "source": {
+        "label": "V",
+        "url": "https://www.nvidia.com/content/geforce-gtx/GeForce_RTX_5080_User_Guide_Rev1.pdf"
+      }
+    },
+    {
+      "id": "PSU_ATX3_PREFERRED",
+      "severity": "WARN",
+      "inputs": [
+        "gpu.tbp_w",
+        "psu.atx_version"
+      ],
+      "relation": "gpu.tbp_w < 300 or psu.atx_version >= 3.0",
+      "message": "A {tbp} W GPU is better served by an ATX 3.x PSU (rated for 200% power excursions for 100 us); this unit is ATX {atx}. Permitted if the card maker's documented configuration is met.",
+      "source": {
+        "label": "V",
+        "url": "https://edc.intel.com/content/www/us/en/design/ipla/software-development-platforms/client/platforms/alder-lake-desktop/atx-version-3-0-multi-rail-desktop-platform-power-supply-design-guide/psu-power-excursion/"
+      }
+    },
+    {
+      "id": "PSU_NATIVE_12V2X6_PREFERRED",
+      "severity": "WARN",
+      "inputs": [
+        "gpu.power_connector",
+        "psu.native_12v2x6",
+        "psu.native_12v2x6_cable_w"
+      ],
+      "relation": "16-pin card: a native 12V-2x6 cable the card accepts is available",
+      "message": "This 16-pin card will run on the maker's included adapter, which the maker permits. A native 12V-2x6 cable on an ATX 3.x unit is preferred: fewer connections, and GN traced melting to plugs not fully seated or inserted at an angle [S]. Seat the plug fully and straight.",
+      "source": {
+        "label": "S",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#psu-quality-rules"
+      }
+    },
+    {
+      "id": "PSU_EFFICIENCY",
+      "severity": "WARN",
+      "inputs": [
+        "psu.rated_w",
+        "psu.cybenetics_eta"
+      ],
+      "relation": "psu.rated_w < 650 or psu.cybenetics_eta >= Gold",
+      "message": "Units of 650 W and above should carry Cybenetics ETA Gold or better; this one is {eta}.",
+      "source": {
+        "label": "V",
+        "url": "https://www.cybenetics.com/index.php?option=eta"
+      }
+    },
+    {
+      "id": "PSU_TIER",
+      "severity": "WARN",
+      "inputs": [
+        "gpu.tbp_w",
+        "psu.spl_tier"
+      ],
+      "relation": "psu.spl_tier >= (A if gpu.tbp_w >= 300 else B)",
+      "message": "SPL tier {tier} is below the tier {needed} this build needs. Judge the platform/OEM, not the brand.",
+      "source": {
+        "label": "V",
+        "url": "https://psutierlist.org/"
+      }
+    },
+    {
+      "id": "PSU_CULTISTS_IGNORED",
+      "severity": "WARN",
+      "inputs": [
+        "psu.cultists_tier"
+      ],
+      "relation": "psu.cultists_tier absent",
+      "message": "The Cultists PSU list is stale (rev 17.0g, 2023-04-11) and is not used; supply psu.spl_tier instead.",
+      "source": {
+        "label": "V",
+        "url": "https://psutierlist.org/"
+      }
+    },
+    {
+      "id": "VRAM_8GB_SCOPE",
+      "severity": "INFO",
+      "inputs": [
+        "gpu.vram_gb"
+      ],
+      "relation": "report the 8 GB scope when gpu.vram_gb <= 8",
+      "message": "{vram} GB VRAM suits esports and 1080p medium/high. It is the wrong buy for AAA at high settings: HUB measured an 8 GB RTX 5060 Ti at 67 vs 109 fps (16 GB) in TLOU2 at 1080p Very High, with stutter and crashes [S].",
+      "source": {
+        "label": "S",
+        "url": "https://www.tomshardware.com/pc-components/gpus/rtx-5060-ti-8gb-struggles-due-to-lack-of-vram-and-not-just-at-4k-ultra"
+      }
+    },
+    {
+      "id": "UC_VRAM_MIN",
+      "severity": "WARN",
+      "inputs": [
+        "--use-case",
+        "gpu.vram_gb"
+      ],
+      "relation": "gpu.vram_gb >= use_cases[uc].min_vram_gb",
+      "message": "{use_case} wants at least {min} GB VRAM; this card has {vram} GB.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#use-case-profiles"
+      }
+    },
+    {
+      "id": "UC_VRAM_PREFERRED",
+      "severity": "INFO",
+      "inputs": [
+        "--use-case",
+        "gpu.vram_gb"
+      ],
+      "relation": "gpu.vram_gb >= use_cases[uc].preferred_vram_gb",
+      "message": "{use_case} prefers {pref} GB VRAM or more; this card has {vram} GB. A preference, not a floor.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#use-case-profiles"
+      }
+    },
+    {
+      "id": "UC_RAM_MIN",
+      "severity": "WARN",
+      "inputs": [
+        "--use-case",
+        "ram.module_capacity_gb",
+        "ram.modules"
+      ],
+      "relation": "ram.module_capacity_gb * ram.modules >= use_cases[uc].min_ram_gb",
+      "message": "{use_case} wants at least {min} GB RAM; the build has {total} GB.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#memory"
+      }
+    },
+    {
+      "id": "UC_CORES_MIN",
+      "severity": "WARN",
+      "inputs": [
+        "--use-case",
+        "cpu.cores",
+        "workload.encoding_mode (streaming)"
+      ],
+      "relation": "cpu.cores >= use_cases[uc].min_cores (streaming: only when workload.encoding_mode == cpu)",
+      "message": "{use_case} wants at least {min} cores; this CPU has {cores}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#use-case-profiles"
+      }
+    },
+    {
+      "id": "UC_DGPU_UNNEEDED",
+      "severity": "INFO",
+      "inputs": [
+        "--use-case",
+        "gpu"
+      ],
+      "relation": "use_cases[uc].dgpu != false or gpu absent",
+      "message": "{use_case} does not need a discrete GPU; an APU build saves the money.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#use-case-profiles"
+      }
+    },
+    {
+      "id": "UC_BALANCE",
+      "severity": "WARN",
+      "inputs": [
+        "--use-case",
+        "cpu.tier",
+        "gpu.tier|gpu.model"
+      ],
+      "relation": "gaming: not (cpu enthusiast and gpu entry); productivity: not (gpu enthusiast+ and cpu entry)",
+      "message": "{detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#budget"
+      }
+    },
+    {
+      "id": "UC_LOCAL_AI_VRAM",
+      "severity": "INFO",
+      "inputs": [
+        "--use-case",
+        "gpu.vram_gb"
+      ],
+      "relation": "use case local-ai: report what fits",
+      "message": "{vram} GB VRAM fits about: {fits}. VRAM is the gate for local AI.",
+      "source": {
+        "label": "V",
+        "url": "https://docs.ollama.com/gpu"
+      }
+    },
+    {
+      "id": "BAND_TOTAL",
+      "severity": "WARN",
+      "inputs": [
+        "--band",
+        "pricing.total_gbp_inc_vat"
+      ],
+      "relation": "band.min_gbp <= pricing.total_gbp_inc_vat < band.max_gbp",
+      "message": "Build total GBP {total} is outside the {band} band.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#uk-bands"
+      }
+    },
+    {
+      "id": "PRICE_VAT_DATED",
+      "severity": "WARN",
+      "inputs": [
+        "pricing.vat_inclusive",
+        "pricing.priced_at"
+      ],
+      "relation": "pricing.vat_inclusive == true and pricing.priced_at present",
+      "message": "UK pages must show VAT-inclusive prices with the date they were taken. {detail}",
+      "source": {
+        "label": "S",
+        "url": "https://cms.law/en/gbr/legal-updates/the-dmcc-act-consumer-elements-come-into-force-from-6-april-2025"
+      }
+    },
+    {
+      "id": "RULES_DATA_STALE",
+      "severity": "WARN",
+      "inputs": [
+        "rules.as_of",
+        "--today"
+      ],
+      "relation": "today - as_of <= stale_after_days (warn); <= block_after_days (else --final is incomplete)",
+      "message": "Rules data is {age} days old (as_of {as_of}); re-verify before publishing. --final and --publish-gate block after {block} days.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#re-verify-quarterly"
+      }
+    },
+    {
+      "id": "BANDS_DATA_STALE",
+      "severity": "WARN",
+      "inputs": [
+        "bands.as_of",
+        "--today"
+      ],
+      "relation": "today - bands.as_of <= stale_after_days (warn); <= block_after_days (else --final is incomplete)",
+      "message": "Budget-band data is {age} days old (as_of {as_of}); prices move faster than specs, re-verify before publishing. --final and --publish-gate block after {block} days.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#re-verify-quarterly"
+      }
+    },
+    {
+      "id": "NOT_IN_RULES_DATA",
+      "severity": "WARN",
+      "inputs": [
+        "cpu.family",
+        "cpu.socket",
+        "board.socket",
+        "board.chipset",
+        "gpu.model",
+        "psu.atx_version",
+        "gpu.power_connector"
+      ],
+      "relation": "every present part is in the rules tables; never mapped to the nearest known part",
+      "message": "{part} is newer than or outside the rules data; verify it live before recommending it.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#re-verify-quarterly"
+      }
+    },
+    {
+      "id": "OS_STEAMOS_NVIDIA",
+      "severity": "HARD",
+      "inputs": [
+        "os",
+        "gpu.vendor|gpu.model"
+      ],
+      "relation": "os == steamos -> gpu vendor != nvidia",
+      "message": "SteamOS does not support NVIDIA GPUs (support is in development with NVIDIA, not expected in 2026). Use AMD, or sell this build with Windows or a Linux distro that ships NVIDIA drivers.",
+      "source": {
+        "label": "V",
+        "url": "https://www.club386.com/valve-steamos-diy-pc-nvidia/"
+      }
+    },
+    {
+      "id": "OS_STEAMOS_INTEL",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "gpu.vendor|gpu.model"
+      ],
+      "relation": "os == steamos and gpu vendor intel",
+      "message": "Intel graphics on SteamOS are a community tier; AMD is the recommended SteamOS GPU.",
+      "source": {
+        "label": "V",
+        "url": "https://www.club386.com/valve-steamos-diy-pc-nvidia/"
+      }
+    },
+    {
+      "id": "OS_STEAMOS_DUAL_BOOT",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "dual_boot"
+      ],
+      "relation": "os == steamos -> not dual_boot",
+      "message": "Dual-booting SteamOS is not recommended by Valve.",
+      "source": {
+        "label": "V",
+        "url": "https://www.club386.com/valve-steamos-diy-pc-nvidia/"
+      }
+    },
+    {
+      "id": "OS_STEAMOS_BRANDING",
+      "severity": "HARD",
+      "inputs": [
+        "os",
+        "branding",
+        "valve_licence"
+      ],
+      "relation": "os == steamos and branding in protected marks -> valve_licence",
+      "message": "'{branding}' needs a licence from Valve. Describe it as 'SteamOS preinstalled (community-supported install)'.",
+      "source": {
+        "label": "I",
+        "url": "https://liliputing.com/valves-new-powered-by-steamos-guidelines-hint-that-third-party-hardware-is-on-the-way/"
+      }
+    },
+    {
+      "id": "OS_NVIDIA_LEGACY",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "gpu.arch"
+      ],
+      "relation": "linux + nvidia + arch in maxwell/pascal/volta",
+      "message": "{arch} NVIDIA cards are on the legacy 580 driver only; no new driver branches.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_NVIDIA_SECURE_BOOT",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "secure_boot"
+      ],
+      "relation": "linux + nvidia + secure_boot",
+      "message": "NVIDIA drivers under Secure Boot need MOK enrolment at first boot; walk the buyer through it or pre-enrol.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_NVIDIA_DX12",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "gpu.vendor|gpu.model"
+      ],
+      "relation": "linux + nvidia",
+      "message": "NVIDIA on Linux: DX12 titles may run slower than on Windows. AMD is the default Linux recommendation.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_WIFI_UNSUPPORTED",
+      "severity": "HARD",
+      "inputs": [
+        "os",
+        "wifi.chip"
+      ],
+      "relation": "wifi.chip not in os.wifi.unsupported",
+      "message": "{detail}",
+      "source": {
+        "label": "V",
+        "url": "https://www.linaro.org/blog/from-replace-it-with-intel-to-upstream-bringing-mediatek-bluetooth-wifi-7-to-linux/"
+      }
+    },
+    {
+      "id": "OS_WIFI_REGRESSION",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "wifi.chip"
+      ],
+      "relation": "wifi.chip not in os.wifi.regression",
+      "message": "{detail}",
+      "source": {
+        "label": "V",
+        "url": "https://ratatoskr.run/linux-wireless/2026/06/17168565/t"
+      }
+    },
+    {
+      "id": "OS_WIFI_UNVERIFIED",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "wifi.chip"
+      ],
+      "relation": "wifi.chip on the known-good list",
+      "message": "Wi-Fi chip {chip!r} is not on the known-good Linux list (MT7925, Intel AX2xx/BE2xx); verify support before selling.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_KERNEL_MINIMUM",
+      "severity": "HARD",
+      "inputs": [
+        "os",
+        "kernel",
+        "mesa",
+        "gpu.arch|gpu.model",
+        "cpu.igpu_arch"
+      ],
+      "relation": "kernel/mesa >= the platform minimum",
+      "message": "{detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#5-hardware-gotchas"
+      }
+    },
+    {
+      "id": "OS_KERNEL_RECOMMENDED",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "kernel",
+        "cpu.family"
+      ],
+      "relation": "kernel >= the recommended platform minimum",
+      "message": "{detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#5-hardware-gotchas"
+      }
+    },
+    {
+      "id": "OS_KERNEL_UNVERIFIED",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "kernel",
+        "mesa"
+      ],
+      "relation": "kernel and mesa parse as versions",
+      "message": "{field} {value!r} is not a version this checker can compare; verify the platform minimums by hand.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_GAME_ANTICHEAT",
+      "severity": "HARD",
+      "inputs": [
+        "os",
+        "buyer.games",
+        "awacy snapshot"
+      ],
+      "relation": "buyer.games has no Denied/Broken title",
+      "message": "{game} is {status} on Linux (Are We Anti-Cheat Yet, as_of {as_of}); it will not run. Sell Windows or remove the promise.",
+      "source": {
+        "label": "V",
+        "url": "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json"
+      }
+    },
+    {
+      "id": "OS_GAME_UNVERIFIED",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "buyer.games",
+        "awacy snapshot"
+      ],
+      "relation": "every buyer game is Supported/Running in the snapshot",
+      "message": "{game}: {detail}; verify it live (AWACY, ProtonDB) before promising it.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_BUYER_WANTS",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "buyer.wants"
+      ],
+      "relation": "buyer.wants has no Windows-only item",
+      "message": "Disclose before sale: {detail}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "OS_DISTRO_UNKNOWN",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "distro"
+      ],
+      "relation": "distro in os.distros",
+      "message": "Distro {distro!r} is not in the rules data; verify its lifecycle and driver support live.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#4-distros"
+      }
+    },
+    {
+      "id": "OS_DISTRO_EOL",
+      "severity": "WARN",
+      "inputs": [
+        "os",
+        "distro",
+        "--today"
+      ],
+      "relation": "distro EOL more than 6 months away",
+      "message": "{distro} reaches end of life on {eol} ({note}); pick a supported release.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#4-distros"
+      }
+    },
+    {
+      "id": "OS_PROFILE_MISMATCH",
+      "severity": "WARN",
+      "inputs": [
+        "--use-case",
+        "os"
+      ],
+      "relation": "use_cases[uc].os includes build.os",
+      "message": "The {use_case} profile is for {want}; this build's OS is {os}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#7-checker-rules-field-relation-message"
+      }
+    },
+    {
+      "id": "AWACY_DATA_STALE",
+      "severity": "WARN",
+      "inputs": [
+        "awacy.as_of",
+        "--today"
+      ],
+      "relation": "today - as_of <= 30 (warn); <= 60 (else --final is incomplete)",
+      "message": "Anti-cheat snapshot is {age} days old (as_of {as_of}); run scripts/refresh_awacy.py. --final and --publish-gate block after {block} days.",
+      "source": {
+        "label": "V",
+        "url": "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json"
+      }
+    }
+  ],
+  "platforms": {
+    "sockets": {
+      "AM4": {
+        "memory_types": [
+          "DDR4"
+        ],
+        "chipsets": [
+          "A320",
+          "B350",
+          "X370",
+          "B450",
+          "X470",
+          "A520",
+          "B550",
+          "X570"
+        ],
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+        }
+      },
+      "AM5": {
+        "memory_types": [
+          "DDR5"
+        ],
+        "chipsets": [
+          "A620",
+          "B650",
+          "B650E",
+          "X670",
+          "X670E",
+          "B840",
+          "B850",
+          "X870",
+          "X870E"
+        ],
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/Socket_AM5"
+        },
+        "upgrade_horizon": "Support extended through 2029; promise upgrades only as far as Zen 6 (Olympic Ridge, expected 2027). Zen 7 socket is disputed."
+      },
+      "LGA1700": {
+        "memory_types": [
+          "DDR4",
+          "DDR5"
+        ],
+        "memory_note": "Each board is either DDR4 or DDR5, never both.",
+        "chipsets": [
+          "H610",
+          "B660",
+          "H670",
+          "Q670",
+          "Z690",
+          "W680",
+          "B760",
+          "H770",
+          "Z790"
+        ],
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/LGA_1700"
+        },
+        "upgrade_horizon": "End of line (12th-14th gen)."
+      },
+      "LGA1851": {
+        "memory_types": [
+          "DDR5"
+        ],
+        "chipsets": [
+          "H810",
+          "B860",
+          "Q870",
+          "Z890",
+          "W880"
+        ],
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/LGA_1851"
+        },
+        "upgrade_horizon": "No CPU upgrade path: the next socket is LGA1954 (Nova Lake, 900-series), expected Q1 2027."
+      }
+    },
+    "chipsets": {
+      "A320": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "300"
+      },
+      "B350": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "300"
+      },
+      "X370": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "300"
+      },
+      "B450": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "400"
+      },
+      "X470": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "400"
+      },
+      "A520": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 3,
+        "series": "500"
+      },
+      "B550": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 4,
+        "cpu_m2_pcie_gen": 4,
+        "chipset_lanes_pcie_gen": 3,
+        "series": "500"
+      },
+      "X570": {
+        "socket": "AM4",
+        "gpu_slot_pcie_gen": 4,
+        "cpu_m2_pcie_gen": 4,
+        "chipset_lanes_pcie_gen": 4,
+        "series": "500"
+      },
+      "X870E": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 5,
+        "cpu_m2_pcie_gen": 5,
+        "cpu_overclock": true,
+        "series": "800"
+      },
+      "X870": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 5,
+        "cpu_m2_pcie_gen": 5,
+        "cpu_overclock": true,
+        "series": "800"
+      },
+      "B850": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 4,
+        "gpu_slot_note": "5.0 optional per board: read the board record",
+        "cpu_m2_pcie_gen": 5,
+        "cpu_overclock": true,
+        "series": "800"
+      },
+      "B840": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 4,
+        "cpu_m2_pcie_gen": 4,
+        "cpu_overclock": false,
+        "series": "800"
+      },
+      "X670E": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 5,
+        "cpu_m2_pcie_gen": 5,
+        "cpu_overclock": true,
+        "series": "600"
+      },
+      "X670": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 4,
+        "cpu_m2_pcie_gen": 5,
+        "cpu_overclock": true,
+        "series": "600"
+      },
+      "A620": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 4,
+        "cpu_m2_pcie_gen": 4,
+        "cpu_overclock": false,
+        "series": "600"
+      },
+      "B650E": {
+        "socket": "AM5",
+        "gpu_slot_pcie_gen": 5,
+        "cpu_m2_pcie_gen": 5,
+        "series": "600",
+        "label": "I"
+      },
+      "B650": {
+        "socket": "AM5",
+        "cpu_m2_note": "5.0 optional per board",
+        "series": "600",
+        "label": "I"
+      },
+      "H610": {
+        "socket": "LGA1700",
+        "max_dimms": 2,
+        "cpu_m2": false,
+        "cpu_overclock": false,
+        "series": "600"
+      },
+      "B660": {
+        "socket": "LGA1700",
+        "cpu_overclock": false,
+        "series": "600"
+      },
+      "H670": {
+        "socket": "LGA1700",
+        "cpu_overclock": false,
+        "series": "600"
+      },
+      "Z690": {
+        "socket": "LGA1700",
+        "cpu_overclock": true,
+        "max_dimms": 4,
+        "series": "600"
+      },
+      "B760": {
+        "socket": "LGA1700",
+        "cpu_overclock": false,
+        "series": "700"
+      },
+      "H770": {
+        "socket": "LGA1700",
+        "cpu_overclock": false,
+        "series": "700"
+      },
+      "Z790": {
+        "socket": "LGA1700",
+        "series": "700",
+        "lane_note": "A Gen5 M.2 can take 4 lanes and drop the GPU to x8 (board-specific)."
+      },
+      "H810": {
+        "socket": "LGA1851",
+        "max_dimms": 2,
+        "gen5_m2": false,
+        "cpu_overclock": false,
+        "series": "800"
+      },
+      "B860": {
+        "socket": "LGA1851",
+        "cpu_overclock": false,
+        "series": "800"
+      },
+      "Z890": {
+        "socket": "LGA1851",
+        "gpu_slot_pcie_gen": 5,
+        "cpu_overclock": true,
+        "max_dimms": 4,
+        "series": "800"
+      },
+      "W880": {
+        "socket": "LGA1851",
+        "gpu_slot_pcie_gen": 5,
+        "series": "800",
+        "note": "Workstation chipset; ECC route on LGA1851."
+      },
+      "Q670": {
+        "socket": "LGA1700",
+        "series": "600"
+      },
+      "W680": {
+        "socket": "LGA1700",
+        "series": "600"
+      },
+      "Q870": {
+        "socket": "LGA1851",
+        "series": "800"
+      }
+    },
+    "oc_incapable_chipsets": [
+      "A620",
+      "B840",
+      "H610",
+      "H810",
+      "B660",
+      "B760",
+      "H670",
+      "H770",
+      "B860"
+    ],
+    "unsupported_cpu_on_chipset": [
+      {
+        "cpu_families": [
+          "ryzen-1000",
+          "ryzen-2000"
+        ],
+        "chipsets": [
+          "A520",
+          "B550",
+          "X570"
+        ],
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+        }
+      }
+    ],
+    "bios_minimums": [
+      {
+        "cpu_family": "ryzen-5000",
+        "chipsets": [
+          "X370",
+          "B350",
+          "A320"
+        ],
+        "requirement": "a Selective Beta BIOS",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+        }
+      },
+      {
+        "cpu_family": "ryzen-9000",
+        "chipsets": [
+          "A620",
+          "B650",
+          "B650E",
+          "X670",
+          "X670E"
+        ],
+        "min_agesa": "1.2.0.0",
+        "requirement": "AGESA 1.2.0.0 or later",
+        "source": {
+          "label": "I",
+          "url": "https://videocardz.com/newz/msi-releases-agesa-1-2-0-0-bios-for-amd-x670-b650-a620-improvements-for-ryzen-9000-cpus-and-geforce-rtx-40-gpus"
+        }
+      },
+      {
+        "cpu_model": "9850X3D",
+        "sockets": [
+          "AM5"
+        ],
+        "min_agesa": "1.2.8.0",
+        "requirement": "AGESA 1.2.8.0 or later",
+        "source": {
+          "label": "I",
+          "url": "https://www.gigabyte.com/us/Press/News/2363"
+        }
+      },
+      {
+        "cpu_model": "9950X3D2",
+        "sockets": [
+          "AM5"
+        ],
+        "min_agesa": "1.3.0.0a",
+        "requirement": "AGESA 1.3.0.0a or later",
+        "source": {
+          "label": "I",
+          "url": "https://www.gigabyte.com/press/news/2374"
+        }
+      },
+      {
+        "cpu_families": [
+          "core-13",
+          "core-14"
+        ],
+        "chipsets": [
+          "H610",
+          "B660",
+          "H670",
+          "Q670",
+          "Z690",
+          "W680"
+        ],
+        "requirement": "a BIOS update (may be required)",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/LGA_1700"
+        }
+      },
+      {
+        "cpu_family": "core-ultra-200s-plus",
+        "chipsets": [
+          "H810",
+          "B860",
+          "Q870",
+          "Z890",
+          "W880"
+        ],
+        "requirement": "a BIOS update on existing 800-series boards",
+        "source": {
+          "label": "I",
+          "url": "https://en.wikipedia.org/wiki/LGA_1851"
+        }
+      }
+    ],
+    "apu_gpu_lanes": {
+      "8700G": {
+        "lanes": 8,
+        "pcie_gen": 4
+      },
+      "8600G": {
+        "lanes": 8,
+        "pcie_gen": 4
+      },
+      "8500G": {
+        "lanes": 4,
+        "pcie_gen": 4
+      },
+      "8300G": {
+        "lanes": 4,
+        "pcie_gen": 4
+      },
+      "source": {
+        "label": "I",
+        "url": "https://www.techspot.com/review/2796-amd-ryzen-8700g/"
+      }
+    },
+    "x8_gpus": {
+      "RTX 5050": {
+        "pcie_gen": 5
+      },
+      "RTX 5060": {
+        "pcie_gen": 5
+      },
+      "RTX 5060 TI": {
+        "pcie_gen": 5
+      },
+      "RTX 4060": {
+        "pcie_gen": 4
+      },
+      "RTX 4060 TI": {
+        "pcie_gen": 4
+      },
+      "RX 7600": {
+        "pcie_gen": 4
+      },
+      "ARC B570": {
+        "pcie_gen": 4
+      },
+      "ARC B580": {
+        "pcie_gen": 4
+      },
+      "source": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/GeForce_RTX_50_series"
+      },
+      "not_x8": {
+        "RX 9060 XT": {
+          "lanes": 16,
+          "pcie_gen": 5,
+          "url": "https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9060xt.html"
+        }
+      }
+    },
+    "model_suffix_tokens": [
+      "XT",
+      "XTX",
+      "TI",
+      "SUPER",
+      "GRE",
+      "X3D",
+      "X3D2",
+      "F",
+      "KF",
+      "G"
+    ],
+    "memory_official": {
+      "ryzen-9000": {
+        "2": 5600,
+        "4": 3600,
+        "practical": "DDR5-6000 CL30 at 1:1; often 6200-6400 at 1:1",
+        "label": "V"
+      },
+      "ryzen-7000": {
+        "practical": "DDR5-6000 CL30 at 1:1",
+        "label": "I"
+      },
+      "ryzen-8000g": {
+        "2": 5200,
+        "4": 3600,
+        "practical": "6000-6400: the iGPU gains from bandwidth",
+        "label": "V"
+      },
+      "core-ultra-200s": {
+        "2": 6400,
+        "practical": "CUDIMM makes 8000+ practical",
+        "label": "V"
+      },
+      "core-ultra-200s-plus": {
+        "2": 7200,
+        "label": "I"
+      },
+      "core-13": {
+        "2": 5600,
+        "label": "V"
+      },
+      "core-14": {
+        "2": 5600,
+        "label": "V"
+      },
+      "source": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9800x3d.html"
+      }
+    },
+    "no_box_cooler_models": [
+      "9600X",
+      "9800X3D",
+      "9950X",
+      "265K"
+    ],
+    "chipsets_source": {
+      "LGA1700": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/LGA_1700"
+      },
+      "LGA1851": {
+        "label": "V",
+        "url": "https://en.wikipedia.org/wiki/LGA_1851"
+      },
+      "AM4": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am4.html"
+      },
+      "AM5": {
+        "label": "V",
+        "url": "https://www.amd.com/en/products/processors/chipsets/am5.html"
+      }
+    },
+    "igpu_rules": [
+      {
+        "id": "amd-am4-5000g",
+        "families": [
+          "ryzen-5000"
+        ],
+        "sku_regex": "^[0-9]{4}G[A-Z]*$",
+        "igpu": true,
+        "class": "display-office",
+        "source": {
+          "label": "S",
+          "url": "https://www.amd.com/en/products/apu/amd-ryzen-5-5600g"
+        }
+      },
+      {
+        "id": "amd-am4-5000-non-g",
+        "families": [
+          "ryzen-5000"
+        ],
+        "igpu": false,
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/5000-series/amd-ryzen-5-5600x.html"
+        }
+      },
+      {
+        "id": "amd-f-sku",
+        "families": [
+          "ryzen-7000",
+          "ryzen-9000"
+        ],
+        "sku_regex": "F$",
+        "igpu": false,
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/7000-series/amd-ryzen-5-7500f.html"
+        }
+      },
+      {
+        "id": "amd-8000g",
+        "families": [
+          "ryzen-8000g"
+        ],
+        "igpu": true,
+        "class": "light-gaming",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/8000-series/amd-ryzen-7-8700g.html"
+        }
+      },
+      {
+        "id": "amd-am5-non-f",
+        "families": [
+          "ryzen-7000",
+          "ryzen-9000"
+        ],
+        "igpu": true,
+        "class": "display-office",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-5-9600x.html"
+        }
+      },
+      {
+        "id": "intel-f-kf-sku",
+        "families": [
+          "core-12",
+          "core-13",
+          "core-14",
+          "core-ultra-200s",
+          "core-ultra-200s-plus"
+        ],
+        "sku_regex": "F$",
+        "igpu": false,
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/Raptor_Lake"
+        }
+      },
+      {
+        "id": "intel-desktop",
+        "families": [
+          "core-12",
+          "core-13",
+          "core-14",
+          "core-ultra-200s",
+          "core-ultra-200s-plus"
+        ],
+        "igpu": true,
+        "class": "display-office",
+        "source": {
+          "label": "V",
+          "url": "https://www.intel.com/content/www/us/en/products/sku/236773/intel-core-i9-processor-14900k-36m-cache-up-to-6-00-ghz/specifications.html"
+        }
+      }
+    ],
+    "igpu_rules_note": "Ordered; the first rule whose families contain cpu.family and whose sku_regex (if any) matches the SKU token of cpu.model (e.g. 7500F, 14600KF, 265KF) decides. The DB cpu.igpu field wins; a contradiction is IGPU_DATA_CONFLICT. Classes: display-office = display and office work, not gaming; light-gaming = 780M/760M class [I].",
+    "igpu_class_text": {
+      "display-office": "display/office class, not for gaming",
+      "light-gaming": "light gaming only (780M/760M class); not a substitute for a gaming GPU"
+    },
+    "cpu_families": {
+      "ryzen-1000": {
+        "aliases": [
+          "Ryzen 1000",
+          "AMD Ryzen 1000 Series"
+        ]
+      },
+      "ryzen-2000": {
+        "aliases": [
+          "Ryzen 2000",
+          "AMD Ryzen 2000 Series"
+        ]
+      },
+      "ryzen-3000": {
+        "aliases": [
+          "Ryzen 3000",
+          "AMD Ryzen 3000 Series"
+        ]
+      },
+      "ryzen-5000": {
+        "aliases": [
+          "Ryzen 5000",
+          "AMD Ryzen 5000 Series"
+        ]
+      },
+      "ryzen-7000": {
+        "aliases": [
+          "Ryzen 7000",
+          "AMD Ryzen 7000 Series"
+        ]
+      },
+      "ryzen-8000g": {
+        "aliases": [
+          "Ryzen 8000G",
+          "AMD Ryzen 8000G Series"
+        ]
+      },
+      "ryzen-9000": {
+        "aliases": [
+          "Ryzen 9000",
+          "AMD Ryzen 9000 Series"
+        ]
+      },
+      "core-12": {
+        "aliases": [
+          "12th Gen Core",
+          "Intel 12th Gen Core",
+          "Core i5 12th gen"
+        ]
+      },
+      "core-13": {
+        "aliases": [
+          "13th Gen Core",
+          "Intel 13th Gen Core",
+          "Core i7 13th gen"
+        ]
+      },
+      "core-14": {
+        "aliases": [
+          "14th Gen Core",
+          "Intel 14th Gen Core",
+          "Core i5 14th gen"
+        ]
+      },
+      "core-ultra-200s": {
+        "aliases": [
+          "Core Ultra 200S",
+          "Intel Core Ultra 200S"
+        ]
+      },
+      "core-ultra-200s-plus": {
+        "aliases": [
+          "Core Ultra 200S Plus",
+          "Intel Core Ultra 200S Plus"
+        ]
+      }
+    },
+    "cpu_families_note": "Canonical cpu.family slugs. Lookup normalises the DB value (lowercase, spaces/underscores/hyphens unified, vendor words and 'series' dropped, '14th gen' -> core-14); a value that does not resolve to a slug is 'cannot check', never guessed. An absent family is derived from cpu.model with cpu_family_from_model.",
+    "cpu_family_from_model": [
+      {
+        "family": "ryzen-8000g",
+        "needs_word": "RYZEN",
+        "sku_regex": "^8[0-9]{3}G[A-Z]*$",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/8000-series/amd-ryzen-7-8700g.html"
+        }
+      },
+      {
+        "family": "ryzen-9000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^9[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-5-9600x.html"
+        }
+      },
+      {
+        "family": "ryzen-7000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^7[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/7000-series/amd-ryzen-5-7500f.html"
+        }
+      },
+      {
+        "family": "ryzen-5000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^5[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/processors/desktops/ryzen/5000-series/amd-ryzen-5-5600x.html"
+        }
+      },
+      {
+        "family": "ryzen-3000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^3[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors"
+        }
+      },
+      {
+        "family": "ryzen-2000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^2[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors"
+        }
+      },
+      {
+        "family": "ryzen-1000",
+        "needs_word": "RYZEN",
+        "sku_regex": "^1[0-9]{3}",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors"
+        }
+      },
+      {
+        "family": "core-ultra-200s-plus",
+        "needs_word": "ULTRA",
+        "also_word": "PLUS",
+        "sku_regex": "^2[0-9]{2}[A-Z]*$",
+        "source": {
+          "label": "I",
+          "url": "https://en.wikipedia.org/wiki/LGA_1851"
+        }
+      },
+      {
+        "family": "core-ultra-200s",
+        "needs_word": "ULTRA",
+        "sku_regex": "^2[0-9]{2}[A-Z]*$",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/Arrow_Lake_(microprocessor)"
+        }
+      },
+      {
+        "family": "core-14",
+        "needs_word": "CORE|I3|I5|I7|I9",
+        "sku_regex": "^14[0-9]{3}[A-Z]*$",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/Raptor_Lake"
+        }
+      },
+      {
+        "family": "core-13",
+        "needs_word": "CORE|I3|I5|I7|I9",
+        "sku_regex": "^13[0-9]{3}[A-Z]*$",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/Raptor_Lake"
+        }
+      },
+      {
+        "family": "core-12",
+        "needs_word": "CORE|I3|I5|I7|I9",
+        "sku_regex": "^12[0-9]{3}[A-Z]*$",
+        "source": {
+          "label": "V",
+          "url": "https://en.wikipedia.org/wiki/LGA_1700"
+        }
+      }
+    ]
+  },
+  "power": {
+    "rest_of_system_w": 75,
+    "factory_oc_multiplier": 1.1,
+    "default_catalog_w": [
+      550,
+      650,
+      750,
+      850,
+      1000,
+      1200,
+      1300,
+      1500,
+      1600
+    ],
+    "catalog_note": "Default sizes only. Pass the sizes the caller actually stocks in units that pass the quality rules (--psu-catalog or build.psu_catalog_w). An empty catalog is rejected.",
+    "eta_min_rated_w": 650,
+    "eta_order": [
+      "Bronze",
+      "Silver",
+      "Gold",
+      "Platinum",
+      "Titanium",
+      "Diamond"
+    ],
+    "eta_min": "Gold",
+    "spl_order": [
+      "A+",
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F"
+    ],
+    "spl_min_high_power": "A",
+    "spl_min_default": "B",
+    "sixteen_pin_connectors": [
+      "12V-2X6",
+      "12VHPWR",
+      "16-PIN"
+    ],
+    "source": {
+      "label": "I",
+      "url": "docs/research/2026-09-27-pc-builder-research.md#psu-formula-i"
+    },
+    "hard_min_load": 0.9,
+    "recommended_load": 0.8,
+    "quiet_load": 0.7,
+    "atx3_preferred_gpu_w": 300,
+    "policy": "No overkill. recommended = smallest stocked, quality-qualified size >= max(DC/0.80, gpu.min_system_psu_w). HARD only below DC/0.90 or below the card maker's minimum system PSU. WARN below DC/0.80. DC/0.70 is an optional quiet target (INFO).",
+    "power_config_types": {
+      "native_16pin": "one native 12V-2x6/16-pin PSU cable rated at least min_cable_w",
+      "adapter_8pin": "the card maker's included adapter fed by at least min_cables independent dedicated PCIe 8-pin cables",
+      "direct_8pin": "at least min_cables independent PCIe 8-pin cables to the card's own 8-pin sockets"
+    },
+    "power_config_source": {
+      "label": "V",
+      "url": "https://www.nvidia.com/content/geforce-gtx/GeForce_RTX_5080_User_Guide_Rev1.pdf"
+    },
+    "known_atx_max": 3.1,
+    "known_connector_regex": "^((\\d+X)?(6|8|6\\+2)-?PIN|12V-2X6|12VHPWR|16-?PIN)$",
+    "known_standards_note": "PSU and connector standards newer than these (e.g. an ATX 3.2 or a new GPU connector) are NOT_IN_RULES_DATA until researched."
+  },
+  "cooling": {
+    "class_max_w": {
+      "single_tower": 100,
+      "dual_tower": 160,
+      "top_dual_tower": null,
+      "aio_360": null,
+      "aio_420": null
+    },
+    "class_note": "null = no research ceiling (the top class). A class not listed (e.g. aio_240) was not covered by the research and is reported as cannot-check.",
+    "advice": {
+      "over_100": "Use a good dual tower (up to ~160 W).",
+      "over_160": "Use a 360 AIO or a top dual tower (230 W+ class)."
+    },
+    "source": {
+      "label": "V",
+      "url": "https://gamersnexus.net/coolers/best-cpu-coolers-weve-tested-2025-thermals-noise-levels-value-26-coolers-tested"
+    }
+  },
+  "gpu_tiers": {
+    "order": [
+      "entry",
+      "mainstream",
+      "upper",
+      "enthusiast",
+      "workstation-ai"
+    ],
+    "models": [
+      {
+        "model": "RTX 5050",
+        "tier": "entry"
+      },
+      {
+        "model": "RTX 5060",
+        "tier": "entry"
+      },
+      {
+        "model": "RX 9060 XT",
+        "vram_gb": 8,
+        "tier": "entry"
+      },
+      {
+        "model": "RX 9050",
+        "tier": "entry"
+      },
+      {
+        "model": "ARC B570",
+        "tier": "entry"
+      },
+      {
+        "model": "ARC B580",
+        "tier": "entry"
+      },
+      {
+        "model": "RTX 5060 TI",
+        "vram_gb": 16,
+        "tier": "mainstream"
+      },
+      {
+        "model": "RX 9060 XT",
+        "vram_gb": 16,
+        "tier": "mainstream"
+      },
+      {
+        "model": "RX 9070 GRE",
+        "tier": "mainstream"
+      },
+      {
+        "model": "RTX 5070",
+        "tier": "upper"
+      },
+      {
+        "model": "RTX 5070 TI",
+        "tier": "upper"
+      },
+      {
+        "model": "RX 9070",
+        "tier": "upper"
+      },
+      {
+        "model": "RX 9070 XT",
+        "tier": "upper"
+      },
+      {
+        "model": "RTX 5080",
+        "tier": "enthusiast"
+      },
+      {
+        "model": "RTX 5090",
+        "tier": "enthusiast"
+      },
+      {
+        "model": "RADEON AI PRO R9700",
+        "tier": "workstation-ai"
+      },
+      {
+        "model": "ARC PRO B70",
+        "tier": "workstation-ai"
+      },
+      {
+        "model": "ARC PRO B60",
+        "tier": "workstation-ai"
+      }
+    ],
+    "source": {
+      "label": "I",
+      "url": "docs/research/2026-09-27-pc-builder-research.md#tier-table-i"
+    }
+  },
+  "cpu_tiers": [
+    "entry",
+    "mainstream",
+    "upper",
+    "enthusiast"
+  ],
+  "vram_model_fit": [
+    {
+      "vram_gb": 8,
+      "fits": "7-8B at Q4-Q6"
+    },
+    {
+      "vram_gb": 12,
+      "fits": "14B at Q4"
+    },
+    {
+      "vram_gb": 16,
+      "fits": "14B at Q8 or 20-24B at Q4"
+    },
+    {
+      "vram_gb": 24,
+      "fits": "~32B at Q4-Q5"
+    },
+    {
+      "vram_gb": 32,
+      "fits": "32B at Q8, or 70B at ~Q2-Q3 or with offload"
+    }
+  ],
+  "use_cases": {
+    "school": {
+      "kind": "basic",
+      "min_ram_gb": 16,
+      "dgpu": false,
+      "needs_workload": false
+    },
+    "office": {
+      "kind": "basic",
+      "min_ram_gb": 16,
+      "dgpu": false,
+      "needs_workload": false
+    },
+    "media": {
+      "kind": "basic",
+      "min_ram_gb": 16,
+      "dgpu": null,
+      "needs_workload": true
+    },
+    "esports": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "preferred_vram_gb": 12,
+      "min_cores": 6,
+      "needs_workload": true
+    },
+    "aaa-1080p": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "min_vram_gb": 16,
+      "min_cores": 6,
+      "needs_workload": false
+    },
+    "aaa-1440p": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "min_vram_gb": 12,
+      "min_cores": 8,
+      "needs_workload": false
+    },
+    "aaa-4k": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "min_vram_gb": 16,
+      "min_cores": 8,
+      "needs_workload": false
+    },
+    "streaming": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "min_vram_gb": 12,
+      "min_cores_cpu_encoding": 8,
+      "needs_workload": true
+    },
+    "creator": {
+      "kind": "productivity",
+      "min_ram_gb": 64,
+      "min_vram_gb": 16,
+      "min_cores": 12,
+      "needs_workload": true
+    },
+    "dev": {
+      "kind": "productivity",
+      "min_ram_gb": 32,
+      "min_cores": 8,
+      "needs_workload": true
+    },
+    "local-ai": {
+      "kind": "ai",
+      "min_ram_gb": 32,
+      "min_vram_gb": 12,
+      "needs_workload": true
+    },
+    "workstation": {
+      "kind": "productivity",
+      "note": "ECC: AM5 support is board-dependent; W880 on LGA1851.",
+      "needs_workload": true
+    },
+    "linux-gaming": {
+      "kind": "gaming",
+      "min_ram_gb": 32,
+      "min_vram_gb": 12,
+      "min_cores": 6,
+      "needs_workload": true,
+      "os": [
+        "linux",
+        "steamos"
+      ],
+      "note": "AMD GPU by default; NVIDIA with caveats; check buyer.games against the anti-cheat snapshot."
+    },
+    "steamos-living-room": {
+      "kind": "gaming",
+      "min_ram_gb": 16,
+      "preferred_vram_gb": 12,
+      "min_cores": 6,
+      "needs_workload": true,
+      "os": [
+        "steamos"
+      ],
+      "note": "AMD GPU (Intel community tier, never NVIDIA); controller-first; no dual boot. Steam Machine reference: Zen 4 6-core, RDNA3 28 CU 8 GB, 16 GB DDR5 [V]."
+    }
+  },
+  "modes": {
+    "check": "Default. Missing inputs on HARD/WARN rules are WARN 'cannot check'. Exit 0/2/3.",
+    "final": "--final. Unknown fields are rejected (exit 3). A HARD rule that could not run makes the result incomplete (exit 3) unless a HARD finding already failed (exit 2). A published compatibility claim may disclose genuine WARNs, never 'cannot check' findings.",
+    "publish-gate": "--publish-gate on an our-pick.v1 page: runs final mode on the embedded build plus the publish_rules. Exit 0 publishable, 2 blocked, 3 bad input."
+  },
+  "publish": {
+    "max_price_age_days": 7,
+    "max_price_age_note": "Default [I]; the caller sets --max-price-age-days to its repricing cycle.",
+    "required_exclusions": [
+      "operating system",
+      "monitor"
+    ],
+    "superlative_pattern": "\\b(best|fastest|cheapest|number one|no\\.? ?1|unbeatable)\\b",
+    "total_tolerance_gbp": 0.005
+  },
+  "publish_rules": [
+    {
+      "id": "PUB_MISSING_PRICING",
+      "severity": "HARD",
+      "inputs": [
+        "line_items",
+        "mandatory_charges",
+        "headline_total_gbp_inc_vat",
+        "priced_at"
+      ],
+      "relation": "all present, line_items non-empty",
+      "message": "Pricing is incomplete: {detail}",
+      "source": {
+        "label": "V",
+        "url": "https://assets.publishing.service.gov.uk/media/698f4e3e7da91680ad7f4417/CMA209_Unfair_commercial_practices__price_transparency_13.2.26.pdf"
+      }
+    },
+    {
+      "id": "PUB_LINE_ITEM_SOURCE",
+      "severity": "HARD",
+      "inputs": [
+        "line_items[].source",
+        "mandatory_charges[].source"
+      ],
+      "relation": "source == db",
+      "message": "Every price must come from the database at generation time: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#honest-presentation-uk"
+      }
+    },
+    {
+      "id": "PUB_NOT_VAT_INCLUSIVE",
+      "severity": "HARD",
+      "inputs": [
+        "vat_inclusive"
+      ],
+      "relation": "vat_inclusive == true",
+      "message": "UK consumer prices must include VAT, a mandatory charge (CMA209 4.4).",
+      "source": {
+        "label": "V",
+        "url": "https://assets.publishing.service.gov.uk/media/698f4e3e7da91680ad7f4417/CMA209_Unfair_commercial_practices__price_transparency_13.2.26.pdf"
+      }
+    },
+    {
+      "id": "PUB_TOTAL_MISMATCH",
+      "severity": "HARD",
+      "inputs": [
+        "line_items",
+        "mandatory_charges",
+        "headline_total_gbp_inc_vat"
+      ],
+      "relation": "headline total == sum(line items) + sum(mandatory charges)",
+      "message": "Headline total {headline} does not equal the recomputed {computed} (line items plus every mandatory charge; CMA209 3.3).",
+      "source": {
+        "label": "V",
+        "url": "https://assets.publishing.service.gov.uk/media/698f4e3e7da91680ad7f4417/CMA209_Unfair_commercial_practices__price_transparency_13.2.26.pdf"
+      }
+    },
+    {
+      "id": "PUB_PRICE_DATE",
+      "severity": "HARD",
+      "inputs": [
+        "priced_at"
+      ],
+      "relation": "priced_at is a real date, not in the future, not older than max_price_age_days",
+      "message": "Price date {priced_at}: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#honest-presentation-uk"
+      }
+    },
+    {
+      "id": "PUB_BAND",
+      "severity": "HARD",
+      "inputs": [
+        "band",
+        "headline_total_gbp_inc_vat"
+      ],
+      "relation": "band.min_gbp <= total < band.max_gbp",
+      "message": "Total {total} is outside the {band} band.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#uk-bands"
+      }
+    },
+    {
+      "id": "PUB_REQUIRED_FIELD",
+      "severity": "HARD",
+      "inputs": [
+        "performance_class",
+        "upgrade_path"
+      ],
+      "relation": "non-empty",
+      "message": "Required page field {field} is missing or empty.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#honest-presentation-uk"
+      }
+    },
+    {
+      "id": "PUB_EXCLUSIONS",
+      "severity": "HARD",
+      "inputs": [
+        "exclusions"
+      ],
+      "relation": "exclusions include operating system and monitor",
+      "message": "The page must state that {missing} is not included.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#honest-presentation-uk"
+      }
+    },
+    {
+      "id": "PUB_SELECTION_CRITERIA",
+      "severity": "HARD",
+      "inputs": [
+        "selection_criteria.as_of",
+        "selection_criteria.criteria"
+      ],
+      "relation": "dated, non-empty criteria",
+      "message": "An 'our pick' claim needs dated selection criteria held as evidence (CAP 3.7): {detail}",
+      "source": {
+        "label": "V",
+        "url": "https://www.asa.org.uk/type/non_broadcast/code_section/03.html"
+      }
+    },
+    {
+      "id": "PUB_SUPERLATIVE",
+      "severity": "HARD",
+      "inputs": [
+        "headline",
+        "superlative_evidence"
+      ],
+      "relation": "no superlative, or dated market-wide evidence held",
+      "message": "Headline makes an objective superlative claim ({word}); hold dated evidence (CAP 3.7) in superlative_evidence or remove it.",
+      "source": {
+        "label": "V",
+        "url": "https://www.asa.org.uk/type/non_broadcast/code_section/03.html"
+      }
+    },
+    {
+      "id": "PUB_CHECK_HARD",
+      "severity": "HARD",
+      "inputs": [
+        "build"
+      ],
+      "relation": "pc_check --final exit_code != 2",
+      "message": "The build fails a HARD compatibility or power rule: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md"
+      }
+    },
+    {
+      "id": "PUB_CHECK_INCOMPLETE",
+      "severity": "HARD",
+      "inputs": [
+        "build"
+      ],
+      "relation": "pc_check --final has no incomplete HARD checks",
+      "message": "HARD checks could not run: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md"
+      }
+    },
+    {
+      "id": "PUB_CANNOT_CHECK",
+      "severity": "HARD",
+      "inputs": [
+        "build"
+      ],
+      "relation": "no 'cannot check' findings",
+      "message": "A published compatibility claim cannot rest on unchecked rules: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md"
+      }
+    },
+    {
+      "id": "PUB_UNDISCLOSED_WARN",
+      "severity": "HARD",
+      "inputs": [
+        "build",
+        "disclosed_warnings"
+      ],
+      "relation": "every WARN id is in disclosed_warnings",
+      "message": "WARN findings not disclosed on the page: {detail}",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-research.md#honest-presentation-uk"
+      }
+    },
+    {
+      "id": "PUB_OS_DISCLOSURES",
+      "severity": "HARD",
+      "inputs": [
+        "os_disclosures",
+        "build.os"
+      ],
+      "relation": "linux/steamos pages carry every disclosure field",
+      "message": "Linux/SteamOS page must disclose in writing before sale: {detail}.",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#6-honest-selling-disclose-in-writing-before-sale-i"
+      }
+    },
+    {
+      "id": "PUB_STEAMOS_BRANDING",
+      "severity": "HARD",
+      "inputs": [
+        "headline",
+        "performance_class",
+        "os_disclosures",
+        "build.valve_licence"
+      ],
+      "relation": "no protected Valve mark without a licence",
+      "message": "'{mark}' is a Valve mark; without a licence say 'SteamOS preinstalled (community-supported install)'.",
+      "source": {
+        "label": "I",
+        "url": "https://liliputing.com/valves-new-powered-by-steamos-guidelines-hint-that-third-party-hardware-is-on-the-way/"
+      }
+    }
+  ],
+  "os": {
+    "values": [
+      "windows",
+      "steamos",
+      "linux"
+    ],
+    "note": "OS rules run only when build.os is steamos or linux; an absent os means Windows and nothing changes. Research base: docs/research/2026-09-27-pc-builder-os-research.md",
+    "steamos": {
+      "current_release": "3.8",
+      "kernel": "6.16",
+      "release_source": {
+        "label": "V",
+        "url": "https://www.gamingonlinux.com/2026/06/steamos-3-8-is-out-with-initial-steam-machine-support-desktop-mode-upgrades-new-graphics-drivers/"
+      },
+      "supported_gpu_vendors": [
+        "amd",
+        "intel"
+      ],
+      "community_tier_vendors": [
+        "intel"
+      ],
+      "unsupported_gpu_vendors": [
+        "nvidia"
+      ],
+      "gpu_policy_note": "Valve allows SteamOS on DIY desktops with AMD or Intel graphics (Arc B-series included); NVIDIA support is in development with NVIDIA and not expected in 2026. Dual-boot is not recommended; HDMI-CEC is unsupported.",
+      "gpu_policy_source": {
+        "label": "V",
+        "url": "https://www.club386.com/valve-steamos-diy-pc-nvidia/"
+      },
+      "protected_branding": [
+        "Powered by SteamOS",
+        "Steam Machine"
+      ],
+      "allowed_wording": "SteamOS preinstalled (community-supported install)",
+      "branding_note": "Preinstalling the free image is fine. Without a Valve licence, do not use 'Powered by SteamOS' or 'Steam Machine'; take legal advice before using any Valve mark.",
+      "branding_source": {
+        "label": "I",
+        "url": "https://liliputing.com/valves-new-powered-by-steamos-guidelines-hint-that-third-party-hardware-is-on-the-way/"
+      }
+    },
+    "gpu_vendor_from_model": [
+      {
+        "vendor": "nvidia",
+        "words": [
+          "GEFORCE",
+          "RTX",
+          "GTX",
+          "QUADRO"
+        ]
+      },
+      {
+        "vendor": "amd",
+        "words": [
+          "RADEON",
+          "RX"
+        ]
+      },
+      {
+        "vendor": "intel",
+        "words": [
+          "ARC"
+        ]
+      }
+    ],
+    "gpu_arch_from_model": [
+      {
+        "arch": "rdna4",
+        "regex": "(?<![A-Z0-9])RX 9[0-9]{3}(?![0-9])",
+        "source": {
+          "label": "V",
+          "url": "https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9060xt.html"
+        }
+      },
+      {
+        "arch": "arc-b",
+        "regex": "(?<![A-Z0-9])ARC (PRO )?B[0-9]{2,3}(?![0-9])",
+        "source": {
+          "label": "I",
+          "url": "docs/research/2026-09-27-pc-builder-os-research.md#3-gpu-drivers"
+        }
+      }
+    ],
+    "drivers": {
+      "amd": {
+        "stance": "default",
+        "note": "RADV/Mesa, in-tree (no Secure Boot signing step); the only vendor fully supported on SteamOS. Mesa 26.2 released 5 Aug 2026.",
+        "label": "I"
+      },
+      "intel": {
+        "stance": "budget",
+        "note": "Xe driver: B580 from kernel 6.12; Xe3 (Panther Lake) stable from 6.17.",
+        "label": "I"
+      },
+      "nvidia": {
+        "stance": "caveats",
+        "note": "595.58.03 recommended stable (modeset on by default); 610 feature branch targets the DX12 deficit; 580 is the last driver for Maxwell, Pascal and Volta; open kernel modules default from Turing; NVK not shipped for gaming. Fine on Bazzite, CachyOS and Pop!_OS; not on SteamOS; DX12 penalty; MOK signing under Secure Boot.",
+        "label": "I"
+      },
+      "nvidia_legacy_arches": [
+        "maxwell",
+        "pascal",
+        "volta"
+      ],
+      "nvidia_legacy_driver": "580",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#3-gpu-drivers"
+      }
+    },
+    "kernel_minimums": [
+      {
+        "id": "rdna4",
+        "match": {
+          "gpu_arch": "rdna4"
+        },
+        "kernel": "6.12",
+        "mesa": "25.0",
+        "severity": "HARD",
+        "text": "RDNA4 needs kernel 6.12+ (6.13+ recommended) and Mesa 25.0+"
+      },
+      {
+        "id": "arc-b",
+        "match": {
+          "gpu_arch": "arc-b"
+        },
+        "kernel": "6.12",
+        "severity": "HARD",
+        "text": "Arc B-series needs kernel 6.12+ (Xe driver)"
+      },
+      {
+        "id": "panther-lake",
+        "match": {
+          "igpu_arch": "xe3"
+        },
+        "kernel": "6.17",
+        "severity": "HARD",
+        "text": "Xe3 (Panther Lake) graphics are stable from kernel 6.17"
+      },
+      {
+        "id": "ryzen-9000",
+        "match": {
+          "cpu_family": "ryzen-9000"
+        },
+        "kernel": "6.10",
+        "severity": "WARN",
+        "text": "Ryzen 9000: kernel 6.10+ recommended (RAPL)"
+      },
+      {
+        "id": "arrow-lake",
+        "match": {
+          "cpu_family": [
+            "core-ultra-200s",
+            "core-ultra-200s-plus"
+          ]
+        },
+        "kernel": "6.14",
+        "severity": "WARN",
+        "text": "Arrow Lake iGPU: kernel 6.14+ (weak source)"
+      }
+    ],
+    "kernel_minimums_source": {
+      "label": "I",
+      "url": "docs/research/2026-09-27-pc-builder-os-research.md#5-hardware-gotchas"
+    },
+    "wifi": {
+      "unsupported": {
+        "MT7927": "MediaTek MT7927 (Filogic 380) has no working Linux Bluetooth and only partial Wi-Fi (patches not merged as of 19 Mar 2026); fit an Intel AX2xx/BE2xx card"
+      },
+      "regression": {
+        "RTL8922AE": "Realtek RTL8922AE (rtw89) regressed on kernels 6.18+ with no fix yet"
+      },
+      "known_good_regex": [
+        "^MT7925$",
+        "^(INTEL )?AX2[0-9]{2}$",
+        "^(INTEL )?BE2[0-9]{2}$"
+      ],
+      "unsupported_source": {
+        "label": "V",
+        "url": "https://www.linaro.org/blog/from-replace-it-with-intel-to-upstream-bringing-mediatek-bluetooth-wifi-7-to-linux/"
+      },
+      "regression_source": {
+        "label": "V",
+        "url": "https://ratatoskr.run/linux-wireless/2026/06/17168565/t"
+      },
+      "known_good_source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#5-hardware-gotchas"
+      }
+    },
+    "distros": {
+      "bazzite": {
+        "aliases": [
+          "bazzite",
+          "bazzite 44"
+        ],
+        "suits": "beginners, console-like; NVIDIA images available",
+        "eol": null,
+        "lifecycle": "rolling, tied to Fedora"
+      },
+      "cachyos": {
+        "aliases": [
+          "cachyos",
+          "cachy os"
+        ],
+        "suits": "enthusiasts; Secure Boot needs sbctl",
+        "eol": null,
+        "lifecycle": "rolling"
+      },
+      "fedora-44": {
+        "aliases": [
+          "fedora 44",
+          "fedora-44"
+        ],
+        "suits": "general use",
+        "eol": "2027-05-01",
+        "eol_note": "estimate: about 13 months per release; Fedora 45 due 20 Oct 2026"
+      },
+      "fedora-45": {
+        "aliases": [
+          "fedora 45",
+          "fedora-45"
+        ],
+        "suits": "general use",
+        "eol": "2027-11-01",
+        "eol_note": "estimate: about 13 months from the 20 Oct 2026 release"
+      },
+      "ubuntu-26.04": {
+        "aliases": [
+          "ubuntu 26.04",
+          "ubuntu 26.04 lts",
+          "ubuntu-26.04"
+        ],
+        "suits": "general and office use",
+        "eol": "2031-04-30",
+        "eol_note": "5 years standard, 10 with Pro"
+      },
+      "pop-24.04": {
+        "aliases": [
+          "pop!_os 24.04",
+          "pop!_os 24.04 lts",
+          "pop os 24.04",
+          "pop-24.04"
+        ],
+        "suits": "beginners with NVIDIA",
+        "eol": "2029-04-30",
+        "eol_note": "follows Ubuntu 24.04 (5-year LTS, estimate)"
+      }
+    },
+    "distro_eol_warn_days": 183,
+    "distros_source": {
+      "label": "I",
+      "url": "docs/research/2026-09-27-pc-builder-os-research.md#4-distros"
+    },
+    "awacy": {
+      "blocking_statuses": [
+        "Denied",
+        "Broken"
+      ],
+      "ok_statuses": [
+        "Supported",
+        "Running"
+      ],
+      "snapshot": "data/awacy-snapshot.json",
+      "refresh": "scripts/refresh_awacy.py",
+      "source": {
+        "label": "V",
+        "url": "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json"
+      }
+    },
+    "windows_only_wants": {
+      "game_pass": "PC Game Pass installs do not work on Linux (Xbox Cloud streaming only)",
+      "ms_office": "Microsoft Office desktop apps do not run; offer LibreOffice or Office on the web",
+      "vendor_rgb_app": "iCUE, Armoury Crate and L-Connect are Windows-only; OpenRGB is partial",
+      "xbox_app": "The Xbox app does not run",
+      "ea_app": "The EA app needs workarounds"
+    },
+    "disclosures": {
+      "required_fields": [
+        "anti_cheat",
+        "game_pass_office",
+        "rgb_software",
+        "support_scope",
+        "return_path"
+      ],
+      "steamos_extra": [
+        "os_description"
+      ],
+      "text": "Disclose in writing before sale: the anti-cheat Denied/Broken titles, no PC Game Pass/Xbox/EA app without workarounds, no Microsoft Office desktop apps, Windows-only RGB software, the support scope, and a return path if a must-have game will not run (Consumer Rights Act 'as described').",
+      "source": {
+        "label": "I",
+        "url": "docs/research/2026-09-27-pc-builder-os-research.md#6-honest-selling-disclose-in-writing-before-sale-i"
+      }
+    }
+  }
+}

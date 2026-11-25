@@ -1,7 +1,8 @@
 ---
 name: verification-arbiter
-description: Use when bob needs an independent verdict on an evidence bundle as part of the INTEGRATED → VERIFIED transition. Invoked as a subprocess (not a Claude Code Agent). Reads a frozen evidence bundle + frozen test plan, runs a cold-context Claude to score coverage against the plan and self-check the bundle hash, and emits one JSON verdict on stdout. Bob persists the verdict; the arbiter never writes to .ledger/ (CB4 boundary per design §5.6).
-disambiguation: Scores an EVIDENCE BUNDLE against a frozen test plan for INTEGRATED to VERIFIED. Rendered-UI geometry is visual-arbiter; drift classification is design-drift-arbiter.
+description: "Independent verdict on a frozen evidence bundle for INTEGRATED → VERIFIED: a cold-context subprocess scores coverage against the frozen test plan and prints one JSON verdict; it never writes .ledger/. Use when bob needs that verdict."
+metadata:
+  disambiguation: "Scores an EVIDENCE BUNDLE against a frozen test plan for INTEGRATED to VERIFIED. Rendered-UI geometry is visual-arbiter; drift classification is design-drift-arbiter."
 ---
 
 # verification-arbiter
@@ -93,11 +94,12 @@ Design §5.6: arbiter never writes `.ledger/`. On any failure it exits with code
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AUDIT_CLAUDE_BIN` | `claude` | Cold-context Claude CLI binary path (shared with `audit_spawn.py`) |
-| `AUDIT_CLAUDE_MODEL` | `claude-opus-4-6[1m]` | Model ID for the cold-context verifier |
+| `AUDIT_CLAUDE_BIN` | `claude` | Cold-context Claude CLI binary path (shared with `audit_spawn.py`). Still honoured so tests can stub it, but whenever it is set the resolved realpath is written to stderr as one structured line `ARBITER_BIN_OVERRIDE {"var","value","realpath"}` plus a warning. |
+| `ARBITER_CLAUDE_MODEL` | unset | Model override for the verifier, read before `AUDIT_CLAUDE_MODEL`. Same rule as the row below. |
+| `AUDIT_CLAUDE_MODEL` | unset (model is the Claude main tier) | Compat fallback for `ARBITER_CLAUDE_MODEL`. The arbiter is a **protected reviewer role**: its model is the `code_reviewer` Claude row of `seat_model`, i.e. the Claude main tier from `skills/_meta/model_roster.py` (a vendor alias; the current value is in codex-orchestration "Seat Models"), never read from smart-config or any project file (S081 stream 1, design §4.1; #291). An override is accepted only when it equals the pin; any other value is refused, the pin stands, and the refusal is written to stderr as one structured line `ARBITER_ENV_OVERRIDE_REFUSED {"var","value"}`. It cannot ride the verdict object, which is closed (`additionalProperties: false`). |
 | `ARBITER_FRESHNESS_WINDOW_S` | `1800` | Seconds after `opened_at` before a pending verification request is considered abandoned (design §9.5). Consumed by Phase 2B's `recover_verification_requests()` sweeper in `claims.py`. |
 
-Timeout for the inner `claude -p` subprocess is `DEFAULT_TIMEOUT_S = 180` (matches `audit_spawn.py`). Design §9.5 rationale: the 1800s freshness window is 10× the inner timeout, leaving headroom for bob restart + arbiter retry.
+Timeout for the inner `claude -p` subprocess is `DEFAULT_TIMEOUT_S = 600` (raised from 180 in S081 stream 1; it matches `audit_spawn.py`'s Claude-arm `DEFAULT_TIMEOUT_S = 600`, so the two VERIFIED-gate reviewers share one budget). A reviewer cut short returns `AUDIT_UNAVAILABLE`, not a cheaper verdict. Design §9.5 rationale: the 1800s freshness window is 3× the inner timeout, leaving headroom for bob restart + arbiter retry.
 
 ## Relationship to audit_spawn.py
 

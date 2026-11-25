@@ -2,6 +2,19 @@
 
 Reference for `research-for-skills` Step 10 and ongoing skill maintenance. Describes how to track skill effectiveness, categorize failures, and promote learnings into actionable improvements.
 
+## Contents
+
+- Principle
+- Failure Taxonomy
+- When to Log
+- Storage
+- Promotion Rules
+- Gap Event Patterns
+- Refresh Thresholds
+- Refresh Process
+- Effective Patterns Registry
+- Anti-Patterns for Self-Learning
+
 ## Principle
 
 Self-learning is eval-set growth plus a refresh queue — not a prose journal. Every failure record must be structured, categorized, and actionable.

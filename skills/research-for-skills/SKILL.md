@@ -1,6 +1,6 @@
 ---
 name: research-for-skills
-description: Use when a skill gap is identified during task planning, when the user asks to create or improve a skill, or when forge detects no matching skill for a domain.
+description: "Skill creation and improvement pipeline: scoping, overlap comparison, research, authoring rules, challenger review and cross-tool portability. Use when a task has no matching skill, or when a skill is to be created, refreshed or repaired."
 ---
 
 # Research for Skills
@@ -9,7 +9,7 @@ Skill creation pipeline with dual-model review and self-learning. Thin orchestra
 
 ## When to Trigger
 
-- Forge's skill gap check finds no matching skill
+- Forge's skill gap check finds no matching skill (the protocol is `gap-detection.md`)
 - User asks to create or improve a skill
 - Existing skill flagged `needs_refresh` (see `improvement-loop.md`)
 - Plugin version change detected (via local plugin tracker, if maintained)
@@ -41,6 +41,8 @@ cat ~/.claude/plugins/installed_plugins.json | grep installPath
 
 **Critical:** Never scan `~/.claude/plugins/cache/` directly — stale versions will double-count.
 
+If the gap is about an outside tool (app, CLI, model, service), check the `tool-radar` skill first: it may already hold a verified entry and a ring for it.
+
 ### Step 3: Build/Refresh Inventory
 
 Extract normalized records for matched skills. Cache to `~/.claude/skills/_meta/inventory.json`. See `comparison-engine.md` for record format and refresh rules.
@@ -50,7 +52,7 @@ Extract normalized records for matched skills. Cache to `~/.claude/skills/_meta/
 Shortlist 3-8 relevant skills (direct matches, adjacent domains, exemplars). Dispatch Codex `skill_comparator` sidecar in parallel:
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 codex exec --ephemeral -s read-only \
   -o "$CODEX_WORK/skill-comparison.md" \
   "Read these skill files [PATHS] and compare: coverage, patterns, gaps, quality for [DOMAIN]"
@@ -70,12 +72,13 @@ Delegate to `web-research` — do NOT duplicate research methodology here.
 Optional: dispatch Codex `docs_verifier` sidecar for API/version claims:
 
 
-**Antigravity (agy) for freshness checks:** Use a direct `agy -p "..."` Bash call to verify latest versions, deprecation status, and current best practices. Particularly useful for fast-moving domains where cached knowledge may be stale. `agy` returns plain text on stdout (parse text, not JSON fields). Complements Codex verification — run both in parallel when accuracy is critical. See the `antigravity-cli` skill for the invocation pattern.
+**Antigravity (agy) for freshness checks:** Use a direct `AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)` Bash call (advisory-only; `--sandbox` mandatory per #157) to verify latest versions, deprecation status, and current best practices. Particularly useful for fast-moving domains where cached knowledge may be stale. `agy` returns plain text on stdout (parse text, not JSON fields). Complements Codex verification — run both in parallel when accuracy is critical. See the `antigravity-cli` skill for the invocation pattern.
 ```bash
-agy --sandbox -p "Verify current as of 2026: latest stable version, deprecation status, and current best practices for [DOMAIN/LIBRARY]. List sources." < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "Verify current as of 2026: latest stable version, deprecation status, and current best practices for [DOMAIN/LIBRARY]. List sources." < /dev/null)
 ```
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 codex exec --ephemeral -s read-only \
   -o "$CODEX_WORK/docs-verify.md" \
   "Verify these claims are current as of 2026: [SPECIFIC CLAIMS]"
@@ -101,7 +104,11 @@ Check `_meta/gap-events.jsonl` for previous attempts at this domain:
 
 Write using rules in `authoring-rules.md`. Key gates:
 
-- Description starts "Use when..." — triggers only, NO workflow summary
+- Description: the subject first (the domain words), then what the skill does, then when to use it; third person; about 200 characters (the audit fails over 250); never opening with "Use when"
+- Frontmatter: `name`, `description`, the other spec keys and the Claude Code keys only; custom data goes under `metadata:` as quoted strings
+- `SKILL.md` under 500 lines, with every rule that must hold in its first 20 KB
+- Reference files one level deep, each named in `SKILL.md` by its skill-relative path; a contents list at the top of any reference over 100 lines
+- The skill's own files are cited by skill-relative path (`references/x.md`), never by a home path
 - Anti-patterns table mandatory
 - Word count: <500 frequent, <1200 standard
 - Cross-model compatible language
@@ -121,14 +128,25 @@ A skill that wants to fan work out across agents/workflows MUST satisfy ALL of t
 - **HO-6 COMPANION WORKFLOW** — ship one ONLY IF: inline-main-loop primary callers AND stable reusable fan-out (≥3 sequential stages or ≥2 parallel agents) AND deterministic stage boundaries AND schema-checkable outputs. MUST NOT when: knowledge-only skill; mid-flow user interaction (G-W4); machinery-under-worktree (G-W6); primary callers are agents. Shipping triggers G-W7 registration.
 - **HO-7 HOST-NEUTRAL** — all protocol text names CAPABILITIES, not Claude-only tool names ("the agent-spawn facility (`Agent` on Claude Code; see tool-mapping for Codex/Copilot)"); every plan/report artifact is host-neutral data executable serially by any host; only workflow compilation is described as Claude-main-loop-only; the skill DESCRIPTION never names Workflow/native teams (CSO pollution on other hosts).
 
+#### Last authoring step: the audit
+
+Run the audit when the draft is complete, and fix every `fail` it prints before Step 8:
+
+```bash
+python3 skills/_meta/skill_audit.py audit --only <name> --strict        # from the repo root
+python3 skills/_meta/skill_audit.py audit --root <dir> --strict         # a draft outside the repo: <dir> holds <name>/SKILL.md
+```
+
+The audit is the authority for the five format gates above; `authoring-rules.md` states each rule with its reason. `--strict` holds the draft to the rules whether or not it is on the conformant list yet. Notes (N1, N2) never fail.
+
 ### Step 8: Review Gates
 
-**Local checks:** frontmatter, word count, description format, anti-patterns table, CSO keywords.
+**Local checks:** the audit output from Step 7 (zero fails), word count, anti-patterns table, CSO keywords.
 
 **Codex `skill_challenger`** (mandatory for new skills, optional for minor updates):
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 codex exec --ephemeral -s read-only \
   -o "$CODEX_WORK/skill-challenger.md" \
   "Review this skill draft at [PATH]. Check: missing triggers, vague sections,
@@ -191,7 +209,7 @@ See `authoring-rules.md` for full guidelines. Key rule: use tool-agnostic langua
 
 ## Cross-tool portability
 
-When authoring a skill that must work across multiple AI CLIs (Claude Code, Antigravity CLI (agy), Codex CLI, GitHub Copilot CLI), read `cross-tool-portability/cross-tool-portability.md` first. It contains strict rules for frontmatter (only `name + description`), naming (`^[a-z0-9-]+$`, ≤64 chars), body length (<500 lines), install symlink pattern, AGENTS.md canonicalisation, hooks portability, and the 5 most common breaking mistakes.
+When authoring a skill that must work across multiple AI CLIs (Claude Code, Antigravity CLI (agy), Codex CLI, GitHub Copilot CLI), read `cross-tool-portability/cross-tool-portability.md` first. It contains the rules for frontmatter (spec keys, Claude Code keys, custom data under `metadata:`), naming (`^[a-z0-9-]+$`, ≤64 chars), body length (<500 lines), install symlink pattern, AGENTS.md canonicalisation, hooks portability, and the 5 most common breaking mistakes.
 
 Validate any new cross-tool skill against `cross-tool-portability/scripts/verify-skill-portability.sh` before publishing:
 
@@ -206,15 +224,15 @@ The sub-skill files:
 
 | File | When to read |
 |---|---|
-| `cross-tool-portability.md` | Top-level rulebook — read first |
-| `frontmatter-rules.md` | Authoring SKILL.md frontmatter |
-| `install-matrix.md` | Setting up symlinks across `~/.claude/`, `~/.codex/` (and agy plugin import) |
-| `agents-md-canonical.md` | Designing AGENTS.md / CLAUDE.md content |
-| `hooks-portability.md` | Authoring hooks (Claude-native; agy equivalent unverified) |
-| `headless-invocation.md` | Translating `claude -p` patterns to `agy -p` and `copilot -p` |
-| `verification-first-boot.md` | Validating a new skill on first install |
-| `common-mistakes.md` | The five most common breaking mistakes |
-| `challenger-concerns.md` | Hook re-entrancy, name collisions, multi-user auth |
+| `cross-tool-portability/cross-tool-portability.md` | Top-level rulebook — read first |
+| `cross-tool-portability/frontmatter-rules.md` | Authoring SKILL.md frontmatter |
+| `cross-tool-portability/install-matrix.md` | Setting up symlinks across `~/.claude/`, `~/.codex/` (and agy plugin import) |
+| `cross-tool-portability/agents-md-canonical.md` | Designing AGENTS.md / CLAUDE.md content |
+| `cross-tool-portability/hooks-portability.md` | Authoring hooks (Claude-native; agy equivalent unverified) |
+| `cross-tool-portability/headless-invocation.md` | Translating `claude -p` patterns to `agy -p` and `copilot -p` |
+| `cross-tool-portability/verification-first-boot.md` | Validating a new skill on first install |
+| `cross-tool-portability/common-mistakes.md` | The five most common breaking mistakes |
+| `cross-tool-portability/challenger-concerns.md` | Hook re-entrancy, name collisions, multi-user auth |
 
 ## Anti-Patterns
 
@@ -227,6 +245,7 @@ The sub-skill files:
 | Skip Codex challenger for new skills | Single-model blind spots produce weaker skills |
 | Write prose self-learning notes | Use structured JSONL with failure taxonomy |
 | Deploy without testing | Apply `development-lifecycle` TDD methodology and the testing patterns in `authoring-rules.md` |
-| Summarize workflow in description | Causes Claude to shortcut and skip skill body |
+| Narrate the step-by-step procedure in the description | The description gets followed in place of the body; say what the skill covers and when to use it |
+| Open a description with "Use when" | The listing truncates from the end, so the domain words go first; the audit fails it (A5) |
 | Write skills >1200 words inline | Use separate reference files for heavy content |
 | Make a skill depend on Workflow/native teams | Breaks Codex/Copilot and all subagent contexts | HO gate (HO-1..HO-7): optional + feature-detected + fallback-first + host-neutral |

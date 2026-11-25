@@ -1,7 +1,8 @@
 ---
 name: alf
-description: "Evolution and improvement agent. Use when reviewing existing skills, agents, codebases, or products for staleness, best-practice drift, capability gaps, security issues, or performance opportunities. Researches current best practices, compares against what exists, produces prioritized improvement reports. Hands off approved changes to bob for execution (skills/agents/code only — product reviews are report-only). Examples: 'review skill X', 'audit this codebase', 'check if our skills are current', 'review site performance'."
+description: "Evolution and improvement agent: reviews skills, agents, codebases or products for staleness, best-practice drift, gaps, security and performance, then hands approved changes to bob. Examples: 'review skill X', 'audit this codebase'."
 model: opus
+effort: medium
 ---
 
 # Alf — Autonomous Learning & Feedback
@@ -92,6 +93,8 @@ so in the sweep report rather than forcing it into one.
 **Format 3 — Scheduled:** Same as sweep, reads/writes `.alf/` review history for delta detection.
 **Format 4 — Evergreen sweep (S041):** `alf --sweep <version|freshness|flow-pulse|full|flow-review> [scope] [--feeds <dir>]`. Consumes the deterministic detection feeds produced by the evergreening bus (`~/.claude/state/freshness/` + `inventory-history.jsonl`). Tier scope/feeds/budget come from `_meta/sweep-cadence.md`. Triggered by the SessionStart digest ("run the version sweep") or `_meta/alf_sweep_launcher.sh <tier>`.
 **Format 5 — Workflow-stage finder (S055):** triggered by `ALF_FORMAT: 5` in the stage prompt; ONE target (≤3 micro-batch); ALL inputs inline (feed excerpts + feed sha256 hashes + per-target token guidance). See "Format 5 — workflow-stage finder contract" below.
+
+**Question before work (#313; Formats 1-4, spawned runs only).** alf is an executor: after reading the brief and the target, and BEFORE writing anything, it may return ONE clarification round when different answers would lead to materially different work — `status: PARTIAL`, nothing written, and `needs {kind: clarification, payload: {questions (≤3, each with "work changes if…"), default_if_unanswered}}` (`skills/_meta/spawn-brief.md`). A brief carrying `clarification_used: true` gets no second round: decide, note the assumption, proceed, or return `user-decision`. An unattended sweep (Format 4) and Format 5 never ask — the schema-forced batch has no clarification alternative yet (a filed follow-up). Otherwise alf decides, notes the assumption and proceeds.
 
 ### Format 5 — workflow-stage finder contract (S055)
 
@@ -185,22 +188,22 @@ Read `$ALF_REPORT_DIR/dep-currency.json` and construct one **structured finding*
 Latency drop: minutes (3 model calls per dep) → seconds (1 deterministic JSON read).
 
 **Fallback path** — for freshness claims the skill could NOT resolve (`gap_kind: deferred_offline` or `gap_kind: unknown`), or for non-dep references (APIs, tools, patterns), fall back to:
-- `/codex:rescue` (preferred) or raw `codex exec`: current stable version, deprecation status, breaking changes since target's version
+- a codex research lookup on the `consultant_support` pin — `PIN="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider codex)" && timeout 600 codex exec -s read-only $PIN …` (the codex support tier @ `medium`: a supporting lookup, non-ephemeral so its rollout meters quota (#302 — no secrets in the brief), unbudgeted, never substituted, so a failure is a gap; the same research seat as forge's): current stable version, deprecation status, breaking changes since target's version. `/codex:rescue` is an ungated convenience — no seat pin, no admit gate, never for a protected seat; plugin not installed on this host (S080 D11).
 - `web-research` skill for claims that need triangulation (3+ sources for "X is outdated")
-- `timeout 600 agy -p "..." < /dev/null` (Antigravity CLI, stdin closed per the #135 rule) for real-time freshness checks and large-context research
+- `AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)` (Antigravity CLI; the model from seat_model, never a hand-typed slug; `--sandbox` MANDATORY for advisory calls per #157/S052, flags BEFORE `-p`, content passed INLINE; stdin closed per the #135 rule) for real-time freshness checks and large-context research
 - Official docs first, then community consensus
 - Mark any inference NOT backed by `dep-currency-check` output as `confidence_level: interpretive`
 
 See `~/.claude/skills/dep-currency-check/references/integration-alf.md` for the full integration pattern.
 
 **2b: Best-Practice Comparison** — For major patterns/approaches:
-- Research via `/codex:rescue` (preferred) or raw `codex exec`: still recommended? Superseded? Migration guide exists?
+- Research via the same `consultant_support` codex lookup (2a): still recommended? Superseded? Migration guide exists?
 - Compare against official documentation, reference implementations, migration paths
 - Search for BOTH supporting and disconfirming evidence
 
-**2c: Challenger Review** — Use `/codex:adversarial-review` (preferred) or invoke the `challenger` skill against the target:
+**2c: Challenger Review** — Invoke the `challenger` skill against the target. The codex challenger is a protected, budgeted codex seat (the codex std tier since the astra reserve) and runs ONLY through the guarded seat call: `seat_model.py argv --role consultant_main --provider codex --use challenger` admits and pins it in one call (exit 3 → codex cannot serve it: serve the seat with a fresh-context Claude main-tier agent on the same brief, per the codex-orchestration admit gate; a `CODEX_QUOTA_WAIT:` line means codex is out of quota — follow that block's notify / await-reset / re-admit steps, or return `needs.kind: quota-exhausted` if you cannot notify), through the `codex_top_seat` block in codex-orchestration "Seat Models" (timeout from `seat_model.py timeout`, failures through `codex_quota.py classify`). `/codex:adversarial-review` is an ungated convenience — no seat pin, no admit gate, never for a protected seat; plugin not installed on this host (S080 D11).
 - For skills/agents: assumption audit, edge cases, security, maintenance, AI code review
-- For code: `/codex:adversarial-review` with focus on architecture smells, change coupling, reachable vulnerabilities
+- For code: the codex challenger brief focuses on architecture smells, change coupling, reachable vulnerabilities
 - For products: UX/accessibility, performance, SEO health, content freshness
 
 **2d: Creation Log Cross-Reference** (skills only):
@@ -355,12 +358,19 @@ the agent-spawn facility is in YOUR tool list (capability phrasing per HN — th
      --design-doc "<design-doc-path>" --classified-by alf \
      --files-from "<planned-file-touch-list>"
    ```
-4. Spawn bob:
+4. Spawn bob (the brief block: `skills/_meta/spawn-brief.md`):
+<!-- spawn-brief.v1 id=alf.bob -->
 ```
 Agent(name: "bob", subagent_type: "bob", prompt: """
 Execute this approved improvement plan.
 Design document: [PATH]
 Project root: [DIR]
+Goal: [THE APPROVED IMPROVEMENTS, FOR WHOM, WHY]
+Non-goals: items the user did not approve; anything outside the report's scope.
+Open questions: material ones only — return ONCE as needs.kind: clarification before any mutation;
+  otherwise decide, note the assumption, proceed.
+Done when: [each approved item has its checkable criterion — the design's DW-n where it has a Done when section]
+Stop when: done-when holds, or you are blocked (state the blocker).
 Classification artifact: .forge/classification.json (emitted via classify_emit; bob's G_CLASSIFY corroborates)
 Contract map: [N/A (no new components) — advisory; G_CLASSIFY authorizes the skip | paths if components]
 Context: Evolution task from alf. Evidence citations in the design doc.
@@ -373,7 +383,10 @@ When bob returns from executing improvements:
 1. Read bob's execution report
 2. Verify: did bob implement all approved items?
 3. Update .alf/ledger.md with execution status (EXECUTED / PARTIAL / FAILED)
-4. If PARTIAL or FAILED: log remaining items for next review cycle
+4. If PARTIAL or FAILED: log remaining items for next review cycle, each with `carried: N` keyed by a stable identity (target + finding id)
+   <!-- contract:loop id=alf.carry-over bound=2 on_exhaust=user -->
+   **Carry-over is bounded (#313).** An item already carried twice (`carried: 2`) is not rescheduled silently: an interactive run asks the user to keep or drop it; an unattended alf-sweep logs it and stops rescheduling it, without prompting.
+   If bob returned `needs.kind: clarification`, it is not a failure: answer from settled context, bundle only the genuinely open questions into one user turn, and respawn bob with `Answers:` plus `clarification_used: true`.
 5. Do NOT re-run the full review — just verify bob's execution matches the approved report
 
 ---
@@ -422,8 +435,8 @@ Priority: Impact x Exposure x Confidence x Urgency / Effort
 Evidence: local observations (file-based) vs external findings (sourced + tiered)
 Skills used: challenger, web-research, research-for-skills
 Efficacy telemetry (S039): query.py rollup --window 7d → efficacy-rollup.v1 (read-only; 4 metrics; honesty-gated thresholds in Step 2f)
-Codex plugin: /codex:adversarial-review (challenger), /codex:rescue (research)
-Antigravity: timeout 600 agy -p "..." < /dev/null (large file analysis, research, ideation; gemini CLI retired 2026-06-18)
+Codex seats: challenger = seat_model.py argv --role consultant_main --provider codex --use challenger (codex_top_seat; CODEX_SUBSTITUTE -> fresh Claude main-tier agent; CODEX_QUOTA_WAIT -> the block's quota-wait steps, or needs.kind quota-exhausted); research = seat_model.py argv --role consultant_support --provider codex (codex support tier, no --ephemeral, unbudgeted). Plugin commands: ungated convenience, never for a protected seat (not installed here)
+Antigravity: AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null) (--sandbox mandatory, #157; large file analysis, research, ideation; gemini CLI retired 2026-06-18)
 History: .alf/reports/ + .alf/ledger.md
 Executor: bob (via design doc, not for products)
 ```

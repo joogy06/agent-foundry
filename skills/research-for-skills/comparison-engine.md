@@ -2,6 +2,15 @@
 
 Reference for `research-for-skills` Steps 2-4. Describes how to resolve the active skill corpus, build an inventory, and generate comparison shortlists.
 
+## Contents
+
+- Source Resolution
+- Inventory Record
+- Shortlisting
+- Codex skill_comparator
+- Output Format
+- Decision Matrix
+
 ## Source Resolution
 
 Resolve active skills from TWO authoritative sources only:
@@ -30,7 +39,7 @@ Extract a normalized record for each skill:
 | install_path | Full path to SKILL.md |
 | description | YAML frontmatter `description` |
 | word_count | `wc -w SKILL.md` |
-| has_use_when | Description starts with "Use when" |
+| subject_first | Description opens with the subject and does not start with "Use when" |
 | has_antipatterns | Contains "Anti-Pattern" or "Don't \| Why" section |
 | supporting_files | Other files in skill directory |
 | key_terms | Top domain keywords from description + headings |
@@ -65,7 +74,7 @@ grep -rl "${TOPIC_KEYWORDS}" ~/.claude/skills/*/SKILL.md
 Dispatch Codex to independently analyze shortlisted skills:
 
 ```bash
-CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX)
+CODEX_WORK=$(mktemp -d /tmp/codex-XXXXXXXXXX) || exit 1
 cat > "$CODEX_WORK/brief-skill-comparison.md" << 'BRIEF'
 # Skill Comparison Brief
 

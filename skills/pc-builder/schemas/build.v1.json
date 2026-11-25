@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pc-builder/build.v1",
+  "title": "PC build (input to pc_check.py)",
+  "description": "A candidate build made of component records from the caller's database. Every field is optional: a missing field makes the checks that need it report WARN 'cannot check' (and, under --final, a missing input to a HARD check makes the result incomplete, exit 3). Unknown fields are ignored in check mode and REJECTED in --final mode: project DB rows onto this schema. Numbers must be finite. Specs only; prices appear only in the optional pricing block, from the caller's database at runtime.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "build.v1"
+      ]
+    },
+    "cpu": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model name as stored, e.g. 'AMD Ryzen 7 9800X3D'."
+        },
+        "family": {
+          "type": "string",
+          "description": "CPU generation. Canonical slugs are listed in x-canonical-values; human forms such as 'Ryzen 9000', 'AMD Ryzen 9000 Series', 'Core Ultra 200S', '14th Gen Core' or 'Core i5 14th gen' are normalised for lookup. When absent, it is derived from cpu.model (e.g. 'Ryzen 5 9600X' -> ryzen-9000, 'i5-14600KF' -> core-14). A value that resolves to no slug makes the rules that need it 'cannot check' (incomplete under --final); it is never guessed.",
+          "x-canonical-values": [
+            "ryzen-1000",
+            "ryzen-2000",
+            "ryzen-3000",
+            "ryzen-5000",
+            "ryzen-7000",
+            "ryzen-8000g",
+            "ryzen-9000",
+            "core-12",
+            "core-13",
+            "core-14",
+            "core-ultra-200s",
+            "core-ultra-200s-plus"
+          ],
+          "x-accepted-aliases": {
+            "ryzen-1000": [
+              "Ryzen 1000",
+              "AMD Ryzen 1000 Series"
+            ],
+            "ryzen-2000": [
+              "Ryzen 2000",
+              "AMD Ryzen 2000 Series"
+            ],
+            "ryzen-3000": [
+              "Ryzen 3000",
+              "AMD Ryzen 3000 Series"
+            ],
+            "ryzen-5000": [
+              "Ryzen 5000",
+              "AMD Ryzen 5000 Series"
+            ],
+            "ryzen-7000": [
+              "Ryzen 7000",
+              "AMD Ryzen 7000 Series"
+            ],
+            "ryzen-8000g": [
+              "Ryzen 8000G",
+              "AMD Ryzen 8000G Series"
+            ],
+            "ryzen-9000": [
+              "Ryzen 9000",
+              "AMD Ryzen 9000 Series"
+            ],
+            "core-12": [
+              "12th Gen Core",
+              "Intel 12th Gen Core",
+              "Core i5 12th gen"
+            ],
+            "core-13": [
+              "13th Gen Core",
+              "Intel 13th Gen Core",
+              "Core i7 13th gen"
+            ],
+            "core-14": [
+              "14th Gen Core",
+              "Intel 14th Gen Core",
+              "Core i5 14th gen"
+            ],
+            "core-ultra-200s": [
+              "Core Ultra 200S",
+              "Intel Core Ultra 200S"
+            ],
+            "core-ultra-200s-plus": [
+              "Core Ultra 200S Plus",
+              "Intel Core Ultra 200S Plus"
+            ]
+          }
+        },
+        "socket": {
+          "type": "string",
+          "description": "Socket, e.g. AM5. Values outside x-canonical-values are accepted and reported as NOT_IN_RULES_DATA (never mapped to a known socket).",
+          "x-canonical-values": [
+            "AM4",
+            "AM5",
+            "LGA1700",
+            "LGA1851"
+          ]
+        },
+        "ppt_w": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Sustained power limit (AMD PPT / Intel max turbo power), watts."
+        },
+        "cores": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unlocked": {
+          "type": "boolean",
+          "description": "K/X-class unlocked multiplier."
+        },
+        "box_cooler": {
+          "type": "boolean",
+          "description": "Ships with a cooler in the box."
+        },
+        "igpu": {
+          "type": "boolean"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "entry",
+            "mainstream",
+            "upper",
+            "enthusiast"
+          ]
+        },
+        "sku": {
+          "type": "string"
+        },
+        "igpu_arch": {
+          "type": "string",
+          "description": "iGPU architecture when it matters for Linux kernel minimums, e.g. xe3 (Panther Lake)."
+        }
+      }
+    },
+    "board": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "socket": {
+          "type": "string",
+          "description": "Socket, e.g. AM5. Values outside x-canonical-values are accepted and reported as NOT_IN_RULES_DATA (never mapped to a known socket).",
+          "x-canonical-values": [
+            "AM4",
+            "AM5",
+            "LGA1700",
+            "LGA1851"
+          ]
+        },
+        "chipset": {
+          "type": "string"
+        },
+        "memory_type": {
+          "type": "string",
+          "enum": [
+            "DDR4",
+            "DDR5"
+          ]
+        },
+        "dimm_slots": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "form_factor": {
+          "type": "string",
+          "enum": [
+            "E-ATX",
+            "ATX",
+            "mATX",
+            "ITX"
+          ]
+        },
+        "gpu_slot_pcie_gen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "bios": {
+          "type": "object",
+          "properties": {
+            "agesa": {
+              "type": "string",
+              "description": "Shipped AGESA version, e.g. 1.2.0.0."
+            },
+            "version": {
+              "type": "string"
+            },
+            "cpu_support_confirmed": {
+              "type": "boolean",
+              "description": "true: the shipped BIOS is confirmed to support this exact CPU; false: known unsupported. Absent: unknown (blocks --final)."
+            },
+            "supported_cpus": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "CPU models the shipped BIOS supports, from the board vendor's support list in the DB."
+            }
+          }
+        },
+        "lane_sharing": {
+          "type": "array",
+          "description": "Board-specific lane sharing, read from the board's data. An empty list means 'none'. Absent means unknown.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "trigger_slot": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string",
+                "enum": [
+                  "gpu_x8",
+                  "sata_disabled",
+                  "other"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sku": {
+          "type": "string"
+        },
+        "display_outputs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rear-panel video outputs usable with an iGPU (0 = none)."
+        }
+      }
+    },
+    "ram": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "DDR4",
+            "DDR5"
+          ]
+        },
+        "modules": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "speed": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "MT/s, e.g. 6000."
+        },
+        "sku": {
+          "type": "string"
+        },
+        "module_capacity_gb": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Capacity of ONE module, GB."
+        }
+      }
+    },
+    "gpu": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "tbp_w": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pcie_gen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "lanes": {
+          "type": "integer",
+          "enum": [
+            1,
+            4,
+            8,
+            16
+          ]
+        },
+        "vram_gb": {
+          "type": "number",
+          "minimum": 0
+        },
+        "length_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "slots": {
+          "type": "number",
+          "minimum": 1
+        },
+        "power_connector": {
+          "type": "string",
+          "description": "e.g. 12V-2x6, 12VHPWR, 2x8-pin."
+        },
+        "factory_oc": {
+          "type": "boolean"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "entry",
+            "mainstream",
+            "upper",
+            "enthusiast",
+            "workstation-ai"
+          ]
+        },
+        "sku": {
+          "type": "string"
+        },
+        "min_system_psu_w": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The card maker's minimum system PSU rating (e.g. NVIDIA: 850 W for an RTX 5080 FE)."
+        },
+        "supported_power_configs": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Power arrangements the card maker documents.",
+          "items": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "native_16pin",
+                  "adapter_8pin",
+                  "direct_8pin"
+                ]
+              },
+              "min_cables": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Independent dedicated PCIe 8-pin cables (adapter_8pin, direct_8pin)."
+              },
+              "min_cable_w": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum rating of the native 16-pin cable (native_16pin)."
+              }
+            }
+          }
+        },
+        "vendor": {
+          "type": "string",
+          "enum": [
+            "amd",
+            "nvidia",
+            "intel"
+          ],
+          "description": "Derived from gpu.model when absent."
+        },
+        "arch": {
+          "type": "string",
+          "description": "e.g. rdna4, rdna3, arc-b, blackwell, maxwell, pascal, volta. rdna4 and arc-b are derived from the model when absent."
+        }
+      }
+    },
+    "psu": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "rated_w": {
+          "type": "number",
+          "minimum": 0
+        },
+        "atx_version": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?$",
+          "description": "e.g. 2.52, 3.0, 3.1."
+        },
+        "native_12v2x6": {
+          "type": "boolean"
+        },
+        "cybenetics_eta": {
+          "type": "string",
+          "enum": [
+            "none",
+            "Bronze",
+            "Silver",
+            "Gold",
+            "Platinum",
+            "Titanium",
+            "Diamond"
+          ]
+        },
+        "spl_tier": {
+          "type": "string",
+          "enum": [
+            "A+",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F"
+          ]
+        },
+        "cultists_tier": {
+          "type": "string",
+          "description": "Ignored: the list is stale. Presence raises a WARN."
+        },
+        "form_factor": {
+          "type": "string",
+          "enum": [
+            "ATX",
+            "SFX",
+            "SFX-L"
+          ]
+        },
+        "sku": {
+          "type": "string"
+        },
+        "native_12v2x6_cable_w": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rating of the native 12V-2x6 cable, e.g. 600."
+        },
+        "pcie_8pin_cables": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Independent dedicated PCIe 8-pin cables the unit provides."
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "board_form_factors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "E-ATX",
+              "ATX",
+              "mATX",
+              "ITX"
+            ]
+          }
+        },
+        "psu_form_factors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ATX",
+              "SFX",
+              "SFX-L"
+            ]
+          }
+        },
+        "gpu_max_length_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gpu_max_slots": {
+          "type": "number",
+          "minimum": 1
+        },
+        "cpu_cooler_max_height_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "radiator_mm_supported": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "front": {
+          "type": "string",
+          "enum": [
+            "mesh",
+            "glass",
+            "solid",
+            "other"
+          ]
+        },
+        "sku": {
+          "type": "string"
+        }
+      }
+    },
+    "cooler": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "air",
+            "aio",
+            "box"
+          ]
+        },
+        "class": {
+          "type": "string",
+          "description": "single_tower, dual_tower, top_dual_tower, aio_240, aio_280, aio_360, aio_420."
+        },
+        "height_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "radiator_mm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sockets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sku": {
+          "type": "string"
+        }
+      }
+    },
+    "storage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "nvme",
+              "sata_ssd",
+              "hdd"
+            ]
+          },
+          "pcie_gen": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "slot": {
+            "type": "string",
+            "description": "Board slot label, e.g. M2_1."
+          },
+          "capacity_gb": {
+            "type": "number",
+            "minimum": 0
+          },
+          "sku": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "description": "Runtime prices from the caller's database. The skills never hold prices.",
+      "properties": {
+        "total_gbp_inc_vat": {
+          "type": "number",
+          "minimum": 0
+        },
+        "vat_inclusive": {
+          "type": "boolean"
+        },
+        "priced_at": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO date (YYYY-MM-DD) the prices were taken."
+        }
+      }
+    },
+    "psu_catalog_w": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "PSU sizes the caller stocks in quality-qualified units; overrides the default catalog. Empty is rejected."
+    },
+    "workload": {
+      "type": "object",
+      "properties": {
+        "encoding_mode": {
+          "type": "string",
+          "enum": [
+            "cpu",
+            "gpu"
+          ],
+          "description": "Streaming: where video is encoded."
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "1080p",
+            "1440p",
+            "4k"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "os": {
+      "type": "string",
+      "enum": [
+        "windows",
+        "steamos",
+        "linux"
+      ],
+      "description": "Absent means Windows: no OS rules run."
+    },
+    "distro": {
+      "type": "string",
+      "description": "Linux distro and release, e.g. 'Bazzite 44', 'Ubuntu 26.04 LTS'. Unknown values are 'verify', never guessed."
+    },
+    "kernel": {
+      "type": "string",
+      "description": "Linux kernel version, e.g. 6.16. SteamOS defaults to its release kernel."
+    },
+    "mesa": {
+      "type": "string",
+      "description": "Mesa version, e.g. 26.2."
+    },
+    "secure_boot": {
+      "type": "boolean"
+    },
+    "dual_boot": {
+      "type": "boolean"
+    },
+    "branding": {
+      "type": "string",
+      "description": "How the OS is described on the product, e.g. 'SteamOS preinstalled (community-supported install)'."
+    },
+    "valve_licence": {
+      "type": "boolean",
+      "description": "True only with a signed licence from Valve for its marks."
+    },
+    "wifi": {
+      "type": "object",
+      "properties": {
+        "chip": {
+          "type": "string",
+          "description": "e.g. MT7925, AX210, BE200, RTL8922AE, MT7927."
+        }
+      }
+    },
+    "buyer": {
+      "type": "object",
+      "properties": {
+        "games": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Must-have games, checked against the anti-cheat snapshot on Linux/SteamOS."
+        },
+        "wants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "e.g. game_pass, ms_office, vendor_rgb_app, xbox_app, ea_app."
+        }
+      }
+    }
+  }
+}

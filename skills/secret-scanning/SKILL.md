@@ -67,7 +67,7 @@ rules cannot drift apart:
 
 | When | Mechanism |
 |---|---|
-| `git commit` | `hooks/pre-commit` → `secrets-scan.py --staged` (reads the **git index**) |
+| `git commit` | `hooks/pre-commit` → `secrets-scan.py --staged` (reads the **git index**). This is arm 5 of the hook's six arms: frontmatter, portability, REVIEW-BY, skill standard, secrets, intake check (`hooks/pre_commit.py`) |
 | `git push` | `.git/hooks/pre-push` → `secrets-scan.py` (worktree) |
 | Agent cycles | `G_SECRETS_SCAN` in `_meta/gates.py` |
 

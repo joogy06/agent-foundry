@@ -26,6 +26,8 @@ selector worse, not better (`_meta/skill_overlap.py` exists because that degrada
 
 ## 2. Does it add capability? — measure, do not judge
 
+**Scan first.** Before reading or assessing anything that arrives from outside, run `python3 ~/.claude/skills/intake-scan/scripts/intake.py scan <git URL, folder or zip>`: it fetches into quarantine without executing the target and returns one verdict (pass, caution or block); `assess.py` below takes its security findings from the same rule set.
+
 Run the mechanical checks before forming an opinion:
 
 ```bash

@@ -4,6 +4,15 @@ Hooks (lifecycle event handlers in `settings.json`) are a **Claude Code-native**
 
 > The retired Gemini CLI shipped a `gemini hooks migrate` one-shot importer from Claude's `settings.json`. **That mechanism is gone** along with the gemini CLI. Do NOT assume agy has an equivalent.
 
+## Contents
+
+- Tool support matrix
+- Authoring hooks (Claude side)
+- Cross-CLI hook re-entrancy
+- agy hooks — what is NOT verified
+- Common hook events (Claude side)
+- Anti-patterns
+
 ## Tool support matrix
 
 | Tool | Hooks support | Schema |
@@ -61,10 +70,11 @@ if [ "$AI_CLI_CALL_DEPTH" -ge 2 ]; then
   exit 0
 fi
 export AI_CLI_CALL_DEPTH=$((AI_CLI_CALL_DEPTH + 1))
-agy -p "..."
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" || exit 0
+(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)
 ```
 
-Notes on the `agy` call: no `-m`/`--model` flag, no `GOOGLE_CLOUD_PROJECT=`/`GEMINI_API_KEY=` env prefix (agy authenticates via its own account), and output is plain text on stdout — parse text, not JSON.
+Notes on the `agy` call: `--model` is pinned through `seat_model` (no `-m` short form exists, and an unpinned call rides the account default); every flag goes before `-p`, prompt last; `--sandbox --mode plan` from an empty cwd keeps it advisory; stdin is closed (`< /dev/null`) or the call hangs in a hook's non-TTY shell; no `GOOGLE_CLOUD_PROJECT=`/`GEMINI_API_KEY=` env prefix (agy authenticates via its own account); output is plain text on stdout — parse text, not JSON.
 
 Convention only — neither tool enforces this. See `challenger-concerns.md`.
 
@@ -99,5 +109,5 @@ These are Claude Code events. Whether agy exposes anything comparable is UNVERIF
 | Assume agy has a hooks system | Unverified. Probe `agy help` before relying on lifecycle hooks. |
 | Inline hook scripts in `settings.json` | Portable hooks reference external scripts |
 | Forget the call-depth guard | Hooks that call other CLIs can recurse infinitely |
-| Pass `-m <model>` or a `GEMINI_API_KEY=` prefix to `agy` in a hook | agy has no model flag and no env-key prefix; both are retired-gemini patterns |
+| Pass `-m <model>` or a `GEMINI_API_KEY=` prefix to `agy` in a hook, or leave it unpinned | agy has no `-m` short form and no env-key prefix (retired-gemini patterns); pin `--model` through `seat_model` instead |
 | Treat Claude hook events as cross-tool | Only Claude's hooks system is verified |

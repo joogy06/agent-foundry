@@ -42,6 +42,13 @@ er = _load("avengers_evidence_run", _SCRIPTS / "evidence_run.py")
 sp = _load("avengers_seat_prompt_ev", _SCRIPTS / "seat_prompt.py")
 convene = _load("avengers_convene_ev", _SCRIPTS / "convene.py")
 
+# #282 H2 (live-HOME tests): the convene REQUEST-path tests build a session plan, which resolves every
+# seat through seat_model and records a TOP into ~/.claude/state/seat-model-tops.json under the process
+# HOME. Every test here runs under an EMPTY temp HOME with a stub `codex` PREPENDED to PATH
+# (conftest.py's `empty_live_home`; a bare PATH would substitute every codex seat). The probes
+# themselves still find python3 / git on the rest of PATH.
+pytestmark = pytest.mark.usefixtures("empty_live_home")
+
 _ROSTER = Path(__file__).resolve().parent.parent / "roster" / "skeptic.yaml"
 
 

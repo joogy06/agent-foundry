@@ -18,6 +18,15 @@ signs a contract map, NEVER marks anything bob-ready. `contract_map_signed` and
 avengers itself starts a build.
 </HARD-RULE>
 
+## Contents
+
+- The four routes (design §8)
+- Caller routing table (design §8)
+- `decision` route
+- `deliverable` route
+- `forge_brief` route — the build path
+- `auto` route (interactive user caller)
+
 ## The four routes (design §8)
 
 | Route | Emits | Destination | User gate |

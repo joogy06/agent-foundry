@@ -8,6 +8,7 @@
       "files": [
         "workflows/README.md",
         "workflows/bob-serial-exec.js",
+        "workflows/bob-stage.js",
         "workflows/design-tournament.js",
         "workflows/ratify-design.js",
         "workflows/alf-sweep.js",

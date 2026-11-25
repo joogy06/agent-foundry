@@ -1,0 +1,81 @@
+{
+  "schema": "split-manifest.v1",
+  "skill": "agent-teams",
+  "adds": [
+    {
+      "lines": [
+        "The formats of `contracts.md`, `deps.md` and `session_control.md`, and the write ownership table (who writes and who reads each coordination file), are in `references/coordination-files.md`. Read it before you create these files.",
+        "The outbox format (team leads write it) and the inbox format (you write it) are in `references/coordination-files.md`. Read it before the first inbox write or outbox read."
+      ],
+      "reason": "#344 WP-5: pointer lines in Step 4 and Step 5 at the old position of the moved coordination file formats; each names references/coordination-files.md and when to read it (audit rule A7)"
+    },
+    {
+      "lines": [
+        "# Agent Teams — coordination file formats",
+        "Read this file at Step 4, before writing `.forge/contracts.md`, `.forge/deps.md` or `.forge/session_control.md`, and at Step 5, before the first inbox write or outbox read. When it is read, return to that step in SKILL.md.",
+        "The `.forge/` directory layout is in SKILL.md, Step 4. The BLOCKED reasons a team lead may write to its outbox, and how each one is routed, are in SKILL.md, Step 6."
+      ],
+      "reason": "#344 WP-5: header of the new reference coordination-files.md: title, when to read it and where to return, and where the directory layout and the BLOCKED routing it relies on live"
+    }
+  ],
+  "span_map": {
+    "note": "#344 WP-5 (JC-3): old SKILL.md line ranges at a8f17a2 -> the file that holds them now. Not read by `conserve`; a record for review.",
+    "spans": [
+      {
+        "old_lines": [
+          1,
+          323
+        ],
+        "file": "SKILL.md",
+        "what": "everything through Step 4's .forge directory layout"
+      },
+      {
+        "old_lines": [
+          325,
+          360
+        ],
+        "file": "references/coordination-files.md",
+        "what": "contracts.md, deps.md and session_control.md formats"
+      },
+      {
+        "old_lines": [
+          362,
+          371
+        ],
+        "file": "references/coordination-files.md",
+        "what": "Write Ownership Rules table"
+      },
+      {
+        "old_lines": [
+          373,
+          421
+        ],
+        "file": "SKILL.md",
+        "what": "concurrency model paragraph, Step 5 with the agent-teams.lead spawn brief"
+      },
+      {
+        "old_lines": [
+          423,
+          451
+        ],
+        "file": "references/coordination-files.md",
+        "what": "Outbox Format, Inbox Format"
+      },
+      {
+        "old_lines": [
+          453,
+          570
+        ],
+        "file": "SKILL.md",
+        "what": "Steps 6 to 8 (the BLOCKED reason enum included), Anti-Patterns, Quick Reference"
+      }
+    ]
+  },
+  "changes": [
+    {
+      "old": "description: Use when forge or bob needs to split work across multiple parallel agent teams — topology selection, team sizing, cross-team dependencies, inbox/outbox coordination, and result aggregation.",
+      "new": "description: \"Parallel agent-team orchestration: topology selection, team sizing, cross-team dependencies, inbox/outbox coordination and result aggregation. Use when forge or bob needs to split work across several agent teams.\"",
+      "reason": "#344 WP-6: the description is rewritten subject first, third person and within its limit (audit rules A4/A5); no body line changes"
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 ---
 name: sample-data-scaffolding
-description: Use during bob's Step 2.5 (once per component, before implementation WPs run) to generate realistic, seeded fixtures for each component in the frozen contract map. Reads inputs declared in progress/contract-map.yaml and produces tests/fixtures/<component>/<input>/<index>.json plus a manifest.yaml with hashes and semantic types used. Requires a bob-issued claim token; heartbeats it; emits transition requests for PLANNED → SCAFFOLDED. Never writes claim files or executes tests — bob owns both.
-disambiguation: bob Step 2.5 — generates seeded FIXTURES for declared component inputs. The tests that consume those fixtures are integration-flow-testing.
+description: "Seeded test fixtures for each component in the frozen contract map, written under tests/fixtures with a hashed manifest. Needs a bob-issued claim and requests PLANNED → SCAFFOLDED; never writes claims or runs tests. Use during bob's Step 2.5."
+metadata:
+  disambiguation: "bob Step 2.5 — generates seeded FIXTURES for declared component inputs. The tests that consume those fixtures are integration-flow-testing."
 ---
 
 # Sample Data Scaffolding
@@ -89,7 +90,7 @@ Do NOT mutate the map. It is frozen.
 ## Step 4: For Each Input — Derive Fixture Strategy
 
 Load the v1 semantic type registry from
-`~/.claude/skills/sample-data-scaffolding/semantic-types.yaml`
+`semantic-types.yaml` (in this skill's directory)
 and the project-local override at `.contract/semantic-types.yaml` if present.
 
 For each input field:
@@ -196,7 +197,7 @@ See Step 4. The rule is: follow the shape declared in the contract map. Never gu
 
 ## Semantic Type Registry (v1 — 18 types, see spec section 7.3.1)
 
-The registry lives at `~/.claude/skills/sample-data-scaffolding/semantic-types.yaml` and is derived from `~/.claude/skills/_meta/gates.py` `V1_SEMANTIC_TYPES` by construction. A parity test (spec section 20 criterion 9 and this skill's test suite) runs on any change — drift fails the build.
+The registry lives at `semantic-types.yaml` in this skill's directory and is derived from `~/.claude/skills/_meta/gates.py` `V1_SEMANTIC_TYPES` by construction. A parity test (spec section 20 criterion 9 and this skill's test suite) runs on any change — drift fails the build.
 
 The 18 types are:
 - Identity: `user_id`, `session_token`, `api_key`

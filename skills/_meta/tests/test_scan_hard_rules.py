@@ -8,6 +8,7 @@ redirected by patching the module's globals from inside a pytest tmpdir.
 """
 from __future__ import annotations
 
+import io
 import json
 import sys
 import unittest
@@ -418,6 +419,54 @@ class NoMissingCase(unittest.TestCase):
             finally:
                 _stop_patches(patches)
             self.assertIn("No hard-rule directives found", out)
+
+
+class GlobalFileValidation(unittest.TestCase):
+    """#318 fix round 1 (item 8): a project pointer file installed at home used to
+    read as "no directives, no action"; now it is reported, in hook mode too."""
+
+    def _run(self, global_text, hook=False):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            global_md = td / "g.md"
+            if global_text is not None:
+                global_md.write_text(global_text, encoding="utf-8")
+            checklist = td / "c.md"
+            checklist.write_text("# checklist\n", encoding="utf-8")
+            patches = _patch_globals(global_md, None, checklist, td / "s.json", cwd=td)
+            try:
+                if hook:
+                    buf = io.StringIO()
+                    with mock.patch.object(sys, "argv", ["scan_hard_rules.py", "--hook"]), \
+                         mock.patch.object(sys, "stdin", io.StringIO("")), \
+                         mock.patch.object(sys, "stdout", buf):
+                        S.main()
+                    return buf.getvalue()
+                return _capture_main_plain()
+            finally:
+                _stop_patches(patches)
+
+    def test_project_pointer_at_home_is_reported(self):
+        text = "# foundry-lab\n\n" + S.PROJECT_POINTER_MARKER + " They live elsewhere.\n"
+        out = self._run(text)
+        self.assertIn("Global CLAUDE.md warning", out)
+        self.assertIn("PROJECT pointer file", out)
+
+    def test_project_pointer_at_home_is_injected_in_hook_mode(self):
+        text = "# foundry-lab\n\n" + S.PROJECT_POINTER_MARKER + "\n"
+        out = self._run(text, hook=True)
+        self.assertIn("PROJECT pointer file", out)
+
+    def test_missing_global_file_is_reported(self):
+        self.assertIn("is missing", self._run(None))
+
+    def test_marker_matches_the_real_project_file(self):
+        repo = Path(__file__).resolve().parents[3]
+        if not (repo / "global" / "CLAUDE.md").is_file():
+            self.skipTest("not running from a foundry-lab checkout")
+        self.assertIn(S.PROJECT_POINTER_MARKER, (repo / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertNotIn(S.PROJECT_POINTER_MARKER, (repo / "global" / "CLAUDE.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -110,7 +110,7 @@ Build the request JSON, send via curl, and parse the response:
 **Step 1: Create request.json**
 
 ```bash
-VB_WORK=$(mktemp -d /tmp/vb-XXXXXXXXXX)
+VB_WORK=$(mktemp -d /tmp/vb-XXXXXXXXXX) || exit 1
 cat << 'EOF' > "$VB_WORK/request.json"
 {
     "contents": [

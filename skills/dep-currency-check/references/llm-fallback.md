@@ -44,7 +44,7 @@ LLM enrichment is purely **report-text decoration** — surfaces the interpretat
 
 ## Mechanics
 
-- **Subprocess**: `codex exec --ephemeral -s read-only` preferred, `agy -p` fallback (Antigravity CLI; plain-text stdout, no model flag, no env prefix — see antigravity-cli skill)
+- **Subprocess**: `codex exec --ephemeral -s read-only` preferred, `agy --sandbox --mode plan --model <pin> -p` fallback (Antigravity CLI; `--sandbox` mandatory for advisory calls per #157; model pinned through `seat_model`; plain-text stdout, no env prefix — see antigravity-cli skill)
 - **Timeout**: 30s hard per fallback call
 - **Captures `served_by`** per cross-cli-deliberation pattern — tier matters
 - **Cache**: verdict cached at `deprecation/<ecosystem>/<package>.json` with 7-day TTL; re-invokes only on notice text change
@@ -53,9 +53,10 @@ LLM enrichment is purely **report-text decoration** — surfaces the interpretat
 
 Per global CLAUDE.md "Antigravity CLI (agy) — host-specific directive", the fallback shells out with:
 ```bash
-agy -p "..." < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan $AGY_MODEL -p "..." < /dev/null)
 ```
-`agy` authenticates itself via the Antigravity account — there is NO API-key env prefix and NO per-call `-m`/`--model` flag (agy exposes one configured model, no tiers). Output is plain text on stdout; the prompt asks for JSON, which the parser extracts. See the `antigravity-cli` skill for the full pattern.
+(`llm_fallback.py` does the same in Python: it resolves the pin with `seat_model.py argv --role consultant_support --provider agy` and skips the agy arm when that fails, never calling agy unpinned.) `agy` authenticates itself via the Antigravity account — there is NO API-key env prefix. `--model` is pinned on every call: only the roster's agy family is allowed, and the account default may be a forbidden one. Output is plain text on stdout; the prompt asks for JSON, which the parser extracts. See the `antigravity-cli` skill for the full pattern.
 
 ## Prompt template (deprecation interpretation)
 

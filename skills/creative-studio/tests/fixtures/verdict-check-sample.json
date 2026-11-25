@@ -1,0 +1,8 @@
+{
+  "schema_version": "studio-verdict-check.v1",
+  "accepted": false,
+  "reasons": [
+    {"code": "winner_ineligible", "at": "variant-2"},
+    {"code": "loser_unaccounted", "at": "variant-1"}
+  ]
+}

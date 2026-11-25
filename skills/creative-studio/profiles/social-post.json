@@ -1,0 +1,106 @@
+{
+  "schema_version": "studio-profile.v1",
+  "name": "social-post",
+  "artefact": "a social media post",
+  "work_kind": "text",
+  "private": false,
+  "max_agents": 12,
+  "borrow_max": 2,
+  "brief": {
+    "required": [
+      "platform",
+      "reader",
+      "action",
+      "proof"
+    ],
+    "optional": [
+      "subject",
+      "link",
+      "media",
+      "pinned",
+      "persona",
+      "notes"
+    ]
+  },
+  "constraints": {
+    "tier": "light",
+    "loads": [
+      "family:social"
+    ],
+    "asks": [
+      "The platform's row: from the platform reference of the skill you loaded, the limit for the text of one post, how a link, a tag, a mention and an emoji are counted, and the date that row was read. Where the row says a figure is not confirmed, write that it is not confirmed and give no figure of your own.",
+      "The reader in the feed: who sees the post, what they already know, and what they were doing a moment before.",
+      "The one action: what the reader should do after reading, in words they could follow without the link.",
+      "The proof: which facts of the brief the post must carry, each written as the brief writes it. Use only facts the brief gives.",
+      "The length band: `brief`, `standard` or `full`, with its two ends in characters worked from the limit above and a margin of a tenth under the limit. Where the limit is not confirmed, write the band as an assumption for the user to confirm.",
+      "Link, tags and mentions: what the link leads to, by name; the most tags and mentions the platform row allows; any name that may be mentioned only with consent.",
+      "Media: whether the post needs an image or a video, what it must show, and what its alternative text must state."
+    ]
+  },
+  "functions": [
+    {
+      "id": "copy",
+      "axis_set": "copy",
+      "output": "post.md",
+      "seats": [
+        {
+          "id": "copy-a",
+          "loads": [
+            "family:copy-plain",
+            "social-post"
+          ],
+          "school_file": "business-writing/references/school-plain.md",
+          "format_file": "social-post/references/platform-formats.md"
+        },
+        {
+          "id": "copy-b",
+          "loads": [
+            "family:copy-voiced",
+            "social-post"
+          ],
+          "school_file": "content-writer/references/school-voiced.md",
+          "format_file": "social-post/references/platform-formats.md"
+        }
+      ]
+    }
+  ],
+  "evidence": {
+    "capture": false,
+    "text_check": {
+      "truth_pack": false,
+      "outline": false,
+      "length": false,
+      "first_screen": false
+    }
+  },
+  "critic": {
+    "reference": "creative-studio/references/text-critic.md",
+    "loads": [
+      "human-voice-writing"
+    ]
+  },
+  "finish": [
+    {
+      "id": "copy-pass",
+      "tier": "medium",
+      "loads": [
+        "human-voice-writing",
+        "social-post"
+      ],
+      "asks": "give the finished post in `final/` a copy pass: remove prose that reads as produced by rote, count the text under `# Post` the way the platform row in `constraints.md` counts it and bring it inside the length band, and fix slips of grammar and spelling, without changing the post's direction contract. Add no fact: a figure, a name, a date or a quotation the brief does not give is written `[FACT NEEDED: what is missing]`."
+    }
+  ],
+  "retries": {
+    "distance_redo": 1,
+    "remake_round": 1
+  },
+  "light": {
+    "drops": [
+      "second_read",
+      "winner_remake",
+      "finish",
+      "remake_round",
+      "distance_redo"
+    ]
+  }
+}

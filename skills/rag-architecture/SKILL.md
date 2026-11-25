@@ -6,6 +6,12 @@ disambiguation: DESIGNING the retrieval system — what to retrieve, how, from w
 
 # RAG architecture
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: rag-model-landscape
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Model names, prices and benchmark positions in this space go stale in
 months — treat every named model below as an example of a class, not a recommendation to copy.

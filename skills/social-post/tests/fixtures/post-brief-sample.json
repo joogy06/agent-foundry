@@ -1,0 +1,10 @@
+{
+  "platform": "LinkedIn",
+  "reader": "Engineers who run a nightly batch and have seen it overrun into the working day.",
+  "action": "Read the write-up of how the batch was cut.",
+  "proof": [
+    "The sample nightly batch went from six hours to two.",
+    "The change was a move from row-by-row writes to bulk loads; no hardware was added."
+  ],
+  "link": "the write-up of the batch work"
+}

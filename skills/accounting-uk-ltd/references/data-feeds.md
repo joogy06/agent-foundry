@@ -1,5 +1,11 @@
 # Data feeds — getting every source into the books
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: uk-books-data-feeds
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **REVIEW-BY: 2027-01-31** · researched 2026-07-29. Access gates and pricing move; re-verify before
 committing to a route.

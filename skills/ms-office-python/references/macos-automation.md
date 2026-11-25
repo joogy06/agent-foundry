@@ -1,5 +1,11 @@
 # macOS: automating Office, and choosing a route that works on both OSes
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: office-macos-automation
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Covers the macOS half of the family's platform story, and the
 cross-platform decision that should usually be made *instead of* platform automation.

@@ -15,6 +15,8 @@ incentive:
 
 voice: "precise; cuts filler; rewrites to concrete nouns and verbs; flags any claim it cannot trace to a source as a claim, not a fact"
 
+seat_weight: main             # S081 revision 4, WP-D3 (D15, plan L11) top-level, never under provider: writing-cv's paired Claude main-tier seat — claude resolves seat_model consultant_main (the Claude main tier, not the support tier). writing-cv is the only profile that seats the wordsmith (verified at WP-D3).
+
 provider:
   affinity: claude            # language seat (design §7 writing-cv); smart-config advisory tier
   fallback_ok: true

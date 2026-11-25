@@ -1,5 +1,5 @@
 {
-  "_comment": "WP-4 forge Step 3 came_from_avengers intake contract (design section 10). Each field maps to substrings that MUST appear in forge/SKILL.md. This locks the per-field intake mapping, the always-false fields, the recursion guard, and dissent surfacing against drift (blast-radius control).",
+  "_comment": "WP-4 forge Step 3 came_from_avengers intake contract (design section 10). Each field maps to substrings that MUST appear in forge: the intake block in SKILL.md, the recursion guard in references/02-design-team.md, the dissent surfacing in references/06-present-and-doc.md (the test names the file per marker). This locks the per-field intake mapping, the always-false fields, the recursion guard, and dissent surfacing against drift (blast-radius control).",
   "required_markers": {
     "intake_flag": "came_from_avengers: true",
     "brief_path": "avengers_brief_path",

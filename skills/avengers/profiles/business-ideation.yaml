@@ -5,41 +5,78 @@
 # NOT ratification ballots. Kill-criteria are REQUIRED on the arbiter output.
 # Closed primitive vocabulary; an unknown primitive is a fail-closed validate
 # error in convene.py. This file is DATA — nothing here is executed.
+#
+# CREATIVITY FLIP (S081 design §4.9, m7, APPROVED by the user 2026-09-14). This is
+# the one profile where the providers are swapped: the architect runs on codex
+# (the codex std tier via seat_model consultant_main, the visionary lead) and the skeptic runs
+# on claude (the Claude main tier via its card's seat_weight: main, the adversary). Before the
+# flip it was skeptic=codex, architect=claude. coding-ratification is NOT flipped
+# and keeps skeptic=codex.
+# TRIP-WIRE: if the user overturns the arbiter's decision in 2 of the first 3
+# flipped sessions, revert the flip (skeptic -> provider codex, effort
+# challenger_floor; architect -> provider claude, effort default; restore
+# wall_clock_s from the floor that results). NO AUTOMATED COUNTER EXISTS: neither
+# convene nor the run record tracks whether the user overturned a decision, so a
+# person has to count these sessions by hand.
 schema: avengers-profile.v1
 family: business-ideation
 description: >
   Explore and choose a business direction under genuine contention. The skeptic
   (adversary) tries to falsify the bet on its own terms; the economist holds the
   unit economics; the operator holds execution reality; the architect holds
-  product coherence. The arbiter returns ONE recommended direction plus a
+  product coherence; the user-advocate (agy) holds the customer's voice. The
+  arbiter returns ONE recommended direction plus a
   mandatory attributed dissent record and >=2 KILL CRITERIA (falsifiable trip-
   wires that would retire the idea).
 
 # --- Roster resolution (refs into roster/<seat_id>.yaml) ---
-# Four member seats. >=1 MUST resolve adversarial_role: true; the arbiter's
+# Five member seats (#368 added the agy user-advocate). >=1 MUST resolve adversarial_role: true; the arbiter's
 # provider MUST differ from every adversarial seat's provider (resolver-enforced).
 seats:
   - ref: skeptic
-    provider: codex
-    effort: xhigh            # pinned challenger floor; NEVER 'high'
+    provider: claude         # FLIP (§4.9): the adversary runs on claude; card seat_weight main -> seat_model consultant_main -> the Claude main tier
+    effort: challenger_floor # seat-class challenger floor; claude has no codex-equivalent floor, so it resolves to 'default' with the anti-sycophancy note
     adversarial_role: true
   - ref: economist
     provider: claude
     effort: default
+    seat_weight: main        # AMENDMENT 3 (D26): the Claude main tier, not the support tier. A declared consultant_support arbiter IS the support tier, and the relaxed rule refuses an arbiter sharing a seat's model — this is what unblocks the declaration below.
   - ref: operator
-    provider: agy
-    effort: default
+    provider: codex          # AMENDMENT 3 (D25) moved this seat from agy to codex; #368 restored agy as an ADDED seat (user-advocate below), so this stays codex. Support weight -> seat_model consultant_support -> the codex support-tier literal (model_roster CODEX_SUPPORT).
+    effort: medium           # the consultant_support codex effort; the support tier @ medium (ceiling 1200)
+    seat_weight: support     # EXPLICIT: a codex seat defaults to the main row (consultant_main, the codex std tier); this is the seat that takes the SUPPORTING model class — NOT the architect's xhigh, which is the main row's effort
   - ref: architect
-    provider: claude
+    provider: codex          # FLIP (§4.9): the visionary lead runs on the codex std tier via seat_model consultant_main (the std literal since the astra reserve, roster rev 4)
+    effort: xhigh            # raw tier = the §4.2 consultant_main codex effort (S081 I22); NOT challenger_floor, because the architect is not a challenger
+  - ref: user-advocate
+    provider: agy            # #368: agy (Gemini 4 Argon) returns as an ADDED deliberation seat — the customer's voice, the one lens this profile lacked. Pattern 1 (--sandbox, inline brief, < /dev/null).
     effort: default
+    seat_weight: main        # #368: a deliberating seat -> seat_model consultant_main -> agy -high unsized; a sized convene serves model_roster.AGY_LEVEL_BY_SIZE (light -low, medium -medium, complex -high)
+
+# D23 (design §3.4, a user decision): this profile's arbiter is THE CLAUDE SUPPORT TIER IN A SEPARATE SESSION, never agy (D23 named the agy family of its day; the agy family is now roster data).
+# TOP-LEVEL key: it relaxes the provider-exclusion rule for this profile to "the arbiter's MODEL differs from
+# every seat's model, and it runs in its own session" (convene.declared_arbiter / resolve_arbiter).
+arbiter_independence: separate-session
 
 arbiter:
-  # Resolver picks a can_arbitrate seat whose provider != every adversarial
-  # seat's provider. With skeptic=codex(adversarial), the arbiter is economist/
-  # architect (claude) or operator (agy). Pinned preference below; resolver validates.
-  prefer: architect
-  provider_must_not_equal_adversarial: true
-  effort_on_codex: max        # defensive; a codex arbiter would pin 'max' (never happens while codex is the adversary)
+  # DECLARED arbiter (S081 revision 4, WP-D3; D23 + AMENDMENT 3 D26). convene.resolve_arbiter HONOURS it
+  # because arbiter_independence is separate-session: claude via the protected seat_model consultant_support
+  # row -> the Claude support tier, timeout 600, run as a fresh session that never held a member seat's turns.
+  # WHY THIS COULD NOT BE DECLARED BEFORE AMENDMENT 3, recorded because the stage halted on it: the economist
+  # seat resolved the support tier (claude at support weight; then opus), and the relaxed rule refuses an arbiter sharing a seat's
+  # model. D26 moved the economist to the Claude main tier (seat_weight: main above), so the support tier is now no
+  # seat's model — skeptic and economist on the main tier, operator the codex support tier, architect the codex std tier, user-advocate agy (#368) — and the rule keeps its
+  # full teeth rather than being narrowed to fit. A shared model still fails CLOSED.
+  # The agy arbiter this block used to select went with the agy seat (D25), and #368's agy seat does not bring it back (D23): claude holds the adversary, so
+  # the provider-exclusion rule would have excluded it, and context independence now stands in for provider
+  # independence with the style-recognition residual still flagged (path fallback).
+  # THE ARBITER'S OBLIGATIONS (D23): it must cite evidence for each ruling; it may abstain; and it must send
+  # unresolved material disputes to the user. The plan's arbiter object carries them to the chair.
+  provider: claude
+  role: consultant_support
+  prefer: architect                          # INERT under v2: not read by convene
+  provider_must_not_equal_adversarial: true  # INERT under v2, and superseded for this profile by D23's declared arbiter (labelled history)
+  effort_on_codex: max        # consumed ONLY by ratification profiles; this profile is generative, so a codex arbiter would take 'xhigh' (moot while the declared arbiter is claude)
 
 # --- Phase parameters (design §4) ---
 phases:
@@ -80,9 +117,23 @@ memory:
   writeback: on               # gated, default-reject per item
 
 # --- Budgets (design §4/§7) ---
-# Full profile: 4 seats, 1 cycle, ~10-12 calls. Explicit opt-in with the honest
+# Full profile: 5 seats, 1 cycle. Explicit opt-in with the honest
 # estimate shown first (design §7 default-small shape).
 budgets:
-  max_seat_calls: 13
-  wall_clock_s: 1200
+  # max_seat_calls = N diverge + N x max_cycles cross-exam + N converge + 1 arbiter (convene.estimate's
+  # rough plan) = 5 + 5 + 5 + 1 = 16, so no phase is truncated by the cap. #368 re-derived it 13 -> 16 for the
+  # added agy seat.
+  max_seat_calls: 16
+  # wall_clock_s is set explicitly to the convene.wall_clock_budget floor (S081 I12, plan L2), re-derived by
+  # WP-D3 AFTER the D15 flip, the D23 arbiter and AMENDMENT 3's composition settled, under the D24 raised
+  # codex caps, so the shipped profile does not record a raise note on every run. Floor = arbiter timeout +
+  # 2 x the slowest external (codex/agy) member seat = declared arbiter claude consultant_support (the Claude support tier) 600
+  # + 2 x 2400 (the SLOWEST external is the codex architect at xhigh: codex_model.timeout_for -> 2400 for
+  # the codex std and support tiers alike; the codex operator at consultant_support/medium is 1200 and the #368 agy
+  # user-advocate 600, and the formula takes the slowest, not the sum) = 5400. #368 RE-DERIVED it: the added agy seat
+  # (600) is not the slowest, so the value did not move. It was 1800 under the retired agy arbiter (600) and agy
+  # operator (600) before D24 raised the codex ceiling. Re-derive it if a seat's provider or effort, the
+  # arbiter, or a role timeout changes. A value below the floor is raised at plan build with a note, so a
+  # legal call is never truncated.
+  wall_clock_s: 5400
   max_cycles: 1

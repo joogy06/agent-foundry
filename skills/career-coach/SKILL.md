@@ -220,7 +220,7 @@ Read these as needed during coaching:
 - `~/.claude/skills/career-coach/references/corporate-ladders.md` — banking hierarchies, promotion mechanics, compensation bands, AI career paths
 - `~/.claude/skills/career-coach/references/coaching-frameworks.md` — all frameworks mapped to sub-skills
 - `~/.claude/skills/career-coach/references/ai-tells-catalog.md` — anti-AI-slop catalog + voice-capture protocol (consumed by writer / storytelling / positioning / human-voice-writing)
-- `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md` — the single dated home for all volatile market statistics (REVIEW-BY 2027-01)
+- `~/.claude/skills/career-coach/references/market-snapshot-2026-06.md` — the single dated home for all volatile market statistics (REVIEW-BY 2027-01) <!-- review-by: mention -->
 
 ---
 

@@ -1,0 +1,141 @@
+{
+  "schema": "intake-scan-request-sample.v1",
+  "note": "Benign shape sample of what the command takes: an argv after `intake.py`. Targets, ids and paths are placeholders; tests build real targets in a temp directory and pass temp directories for --root, --quarantine-root and --tool-root.",
+  "requests": [
+    {
+      "argv": [
+        "scan",
+        "downloads/sample-skill"
+      ],
+      "does": "scan a folder as a skill"
+    },
+    {
+      "argv": [
+        "scan",
+        "downloads/sample-repo.zip",
+        "--kind",
+        "repo"
+      ],
+      "does": "scan a zip as a repo"
+    },
+    {
+      "argv": [
+        "scan",
+        "https://example.invalid/owner/sample-skill.git",
+        "--ref",
+        "v1.0.0"
+      ],
+      "does": "scan a git URL at a ref"
+    },
+    {
+      "argv": [
+        "scan",
+        "downloads/sample-skill",
+        "--offline"
+      ],
+      "does": "scan with no network: the advisory lookup is a named gap"
+    },
+    {
+      "argv": [
+        "scan",
+        "downloads/sample-skill",
+        "--isolation",
+        "none"
+      ],
+      "does": "act as a host with no sandbox: third-party scanners are not run"
+    },
+    {
+      "argv": [
+        "scan",
+        "--local",
+        "skills/sample-skill"
+      ],
+      "does": "scan a unit of this repo and write its ledger entry"
+    },
+    {
+      "argv": [
+        "adopt",
+        "q20261011T120000Z-0a0b0c0d",
+        "--to",
+        "skills/sample-skill"
+      ],
+      "does": "take a scanned bundle into the repo"
+    },
+    {
+      "argv": [
+        "triage",
+        "q20261011T120000Z-0a0b0c0d",
+        "--accept",
+        "--reason",
+        "caution findings read and accepted"
+      ],
+      "does": "sign off a caution record"
+    },
+    {
+      "argv": [
+        "triage",
+        "q20261011T120000Z-0a0b0c0d",
+        "--reject",
+        "--reason",
+        "confirmed malicious on review"
+      ],
+      "does": "mark a record block for good"
+    },
+    {
+      "argv": [
+        "override",
+        "q20261011T120000Z-0a0b0c0d",
+        "--reason",
+        "reviewed by hand; the hit is a documented example"
+      ],
+      "does": "let one block record through"
+    },
+    {
+      "argv": [
+        "except",
+        "H9",
+        "skills/sample-skill/references/keys.md",
+        "--reason",
+        "documented example value, not a live credential"
+      ],
+      "does": "one exception for one rule on one file"
+    },
+    {
+      "argv": [
+        "baseline"
+      ],
+      "does": "scan every unit of this repo from tracked content, report-only"
+    },
+    {
+      "argv": [
+        "verify"
+      ],
+      "does": "the block rules and the ledger over the whole tree"
+    },
+    {
+      "argv": [
+        "status"
+      ],
+      "does": "what is in force and what the quarantine holds"
+    },
+    {
+      "argv": [
+        "toolchain",
+        "check"
+      ],
+      "does": "check the pinned scanners"
+    },
+    {
+      "argv": [
+        "toolchain",
+        "install"
+      ],
+      "does": "build the pinned scanners"
+    }
+  ],
+  "common_options": [
+    "--root DIR",
+    "--quarantine-root DIR",
+    "--tool-root DIR"
+  ]
+}

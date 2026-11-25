@@ -31,6 +31,7 @@ side, invoked by bob from an approved recipe, never by the detection bus.)
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -65,7 +66,8 @@ _BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
-VALID_KINDS = {"tool_version", "date_review", "retirement", "model_id", "status_snapshot"}
+VALID_KINDS = {"tool_version", "date_review", "retirement", "model_id", "status_snapshot",
+               "external_fact"}
 VALID_VOLATILITY = {"high", "medium", "low"}
 
 # YELLOW lead time (days) by volatility (§6.5 / §6.2: high 60, else 30).
@@ -223,6 +225,19 @@ def lint_block(parsed: dict) -> list[str]:
         elif kind == "model_id":
             if not a.get("subject"):
                 warns.append(f"anchor[{idx}] model_id missing 'subject'")
+        elif kind == "external_fact":
+            # A fact owned by someone else (vendor pricing, plan limits, licence
+            # terms, API deprecations). Unlike every other kind, the thing that
+            # rots is NOT in a file we can read — so re-verification needs an
+            # authoritative source and a date it was last confirmed against it.
+            # Without source_url the anchor says "check something, somewhere",
+            # which is the prose-reminder failure this kind exists to replace.
+            for field in ("subject", "source_url", "review_by"):
+                if not a.get(field):
+                    warns.append(f"anchor[{idx}] external_fact missing {field!r}")
+            if not a.get("verified_on"):
+                warns.append(f"anchor[{idx}] external_fact missing 'verified_on' "
+                             "(a claim with no last-verified date cannot be aged)")
     return warns
 
 
@@ -365,6 +380,38 @@ def cmd_restamp(args) -> int:
 
 # ── reindex ──────────────────────────────────────────────────────────────────
 
+def walk_files(root: Path, patterns, skip_parts=frozenset()) -> list[Path]:
+    """Every file under `root` matching one of the fnmatch `patterns`, sorted, following
+    directory symlinks. `Path.rglob` does not follow them here (Python 3.13), and a link-mode
+    install makes each skill a symlink, so rglob saw almost nothing. A directory already
+    entered is skipped by its real path, so a link cycle ends and a target reached twice
+    is scanned once.
+
+    `skip_parts` holds the caller's exclusions: a directory name, or `parent/name` for a pair.
+    They are pruned BEFORE a real path is registered, so an excluded alias of a live skill
+    cannot claim its real path and hide it. The root itself is never pruned, so a fixture tree
+    passed AS the root is still scanned."""
+    found: list[Path] = []
+    seen: set[str] = set()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        real = os.path.realpath(dirpath)
+        if real in seen:
+            dirnames[:] = []
+            continue
+        seen.add(real)
+        here = os.path.basename(dirpath) if os.path.normpath(dirpath) != os.path.normpath(root) else ""
+        dirnames[:] = sorted(d for d in dirnames if d not in skip_parts and f"{here}/{d}" not in skip_parts)
+        for name in filenames:
+            if any(fnmatch.fnmatch(name, pat) for pat in patterns):
+                found.append(Path(dirpath) / name)
+    return sorted(found)
+
+
+#: Trees that hold examples or leftovers, not live anchors. Judged on the path relative to the
+#: scanned root, so a fixture tree passed AS the root is still scanned (golden tests rely on it).
+_INDEX_SKIP_PARTS = {"tests", "fixtures", "archive", "__pycache__", ".pytest_cache", "node_modules"}
+
+
 def _iter_md_files(root: Path):
     """Yield the FRESHNESS-bearing files under a root using the per-root
     extension set (default *.md; *.md + *.js for any 'workflows' root). Keyed by
@@ -375,8 +422,23 @@ def _iter_md_files(root: Path):
     exts = ROOT_EXTENSIONS.get(str(root))
     if exts is None:
         exts = ("*.md", "*.js") if root.name == "workflows" else ("*.md",)
-    for pat in exts:
-        yield from root.rglob(pat)
+    yield from walk_files(root, exts, _INDEX_SKIP_PARTS)
+
+
+DEADLINE_KINDS = ("date_review", "retirement", "external_fact")
+
+
+def anchor_deadline(anchor: dict) -> str | None:
+    """The deadline date build_index registers for one anchor, or None.
+
+    The ONE definition of "effective deadline" (#281): review_by_lint.py calls this too,
+    so the lint can never accept a date the index would not register. `review_by` wins
+    over `retire_on` when an anchor carries both.
+    """
+    if anchor.get("kind") not in DEADLINE_KINDS:
+        return None
+    deadline = anchor.get("review_by") or anchor.get("retire_on")
+    return str(deadline) if deadline else None
 
 
 def build_index(skills_root: Path = SKILLS_ROOT, agents_root: Path = AGENTS_ROOT,
@@ -404,15 +466,23 @@ def build_index(skills_root: Path = SKILLS_ROOT, agents_root: Path = AGENTS_ROOT
                             by_tool.setdefault(subj, [])
                             if rel not in by_tool[subj]:
                                 by_tool[subj].append(rel)
-                    if kind in ("date_review", "retirement"):
-                        deadline = a.get("review_by") or a.get("retire_on")
-                        if deadline:
-                            by_deadline.append({
-                                "target": rel,
-                                "date": str(deadline),
-                                "kind": kind,
-                                "volatility": vol or "medium",
-                            })
+                    deadline = anchor_deadline(a)
+                    if deadline is not None:
+                        entry = {
+                            "target": rel,
+                            "date": str(deadline),
+                            "kind": kind,
+                            "volatility": vol or "medium",
+                        }
+                        if kind == "external_fact":
+                            # `target` is the register file that DECLARES the
+                            # fact; it is not where the fact lives. Carry the
+                            # subject and the authoritative source so a due
+                            # nudge is actionable without opening the file.
+                            for extra in ("subject", "source_url", "verified_on"):
+                                if a.get(extra):
+                                    entry[extra] = str(a[extra])
+                        by_deadline.append(entry)
     for k in by_tool:
         by_tool[k].sort()
     by_deadline.sort(key=lambda d: (d["date"], d["target"]))
@@ -447,7 +517,17 @@ _ROW_SENTINEL = "<!-- freshness-deadline:{key} -->"
 
 
 def _deadline_key(target: str) -> str:
-    # Stable, filesystem-name-free key from the target path's basename + parent.
+    # Stable key: the path under the skills root, so two skills' references/x.md stay apart.
+    # A top-level SKILL.md keeps its old `<skill>/SKILL.md` form. Outside that root: parent + name.
+    p = Path(target)
+    try:
+        return p.relative_to(SKILLS_ROOT).as_posix()
+    except ValueError:
+        return f"{p.parent.name}/{p.name}"
+
+
+def _old_deadline_key(target: str) -> str:
+    """The key rows carried before `_deadline_key` used the path under the skills root."""
     p = Path(target)
     return f"{p.parent.name}/{p.name}"
 
@@ -501,8 +581,15 @@ def upsert_tasks_md(tasks_path: Path, deadlines: list[dict]) -> tuple[int, int]:
         row = _format_deadline_row(d, sentinel)
         # Find an existing managed row by its sentinel and replace the WHOLE line.
         pat = re.compile(r"^.*" + re.escape(sentinel) + r".*$", re.MULTILINE)
+        # A row written before keys held the path under the skills root carries `parent/name`,
+        # which two skills can share, so it is matched by its full target path as well.
+        old = _ROW_SENTINEL.format(key=_old_deadline_key(d["target"]))
+        old_pat = re.compile(r"^.*`" + re.escape(d["target"]) + r"`.*" + re.escape(old) + r".*$", re.MULTILINE)
         if pat.search(text):
-            text = pat.sub(row, text)
+            text = pat.sub(lambda _m: row, text)
+            updated += 1
+        elif old != sentinel and old_pat.search(text):
+            text = old_pat.sub(lambda _m: row, text)
             updated += 1
         else:
             if not text.endswith("\n"):
@@ -535,11 +622,32 @@ def cmd_check_deadlines(args) -> int:
     today = date.fromisoformat(args.today) if args.today else date.today()
     due = deadlines_within_horizon(index, today, args.horizon)
     if not due:
-        print(f"freshness check-deadlines: no deadlines within {args.horizon}d of {today}")
+        # "Nothing due" must never read the same as "nothing tracked" (#281): 22 prose-only
+        # REVIEW-BY markers sat outside the index while this line said the equivalent of
+        # "all clear". Say how many deadlines the answer was computed over.
+        registered = len(index.get("by_deadline", []))
+        if registered == 0:
+            # Say what was measured -- the INDEX -- not what exists on disk: a stale or
+            # partial index can hold zero deadlines while anchors sit in the tree.
+            print("freshness check-deadlines: NO deadlines indexed -- the index holds no "
+                  "date_review/retirement/external_fact deadline, so nothing is being "
+                  "tracked (this is not an all-clear; run `freshness.py reindex` if anchors "
+                  "should exist)")
+        else:
+            print(f"freshness check-deadlines: {registered} deadline(s) registered; "
+                  f"none within {args.horizon}d of {today}")
         return 0
     if args.dry_run or not args.tasks:
         for d in due:
-            print(f"  DUE {d['due_date']} ({d['days_remaining']:+d}d) {d['target']} [{d['kind']}]")
+            # For an external_fact the target is only the register file; the
+            # actionable part is the subject and the source to re-verify against.
+            # Printing the path alone would send the reader to a file to look up
+            # a URL the index already holds.
+            label = d.get("subject") or d["target"]
+            print(f"  DUE {d['due_date']} ({d['days_remaining']:+d}d) {label} [{d['kind']}]")
+            if d.get("source_url"):
+                seen = f", last verified {d['verified_on']}" if d.get("verified_on") else ""
+                print(f"      re-verify against {d['source_url']}{seen}")
         if not args.tasks:
             print("freshness check-deadlines: --tasks not given; dry listing only")
         return 0

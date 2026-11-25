@@ -184,7 +184,7 @@ Auto-detect available analyses from mapped columns, present options, let user ch
 **Output formats:**
 
 - **Markdown tables** (always produced) -- used in reports, status updates, chat responses
-- **Charts** (if matplotlib available) -- read `references/chart-patterns.md` for standard financial charts. Create session temp dir: `PF_WORK=$(mktemp -d /tmp/pf-XXXXXXXXXX)`. Save to `${PF_WORK}/charts/`, or `<project>/.project-finance/charts/` if project context available
+- **Charts** (if matplotlib available) -- read `references/chart-patterns.md` for standard financial charts. Create session temp dir: `PF_WORK=$(mktemp -d /tmp/pf-XXXXXXXXXX) || exit 1`. Save to `${PF_WORK}/charts/`, or `<project>/.project-finance/charts/` if project context available
 - **CSV export** (if requested) -- for users who want to take data into Excel
 - **Slide-ready data** (if invoked via `presentation-builder` chain) -- follow `presentation-datavis` patterns
 

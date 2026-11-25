@@ -6,7 +6,9 @@ the skill. Use these integration recipes for layered defense.
 
 ## Recipe 1: CLAUDE.md baseline (always-on)
 
-Add to `~/.claude/CLAUDE.md`:
+Add this section to your global instructions. If they are installed from a foundry-lab checkout, edit
+`global/CLAUDE.md` there and run `install.py`: `~/.claude/CLAUDE.md` is installer output, and a direct
+edit is unbacked state the next install refreshes or refuses to touch. Otherwise edit `~/.claude/CLAUDE.md`:
 
 ```markdown
 ## Anti-drift discipline

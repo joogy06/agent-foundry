@@ -1,0 +1,31 @@
+{
+  "schema": "intake-toolchain-pins.v1",
+  "note": "Pinned third-party scanners for intake scanning. One venv per tool, built on the system interpreter from the hash-locked file named here. A tool with a git source is built from that exact commit after its dependencies, by the build backend locked (with hashes) in its build lock: nothing is resolved from the index at build time. Change a pin and its locks together, then run `toolchain install`.",
+  "tools": {
+    "bandit": {
+      "distribution": "bandit",
+      "version": "1.9.4",
+      "source": {
+        "type": "index"
+      },
+      "lock": "bandit.lock.txt",
+      "lock_sha256": "f48f1ec86894178b8a92cfab29d42e4bab3d9384a5afa55b80a7f9cd37aac5d1"
+    },
+    "skillspector": {
+      "distribution": "skillspector",
+      "version": "2.12.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/NVIDIA/SkillSpector",
+        "commit": "c7958a3268d9498644b22edb75d0f051bbc8cbfc"
+      },
+      "lock": "skillspector.lock.txt",
+      "lock_sha256": "bd47c7fdff8b2e62a23b4500389d56845900f5c358e8f0e68d870a791d7acd8e",
+      "build": {
+        "backend": "hatchling",
+        "lock": "skillspector-build.lock.txt",
+        "lock_sha256": "fcec818bd78a816aec997d514bbbe02f36b87b0aef40b49c3f97f0d1a55240a8"
+      }
+    }
+  }
+}

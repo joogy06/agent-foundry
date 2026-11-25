@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:eab548d20897bbe7e66df97513620baff4a901d17a7fb7b72a1467d5c969569b",
+  "generated_by": "sample-data-scaffolding",
+  "note": "The input and the output of this component are kind opaque in the contract map, so the fixtures are written as-is, not generated.",
+  "components": {
+    "social-post": {
+      "inputs": {
+        "post_brief": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/social-post/tests/fixtures/post-brief-sample.json",
+              "hash": "sha256:38a97d261385237cc728abb5c9139b070fc9f3494114efe713ba4843ac8a8cc3"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "post_doctrine": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/social-post/tests/fixtures/post-doctrine-sample.md",
+              "hash": "sha256:27347c656e8bde77b2b74c07998a2e4b35940e8c2ca77c5bdd7063aacfde9107"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

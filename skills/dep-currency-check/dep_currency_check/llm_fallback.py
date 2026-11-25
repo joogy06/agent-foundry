@@ -18,7 +18,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional
 
 LLM_TIMEOUT_S = 30.0
@@ -84,21 +87,47 @@ def _try_codex(prompt: str) -> Optional[tuple]:
     return (proc.stdout, "codex")
 
 
+#: skills/_meta/seat_model.py, beside this skill both in the repo and in ~/.claude/skills.
+SEAT_MODEL_PY = Path(__file__).resolve().parents[2] / "_meta" / "seat_model.py"
+
+
+def _agy_model_pin() -> Optional[list]:
+    """`["--model", <slug>]` from `seat_model.py argv --role consultant_support --provider agy`,
+    or None when it cannot be resolved (the agy fallback is then skipped, never run unpinned)."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(SEAT_MODEL_PY), "argv", "--role", "consultant_support", "--provider", "agy"],
+            capture_output=True, text=True, timeout=LLM_TIMEOUT_S, check=False, stdin=subprocess.DEVNULL,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    pin = proc.stdout.split()
+    if proc.returncode != 0 or len(pin) != 2 or pin[0] != "--model":
+        return None
+    return pin
+
+
 def _try_agy(prompt: str) -> Optional[tuple]:
     """Returns (response_text, model_id) or None.
 
-    agy (Antigravity CLI) authenticates itself via the Antigravity account —
-    no API-key env prefix and no per-call model flag. Output is plain text on
-    stdout; the prompt asks for JSON, which _parse_verdict_json extracts.
+    agy (Antigravity CLI) authenticates itself via the Antigravity account — no
+    API-key env prefix. Host agy rules: `--sandbox --mode plan` from an empty cwd
+    (advisory call, #366), the model pinned through seat_model, every flag before
+    `-p`, stdin closed. Output is plain text on stdout; the prompt asks for JSON,
+    which _parse_verdict_json extracts.
     """
     if not _agy_available():
         return None
+    pin = _agy_model_pin()
+    if pin is None:
+        return None
     try:
-        proc = subprocess.run(
-            ["agy", "-p", prompt],
-            capture_output=True, text=True,
-            timeout=LLM_TIMEOUT_S, check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="agy-") as empty_cwd:
+            proc = subprocess.run(
+                ["agy", "--sandbox", "--mode", "plan", *pin, "-p", prompt],
+                capture_output=True, text=True, stdin=subprocess.DEVNULL, cwd=empty_cwd,
+                timeout=LLM_TIMEOUT_S, check=False,
+            )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     if proc.returncode != 0:

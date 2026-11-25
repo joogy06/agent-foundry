@@ -1,0 +1,49 @@
+{
+  "schema": "intake-ledger-request-sample.v1",
+  "note": "Benign shape samples of the requests the ledger takes. Each maps to one library function; ids, digests and paths are placeholders.",
+  "requests": [
+    {
+      "op": "adopt",
+      "record_id": "q20261011T120000Z-0a0b0c0d",
+      "to": "skills/sample-skill"
+    },
+    {
+      "op": "override",
+      "record_id": "q20261011T120000Z-0a0b0c0d",
+      "reason": "reviewed by hand; the hit is a documented example"
+    },
+    {
+      "op": "triage",
+      "record_id": "q20261011T120000Z-0a0b0c0d",
+      "decision": "accept",
+      "reason": "caution findings read and accepted"
+    },
+    {
+      "op": "triage",
+      "record_id": "q20261011T120000Z-0a0b0c0d",
+      "decision": "reject",
+      "reason": "confirmed malicious on review"
+    },
+    {
+      "op": "except",
+      "rule": "H9",
+      "path": "skills/sample-skill/references/keys.md",
+      "reason": "documented example value, not a live credential"
+    },
+    {
+      "op": "lookup",
+      "path": "skills/sample-skill/SKILL.md"
+    }
+  ],
+  "override_log_line": {
+    "action": "override",
+    "record_id": "q20261011T120000Z-0a0b0c0d",
+    "tree_digest": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+    "rule_ids": [
+      "H9"
+    ],
+    "gaps": [],
+    "reason": "reviewed by hand; the hit is a documented example",
+    "time": "2026-10-11T12:10:00Z"
+  }
+}

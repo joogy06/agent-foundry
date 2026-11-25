@@ -1,0 +1,194 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:eab548d20897bbe7e66df97513620baff4a901d17a7fb7b72a1467d5c969569b",
+  "generated_by": "sample-data-scaffolding",
+  "note": "Inputs and outputs of these components are kind opaque in the contract map, so the fixtures are written as-is, not generated.",
+  "components": {
+    "studio-verdict": {
+      "inputs": {
+        "verdict_draft": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/verdict-draft-sample.json",
+              "hash": "sha256:4ff9c9e547eb89d9feb7e10616a4027d40b045b477e1eaa0b7e2aa714866d01c"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "verdict_check": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/verdict-check-sample.json",
+              "hash": "sha256:b9ad39ca0a3a8e096b0cd5327dce13d1120e7e73465d976217bd6be27fb03c9a"
+            }
+          ]
+        }
+      }
+    },
+    "studio-capture": {
+      "inputs": {
+        "variant_page": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/variant-page-sample/index.html",
+              "hash": "sha256:d81e341bc02656968ae3549fb6c82340d52d0e6e9d77f3920c8be52c4fb16c31"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "evidence_set": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/evidence-set-sample.json",
+              "hash": "sha256:3240d93ef3c5d2c5eb4d1076de0abbb2bf894a57979606b0236c2ec1408fdce3"
+            }
+          ]
+        }
+      }
+    },
+    "visual-doctrines": {
+      "inputs": {
+        "doctrine_files": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/doctrine-files-sample.json",
+              "hash": "sha256:6ea1c1bb9496580601f55f73d6b5e8eee07ead9183f50177f0b971c0b7e22014"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "axis_tables": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/axis-tables-sample.json",
+              "hash": "sha256:4a266da78747fb4d00b1bb5678778b1f3c6b39aff8a73abc79cd13a36b0f8729"
+            }
+          ]
+        }
+      }
+    },
+    "studio-runner": {
+      "inputs": {
+        "run_request": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/run-request-sample.json",
+              "hash": "sha256:0d1c05b25973e6a916026e434099ea0978531e96512ee94dc645d8bb55a4452d"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "run_plan": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/run-plan-sample.json",
+              "hash": "sha256:55f0eebd4cb529e6232387aa9579222303e3bf0ac431ad0f83a9d62ee34263d4"
+            }
+          ]
+        },
+        "maker_brief": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/maker-brief-sample.md",
+              "hash": "sha256:c5d8588d0ec5ca26442db7a57217620a430a119f2b44f7b6522d216cdaa4ed35"
+            }
+          ]
+        },
+        "handover": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/handover-sample.md",
+              "hash": "sha256:9cac22ea641d843feea4c19c669a687264257c9e377faa1c30adefa0a38c7ac1"
+            }
+          ]
+        }
+      }
+    },
+    "copy-schools": {
+      "inputs": {
+        "school_files": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/school-files-sample.json",
+              "hash": "sha256:c387471fd9bc2389b75af1232beaaebf406b8b6ddbe1390e83565b1d9a23331d"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "school_axes": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/school-axes-sample.json",
+              "hash": "sha256:4d010b97c0ea7309f76d9862d1a87c41f7bc4377805fdba7b1a3e4231a2eb94f"
+            }
+          ]
+        }
+      }
+    },
+    "studio-claims": {
+      "inputs": {
+        "article_draft": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/article-draft-sample.md",
+              "hash": "sha256:9418b9e87930ea68cc2a0de0bea59872b561de07f3a66a2ea7edb07d75e296f6"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "claim_list": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/claim-list-sample.json",
+              "hash": "sha256:836183061cb9e3039d1a918ffa65fb819763bfcb02b64b3b3f0794886269806c"
+            }
+          ]
+        }
+      }
+    },
+    "studio-wiring": {
+      "inputs": {
+        "family_registry": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/family-registry-sample.json",
+              "hash": "sha256:d98146f112fbb8a03504789a894c3aeb335378a5505068cd064a49e4222657fb"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "wiring_report": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/creative-studio/tests/fixtures/wiring-report-sample.json",
+              "hash": "sha256:bc35ebe0d9acbf0e137184d5f8568cefe8b91d94c62fb2743e3f7815f49397d0"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

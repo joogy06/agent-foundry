@@ -91,3 +91,93 @@ def test_subprocess_checks_carry_readonly_flags(tmp_path, monkeypatch):
     assert any("identity_check.py" in str(x) for a, _ in calls for x in a)
     id_call = next(a for a, _ in calls if any("identity_check.py" in str(x) for x in a))
     assert "--no-write" in id_call, "identity check must pass --no-write"
+
+
+def _claude_md_rows(m, home, repo):
+    sec = m.Section("Install")
+    m.check_global_claude_md(sec, home, repo)
+    return [(r.status, r.detail) for r in sec.results]
+
+
+def test_project_pointer_at_home_fails(tmp_path):
+    """#318 fix round 1 (item 8): presence alone passed a project file installed at home."""
+    m = _load()
+    (tmp_path / "CLAUDE.md").write_text("# p\n" + m.PROJECT_POINTER_MARKER + "\n", encoding="utf-8")
+    rows = _claude_md_rows(m, tmp_path, None)
+    assert rows[0][0] == m.FAIL and "pointer" in rows[0][1]
+
+
+def test_home_is_compared_with_the_repo_global(tmp_path):
+    m = _load()
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    (repo / "global").mkdir(parents=True)
+    home.mkdir()
+    (repo / "global" / "CLAUDE.md").write_text("# global\n", encoding="utf-8")
+    (home / "CLAUDE.md").write_text("# global\n", encoding="utf-8")
+    assert _claude_md_rows(m, home, repo)[0][0] == m.PASS
+    (home / "CLAUDE.md").write_text("# global, edited\n", encoding="utf-8")
+    assert _claude_md_rows(m, home, repo)[0][0] == m.WARN
+
+
+def test_marker_matches_the_real_project_file():
+    m = _load()
+    repo = SKILL.parents[1]
+    if not (repo / "global" / "CLAUDE.md").is_file():
+        import pytest
+        pytest.skip("not running from a foundry-lab checkout")
+    assert m.PROJECT_POINTER_MARKER in (repo / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_a_crlf_home_copy_still_matches_the_repo_global(tmp_path):
+    """#318 fix round 2 (item 7): a Windows copy differs only in line endings."""
+    m = _load()
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    (repo / "global").mkdir(parents=True)
+    home.mkdir()
+    (repo / "global" / "CLAUDE.md").write_bytes(b"# global\nrules\n")
+    (home / "CLAUDE.md").write_bytes(b"# global\r\nrules\r\n")
+    assert _claude_md_rows(m, home, repo)[0][0] == m.PASS
+
+
+def _agy_rows(m, tmp_path, text):
+    """Rows of the agy settings check for a home whose agy settings file holds `text` (None: no file)."""
+    home = tmp_path / "h" / ".claude"
+    home.mkdir(parents=True)
+    if text is not None:
+        cfg = home.parent / ".gemini" / "antigravity-cli" / "settings.json"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(text, encoding="utf-8")
+    s = m.Section("Tooling")
+    m.check_agy_settings(s, home)
+    return s.results
+
+
+def test_agy_non_workspace_access_true_is_a_warning(tmp_path):
+    m = _load()
+    rows = _agy_rows(m, tmp_path, json.dumps({"allowNonWorkspaceAccess": True}))
+    assert len(rows) == 1 and rows[0].status == m.WARN and "allowNonWorkspaceAccess" in rows[0].detail
+
+
+def test_agy_non_workspace_access_absent_or_false_passes(tmp_path):
+    """Absent is the state #366 measured on this host, so it is not a warning."""
+    m = _load()
+    for n, text in enumerate(('{"model": "x"}', '{"allowNonWorkspaceAccess": false}')):
+        rows = _agy_rows(m, tmp_path / str(n), text)
+        assert [r.status for r in rows] == [m.PASS], text
+
+
+def test_agy_settings_absent_says_nothing_and_broken_warns(tmp_path):
+    m = _load()
+    assert _agy_rows(m, tmp_path / "a", None) == []
+    assert _agy_rows(m, tmp_path / "b", "{not json")[0].status == m.WARN
+
+
+def test_the_tooling_section_runs_the_agy_check(tmp_path):
+    m = _load()
+    home = tmp_path / "h" / ".claude"
+    home.mkdir(parents=True)
+    cfg = home.parent / ".gemini" / "antigravity-cli" / "settings.json"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('{"allowNonWorkspaceAccess": true}', encoding="utf-8")
+    details = [r.detail for sec in m.run(home=home, repo=None, project=None) for r in sec.results]
+    assert any("allowNonWorkspaceAccess is not off" in d for d in details)

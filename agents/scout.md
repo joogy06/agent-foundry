@@ -1,6 +1,6 @@
 ---
 name: scout
-description: "Entity surface-intelligence agent. Use when you need to find out what exists about a company, product, brand, or person across the open web AND inside AI answers — share of voice, sentiment, third-party corroboration, competitive displacement, and coverage gaps. Browser-driven, records honest probe status on every attempt, and never reports absence from a failed search. Executes P1_SCAN for the business-edge skill, or runs standalone. Examples: 'what can be found about <company> online', 'scan our brand', 'what does ChatGPT say about us', 'competitive visibility check', 'do people discuss <product> on forums'."
+description: "Entity surface-intelligence agent: finds what exists about a company, product, brand or person on the open web and in AI answers, with honest probe status. Examples: 'scan our brand', 'what does ChatGPT say about us', 'competitive visibility check'."
 model: opus
 ---
 

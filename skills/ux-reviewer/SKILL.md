@@ -106,7 +106,7 @@ first, is it the right element, is there a path from headline → value → CTA,
 **Interaction:** buttons look clickable and ≥44×44px with a hover state · links distinguishable
 from body text · form labels visible with inline errors and marked required fields · nav ≤7 items
 with the current page marked · images carry meaningful alt text · whole card clickable, not just
-its title.
+its title. (Alt text standard and audit rubric: the `image-alt-text` skill.)
 
 **Journey**, by page type: *product* — is the price findable without hunting, are specs scannable,
 is Add-to-Cart always visible, would I enter payment details here? *category* — is the offer

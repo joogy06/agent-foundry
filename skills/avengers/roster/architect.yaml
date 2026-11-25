@@ -29,10 +29,12 @@ divergence_overlay:
     control loops) to surface non-obvious seams and future-change costs during idea
     generation.
 
+seat_weight: main             # S081 §4.8 main seat (top-level, never under provider:): claude resolves seat_model consultant_main (the Claude main tier, not the support tier); agy -> TOP-<family>-high (rev 6: argon-high); codex is consultant_main at any weight
+
 provider:
   affinity: claude            # architect seat; design intent per §7
   fallback_ok: true
-  effort: default             # smart-config advisory tier for Claude spawns
+  effort: default             # no effort pin for Claude spawns; the MODEL comes from seat_model by seat_weight
 
 speak_when: "always — files a blind position, defends/refines in cross-exam, casts a Gate-1 ballot"
 

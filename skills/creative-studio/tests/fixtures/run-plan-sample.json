@@ -1,0 +1,280 @@
+{
+  "note": "Output of studio-runner (kind opaque): the plan the runner compiles for the website-page profile in full mode during the first three runs (a baseline variant is due). The test holds this file equal to a fresh compile. plan.json in a run directory adds run_id, skills_root, profile_file, profile_sha256 and the resolved seats.",
+  "plan": {
+    "schema_version": "studio-plan.v1",
+    "profile": "website-page",
+    "mode": "full",
+    "work_kind": "rendered",
+    "baseline": true,
+    "reads": 2,
+    "attached": [
+      "copy"
+    ],
+    "claim_seat": false,
+    "final_claim_seat": false,
+    "agents": {
+      "count": 17,
+      "planned": 9,
+      "in_retries": 8,
+      "cap": 17,
+      "budget": null,
+      "repairs": 3,
+      "repair_turns": 6,
+      "ceiling": 23,
+      "resumes": 1
+    },
+    "light_drops": [],
+    "retries_dropped_for_budget": [],
+    "retries": {
+      "distance_redo": true,
+      "remake_round": true
+    },
+    "steps": [
+      {
+        "n": 1,
+        "id": "constraints",
+        "kind": "spawn",
+        "when": "always",
+        "role": "constraints",
+        "tier": "light",
+        "brief": "briefs/constraints.md",
+        "writes": "constraints.md"
+      },
+      {
+        "n": 2,
+        "id": "make:copy-a",
+        "kind": "spawn",
+        "when": "always",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "copy-a",
+        "brief": "briefs/copy-a.md",
+        "group": "copy"
+      },
+      {
+        "n": 3,
+        "id": "make:copy-b",
+        "kind": "spawn",
+        "when": "always",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "copy-b",
+        "brief": "briefs/copy-b.md",
+        "group": "copy"
+      },
+      {
+        "n": 4,
+        "id": "distance:copy",
+        "kind": "runner",
+        "when": "always",
+        "command": "distance --function copy"
+      },
+      {
+        "n": 5,
+        "id": "redo:copy-a",
+        "kind": "spawn",
+        "when": "distance_redo",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "copy-a",
+        "brief": "briefs/copy-a.redo.md"
+      },
+      {
+        "n": 6,
+        "id": "redo:copy-b",
+        "kind": "spawn",
+        "when": "distance_redo",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "copy-b",
+        "brief": "briefs/copy-b.redo.md"
+      },
+      {
+        "n": 7,
+        "id": "make:visual-a",
+        "kind": "spawn",
+        "when": "always",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-a",
+        "brief": "briefs/visual-a.md",
+        "group": "makers"
+      },
+      {
+        "n": 8,
+        "id": "make:visual-b",
+        "kind": "spawn",
+        "when": "always",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-b",
+        "brief": "briefs/visual-b.md",
+        "group": "makers"
+      },
+      {
+        "n": 9,
+        "id": "make:baseline",
+        "kind": "spawn",
+        "when": "always",
+        "role": "baseline",
+        "tier": "complex",
+        "seat": "baseline",
+        "brief": "briefs/baseline.md",
+        "group": "makers"
+      },
+      {
+        "n": 10,
+        "id": "distance",
+        "kind": "runner",
+        "when": "always",
+        "command": "distance --function visual"
+      },
+      {
+        "n": 11,
+        "id": "redo:visual-a",
+        "kind": "spawn",
+        "when": "distance_redo",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-a",
+        "brief": "briefs/visual-a.redo.md"
+      },
+      {
+        "n": 12,
+        "id": "redo:visual-b",
+        "kind": "spawn",
+        "when": "distance_redo",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-b",
+        "brief": "briefs/visual-b.redo.md"
+      },
+      {
+        "n": 13,
+        "id": "capture",
+        "kind": "runner",
+        "when": "always",
+        "command": "capture"
+      },
+      {
+        "n": 14,
+        "id": "verdict-open",
+        "kind": "runner",
+        "when": "always",
+        "command": "verdict open"
+      },
+      {
+        "n": 15,
+        "id": "critic:read-1",
+        "kind": "spawn",
+        "when": "always",
+        "role": "critic",
+        "tier": "complex",
+        "read": 1,
+        "brief": "briefs/critic-read-1.md",
+        "writes": "verdicts/read-1.json"
+      },
+      {
+        "n": 16,
+        "id": "critic:read-2",
+        "kind": "spawn",
+        "when": "always",
+        "role": "critic",
+        "tier": "complex",
+        "read": 2,
+        "brief": "briefs/critic-read-2.md",
+        "writes": "verdicts/read-2.json"
+      },
+      {
+        "n": 17,
+        "id": "blind-ranking",
+        "kind": "user",
+        "when": "always",
+        "command": "verdict rank"
+      },
+      {
+        "n": 18,
+        "id": "verdict-check",
+        "kind": "runner",
+        "when": "always",
+        "command": "verdict check"
+      },
+      {
+        "n": 19,
+        "id": "remake",
+        "kind": "runner",
+        "when": "remake_round",
+        "command": "remake"
+      },
+      {
+        "n": 20,
+        "id": "remake:visual-a",
+        "kind": "spawn",
+        "when": "remake_round",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-a",
+        "brief": "briefs/visual-a.remake.md"
+      },
+      {
+        "n": 21,
+        "id": "remake:visual-b",
+        "kind": "spawn",
+        "when": "remake_round",
+        "role": "maker",
+        "tier": "complex",
+        "seat": "visual-b",
+        "brief": "briefs/visual-b.remake.md"
+      },
+      {
+        "n": 22,
+        "id": "remake-critic:read-1",
+        "kind": "spawn",
+        "when": "remake_round",
+        "role": "critic",
+        "tier": "complex",
+        "read": 1,
+        "brief": "briefs/critic-read-1.md",
+        "writes": "verdicts/read-1.json"
+      },
+      {
+        "n": 23,
+        "id": "remake-critic:read-2",
+        "kind": "spawn",
+        "when": "remake_round",
+        "role": "critic",
+        "tier": "complex",
+        "read": 2,
+        "brief": "briefs/critic-read-2.md",
+        "writes": "verdicts/read-2.json"
+      },
+      {
+        "n": 24,
+        "id": "winner-remake",
+        "kind": "resume",
+        "when": "always",
+        "seat": "winner",
+        "brief": "briefs/winner-remake.md",
+        "writes": "final/"
+      },
+      {
+        "n": 25,
+        "id": "finish:ux-review",
+        "kind": "spawn",
+        "when": "always",
+        "role": "finish",
+        "tier": "medium",
+        "seat": "ux-review",
+        "brief": "briefs/ux-review.md",
+        "writes": "finish/ux-review.md"
+      },
+      {
+        "n": 26,
+        "id": "handover",
+        "kind": "runner",
+        "when": "always",
+        "command": "handover"
+      }
+    ]
+  }
+}

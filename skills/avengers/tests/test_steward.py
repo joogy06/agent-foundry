@@ -32,6 +32,12 @@ def _load(mod_name, rel):
 convene = _load("avengers_convene_stw", "scripts/convene.py")
 sp = _load("avengers_seat_prompt_stw", "scripts/seat_prompt.py")
 
+# #282 H2 (live-HOME tests): build_session_plan resolves every seat through seat_model, which records a
+# TOP into ~/.claude/state/seat-model-tops.json under the process HOME. Every test here runs under an
+# EMPTY temp HOME with a stub `codex` PREPENDED to PATH (conftest.py's `empty_live_home`; a bare PATH
+# would substitute every codex seat).
+pytestmark = pytest.mark.usefixtures("empty_live_home")
+
 
 # --------------------------------------------------------------------------- #
 # Roster card wiring (design §5)
@@ -66,19 +72,26 @@ def test_steward_missing_provider_fails_closed(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# coding-ratification: 4 deliberation seats + external arbiter, steward never arbiter
+# coding-ratification: 5 deliberation seats + external arbiter, steward never arbiter
+# (#368 added the agy user-advocate as a fifth seat; this test was ..._four_seats_... before)
 # --------------------------------------------------------------------------- #
-def test_coding_ratification_four_seats_and_external_arbiter():
+def test_coding_ratification_five_seats_and_external_arbiter():
     plan = convene.build_session_plan(
         {"profile": "coding-ratification", "task": "t"},
         profiles_dir=_REAL_PROFILES, roster_dir=_REAL_ROSTER, session_id="stw-1",
     )
     seat_ids = [s["seat_id"] for s in plan["seats"]]
-    assert seat_ids == ["skeptic", "architect", "operator", "steward"]
-    assert plan["quorum"]["member_seats"] == 4
-    assert plan["budgets"]["max_seat_calls"] == 13
+    assert seat_ids == ["skeptic", "architect", "operator", "steward", "user-advocate"]
+    assert plan["quorum"]["member_seats"] == 5
+    assert plan["budgets"]["max_seat_calls"] == 16
     steward = next(s for s in plan["seats"] if s["seat_id"] == "steward")
-    assert steward["provider"] == "agy"
+    # RE-POINTED by AMENDMENT 3 (D25/jc9), not weakened: agy leaves every profile but
+    # research-synthesis, and coding-ratification's second agy seat became Opus rather than a
+    # THIRD codex seat (the steward is procedural, not contending). The PROFILE entry
+    # (`provider: claude` in profiles/coding-ratification.yaml) OVERRIDES the roster card, whose
+    # own `affinity: agy` is untouched and still asserted at test_steward_card_wiring above —
+    # so these two assertions now differ ON PURPOSE and that divergence is the override working.
+    assert steward["provider"] == "claude"
     assert steward["adversarial_role"] is False
     # NEVER selected as arbiter: the arbiter is a fresh EXTERNAL seatless call (no seat).
     arb = plan["arbiter"]
@@ -95,11 +108,11 @@ def test_coding_ratification_dry_run_clean():
         profiles_dir=_REAL_PROFILES, roster_dir=_REAL_ROSTER,
     )
     review = convene.render_pre_spend_review(plan)
-    assert "4 member seats" in review
+    assert "5 member seats" in review
     assert "steward" in review
-    # ~13 calls so no phase is truncated (4 diverge + 4 cross-exam + 4 converge + 1 arb).
+    # ~16 calls so no phase is truncated (5 diverge + 5 cross-exam + 5 converge + 1 arb; #368's fifth seat).
     est = convene.estimate(plan)
-    assert est["planned_calls"] == 13 and est["call_ceiling"] == 13
+    assert est["planned_calls"] == 16 and est["call_ceiling"] == 16
 
 
 # --------------------------------------------------------------------------- #

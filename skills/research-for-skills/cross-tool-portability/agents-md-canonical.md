@@ -2,6 +2,16 @@
 
 How to keep instructions in sync across Claude Code, Antigravity CLI (`agy`), GitHub Copilot CLI, and Codex CLI without writing the same thing four times.
 
+## Contents
+
+- The pattern
+- Why AGENTS.md as the source
+- Setting up the symlinks/imports
+- Existing user setup (this machine)
+- Content structure
+- When to diverge
+- Anti-patterns
+
 ## The pattern
 
 **Canonical content lives in `AGENTS.md`** (repo root or `~/AGENTS.md` for global). Other tool-specific files are thin pointers.
@@ -90,7 +100,7 @@ ln -sfn AGENTS.md CLAUDE.md
 
 # 3. agy: TODO(agy): verify equivalent — no confirmed per-project instruction-file
 #    pointer (the gemini `@AGENTS.md` `GEMINI.md` import has no agy analogue).
-#    Use `agy --add-dir <project>` to add the workspace; verify any instruction-file contract.
+#    Use `agy --add-dir <throwaway copy>` to add a workspace (never a live repo, #366); verify any instruction-file contract.
 
 # 4. Copilot bootstrap (writes .github/copilot-instructions.md from AGENTS.md content)
 copilot init   # analyses repo, writes .github/copilot-instructions.md

@@ -1,0 +1,17 @@
+# Skills held to the skill standard (#344). One name per line; `#` starts a comment.
+#
+# skill_audit.py: a fail on a skill named here sets the exit code of `audit` and blocks
+# the commit in the pre-commit arm (`check` prints SA-E). For every other skill the same
+# finding is reported only (SA-W). Add a skill when `audit --only <name>` is clean.
+#
+# Phase 1 (#344): the core nine. A name is uncommented by the work package that makes
+# the skill clean; all nine are live when phase 1 closes (design DW-1).
+forge
+codex-orchestration
+avengers
+agent-teams
+research-for-skills
+component-contract-mapping
+sample-data-scaffolding
+integration-flow-testing
+verification-arbiter

@@ -4,15 +4,25 @@ When authoring or reviewing a skill that must work across multiple AI CLIs (Clau
 
 This is a sub-skill of `research-for-skills`. It is content, not a registered skill — load it via `Read` when authoring or reviewing.
 
+## Contents
+
+- Why this matters
+- The five hard rules (memorise these)
+- Authoring checklist
+- Reference files
+- Validator
+- Cross-tool decision flowchart
+- Anti-patterns
+
 ## Why this matters
 
-The four major AI coding CLIs in 2026 (Claude Code, Antigravity CLI (agy), Codex CLI, GitHub Copilot CLI) all support skill-like extensions, but with subtle differences. A skill that works perfectly on Claude may silently fail on another tool if the frontmatter has extra fields. A reference file that loads on one CLI may exceed Copilot's instruction-file budget.
+The four major AI coding CLIs in 2026 (Claude Code, Antigravity CLI (agy), Codex CLI, GitHub Copilot CLI) all support skill-like extensions, but with subtle differences. A skill that works perfectly on Claude Code can be rejected elsewhere if the frontmatter carries a key outside the specification. A reference file that loads on one CLI may exceed Copilot's instruction-file budget.
 
 The rules here are the **intersection** — strict enough that any compliant skill works on all four tools. (`agy` can import Claude plugins/skills directly via `agy plugin import claude` — see the `antigravity-cli` skill.)
 
 ## The five hard rules (memorise these)
 
-1. **Frontmatter is `name + description` only.** No `allowed-tools`, no `model`, no `tools`, no `context`, no anything else. The skill-creator convention silently rejects extras; Claude tolerates them; Copilot ignores them; Codex flags them. Strict intersection wins.
+1. **Frontmatter keys come from two lists.** The specification keys (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`) work everywhere. The Claude Code keys (`model`, `context`, `paths` and the others in `_meta/skill_audit.py`) work in Claude Code, are ignored by Codex, and are a hard error on claude.ai upload and in the Skills API. Anything else is custom data and goes under `metadata:` as a quoted string.
 
 2. **Naming**: `^[a-z0-9-]+$`, max 64 chars. No underscores, no uppercase, no dots. Same constraint in all four tools.
 
@@ -20,21 +30,21 @@ The rules here are the **intersection** — strict enough that any compliant ski
 
 4. **Directory structure**: `scripts/`, `references/`, `assets/`. Same in all four tools.
 
-5. **Description leads with trigger language**. "Use when ..." is the canonical opening. The model only sees the description before deciding to load the body — vague descriptions = skill never triggers.
+5. **Description opens with the subject**, then says what the skill does and when to use it, in the third person and in about 200 characters. The model only sees the description before deciding to load the body — vague descriptions = skill never triggers. An opening "Use when" fails the audit.
 
 ## Authoring checklist
 
 Before publishing a cross-tool skill, verify EVERY item:
 
-- [ ] Frontmatter contains ONLY `name` and `description`
+- [ ] Frontmatter keys are specification or Claude Code keys; custom data is under `metadata:` as quoted strings
 - [ ] `name` matches `^[a-z0-9-]+$`, ≤64 chars
 - [ ] `description` is single-line, ≤1024 chars
-- [ ] `description` leads with "Use when ..." or equivalent trigger
+- [ ] `description` opens with the subject, says what and when, and does not open with "Use when"
 - [ ] SKILL.md body <500 lines (use `wc -l SKILL.md`)
 - [ ] All `references/*.md` links from SKILL.md resolve
 - [ ] Body uses tool-agnostic language ("Read the file" not "Use the Read tool")
 - [ ] Anti-patterns table at the end of SKILL.md
-- [ ] Has been validated with `scripts/verify-skill-portability.sh`
+- [ ] Has been validated with `scripts/verify-skill-portability.sh`, then with `python3 skills/_meta/skill_audit.py audit --only <name> --strict` (the last authoring step)
 - [ ] Cross-references other skills via `<skill-name>` not `<absolute-path>`
 
 ## Reference files
@@ -56,12 +66,12 @@ Detailed guidance lives in companion files in this directory:
 
 Run `scripts/verify-skill-portability.sh <SKILL.md>` against any skill before publishing. The script checks:
 
-- Frontmatter contains only `name` and `description`
+- Every frontmatter key is a specification key or a Claude Code key (the list is read from `_meta/skill_audit.py`)
 - `name` matches the pattern
 - `description` is single-line and within size limits
 - Body is `<500` lines
 - All referenced files exist
-- Description leads with trigger language
+- Description does not open with "Use when"
 
 It exits 0 on pass, non-zero with line-level diagnostics on failure.
 
@@ -92,7 +102,7 @@ skills/    plugin     (no skills)
 
 | Don't | Why |
 |---|---|
-| Add `allowed-tools` to frontmatter for Claude convenience | The strict skill-creator convention rejects extras → skill may never load on another tool |
+| Add a top-level key that is on neither list (`tags`, `version`, `tools`) | Fails the audit (A1) and is rejected by claude.ai upload and the Skills API; put custom data under `metadata:` as a quoted string |
 | Use uppercase or underscores in `name` | All four tools require lowercase + hyphens |
 | Inline >500 lines in SKILL.md | Skill-creator hard limit; Claude's recommended limit |
 | Reference skills by absolute path | Path differs across machines; use `<skill-name>` and let the agent resolve |

@@ -462,9 +462,9 @@ check_G2() {
     # Implement minimal cycle detection using awk DFS on the callee graph.
     # First emit edges "src callee" and nodes + cycle_groups.
     local graph_file
-    graph_file=$(mktemp /tmp/gates-sh-graph-XXXXXX)
+    graph_file=$(mktemp /tmp/gates-sh-graph-XXXXXX) || env_error "V11: mktemp failed"
     local group_file
-    group_file=$(mktemp /tmp/gates-sh-groups-XXXXXX)
+    group_file=$(mktemp /tmp/gates-sh-groups-XXXXXX) || { rm -f "$graph_file"; env_error "V11: mktemp failed"; }
     # shellcheck disable=SC2064
     trap "rm -f '$graph_file' '$group_file'" EXIT
 

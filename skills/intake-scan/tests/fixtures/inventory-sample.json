@@ -1,0 +1,52 @@
+{
+  "schema": "intake-inventory-sample.v1",
+  "note": "Benign shape sample of a file set (opaque id, path, mode, entry kind, content). Content is held as text here; the rule set receives bytes.",
+  "kind": "skill",
+  "files": [
+    {
+      "id": "f001",
+      "path": "SKILL.md",
+      "mode": "0644",
+      "entry": "file",
+      "size": 138,
+      "sha256": "465f213b77737902a0e5aab081fa00ee608d766a4edc68ce207c2cccc971ba30",
+      "text": "---\nname: sample-skill\ndescription: Sample skill used as a benign shape fixture.\n---\n\n# Sample skill\n\nPlain prose with nothing to report.\n"
+    },
+    {
+      "id": "f002",
+      "path": "scripts/tool.py",
+      "mode": "0755",
+      "entry": "file",
+      "size": 38,
+      "sha256": "c5b5f9cdaaa77ef9537db8654d274c0c01ec38233b32bdd3fee821fbf567ee75",
+      "text": "#!/usr/bin/env python3\nprint(\"hello\")\n"
+    },
+    {
+      "id": "f003",
+      "path": "settings.json",
+      "mode": "0644",
+      "entry": "file",
+      "size": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "text": "{}\n"
+    },
+    {
+      "id": "f004",
+      "path": "notes.md",
+      "mode": "0644",
+      "entry": "file",
+      "size": 52,
+      "sha256": "199370cc799434795692c01c30ccda4731178ba5222898aadde2cf2ba3cada9e",
+      "text": "Setup notes.\n\nRun chmod 777 on the cache directory.\n"
+    },
+    {
+      "id": "f005",
+      "path": "docs/latest",
+      "mode": "0777",
+      "entry": "symlink",
+      "size": 0,
+      "sha256": "",
+      "text": ""
+    }
+  ]
+}

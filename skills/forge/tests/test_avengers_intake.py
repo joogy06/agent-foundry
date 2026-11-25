@@ -5,20 +5,43 @@ intake block (mirroring `came_from_founder`), a Step 6 recursion-guard note (a
 forge-convened avengers cannot emit a brief back into forge), and verbatim dissent
 surfacing at Step 7 presentation. The complete per-field mapping is pinned in the
 design section 10; these tests lock it against drift (design section 13 risk 5).
+
+Since #344 WP-4 forge is an entry file plus step references, and each assertion names the
+file that has to hold its text: the intake block and the Red Flags are in SKILL.md (the
+checklist stays there), the recursion guard is in the design-team reference, and the
+dissent surfacing is in the present-and-doc reference.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 HERE = Path(__file__).resolve().parent
+SKILLS = HERE.parents[1]
 DOC = HERE.parent / "SKILL.md"
 FIXTURES = HERE / "fixtures"
 
+if str(SKILLS / "_meta" / "tests") not in sys.path:
+    sys.path.insert(0, str(SKILLS / "_meta" / "tests"))
+import skill_corpus  # type: ignore  # noqa: E402
+
+#: The reference holding "Step 6B: Design exploration team" and its recursion guard.
+DESIGN_TEAM = "references/02-design-team.md"
+#: The reference holding "Step 3: Present Design".
+PRESENT = "references/06-present-and-doc.md"
+#: required marker -> the file that must hold it; every marker not named here is in SKILL.md.
+MARKER_HOME = {"recursion_guard_step6": DESIGN_TEAM, "dissent_surfacing_step7": PRESENT}
+
 
 def _doc_text() -> str:
+    """The entry file: the checklist with the Step 3 intake block, and the Red Flags."""
     return DOC.read_text(encoding="utf-8")
+
+
+def _ref_text(rel: str) -> str:
+    return skill_corpus.read("forge", rel, root=SKILLS)
 
 
 def _mapping() -> dict:
@@ -30,9 +53,10 @@ def test_doc_exists():
 
 
 def test_required_markers_present():
-    doc = _doc_text()
     for name, needle in _mapping()["required_markers"].items():
-        assert needle in doc, f"required marker '{name}' missing: expected substring '{needle}'"
+        home = MARKER_HOME.get(name, "SKILL.md")
+        assert needle in _ref_text(home), (
+            f"required marker '{name}' missing from {home}: expected substring '{needle}'")
 
 
 def test_intake_block_mirrors_came_from_founder():
@@ -69,7 +93,7 @@ def test_always_false_fields_documented():
 
 def test_recursion_guard_in_step6():
     """A forge-convened avengers session must not emit a brief back into forge."""
-    doc = _doc_text()
+    doc = _ref_text(DESIGN_TEAM)
     assert "Recursion guard (avengers ↔ forge)" in doc, "Step 6 recursion-guard note missing"
     # The guard must land in the Step 6 (design exploration) region, after the guard header.
     guard_idx = doc.index("Recursion guard (avengers ↔ forge)")
@@ -82,7 +106,7 @@ def test_recursion_guard_in_step6():
 
 
 def test_dissent_surfaced_verbatim_at_presentation():
-    doc = _doc_text()
+    doc = _ref_text(PRESENT)
     needle = _mapping()["required_markers"]["dissent_surfacing_step7"]
     assert needle in doc, "dissent must be surfaced verbatim during Present Design"
     # Must land in the Present Design section, not only in the intake block.

@@ -1,0 +1,172 @@
+{
+  "schema": "intake-policy.v1",
+  "version": "1",
+  "note": "Data for intake_policy.py. A verdict comes from rule classes, scanner requirements and gap effects in this file, and from nothing a scanner says about itself.",
+  "classes": {
+    "block": "stops adoption, a commit and an install unless the hit has a matching exception",
+    "caution": "needs a recorded sign-off before adoption",
+    "info": "the mildest class: recorded, and like a caution it keeps a scan from passing"
+  },
+  "rules": {
+    "H1": "block",
+    "H2": "block",
+    "H3": "block",
+    "H4": "block",
+    "H5": "block",
+    "H6": "block",
+    "H7": "block",
+    "H8": "block",
+    "H9": "block",
+    "H10": "block",
+    "H11": "block",
+    "C1": "caution",
+    "C2": "caution",
+    "C3": "caution",
+    "C4": "caution",
+    "C5": "caution",
+    "C6": "caution",
+    "C7": "caution",
+    "C8": "caution",
+    "C9": "caution",
+    "C10": "caution",
+    "DEP-01": "caution",
+    "SEC-01": "caution",
+    "SEC-02": "caution",
+    "SEC-03": "caution",
+    "SEC-04": "caution",
+    "SEC-05": "caution",
+    "SEC-06": "caution",
+    "SEC-07": "caution",
+    "SEC-08": "caution",
+    "SEC-09": "info",
+    "SEC-10": "info",
+    "SEC-11": "info"
+  },
+  "rule_families": {
+    "SS-": "caution",
+    "BD-": "caution"
+  },
+  "scanners": {
+    "harness-rules": {
+      "rules": ["H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H11", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"],
+      "families": [],
+      "owns_block_rules": true,
+      "counts_for_coverage": false,
+      "applies_to": "all"
+    },
+    "secrets-catalog": {
+      "rules": ["SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-05", "SEC-06", "SEC-07", "SEC-08", "SEC-09", "SEC-10", "SEC-11"],
+      "families": [],
+      "owns_block_rules": false,
+      "counts_for_coverage": true,
+      "applies_to": "all"
+    },
+    "skillspector": {
+      "rules": [],
+      "families": ["SS-"],
+      "owns_block_rules": false,
+      "counts_for_coverage": true,
+      "applies_to": "all"
+    },
+    "bandit": {
+      "rules": [],
+      "families": ["BD-"],
+      "owns_block_rules": false,
+      "counts_for_coverage": true,
+      "applies_to": "python"
+    },
+    "deps": {
+      "rules": ["H10", "DEP-01"],
+      "families": [],
+      "owns_block_rules": true,
+      "counts_for_coverage": true,
+      "applies_to": "all"
+    }
+  },
+  "required_scanners": {
+    "skill": ["harness-rules", "secrets-catalog", "skillspector"],
+    "repo": ["harness-rules", "secrets-catalog"]
+  },
+  "optional_scanners": {
+    "skill": ["bandit", "deps"],
+    "repo": ["skillspector", "bandit", "deps"]
+  },
+  "gap_effects": {
+    "scanner": "the scanner's result is absent or cannot be relied on: block when the scanner is required for the target kind, caution when it is optional",
+    "coverage": "part of the target was not looked at: caution",
+    "block": "the scan itself is incomplete or was tampered with: block"
+  },
+  "gaps": {
+    "toolchain-missing": {"effect": "scanner"},
+    "toolchain-mismatch": {"effect": "scanner"},
+    "sandbox-unavailable": {"effect": "scanner"},
+    "sandbox-unusable": {"effect": "scanner"},
+    "sandbox-request-invalid": {"effect": "scanner"},
+    "scanner-timeout": {"effect": "scanner"},
+    "scanner-start-failed": {"effect": "scanner"},
+    "scanner-crashed": {"effect": "scanner"},
+    "scanner-report-unreadable": {"effect": "scanner"},
+    "tool-version-mismatch": {"effect": "scanner"},
+    "tool-revision-mismatch": {"effect": "scanner"},
+    "catalog-missing": {"effect": "scanner"},
+    "catalog-unusable": {"effect": "scanner"},
+    "deps-helper-missing": {"effect": "scanner"},
+    "deps-helper-unusable": {"effect": "scanner"},
+    "internal-error": {"effect": "scanner"},
+    "findings-suppressed": {"effect": "block"},
+    "model-use-reported": {"effect": "block"},
+    "analyzer-incomplete": {"effect": "coverage"},
+    "unknown-rule-id": {"effect": "coverage"},
+    "unknown-file": {"effect": "coverage"},
+    "partially-inspected": {"effect": "coverage"},
+    "python-file-not-analysed": {"effect": "coverage"},
+    "osv-subcheck-not-run": {"effect": "coverage"},
+    "file-too-large": {"effect": "coverage"},
+    "deps-manifest-unparsed": {"effect": "coverage"},
+    "deps-advisory-lookup-failed": {"effect": "coverage"},
+    "scanner-not-run": {
+      "effect": "scanner",
+      "description": "the scanner produced no report for this scan"
+    },
+    "file-not-covered": {
+      "effect": "coverage",
+      "description": "one or more files were inspected by no scanner beyond the in-house rules"
+    },
+    "language-not-analysed": {
+      "effect": "coverage",
+      "description": "one or more executable files are in a language with no static analysis here (anything that is not Python)"
+    },
+    "vcs-directory-skipped": {
+      "effect": "coverage",
+      "description": "the folder's own root .git (a directory or a pointer file) was not read and is not part of the scanned bytes"
+    },
+    "scan-incomplete": {
+      "effect": "block",
+      "description": "the scan stopped before every step had run"
+    },
+    "evidence-malformed": {
+      "effect": "block",
+      "description": "the scan evidence did not have the expected form"
+    },
+    "offline-git-target": {
+      "effect": "block",
+      "description": "the target is a git URL and the scan was told there is no network"
+    },
+    "target-not-found": {"effect": "block", "description": "the target is not an existing path or a git URL"},
+    "target-type-unknown": {"effect": "block", "description": "the target is neither a folder nor a zip"},
+    "protocol-not-allowed": {"effect": "block", "description": "the git URL does not use https"},
+    "url-not-accepted": {"effect": "block", "description": "the git URL has a form that is not accepted"},
+    "ref-not-accepted": {"effect": "block", "description": "the ref has a form that is not accepted, or was given for a target that is not a git URL"},
+    "git-unavailable": {"effect": "block", "description": "git is not available on this host"},
+    "git-clone-failed": {"effect": "block", "description": "the repository could not be cloned (no network, no such repository, or access refused)"},
+    "git-clone-timeout": {"effect": "block", "description": "the clone did not finish inside its time limit"},
+    "git-clone-over-size-cap": {"effect": "block", "description": "the clone grew past the size cap and was stopped"},
+    "git-ref-not-found": {"effect": "block", "description": "the ref does not exist in the repository"},
+    "git-read-failed": {"effect": "block", "description": "the repository's files could not be read"},
+    "archive-unreadable": {"effect": "block", "description": "the archive could not be read as a zip"},
+    "archive-rejected": {"effect": "block", "description": "the archive holds an entry that is refused (traversal, a link, a device, a duplicate name, a nested archive or a cap exceeded)"},
+    "over-cap": {"effect": "block", "description": "the target is over a count or size cap"},
+    "folder-unreadable": {"effect": "block", "description": "the folder could not be read"},
+    "quarantine-unwritable": {"effect": "block", "description": "the quarantine directory could not be written"}
+  }
+}

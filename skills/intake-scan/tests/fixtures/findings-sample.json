@@ -1,0 +1,25 @@
+{
+  "schema": "intake-findings-sample.v1",
+  "note": "What the rule set returns for inventory-sample.json: rule id, class, opaque file id, line (0 = the file as a whole).",
+  "rules_version": "3",
+  "findings": [
+    {
+      "rule": "H2",
+      "class": "block",
+      "file": "f003",
+      "line": 0
+    },
+    {
+      "rule": "C8",
+      "class": "caution",
+      "file": "f004",
+      "line": 3
+    },
+    {
+      "rule": "H7",
+      "class": "block",
+      "file": "f005",
+      "line": 0
+    }
+  ]
+}

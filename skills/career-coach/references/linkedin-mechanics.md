@@ -1,5 +1,11 @@
 # How LinkedIn surfaces you — profile, content, connections, certifications
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: linkedin-surfacing-mechanics
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Captured 2026-07-29.** Shared reference for the `career-*` family. Used by `career-positioning`
 (what to emphasise) and `career-online-presence` (findability).

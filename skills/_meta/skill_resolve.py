@@ -49,8 +49,10 @@ from typing import Dict, Iterable, List, Sequence, Set
 
 DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import skill_frontmatter  # noqa: E402  (sibling module: custom keys, either layout)
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.S)
-_FAMILY_RE = re.compile(r"^family:\s*(.+?)\s*$", re.M)
 # Harness-provided agent types this module cannot enumerate from disk. Advisory only —
 # used to avoid crying wolf on bare names, never to authorise one.
 KNOWN_BUILTIN_AGENTS = {
@@ -87,8 +89,14 @@ def _declared_family(skill_md: Path) -> str | None:
     m = _FRONTMATTER_RE.match(head)
     if not m:
         return None
-    fm = _FAMILY_RE.search(m.group(1))
-    return fm.group(1).strip().strip("\"'") if fm else None
+    # `family` at the top level or under `metadata:` (#344). Two copies that disagree raise
+    # FrontmatterConflict; a form the reader will not guess at declares no family, and says so.
+    try:
+        fam = skill_frontmatter.value(m.group(1), "family", path=skill_md)
+    except skill_frontmatter.FrontmatterUnsupported as exc:
+        print(f"skill_resolve: {exc} -- no family read", file=sys.stderr)
+        return None
+    return (fam or "").strip() or None
 
 
 def build_index(skills_root: Path) -> Dict[str, object]:
@@ -265,7 +273,11 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
     enabled = load_enabled_plugins(args.claude_home)
-    index = build_index(skills_root)
+    try:
+        index = build_index(skills_root)
+    except skill_frontmatter.FrontmatterConflict as exc:
+        print(f"skill_resolve: {exc}", file=sys.stderr)
+        return 2
     result = resolve(names, index, enabled)
 
     agents_result = None

@@ -1,0 +1,76 @@
+{
+  "schema_version": "pattern-report.v1",
+  "status": "ran",
+  "not_run": null,
+  "rows": [
+    {
+      "category": "focal-word-cluster",
+      "line": 5,
+      "heading": "",
+      "paragraph": 1
+    },
+    {
+      "category": "stock-opener",
+      "line": 5,
+      "heading": "",
+      "paragraph": 1
+    },
+    {
+      "category": "inverted-contrast",
+      "line": 9,
+      "heading": "What changed",
+      "paragraph": 1
+    },
+    {
+      "category": "list-of-three",
+      "line": 9,
+      "heading": "What changed",
+      "paragraph": 1
+    },
+    {
+      "category": "not-only-but",
+      "line": 9,
+      "heading": "What changed",
+      "paragraph": 1
+    },
+    {
+      "category": "hedge-stack",
+      "line": 15,
+      "heading": "What it means",
+      "paragraph": 1
+    },
+    {
+      "category": "self-answered-question",
+      "line": 15,
+      "heading": "What it means",
+      "paragraph": 1
+    },
+    {
+      "category": "bold-lead-bullets",
+      "line": 17,
+      "heading": "What it means",
+      "paragraph": 2
+    },
+    {
+      "category": "stock-closer",
+      "line": 21,
+      "heading": "What it means",
+      "paragraph": 3
+    }
+  ],
+  "truncated": false,
+  "categories": {
+    "focal-word-cluster": "several of the words large models over-use sit close together; one such word alone is ordinary and is not reported",
+    "dash-density": "a paragraph that holds two em dashes or more",
+    "not-only-but": "the 'not only X but Y' connective",
+    "inverted-contrast": "a point made by first denying something nobody said ('it is not X, it is Y')",
+    "list-of-three": "three-item lists used again and again",
+    "even-rhythm": "four or more sentences in a row of nearly the same length",
+    "stock-opener": "an opening that sets a scene any text could have",
+    "stock-closer": "a closing phrase that announces the summary",
+    "bold-lead-bullets": "a list whose items each open with a bold label",
+    "hedge-stack": "two or more hedges on one claim",
+    "self-answered-question": "a short question answered at once by a fragment"
+  },
+  "reading": "A row is a place to read closely. It is not a fault, and the report is not a score: never judge a text by how many rows it has, and never edit a text to empty it."
+}

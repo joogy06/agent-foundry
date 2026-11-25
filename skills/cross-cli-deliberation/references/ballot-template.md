@@ -93,8 +93,9 @@ If the consultant cannot ship admissible evidence under any class, the verdict M
 
 ## Spawn-prompt template
 
-Use this template when sending the ballot ask to a consultant:
+Use this template when sending the ballot ask to a consultant (the brief block: `skills/_meta/spawn-brief.md`):
 
+<!-- spawn-brief.v1 id=cross-cli-deliberation.ballot -->
 ```
 # Decision Ballot — <task name>
 
@@ -121,6 +122,12 @@ before locking your own. The orchestrator's preferred outcome is NOT disclosed.
 ## Your task
 
 Issue the ballot defined in <skill: cross-cli-deliberation, ref: ballot-template.md>.
+
+Goal: one private, evidenced ballot on the artifact.
+Non-goals: rewriting the artifact; issues outside the decision context; file changes.
+Open questions: none may be returned — decide, note the assumption in the ballot, proceed.
+Done when: every mandatory ballot field and the self-check are filled; evidence is attached if the verdict is not ACCEPT_AS_IS.
+Stop when: the ballot is locked. One round per ballot; you never see peers first.
 
 Be candid. Sycophancy is disqualifying. If the premise is wrong, REJECT_PREMISE.
 If no admissible evidence exists for change, ACCEPT_AS_IS — that is a respected and

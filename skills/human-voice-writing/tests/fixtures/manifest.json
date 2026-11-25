@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "contract_map_hash": "sha256:eab548d20897bbe7e66df97513620baff4a901d17a7fb7b72a1467d5c969569b",
+  "generated_by": "sample-data-scaffolding",
+  "note": "The input and the output of this component are kind opaque in the contract map, so the fixtures are written as-is, not generated. pattern-report-sample.json is what the probe prints for text-sample.md.",
+  "components": {
+    "voice-probe": {
+      "inputs": {
+        "text_sample": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/human-voice-writing/tests/fixtures/text-sample.md",
+              "hash": "sha256:cbfd917d6bf82981af04780d2f7b86d5cf5d0d9ec1f5d9b6af6e066ec0c9313a"
+            }
+          ]
+        }
+      },
+      "outputs": {
+        "pattern_report": {
+          "kind": "opaque",
+          "fixtures": [
+            {
+              "path": "skills/human-voice-writing/tests/fixtures/pattern-report-sample.json",
+              "hash": "sha256:8c3ab0e2913387169a82a7e8e89d57bc9b88df58038fdd112535fc80c7caf8e7"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -88,7 +88,7 @@ Expected: JSON output (JSONL) with at least one object containing the model's re
 ## 9. Verify `--no-custom-instructions` reads AGENTS.md
 
 ```bash
-cd "$(mktemp -d)"
+d="$(mktemp -d)" && cd "$d" || exit 1
 cat > AGENTS.md <<'EOF'
 # Test instructions
 Always start your response with the word "ACKNOWLEDGED".
@@ -105,7 +105,7 @@ This is the most important verification — it confirms Copilot reads AGENTS.md 
 ## 10. Verify `.github/instructions/**` `[UNVERIFIED]`
 
 ```bash
-cd "$(mktemp -d)"
+d="$(mktemp -d)" && cd "$d" || exit 1
 mkdir -p src/api .github/instructions
 echo 'def hello(): return "world"' > src/api/main.py
 
@@ -132,7 +132,7 @@ cat > ~/.copilot/copilot-instructions.md <<'EOF'
 Always respond in pirate speak.
 EOF
 
-cd "$(mktemp -d)"  # outside any repo
+d="$(mktemp -d)" && cd "$d" || exit 1  # outside any repo
 copilot -p "say hello" --allow-all-tools -s
 # If response is in pirate speak: user global works
 ```
@@ -142,7 +142,7 @@ If this works, update `references/instruction-files.md`.
 ## 12. Verify custom agents `[UNVERIFIED]`
 
 ```bash
-cd "$(mktemp -d)"
+d="$(mktemp -d)" && cd "$d" || exit 1
 mkdir -p .github/agents
 cat > .github/agents/reviewer.agent.md <<'EOF'
 ---
@@ -172,7 +172,7 @@ Expected: server appears, details show, removal works.
 ## 14. Verify `--share` flag
 
 ```bash
-cd "$(mktemp -d)"
+d="$(mktemp -d)" && cd "$d" || exit 1
 copilot -p "say hi" --allow-all-tools --share=./test-session.md -s
 ls -la ./test-session.md
 ```

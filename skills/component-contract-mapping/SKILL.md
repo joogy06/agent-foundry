@@ -1,6 +1,6 @@
 ---
 name: component-contract-mapping
-description: Use at forge design phase (Step 8a) to produce a signed contract map for any design that introduces components. Extracts components from the design dialogue, defines typed I/O shapes with semantic types, writes progress/contract-map.yaml, runs G2 validation, auto-renders a markdown table into the design doc, and requests forge to HMAC-sign the result. The ONLY writer of contract-map.yaml.
+description: "Signed contract map for a design that introduces components: extracts the components, defines typed I/O shapes with semantic types, writes progress/contract-map.yaml as its only writer and runs G2. Use at forge Step 8a."
 ---
 
 # Component Contract Mapping
@@ -123,7 +123,7 @@ Write the map atomically:
 
 ```bash
 mkdir -p progress
-tmp=$(mktemp progress/.contract-map.XXXXXX.yaml)
+tmp=$(mktemp progress/.contract-map.XXXXXX.yaml) || exit 1
 # ... write YAML to $tmp ...
 mv "$tmp" progress/contract-map.yaml
 ```

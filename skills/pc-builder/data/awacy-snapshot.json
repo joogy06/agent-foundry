@@ -1,0 +1,4685 @@
+{
+ "schema": "awacy-snapshot.v1",
+ "source_url": "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json",
+ "as_of": "2026-09-27",
+ "stale_after_days": 30,
+ "block_after_days": 60,
+ "note": "Trimmed copy of Are We Anti-Cheat Yet games.json (name and status only). Regenerate with scripts/refresh_awacy.py; never edit by hand and never copy the list into rules.",
+ "counts": {
+  "Broken": 640,
+  "Denied": 53,
+  "Planned": 2,
+  "Running": 276,
+  "Supported": 196
+ },
+ "games": [
+  {
+   "name": "Halo: The Master Chief Collection",
+   "status": "Supported"
+  },
+  {
+   "name": "Fortnite",
+   "status": "Denied"
+  },
+  {
+   "name": "Battlefield\u2122 2042",
+   "status": "Denied"
+  },
+  {
+   "name": "Apex Legends",
+   "status": "Denied"
+  },
+  {
+   "name": "Valorant",
+   "status": "Denied"
+  },
+  {
+   "name": "Halo Infinite",
+   "status": "Supported"
+  },
+  {
+   "name": "Back 4 Blood",
+   "status": "Supported"
+  },
+  {
+   "name": "Paladins",
+   "status": "Running"
+  },
+  {
+   "name": "PUBG: Battlegrounds",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six\u00ae Siege",
+   "status": "Denied"
+  },
+  {
+   "name": "SMITE",
+   "status": "Supported"
+  },
+  {
+   "name": "Black Desert Online",
+   "status": "Running"
+  },
+  {
+   "name": "Fall Guys: Ultimate Knockout",
+   "status": "Running"
+  },
+  {
+   "name": "ARK: Survival Evolved",
+   "status": "Supported"
+  },
+  {
+   "name": "DayZ",
+   "status": "Supported"
+  },
+  {
+   "name": "Dead By Daylight",
+   "status": "Supported"
+  },
+  {
+   "name": "Destiny 2",
+   "status": "Denied"
+  },
+  {
+   "name": "Hunt: Showdown 1896",
+   "status": "Supported"
+  },
+  {
+   "name": "Rust",
+   "status": "Denied"
+  },
+  {
+   "name": "War Thunder",
+   "status": "Supported"
+  },
+  {
+   "name": "7 Days to Die",
+   "status": "Supported"
+  },
+  {
+   "name": "Squad",
+   "status": "Supported"
+  },
+  {
+   "name": "New World",
+   "status": "Supported"
+  },
+  {
+   "name": "Warhammer: Vermintide 2",
+   "status": "Running"
+  },
+  {
+   "name": "Escape from Tarkov",
+   "status": "Planned"
+  },
+  {
+   "name": "Insurgency: Sandstorm",
+   "status": "Supported"
+  },
+  {
+   "name": "ArmA 3",
+   "status": "Supported"
+  },
+  {
+   "name": "Rogue Company",
+   "status": "Supported"
+  },
+  {
+   "name": "Realm Royale",
+   "status": "Broken"
+  },
+  {
+   "name": "Phantasy Star Online 2 (NA)",
+   "status": "Supported"
+  },
+  {
+   "name": "Phantasy Star Online 2 (JP)",
+   "status": "Broken"
+  },
+  {
+   "name": "Unturned",
+   "status": "Supported"
+  },
+  {
+   "name": "PlanetSide 2",
+   "status": "Supported"
+  },
+  {
+   "name": "For Honor",
+   "status": "Supported"
+  },
+  {
+   "name": "NARAKA: BLADEPOINT",
+   "status": "Supported"
+  },
+  {
+   "name": "Genshin Impact",
+   "status": "Running"
+  },
+  {
+   "name": "DJMAX RESPECT V",
+   "status": "Supported"
+  },
+  {
+   "name": "Plants vs. Zombies: Battle for Neighborville",
+   "status": "Denied"
+  },
+  {
+   "name": "Hell Let Loose",
+   "status": "Supported"
+  },
+  {
+   "name": "Bless Unleashed",
+   "status": "Supported"
+  },
+  {
+   "name": "Rising Storm 2: Vietnam",
+   "status": "Running"
+  },
+  {
+   "name": "Pandemic Express - Zombie Escape",
+   "status": "Broken"
+  },
+  {
+   "name": "SCUM",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's The Division 2",
+   "status": "Supported"
+  },
+  {
+   "name": "JUMP FORCE",
+   "status": "Broken"
+  },
+  {
+   "name": "Knockout City",
+   "status": "Supported"
+  },
+  {
+   "name": "DRAGON BALL FighterZ",
+   "status": "Broken"
+  },
+  {
+   "name": "Enlisted",
+   "status": "Broken"
+  },
+  {
+   "name": "Due Process",
+   "status": "Planned"
+  },
+  {
+   "name": "Rec Room",
+   "status": "Running"
+  },
+  {
+   "name": "World War 3",
+   "status": "Running"
+  },
+  {
+   "name": "iRacing",
+   "status": "Broken"
+  },
+  {
+   "name": "DRAGON BALL XENOVERSE 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Ghost Recon Wildlands",
+   "status": "Broken"
+  },
+  {
+   "name": "Watch_Dogs\u00ae 2",
+   "status": "Running"
+  },
+  {
+   "name": "Zero Hour",
+   "status": "Running"
+  },
+  {
+   "name": "Ironsight",
+   "status": "Supported"
+  },
+  {
+   "name": "The Crew\u2122 2",
+   "status": "Broken"
+  },
+  {
+   "name": "CRSED: F.O.A.D.",
+   "status": "Supported"
+  },
+  {
+   "name": "STAR WARS\u2122: Squadrons",
+   "status": "Supported"
+  },
+  {
+   "name": "Diabotical",
+   "status": "Running"
+  },
+  {
+   "name": "Totally Accurate Battlegrounds",
+   "status": "Supported"
+  },
+  {
+   "name": "Splitgate",
+   "status": "Supported"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive",
+   "status": "Supported"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (FACEIT)",
+   "status": "Denied"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (ESEA)",
+   "status": "Denied"
+  },
+  {
+   "name": "Team Fortress 2",
+   "status": "Supported"
+  },
+  {
+   "name": "DotA 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty\u00ae: Black Ops III",
+   "status": "Supported"
+  },
+  {
+   "name": "Garry's Mod",
+   "status": "Supported"
+  },
+  {
+   "name": "Dying Light",
+   "status": "Supported"
+  },
+  {
+   "name": "SoulWorker",
+   "status": "Running"
+  },
+  {
+   "name": "Tom Clancy's Ghost Recon Breakpoint",
+   "status": "Supported"
+  },
+  {
+   "name": "Digimon Masters Online",
+   "status": "Running"
+  },
+  {
+   "name": "Post Scriptum",
+   "status": "Denied"
+  },
+  {
+   "name": "Sector's Edge",
+   "status": "Running"
+  },
+  {
+   "name": "Worms Rumble",
+   "status": "Broken"
+  },
+  {
+   "name": "Dirty Bomb",
+   "status": "Running"
+  },
+  {
+   "name": "Empyrion - Galactic Survival",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Modern Warfare (2019)",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Warzone",
+   "status": "Broken"
+  },
+  {
+   "name": "Brawlhalla",
+   "status": "Supported"
+  },
+  {
+   "name": "Combat Arms: Reloaded",
+   "status": "Broken"
+  },
+  {
+   "name": "POLYGON",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty Black Ops: Cold War",
+   "status": "Broken"
+  },
+  {
+   "name": "Albion Online",
+   "status": "Supported"
+  },
+  {
+   "name": "Counter-Strike: Source",
+   "status": "Supported"
+  },
+  {
+   "name": "Outriders",
+   "status": "Supported"
+  },
+  {
+   "name": "Crossout",
+   "status": "Supported"
+  },
+  {
+   "name": "Spellbreak",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield 4",
+   "status": "Supported"
+  },
+  {
+   "name": "Conan Exiles",
+   "status": "Broken"
+  },
+  {
+   "name": "Mount & Blade II: Bannerlord",
+   "status": "Supported"
+  },
+  {
+   "name": "Vampire: The Masquerade - Bloodhunt",
+   "status": "Denied"
+  },
+  {
+   "name": "MapleStory",
+   "status": "Broken"
+  },
+  {
+   "name": "Heroes & Generals",
+   "status": "Broken"
+  },
+  {
+   "name": "Deadside",
+   "status": "Broken"
+  },
+  {
+   "name": "Intruder",
+   "status": "Running"
+  },
+  {
+   "name": "Warface",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty",
+   "status": "Supported"
+  },
+  {
+   "name": "Half-Life 2: Deathmatch",
+   "status": "Supported"
+  },
+  {
+   "name": "Atlas",
+   "status": "Broken"
+  },
+  {
+   "name": "The Mean Greens: Plastic Warfare",
+   "status": "Supported"
+  },
+  {
+   "name": "Mordhau",
+   "status": "Supported"
+  },
+  {
+   "name": "ArmA 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Quake III Arena",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Battlefield 1",
+   "status": "Denied"
+  },
+  {
+   "name": "Nuclear Dawn",
+   "status": "Supported"
+  },
+  {
+   "name": "Pirates, Vikings, and Knights II",
+   "status": "Supported"
+  },
+  {
+   "name": "Battlefield 1942",
+   "status": "Broken"
+  },
+  {
+   "name": "Team Fortress Classic",
+   "status": "Supported"
+  },
+  {
+   "name": "ARK: Survival of the Fittest",
+   "status": "Supported"
+  },
+  {
+   "name": "Crysis",
+   "status": "Broken"
+  },
+  {
+   "name": "The Isle",
+   "status": "Running"
+  },
+  {
+   "name": "Call of Duty: Black Ops",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty 4: Modern Warfare",
+   "status": "Supported"
+  },
+  {
+   "name": "Day of Defeat",
+   "status": "Supported"
+  },
+  {
+   "name": "Chivalry: Medieval Warfare",
+   "status": "Supported"
+  },
+  {
+   "name": "Pang Online",
+   "status": "Broken"
+  },
+  {
+   "name": "The Ship: Murder Party",
+   "status": "Supported"
+  },
+  {
+   "name": "Insurgency",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Black Ops II",
+   "status": "Supported"
+  },
+  {
+   "name": "Monstrum 2",
+   "status": "Broken"
+  },
+  {
+   "name": "No More Room in Hell",
+   "status": "Supported"
+  },
+  {
+   "name": "Depth",
+   "status": "Supported"
+  },
+  {
+   "name": "Quake 4",
+   "status": "Supported"
+  },
+  {
+   "name": "Deathmatch Classic",
+   "status": "Supported"
+  },
+  {
+   "name": "Battlefield 2",
+   "status": "Supported"
+  },
+  {
+   "name": "SWORD ART ONLINE Alicization Lycoris",
+   "status": "Broken"
+  },
+  {
+   "name": "Foxhole",
+   "status": "Supported"
+  },
+  {
+   "name": "Block N Load",
+   "status": "Broken"
+  },
+  {
+   "name": "Titanfall",
+   "status": "Supported"
+  },
+  {
+   "name": "KartRider",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield 3",
+   "status": "Running"
+  },
+  {
+   "name": "KovaaK",
+   "status": "Running"
+  },
+  {
+   "name": "Day of Defeat: Source",
+   "status": "Supported"
+  },
+  {
+   "name": "STAR WARS\u2122 Battlefront\u2122 (2015)",
+   "status": "Supported"
+  },
+  {
+   "name": "Tower Wars",
+   "status": "Supported"
+  },
+  {
+   "name": "Hurtworld",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Ghosts",
+   "status": "Supported"
+  },
+  {
+   "name": "Sword Art Online: Fatal Bullet",
+   "status": "Broken"
+  },
+  {
+   "name": "Killing Floor",
+   "status": "Supported"
+  },
+  {
+   "name": "Battlefield: Bad Company 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Trials Rising",
+   "status": "Broken"
+  },
+  {
+   "name": "Cry of Fear",
+   "status": "Supported"
+  },
+  {
+   "name": "Far Cry 5",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Modern Warfare 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Kritika:Reboot",
+   "status": "Broken"
+  },
+  {
+   "name": "Half-Life Deathmatch: Source",
+   "status": "Supported"
+  },
+  {
+   "name": "Beyond the Wire",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Planet: Extreme Condition",
+   "status": "Supported"
+  },
+  {
+   "name": "Tom Clancy's The Division",
+   "status": "Supported"
+  },
+  {
+   "name": "Rocket Arena",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Modern Warfare 3",
+   "status": "Supported"
+  },
+  {
+   "name": "Left 4 Dead 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Tower Unite",
+   "status": "Supported"
+  },
+  {
+   "name": "Day of Infamy",
+   "status": "Supported"
+  },
+  {
+   "name": "Black Squad",
+   "status": "Supported"
+  },
+  {
+   "name": "STAR WARS\u2122 Battlefront\u2122 II (2017)",
+   "status": "Supported"
+  },
+  {
+   "name": "Primal Carnage",
+   "status": "Running"
+  },
+  {
+   "name": "Honkai Impact 3rd",
+   "status": "Broken"
+  },
+  {
+   "name": "Honkai Star Rail",
+   "status": "Broken"
+  },
+  {
+   "name": "Dungeon Defenders",
+   "status": "Supported"
+  },
+  {
+   "name": "APB Reloaded",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield: Hardline",
+   "status": "Running"
+  },
+  {
+   "name": "Gears 5",
+   "status": "Running"
+  },
+  {
+   "name": "Call of Duty: World at War",
+   "status": "Supported"
+  },
+  {
+   "name": "Quake Live",
+   "status": "Supported"
+  },
+  {
+   "name": "PixARK",
+   "status": "Broken"
+  },
+  {
+   "name": "Captain Tsubasa: Rise of New Champions",
+   "status": "Broken"
+  },
+  {
+   "name": "TOXIKK",
+   "status": "Supported"
+  },
+  {
+   "name": "ArmA 2: Operation Arrowhead",
+   "status": "Broken"
+  },
+  {
+   "name": "LaTale",
+   "status": "Broken"
+  },
+  {
+   "name": "Crysis: Warhead",
+   "status": "Broken"
+  },
+  {
+   "name": "Predator: Hunting Grounds",
+   "status": "Running"
+  },
+  {
+   "name": "Call of Duty: WWII",
+   "status": "Supported"
+  },
+  {
+   "name": "NosTale",
+   "status": "Supported"
+  },
+  {
+   "name": "Battlefield V",
+   "status": "Denied"
+  },
+  {
+   "name": "Chivalry 2",
+   "status": "Running"
+  },
+  {
+   "name": "Homefront",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Infinite Warfare",
+   "status": "Supported"
+  },
+  {
+   "name": "PangYa",
+   "status": "Broken"
+  },
+  {
+   "name": "Quantum League",
+   "status": "Broken"
+  },
+  {
+   "name": "Blazing Sails",
+   "status": "Running"
+  },
+  {
+   "name": "Titanfall 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Lemnis Gate",
+   "status": "Broken"
+  },
+  {
+   "name": "GrandChase",
+   "status": "Supported"
+  },
+  {
+   "name": "Killing Floor 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Black Clover: Quartet Knights",
+   "status": "Broken"
+  },
+  {
+   "name": "Nine to Five",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Ark",
+   "status": "Running"
+  },
+  {
+   "name": "Archeage: Unchained",
+   "status": "Broken"
+  },
+  {
+   "name": "Hired Ops",
+   "status": "Supported"
+  },
+  {
+   "name": "Watch Dogs\u00ae: Legion",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Vanguard",
+   "status": "Broken"
+  },
+  {
+   "name": "Star Citizen",
+   "status": "Running"
+  },
+  {
+   "name": "Quake Champions",
+   "status": "Supported"
+  },
+  {
+   "name": "Pavlov VR",
+   "status": "Running"
+  },
+  {
+   "name": "Dauntless",
+   "status": "Running"
+  },
+  {
+   "name": "NARUTO TO BORUTO: SHINOBI STRIKER",
+   "status": "Broken"
+  },
+  {
+   "name": "Myth of Empires",
+   "status": "Broken"
+  },
+  {
+   "name": "League of Legends",
+   "status": "Denied"
+  },
+  {
+   "name": "Gunfire Reborn",
+   "status": "Supported"
+  },
+  {
+   "name": "Elden Ring",
+   "status": "Supported"
+  },
+  {
+   "name": "Tibia",
+   "status": "Supported"
+  },
+  {
+   "name": "Will To Live Online",
+   "status": "Running"
+  },
+  {
+   "name": "Battlefleet Gothic: Armada 2",
+   "status": "Broken"
+  },
+  {
+   "name": "SUPER PEOPLE",
+   "status": "Broken"
+  },
+  {
+   "name": "Darwin Project",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Black Ops IIII",
+   "status": "Supported"
+  },
+  {
+   "name": "BattleBit Remastered",
+   "status": "Running"
+  },
+  {
+   "name": "Vindictus",
+   "status": "Running"
+  },
+  {
+   "name": "Deceit",
+   "status": "Supported"
+  },
+  {
+   "name": "Absolver",
+   "status": "Broken"
+  },
+  {
+   "name": "EZ2ON REBOOT : R",
+   "status": "Supported"
+  },
+  {
+   "name": "Closers",
+   "status": "Broken"
+  },
+  {
+   "name": "Allods Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Warframe",
+   "status": "Supported"
+  },
+  {
+   "name": "Fiesta Online",
+   "status": "Running"
+  },
+  {
+   "name": "Friday The 13th: The Game",
+   "status": "Running"
+  },
+  {
+   "name": "Grand Theft Auto V",
+   "status": "Denied"
+  },
+  {
+   "name": "Super Animal Royale",
+   "status": "Supported"
+  },
+  {
+   "name": "Fallout 76",
+   "status": "Running"
+  },
+  {
+   "name": "ANOTHER EDEN",
+   "status": "Broken"
+  },
+  {
+   "name": "Overwatch 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Century: Age of Ashes",
+   "status": "Broken"
+  },
+  {
+   "name": "Path Of Titans",
+   "status": "Supported"
+  },
+  {
+   "name": "Awesomenauts - the 2D moba",
+   "status": "Supported"
+  },
+  {
+   "name": "Dungeon Fighter Online",
+   "status": "Running"
+  },
+  {
+   "name": "Evil Dead: The Game",
+   "status": "Supported"
+  },
+  {
+   "name": "SCP: Secret Laboratory",
+   "status": "Running"
+  },
+  {
+   "name": "Midnight Ghost Hunt",
+   "status": "Running"
+  },
+  {
+   "name": "Rumble Fighter: Unleashed",
+   "status": "Broken"
+  },
+  {
+   "name": "Hood: Outlaws & Legends",
+   "status": "Broken"
+  },
+  {
+   "name": "Multiversus",
+   "status": "Supported"
+  },
+  {
+   "name": "VRChat",
+   "status": "Supported"
+  },
+  {
+   "name": "Knight Online",
+   "status": "Broken"
+  },
+  {
+   "name": "DRAGON BALL: THE BREAKERS",
+   "status": "Broken"
+  },
+  {
+   "name": "BATTALION: Legacy",
+   "status": "Supported"
+  },
+  {
+   "name": "Tower of Fantasy",
+   "status": "Running"
+  },
+  {
+   "name": "Lost Light",
+   "status": "Broken"
+  },
+  {
+   "name": "Shatterline",
+   "status": "Supported"
+  },
+  {
+   "name": "Gundam Evolution",
+   "status": "Running"
+  },
+  {
+   "name": "ArmA Reforger",
+   "status": "Supported"
+  },
+  {
+   "name": "EA SPORTS\u2122 FIFA 23",
+   "status": "Denied"
+  },
+  {
+   "name": "Call of Duty: Modern Warfare II (2022)",
+   "status": "Broken"
+  },
+  {
+   "name": "Marauders",
+   "status": "Running"
+  },
+  {
+   "name": "Predecessor",
+   "status": "Supported"
+  },
+  {
+   "name": "Final Fantasy XIV",
+   "status": "Running"
+  },
+  {
+   "name": "XDefiant",
+   "status": "Supported"
+  },
+  {
+   "name": "Roblox",
+   "status": "Denied"
+  },
+  {
+   "name": "Boundary",
+   "status": "Broken"
+  },
+  {
+   "name": "THE FINALS",
+   "status": "Supported"
+  },
+  {
+   "name": "PROJECT: PLAYTIME",
+   "status": "Running"
+  },
+  {
+   "name": "Farlight 84",
+   "status": "Denied"
+  },
+  {
+   "name": "Riders Republic",
+   "status": "Supported"
+  },
+  {
+   "name": "Nikke: Goddess of Victory",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy\u2019s Rainbow Six\u00ae Extraction",
+   "status": "Running"
+  },
+  {
+   "name": "The First Descendant",
+   "status": "Running"
+  },
+  {
+   "name": "Counter-Strike 2",
+   "status": "Supported"
+  },
+  {
+   "name": "A.V.A Global",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Modern Warfare III (2023)",
+   "status": "Broken"
+  },
+  {
+   "name": "Starsiege: Deadzone",
+   "status": "Supported"
+  },
+  {
+   "name": "Eternal Return",
+   "status": "Supported"
+  },
+  {
+   "name": "Armored Core VI: Fires of Rubicon",
+   "status": "Supported"
+  },
+  {
+   "name": "Deceive Inc.",
+   "status": "Running"
+  },
+  {
+   "name": "Alien Arena: Warriors of Mars",
+   "status": "Broken"
+  },
+  {
+   "name": "Goose Goose Duck",
+   "status": "Running"
+  },
+  {
+   "name": "Realm Royale Reforged",
+   "status": "Broken"
+  },
+  {
+   "name": "Hot Wheels UNLEASHED 2 - Turbocharged",
+   "status": "Running"
+  },
+  {
+   "name": "MY HERO ULTRA RUMBLE",
+   "status": "Supported"
+  },
+  {
+   "name": "MicroVolts: Recharged",
+   "status": "Supported"
+  },
+  {
+   "name": "ARC Raiders",
+   "status": "Running"
+  },
+  {
+   "name": "Lords of the Fallen (2023)",
+   "status": "Supported"
+  },
+  {
+   "name": "Deceit 2",
+   "status": "Running"
+  },
+  {
+   "name": "Block N Load 2",
+   "status": "Broken"
+  },
+  {
+   "name": "HypeSquad",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS\u2122 Madden NFL 23",
+   "status": "Supported"
+  },
+  {
+   "name": "F.E.A.R.",
+   "status": "Broken"
+  },
+  {
+   "name": "Zombie Panic! Source",
+   "status": "Supported"
+  },
+  {
+   "name": "EA SPORTS\u2122 Madden NFL 24",
+   "status": "Denied"
+  },
+  {
+   "name": "Suicide Squad: Kill the Justice League",
+   "status": "Supported"
+  },
+  {
+   "name": "Helldivers 2",
+   "status": "Running"
+  },
+  {
+   "name": "Dungeonborne",
+   "status": "Broken"
+  },
+  {
+   "name": "Warface: Clutch",
+   "status": "Broken"
+  },
+  {
+   "name": "Dark Messiah of Might & Magic",
+   "status": "Supported"
+  },
+  {
+   "name": "The Ship: Remastered",
+   "status": "Running"
+  },
+  {
+   "name": "SYNCED",
+   "status": "Broken"
+  },
+  {
+   "name": "KurtzPel",
+   "status": "Supported"
+  },
+  {
+   "name": "Hoard",
+   "status": "Supported"
+  },
+  {
+   "name": "Veiled Experts",
+   "status": "Running"
+  },
+  {
+   "name": "Enlisted: Reinforced",
+   "status": "Supported"
+  },
+  {
+   "name": "EA SPORTS FC\u2122 24",
+   "status": "Denied"
+  },
+  {
+   "name": "Tree of Savior",
+   "status": "Supported"
+  },
+  {
+   "name": "Wargame: European Escalation",
+   "status": "Supported"
+  },
+  {
+   "name": "Mini Royale",
+   "status": "Supported"
+  },
+  {
+   "name": "FiveM",
+   "status": "Denied"
+  },
+  {
+   "name": "HAWKED",
+   "status": "Broken"
+  },
+  {
+   "name": "Out of Reach",
+   "status": "Supported"
+  },
+  {
+   "name": "TRIBES 3: Rivals",
+   "status": "Supported"
+  },
+  {
+   "name": "Frontlines: Fuel of War",
+   "status": "Broken"
+  },
+  {
+   "name": "Paragon: The Overprime",
+   "status": "Running"
+  },
+  {
+   "name": "ARK: Survival Ascended",
+   "status": "Supported"
+  },
+  {
+   "name": "Midair",
+   "status": "Supported"
+  },
+  {
+   "name": "\u30d8\u30d6\u30f3\u30d0\u30fc\u30f3\u30ba\u30ec\u30c3\u30c9 (Heaven Burns Red)",
+   "status": "Running"
+  },
+  {
+   "name": "Microworks",
+   "status": "Supported"
+  },
+  {
+   "name": "Teamfight Tactics",
+   "status": "Denied"
+  },
+  {
+   "name": "Smite 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Elsword",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike 2 (FACEIT)",
+   "status": "Denied"
+  },
+  {
+   "name": "Battle Teams 2",
+   "status": "Broken"
+  },
+  {
+   "name": "SMASH LEGENDS",
+   "status": "Running"
+  },
+  {
+   "name": "Total War: SHOGUN 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Aura Kingdom",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS FC\u2122 25",
+   "status": "Denied"
+  },
+  {
+   "name": "Magicka: Wizard Wars",
+   "status": "Broken"
+  },
+  {
+   "name": "World of Tanks Blitz",
+   "status": "Running"
+  },
+  {
+   "name": "MIR4",
+   "status": "Broken"
+  },
+  {
+   "name": "F.E.A.R.: Perseus Mandate",
+   "status": "Broken"
+  },
+  {
+   "name": "The Bornless",
+   "status": "Broken"
+  },
+  {
+   "name": "Sky Noon",
+   "status": "Running"
+  },
+  {
+   "name": "Combat Arms: the Classic",
+   "status": "Running"
+  },
+  {
+   "name": "Soldier Front 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Once Human (ROW/INTL)",
+   "status": "Running"
+  },
+  {
+   "name": "KartRider: Drift",
+   "status": "Supported"
+  },
+  {
+   "name": "Mecha BREAK",
+   "status": "Broken"
+  },
+  {
+   "name": "ARK 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Zenless Zone Zero",
+   "status": "Running"
+  },
+  {
+   "name": "EA SPORTS\u2122 Madden NFL 25",
+   "status": "Denied"
+  },
+  {
+   "name": "Gray Zone Warfare",
+   "status": "Running"
+  },
+  {
+   "name": "ALARA Prime",
+   "status": "Broken"
+  },
+  {
+   "name": "Sea of Thieves",
+   "status": "Supported"
+  },
+  {
+   "name": "Plants vs Zombies: Garden Warfare 2",
+   "status": "Denied"
+  },
+  {
+   "name": "Gigantic: Rampage Edition",
+   "status": "Running"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Midair 2",
+   "status": "Broken"
+  },
+  {
+   "name": "2XKO",
+   "status": "Denied"
+  },
+  {
+   "name": "Counter-Strike 2 (ESEA)",
+   "status": "Denied"
+  },
+  {
+   "name": "SYNDUALITY Echo of Ada",
+   "status": "Broken"
+  },
+  {
+   "name": "World of Tanks",
+   "status": "Running"
+  },
+  {
+   "name": "Level Zero: Extraction",
+   "status": "Supported"
+  },
+  {
+   "name": "Counter-Strike 2 (ESL)",
+   "status": "Denied"
+  },
+  {
+   "name": "Arena Breakout: Infinite",
+   "status": "Denied"
+  },
+  {
+   "name": "Pixel Gun 3D: PC Edition",
+   "status": "Supported"
+  },
+  {
+   "name": "Marvel Rivals",
+   "status": "Running"
+  },
+  {
+   "name": "Caliber",
+   "status": "Supported"
+  },
+  {
+   "name": "Return Alive",
+   "status": "Broken"
+  },
+  {
+   "name": "World of Warcraft",
+   "status": "Running"
+  },
+  {
+   "name": "Dungeon Stalkers",
+   "status": "Running"
+  },
+  {
+   "name": "MEGATON MUSASHI W: WIRED",
+   "status": "Supported"
+  },
+  {
+   "name": "Wuthering Waves",
+   "status": "Running"
+  },
+  {
+   "name": "Dota Underlords",
+   "status": "Supported"
+  },
+  {
+   "name": "Battle Crush",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Warzone 2.0",
+   "status": "Broken"
+  },
+  {
+   "name": "Beautiful Light",
+   "status": "Broken"
+  },
+  {
+   "name": "StarCraft II",
+   "status": "Running"
+  },
+  {
+   "name": "Wakerunners",
+   "status": "Broken"
+  },
+  {
+   "name": "Street Fighter V (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Blue Protocol: Star Resonance",
+   "status": "Running"
+  },
+  {
+   "name": "Dark and Darker",
+   "status": "Running"
+  },
+  {
+   "name": "Mortal Kombat X (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dota 2 (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Perfect World M",
+   "status": "Broken"
+  },
+  {
+   "name": "Killer Klowns from Outer Space: The Game",
+   "status": "Supported"
+  },
+  {
+   "name": "World of Tanks (ESL)",
+   "status": "Denied"
+  },
+  {
+   "name": "EA SPORTS\u2122 FIFA 23 (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Black Ops 6",
+   "status": "Broken"
+  },
+  {
+   "name": "Diabotical Rogue",
+   "status": "Supported"
+  },
+  {
+   "name": "Mortal Kombat 11 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "League of Legends (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (Esportal)",
+   "status": "Broken"
+  },
+  {
+   "name": "FragPunk",
+   "status": "Running"
+  },
+  {
+   "name": "BattleCore Arena",
+   "status": "Supported"
+  },
+  {
+   "name": "Guilty Gear: Strive (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Rainbow Six: Siege (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dota 2 (Esportal)",
+   "status": "Broken"
+  },
+  {
+   "name": "Project L33T",
+   "status": "Running"
+  },
+  {
+   "name": "Mabinogi",
+   "status": "Running"
+  },
+  {
+   "name": "Tekken 7 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Rocket League\u00ae",
+   "status": "Supported"
+  },
+  {
+   "name": "Rocket League (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike 2 (Esportal)",
+   "status": "Broken"
+  },
+  {
+   "name": "Strinova",
+   "status": "Broken"
+  },
+  {
+   "name": "Black Mesa",
+   "status": "Supported"
+  },
+  {
+   "name": "FIFA 23 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Overwatch 2 (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Momentum Mod",
+   "status": "Supported"
+  },
+  {
+   "name": "WarCraft III",
+   "status": "Running"
+  },
+  {
+   "name": "Street Fighter 6 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Valorant (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "s&box",
+   "status": "Supported"
+  },
+  {
+   "name": "Heroes of the Storm",
+   "status": "Running"
+  },
+  {
+   "name": "NBA 2K24 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dune: Awakening",
+   "status": "Running"
+  },
+  {
+   "name": "WarCraft III: Reforged",
+   "status": "Running"
+  },
+  {
+   "name": "Madden 23 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Throne and Liberty",
+   "status": "Running"
+  },
+  {
+   "name": "The Texas Chain Saw Massacre",
+   "status": "Running"
+  },
+  {
+   "name": "NBA 2K23 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Concord",
+   "status": "Denied"
+  },
+  {
+   "name": "Bleeding Edge",
+   "status": "Broken"
+  },
+  {
+   "name": "Madden 24 (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "Half-Life",
+   "status": "Supported"
+  },
+  {
+   "name": "Resident Evil Revelations",
+   "status": "Running"
+  },
+  {
+   "name": "Red Orchestra: Ostfront 41-45",
+   "status": "Supported"
+  },
+  {
+   "name": "Delta Force: Hawk Ops",
+   "status": "Denied"
+  },
+  {
+   "name": "Lightning",
+   "status": "Broken"
+  },
+  {
+   "name": "Natural Selection 2",
+   "status": "Running"
+  },
+  {
+   "name": "Brawlhalla (ESL)",
+   "status": "Broken"
+  },
+  {
+   "name": "N-Age",
+   "status": "Broken"
+  },
+  {
+   "name": "Red Faction\u00ae: Armageddon\u2122",
+   "status": "Supported"
+  },
+  {
+   "name": "EA SPORTS\u2122 WRC 24",
+   "status": "Denied"
+  },
+  {
+   "name": "100% Orange Juice",
+   "status": "Supported"
+  },
+  {
+   "name": "Snowbreak: Containment Zone (ROW/INTL)",
+   "status": "Running"
+  },
+  {
+   "name": "Snowbreak: Containment Zone (CN)",
+   "status": "Broken"
+  },
+  {
+   "name": "Decimated",
+   "status": "Broken"
+  },
+  {
+   "name": "Contract Wars Client",
+   "status": "Running"
+  },
+  {
+   "name": "Ricochet",
+   "status": "Supported"
+  },
+  {
+   "name": "Armello",
+   "status": "Supported"
+  },
+  {
+   "name": "Witch It",
+   "status": "Running"
+  },
+  {
+   "name": "Sonic & All-Stars Racing Transformed Collection",
+   "status": "Running"
+  },
+  {
+   "name": "Exos Heroes",
+   "status": "Broken"
+  },
+  {
+   "name": "Perfect New World",
+   "status": "Broken"
+  },
+  {
+   "name": "Warhammer 40,000: Speed Freeks",
+   "status": "Running"
+  },
+  {
+   "name": "Dino D-Day",
+   "status": "Running"
+  },
+  {
+   "name": "Icarus Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Helldivers",
+   "status": "Running"
+  },
+  {
+   "name": "Avorion",
+   "status": "Running"
+  },
+  {
+   "name": "Half-Life: Opposing Force",
+   "status": "Supported"
+  },
+  {
+   "name": "Blade & Soul",
+   "status": "Broken"
+  },
+  {
+   "name": "Spectre Divide",
+   "status": "Denied"
+  },
+  {
+   "name": "Stormgate",
+   "status": "Running"
+  },
+  {
+   "name": "Red Orchestra 2: Heroes of Stalingrad",
+   "status": "Running"
+  },
+  {
+   "name": "R2BEAT (\u30a2\u30fc\u30eb\u30c4\u30fc\u30d3\u30fc\u30c8)",
+   "status": "Broken"
+  },
+  {
+   "name": "The Four Kings Casino and Slots",
+   "status": "Running"
+  },
+  {
+   "name": "Sniper Elite: Nazi Zombie Army",
+   "status": "Running"
+  },
+  {
+   "name": "Miscreated",
+   "status": "Broken"
+  },
+  {
+   "name": "Red Stone Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Ashfall",
+   "status": "Broken"
+  },
+  {
+   "name": "Metal Slug: Awakening",
+   "status": "Broken"
+  },
+  {
+   "name": "Gas Guzzlers Extreme",
+   "status": "Running"
+  },
+  {
+   "name": "Magicka",
+   "status": "Running"
+  },
+  {
+   "name": "Grey Goo",
+   "status": "Running"
+  },
+  {
+   "name": "Rappelz",
+   "status": "Broken"
+  },
+  {
+   "name": "SUPERVIVE",
+   "status": "Running"
+  },
+  {
+   "name": "Splitgate 2",
+   "status": "Running"
+  },
+  {
+   "name": "XERA: Survival",
+   "status": "Running"
+  },
+  {
+   "name": "Monday Night Combat",
+   "status": "Running"
+  },
+  {
+   "name": "Tallowmere 2: Curse of the Kittens",
+   "status": "Supported"
+  },
+  {
+   "name": "ORION: Prelude",
+   "status": "Running"
+  },
+  {
+   "name": "Undecember",
+   "status": "Running"
+  },
+  {
+   "name": "Diablo\u00ae II",
+   "status": "Running"
+  },
+  {
+   "name": "Harry Potter: Quidditch Champions",
+   "status": "Supported"
+  },
+  {
+   "name": "AION",
+   "status": "Running"
+  },
+  {
+   "name": "AION (EU)",
+   "status": "Running"
+  },
+  {
+   "name": "Serious Sam 3",
+   "status": "Supported"
+  },
+  {
+   "name": "Call of Duty: Advanced Warfare",
+   "status": "Running"
+  },
+  {
+   "name": "Swords and Soldiers HD",
+   "status": "Running"
+  },
+  {
+   "name": "Royal Crown",
+   "status": "Broken"
+  },
+  {
+   "name": "StarCraft",
+   "status": "Running"
+  },
+  {
+   "name": "Deadlock",
+   "status": "Supported"
+  },
+  {
+   "name": "Skull and Bones",
+   "status": "Running"
+  },
+  {
+   "name": "Critter Crunch",
+   "status": "Running"
+  },
+  {
+   "name": "Inversion\u2122",
+   "status": "Running"
+  },
+  {
+   "name": "NEOTOKYO",
+   "status": "Broken"
+  },
+  {
+   "name": "Warlords Awakening",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation: Survivor Stories Classic",
+   "status": "Broken"
+  },
+  {
+   "name": "Diablo\u00ae III",
+   "status": "Running"
+  },
+  {
+   "name": "Solider One",
+   "status": "Broken"
+  },
+  {
+   "name": "3on3 FreeStyle",
+   "status": "Broken"
+  },
+  {
+   "name": "One Punch Man: A Hero Nobody Knows",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "BlackShot: Mercenary Warfare FPS",
+   "status": "Broken"
+  },
+  {
+   "name": "Ring of Elysium",
+   "status": "Broken"
+  },
+  {
+   "name": "Test Drive Unlimited Solar Crown",
+   "status": "Running"
+  },
+  {
+   "name": "Resident Evil Resistance",
+   "status": "Running"
+  },
+  {
+   "name": "Synergy",
+   "status": "Supported"
+  },
+  {
+   "name": "Revelations 2012",
+   "status": "Running"
+  },
+  {
+   "name": "Shot Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Medal of Honor: Airborne",
+   "status": "Running"
+  },
+  {
+   "name": "StarCraft: Remastered",
+   "status": "Running"
+  },
+  {
+   "name": "Magic to Master",
+   "status": "Broken"
+  },
+  {
+   "name": "3on3 FreeStyle: Rebound",
+   "status": "Broken"
+  },
+  {
+   "name": "Dual Universe",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike 2 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Blacklight: Retribution",
+   "status": "Broken"
+  },
+  {
+   "name": "ASTRA: Knights of Veda",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation World",
+   "status": "Broken"
+  },
+  {
+   "name": "War Rock",
+   "status": "Broken"
+  },
+  {
+   "name": "Metro Conflict",
+   "status": "Broken"
+  },
+  {
+   "name": "Faaast Penguin",
+   "status": "Running"
+  },
+  {
+   "name": "Umbrella Corps",
+   "status": "Broken"
+  },
+  {
+   "name": "Sven Co-op",
+   "status": "Supported"
+  },
+  {
+   "name": "Uncharted Waters Online",
+   "status": "Running"
+  },
+  {
+   "name": "Assassin's Creed\u00ae III",
+   "status": "Running"
+  },
+  {
+   "name": "Diablo\u00ae II: Resurrected",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok Online Prime",
+   "status": "Broken"
+  },
+  {
+   "name": "Bless Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Last Oasis",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (GamersClub)",
+   "status": "Broken"
+  },
+  {
+   "name": "DEAD CIDE CLUB",
+   "status": "Broken"
+  },
+  {
+   "name": "League of Legends (CHN)",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation: The New Z",
+   "status": "Broken"
+  },
+  {
+   "name": "Ragnarok Online 2",
+   "status": "Broken"
+  },
+  {
+   "name": "GunZ: The Duel",
+   "status": "Broken"
+  },
+  {
+   "name": "DUCKSIDE",
+   "status": "Broken"
+  },
+  {
+   "name": "Flippin Misfits",
+   "status": "Broken"
+  },
+  {
+   "name": "Roller Coaster Rampage",
+   "status": "Broken"
+  },
+  {
+   "name": "Rakion Chaos Force",
+   "status": "Broken"
+  },
+  {
+   "name": "Medal of Honor: Warfighter",
+   "status": "Running"
+  },
+  {
+   "name": "Diablo\u00ae IV",
+   "status": "Running"
+  },
+  {
+   "name": "Silkroad Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Twin Saga",
+   "status": "Broken"
+  },
+  {
+   "name": "AEW Fight Forever",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike 2 (GamersClub)",
+   "status": "Broken"
+  },
+  {
+   "name": "Just Survive",
+   "status": "Broken"
+  },
+  {
+   "name": "Metin2",
+   "status": "Running"
+  },
+  {
+   "name": "Metin2 (KOR)",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation: Survivor Stories Revival",
+   "status": "Broken"
+  },
+  {
+   "name": "Arctic Combat",
+   "status": "Broken"
+  },
+  {
+   "name": "Granado Espada",
+   "status": "Running"
+  },
+  {
+   "name": "Granado Espada (KOR)",
+   "status": "Broken"
+  },
+  {
+   "name": "Granado Espada Japan",
+   "status": "Broken"
+  },
+  {
+   "name": "Tarisland",
+   "status": "Broken"
+  },
+  {
+   "name": "Breachers",
+   "status": "Denied"
+  },
+  {
+   "name": "Line of Sight",
+   "status": "Running"
+  },
+  {
+   "name": "Dying Light: Bad Blood",
+   "status": "Broken"
+  },
+  {
+   "name": "Granado Espada (EUR)",
+   "status": "Broken"
+  },
+  {
+   "name": "TwelveSky 2 Classic",
+   "status": "Broken"
+  },
+  {
+   "name": "Fault: Elder Orb",
+   "status": "Broken"
+  },
+  {
+   "name": "DOOM 3",
+   "status": "Running"
+  },
+  {
+   "name": "United 1944",
+   "status": "Broken"
+  },
+  {
+   "name": "Point Blank",
+   "status": "Broken"
+  },
+  {
+   "name": "ME_iON",
+   "status": "Broken"
+  },
+  {
+   "name": "Shadow Arena",
+   "status": "Broken"
+  },
+  {
+   "name": "M.A.R.S.",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike: Global Offensive (ESGPLAY)",
+   "status": "Broken"
+  },
+  {
+   "name": "The Culling 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Ghosts of Tabor",
+   "status": "Denied"
+  },
+  {
+   "name": "Undawn",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation: Survivor Stories 2020",
+   "status": "Broken"
+  },
+  {
+   "name": "Florensia",
+   "status": "Broken"
+  },
+  {
+   "name": "Hero Plus",
+   "status": "Broken"
+  },
+  {
+   "name": "NAKWON: LAST PARADISE",
+   "status": "Running"
+  },
+  {
+   "name": "Seal Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Half-Life: VR Mod",
+   "status": "Broken"
+  },
+  {
+   "name": "Atlantica Global",
+   "status": "Broken"
+  },
+  {
+   "name": "Atlantica Europe",
+   "status": "Broken"
+  },
+  {
+   "name": "Far Cry 3",
+   "status": "Running"
+  },
+  {
+   "name": "Lineage II",
+   "status": "Broken"
+  },
+  {
+   "name": "Audition Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Summum Aeterna",
+   "status": "Broken"
+  },
+  {
+   "name": "Wild Card Football",
+   "status": "Broken"
+  },
+  {
+   "name": "Scavengers",
+   "status": "Broken"
+  },
+  {
+   "name": "CardLife: Creative Survival",
+   "status": "Running"
+  },
+  {
+   "name": "Video Horror Society",
+   "status": "Running"
+  },
+  {
+   "name": "Next Day: Survival",
+   "status": "Broken"
+  },
+  {
+   "name": "Team Fortress 2 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Spirit Detective",
+   "status": "Broken"
+  },
+  {
+   "name": "Chimeraland",
+   "status": "Broken"
+  },
+  {
+   "name": "Infestation: Battle Royale",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragonica",
+   "status": "Supported"
+  },
+  {
+   "name": "Tales Runner",
+   "status": "Broken"
+  },
+  {
+   "name": "FinalCypher",
+   "status": "Broken"
+  },
+  {
+   "name": "F1\u00ae 24",
+   "status": "Denied"
+  },
+  {
+   "name": "Insurgency: Modern Infantry Combat",
+   "status": "Broken"
+  },
+  {
+   "name": "Sentry\uff1aObelisk Of Dawn",
+   "status": "Broken"
+  },
+  {
+   "name": "Joint Operations: Escalation",
+   "status": "Broken"
+  },
+  {
+   "name": "AION Classic",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragomon Hunter",
+   "status": "Broken"
+  },
+  {
+   "name": "Friends vs Friends",
+   "status": "Running"
+  },
+  {
+   "name": "The Culling",
+   "status": "Supported"
+  },
+  {
+   "name": "Frozen Flame",
+   "status": "Broken"
+  },
+  {
+   "name": "RockShot",
+   "status": "Broken"
+  },
+  {
+   "name": "Wayfinder",
+   "status": "Broken"
+  },
+  {
+   "name": "Kingshunt",
+   "status": "Broken"
+  },
+  {
+   "name": "League of Legends (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "SUPER PEOPLE 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Project N",
+   "status": "Broken"
+  },
+  {
+   "name": "Nether: The Untold Chapter",
+   "status": "Broken"
+  },
+  {
+   "name": "Arcane Saga Online",
+   "status": "Broken"
+  },
+  {
+   "name": "GunZ 2: The Second Duel",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS\u2122 FC 24 (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Metal Revolution",
+   "status": "Broken"
+  },
+  {
+   "name": "Punishing: Gray Raven",
+   "status": "Running"
+  },
+  {
+   "name": "BrainBread 2",
+   "status": "Supported"
+  },
+  {
+   "name": "Guardian Chronicle",
+   "status": "Broken"
+  },
+  {
+   "name": "Prey",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Zyconix",
+   "status": "Broken"
+  },
+  {
+   "name": "Smelogs Playground",
+   "status": "Broken"
+  },
+  {
+   "name": "A Twisted Path to Renown",
+   "status": "Broken"
+  },
+  {
+   "name": "TRAHA Global",
+   "status": "Running"
+  },
+  {
+   "name": "Life is Feudal: MMO",
+   "status": "Broken"
+  },
+  {
+   "name": "Babylon's Fall",
+   "status": "Broken"
+  },
+  {
+   "name": "Ashes of Creation Apocalypse",
+   "status": "Broken"
+  },
+  {
+   "name": "DotA 2 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Z1 Battle Royale",
+   "status": "Running"
+  },
+  {
+   "name": "\u4ed9\u4fa0\u4e16\u754c (The Mythical Realm)",
+   "status": "Broken"
+  },
+  {
+   "name": "Romero's Aftermath",
+   "status": "Broken"
+  },
+  {
+   "name": "District 187",
+   "status": "Broken"
+  },
+  {
+   "name": "CrossFire",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS\u2122 FC 25 (FACEIT)",
+   "status": "Broken"
+  },
+  {
+   "name": "Neverness to Everness",
+   "status": "Broken"
+  },
+  {
+   "name": "Warhammer 40,000: Space Marine 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Half-Life: ESCAPE 2.0",
+   "status": "Running"
+  },
+  {
+   "name": "9Dragons",
+   "status": "Broken"
+  },
+  {
+   "name": "Medal of Honor",
+   "status": "Running"
+  },
+  {
+   "name": "Lineage II Essence",
+   "status": "Broken"
+  },
+  {
+   "name": "Eternal Kingdom Battle Peak",
+   "status": "Broken"
+  },
+  {
+   "name": "MotoGP\u212224",
+   "status": "Running"
+  },
+  {
+   "name": "Argentum Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Starship Troopers: Extermination",
+   "status": "Broken"
+  },
+  {
+   "name": "Alvo VR",
+   "status": "Broken"
+  },
+  {
+   "name": "Cyberless: Online",
+   "status": "Supported"
+  },
+  {
+   "name": "Anarchy: Wolf's Law",
+   "status": "Broken"
+  },
+  {
+   "name": "Rocket League (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Argo",
+   "status": "Broken"
+  },
+  {
+   "name": "The Front",
+   "status": "Running"
+  },
+  {
+   "name": "12Tails",
+   "status": "Broken"
+  },
+  {
+   "name": "CrimeCraft",
+   "status": "Broken"
+  },
+  {
+   "name": "LastChaos",
+   "status": "Broken"
+  },
+  {
+   "name": "King Arthur: Legends Rise",
+   "status": "Broken"
+  },
+  {
+   "name": "Once Human (CHN)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dread Hunger",
+   "status": "Running"
+  },
+  {
+   "name": "Record of Lodoss War Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six Vegas 2",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok Landverse",
+   "status": "Broken"
+  },
+  {
+   "name": "Sword Art Online: Integral Factor",
+   "status": "Broken"
+  },
+  {
+   "name": "Project Sparrow",
+   "status": "Running"
+  },
+  {
+   "name": "Super Dragon Ball Heroes World Mission",
+   "status": "Running"
+  },
+  {
+   "name": "Robocraft",
+   "status": "Supported"
+  },
+  {
+   "name": "Shoot on Sight",
+   "status": "Broken"
+  },
+  {
+   "name": "Hell is Others",
+   "status": "Running"
+  },
+  {
+   "name": "Sniper Ghost Warrior Contracts",
+   "status": "Running"
+  },
+  {
+   "name": "Call of Duty: Black Ops 3 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Fear the Night",
+   "status": "Broken"
+  },
+  {
+   "name": "\u5168\u6c11\u8857\u7bee (National Street Basketball)",
+   "status": "Broken"
+  },
+  {
+   "name": "Combat Arms",
+   "status": "Broken"
+  },
+  {
+   "name": "Tower Alliance Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Revenblade",
+   "status": "Broken"
+  },
+  {
+   "name": "War Robots: Frontiers",
+   "status": "Running"
+  },
+  {
+   "name": "Ballistic Overkill",
+   "status": "Supported"
+  },
+  {
+   "name": "Legend of Ares",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Ghost Recon: Future Soldier",
+   "status": "Running"
+  },
+  {
+   "name": "Hide or Die",
+   "status": "Broken"
+  },
+  {
+   "name": "Kingdom Under Fire 2",
+   "status": "Broken"
+  },
+  {
+   "name": "RIDE 5",
+   "status": "Broken"
+  },
+  {
+   "name": "Guilty Gear: Strive (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Phantomers",
+   "status": "Broken"
+  },
+  {
+   "name": "Honkai Impact 3rd (CHN)",
+   "status": "Broken"
+  },
+  {
+   "name": "Para Pa",
+   "status": "Broken"
+  },
+  {
+   "name": "Fate Trigger\uff1aThe Novita",
+   "status": "Broken"
+  },
+  {
+   "name": "Conqueror's Blade",
+   "status": "Running"
+  },
+  {
+   "name": "Battlefleet Gothic: Armada",
+   "status": "Running"
+  },
+  {
+   "name": "NAVYFIELD",
+   "status": "Broken"
+  },
+  {
+   "name": "America's Army Proving Grounds",
+   "status": "Running"
+  },
+  {
+   "name": "\u8f6e\u56de\u4e4b\u6c99 (Sands of Reincarnation)",
+   "status": "Broken"
+  },
+  {
+   "name": "Alchemia Story",
+   "status": "Running"
+  },
+  {
+   "name": "Dreadnought",
+   "status": "Broken"
+  },
+  {
+   "name": "WolfTeam Turkey",
+   "status": "Broken"
+  },
+  {
+   "name": "Days of War",
+   "status": "Running"
+  },
+  {
+   "name": "Yulgang TH",
+   "status": "Broken"
+  },
+  {
+   "name": "Rise of Agon",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike 2 (ESGPLAY)",
+   "status": "Broken"
+  },
+  {
+   "name": "BlackShot Revolution",
+   "status": "Broken"
+  },
+  {
+   "name": "Cabal Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Anarchy Legends Online",
+   "status": "Broken"
+  },
+  {
+   "name": "The Crew\u2122 Motorfest",
+   "status": "Supported"
+  },
+  {
+   "name": "Sniper Elite 4",
+   "status": "Running"
+  },
+  {
+   "name": "Legend of Edda: Pegasus",
+   "status": "Broken"
+  },
+  {
+   "name": "Enemy Territory: Quake Wars",
+   "status": "Broken"
+  },
+  {
+   "name": "Metro Conflict: The Origin",
+   "status": "Broken"
+  },
+  {
+   "name": "Space Junkies",
+   "status": "Broken"
+  },
+  {
+   "name": "Kritika Online SEA",
+   "status": "Broken"
+  },
+  {
+   "name": "Last Year",
+   "status": "Broken"
+  },
+  {
+   "name": "Rend",
+   "status": "Broken"
+  },
+  {
+   "name": "Legends of Aria",
+   "status": "Running"
+  },
+  {
+   "name": "Apex Legends (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Outlaws of the Old West",
+   "status": "Running"
+  },
+  {
+   "name": "\u6c5f\u6e56\u5ba2\u6808-\u5355\u4eba\u6a21\u5f0f (Journeyman's Inn)",
+   "status": "Broken"
+  },
+  {
+   "name": "Princess Connect! Re:Dive",
+   "status": "Broken"
+  },
+  {
+   "name": "Priston Tale",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS FC\u2122 26",
+   "status": "Denied"
+  },
+  {
+   "name": "Dominance",
+   "status": "Broken"
+  },
+  {
+   "name": "Project Zero",
+   "status": "Broken"
+  },
+  {
+   "name": "DiRT Rally 2.0",
+   "status": "Running"
+  },
+  {
+   "name": "Summoners War",
+   "status": "Broken"
+  },
+  {
+   "name": "Joint Operations: Combined Arms Gold",
+   "status": "Broken"
+  },
+  {
+   "name": "MARVEL End Time Arena",
+   "status": "Broken"
+  },
+  {
+   "name": "Overstep",
+   "status": "Running"
+  },
+  {
+   "name": "Teamfight Tactics (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Zula Global",
+   "status": "Broken"
+  },
+  {
+   "name": "\u4ed9\u4fa0\u4e16\u754c2 (The Mythical Realm 2)",
+   "status": "Broken"
+  },
+  {
+   "name": "Rusty Hearts",
+   "status": "Broken"
+  },
+  {
+   "name": "DRAGON BALL PROJECT:Multi",
+   "status": "Running"
+  },
+  {
+   "name": "Contractors Showdown",
+   "status": "Broken"
+  },
+  {
+   "name": "IL-2 Sturmovik: Cliffs of Dover",
+   "status": "Broken"
+  },
+  {
+   "name": "TEMPEST: Tower of Probatio",
+   "status": "Broken"
+  },
+  {
+   "name": "Bullet Run",
+   "status": "Broken"
+  },
+  {
+   "name": "Toram Online",
+   "status": "Running"
+  },
+  {
+   "name": "Project F",
+   "status": "Running"
+  },
+  {
+   "name": "EA Sports FC\u2122 24 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Hyper Scape",
+   "status": "Broken"
+  },
+  {
+   "name": "HIS (Heroes In the Sky)",
+   "status": "Broken"
+  },
+  {
+   "name": "Flea Madness",
+   "status": "Broken"
+  },
+  {
+   "name": "Trimurti Online",
+   "status": "Running"
+  },
+  {
+   "name": "Nether: Resurrected",
+   "status": "Broken"
+  },
+  {
+   "name": "LUNIA Z: Revival",
+   "status": "Broken"
+  },
+  {
+   "name": "Joint Operations: Typhoon Rising",
+   "status": "Broken"
+  },
+  {
+   "name": "Cronous",
+   "status": "Broken"
+  },
+  {
+   "name": "Sweet Time",
+   "status": "Broken"
+  },
+  {
+   "name": "WarCraft III (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Grand Theft Auto VI",
+   "status": "Denied"
+  },
+  {
+   "name": "Monster Jam\u2122 Showdown",
+   "status": "Running"
+  },
+  {
+   "name": "Summoners War: Chronicles",
+   "status": "Broken"
+  },
+  {
+   "name": "America's Army 3",
+   "status": "Broken"
+  },
+  {
+   "name": "Eternal Magic",
+   "status": "Broken"
+  },
+  {
+   "name": "WolfTeam",
+   "status": "Broken"
+  },
+  {
+   "name": "SMITE (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "X-beat",
+   "status": "Broken"
+  },
+  {
+   "name": "F1\u00ae 25",
+   "status": "Denied"
+  },
+  {
+   "name": "Midnight Guns",
+   "status": "Broken"
+  },
+  {
+   "name": "Gemini: Binary Conflict",
+   "status": "Supported"
+  },
+  {
+   "name": "O2Jam Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield Heroes",
+   "status": "Broken"
+  },
+  {
+   "name": "MilkChoco",
+   "status": "Broken"
+  },
+  {
+   "name": "LIGHT\u26a1\ufe0fNITE",
+   "status": "Supported"
+  },
+  {
+   "name": "Krunker (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "War Rock 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Uncharted Waters Origin",
+   "status": "Running"
+  },
+  {
+   "name": "Legend of mir2",
+   "status": "Broken"
+  },
+  {
+   "name": "Mu",
+   "status": "Broken"
+  },
+  {
+   "name": "GunBound",
+   "status": "Broken"
+  },
+  {
+   "name": "Assassin's Creed IV: Black Flag",
+   "status": "Running"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six 3: Raven Shield",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok: The Lost Memories",
+   "status": "Broken"
+  },
+  {
+   "name": "Elyon",
+   "status": "Broken"
+  },
+  {
+   "name": "Zone4",
+   "status": "Broken"
+  },
+  {
+   "name": "Ragnarok RE:START",
+   "status": "Broken"
+  },
+  {
+   "name": "Decksplash",
+   "status": "Broken"
+  },
+  {
+   "name": "Robocraft Royale",
+   "status": "Broken"
+  },
+  {
+   "name": "Warface Turkey",
+   "status": "Broken"
+  },
+  {
+   "name": "LEAP",
+   "status": "Running"
+  },
+  {
+   "name": "Warhammer 40,000: Eternal Crusade",
+   "status": "Broken"
+  },
+  {
+   "name": "Continent of the Ninth Seal",
+   "status": "Broken"
+  },
+  {
+   "name": "ArcheAge",
+   "status": "Broken"
+  },
+  {
+   "name": "Dekaron Online TH",
+   "status": "Broken"
+  },
+  {
+   "name": "Worlds Adrift",
+   "status": "Broken"
+  },
+  {
+   "name": "The Riflemen",
+   "status": "Broken"
+  },
+  {
+   "name": "Mu Online PH",
+   "status": "Broken"
+  },
+  {
+   "name": "Code of Ashes",
+   "status": "Broken"
+  },
+  {
+   "name": "Farlight 84 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "ACE Online",
+   "status": "Broken"
+  },
+  {
+   "name": "EA SPORTS\u2122 Madden NFL 26",
+   "status": "Denied"
+  },
+  {
+   "name": "Exoborne",
+   "status": "Denied"
+  },
+  {
+   "name": "JoJo's Bizarre Adventure: All-Star Battle R",
+   "status": "Running"
+  },
+  {
+   "name": "MU Legend",
+   "status": "Broken"
+  },
+  {
+   "name": "Phantasy Star Online Blue Burst",
+   "status": "Broken"
+  },
+  {
+   "name": "Dekaron",
+   "status": "Broken"
+  },
+  {
+   "name": "Legend of mir3",
+   "status": "Broken"
+  },
+  {
+   "name": "Soldier of Fortune II: Double Helix",
+   "status": "Broken"
+  },
+  {
+   "name": "Kingdom: The Blood",
+   "status": "Broken"
+  },
+  {
+   "name": "Ghost in the Shell: Stand Alone Complex - First Assault Online",
+   "status": "Broken"
+  },
+  {
+   "name": "EA Sports FC\u2122 25 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Soul Dossier",
+   "status": "Broken"
+  },
+  {
+   "name": "Brick-Force",
+   "status": "Broken"
+  },
+  {
+   "name": "Tree of Savior (Japanese Ver.)",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok Begins",
+   "status": "Broken"
+  },
+  {
+   "name": "DRAGON BALL: Sparking! ZERO",
+   "status": "Running"
+  },
+  {
+   "name": "DiRT 4",
+   "status": "Supported"
+  },
+  {
+   "name": "Dance! Online",
+   "status": "Broken"
+  },
+  {
+   "name": "DigimonRPG",
+   "status": "Broken"
+  },
+  {
+   "name": "EZ Fighter",
+   "status": "Broken"
+  },
+  {
+   "name": "Gersang",
+   "status": "Broken"
+  },
+  {
+   "name": "Return to Castle Wolfenstein",
+   "status": "Running"
+  },
+  {
+   "name": "War Robots",
+   "status": "Running"
+  },
+  {
+   "name": "Run and Fire",
+   "status": "Broken"
+  },
+  {
+   "name": "Avabel Online",
+   "status": "Running"
+  },
+  {
+   "name": "Crowz",
+   "status": "Broken"
+  },
+  {
+   "name": "S4 League",
+   "status": "Broken"
+  },
+  {
+   "name": "MU Legend PH",
+   "status": "Broken"
+  },
+  {
+   "name": "Stay Out",
+   "status": "Broken"
+  },
+  {
+   "name": "Mortal Online 2",
+   "status": "Running"
+  },
+  {
+   "name": "Crucible",
+   "status": "Running"
+  },
+  {
+   "name": "Last Chaos TH",
+   "status": "Broken"
+  },
+  {
+   "name": "Overwatch 2 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Propnight",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Ark (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "AVA: Dog Tag",
+   "status": "Broken"
+  },
+  {
+   "name": "Grand mar",
+   "status": "Broken"
+  },
+  {
+   "name": "Ragnarok V: Returns",
+   "status": "Broken"
+  },
+  {
+   "name": "KRITIKA:Zero",
+   "status": "Broken"
+  },
+  {
+   "name": "Need for Speed: ProStreet",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Mobile",
+   "status": "Broken"
+  },
+  {
+   "name": "Microvolts",
+   "status": "Broken"
+  },
+  {
+   "name": "Wild Assault",
+   "status": "Running"
+  },
+  {
+   "name": "SWORD ART ONLINE Fractured Daydream",
+   "status": "Running"
+  },
+  {
+   "name": "Loadout",
+   "status": "Broken"
+  },
+  {
+   "name": "Riders of Icarus",
+   "status": "Broken"
+  },
+  {
+   "name": "Golf King",
+   "status": "Broken"
+  },
+  {
+   "name": "Qplay",
+   "status": "Broken"
+  },
+  {
+   "name": "Ran Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Yogurting",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield Play4Free",
+   "status": "Broken"
+  },
+  {
+   "name": "Freestyle 2: Street Basketball",
+   "status": "Broken"
+  },
+  {
+   "name": "The King of Fighters All Star",
+   "status": "Broken"
+  },
+  {
+   "name": "Ashes of Creation",
+   "status": "Broken"
+  },
+  {
+   "name": "CityBattle | Virtual_Earth",
+   "status": "Broken"
+  },
+  {
+   "name": "Fear the Wolves",
+   "status": "Broken"
+  },
+  {
+   "name": "Sunset World Online",
+   "status": "Supported"
+  },
+  {
+   "name": "Dreadlands",
+   "status": "Broken"
+  },
+  {
+   "name": "Legends of Kailrate",
+   "status": "Broken"
+  },
+  {
+   "name": "Diabotical (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Survarium",
+   "status": "Broken"
+  },
+  {
+   "name": "Need For Speed Mobile",
+   "status": "Broken"
+  },
+  {
+   "name": "ZMR",
+   "status": "Broken"
+  },
+  {
+   "name": "MotoGP\u212225",
+   "status": "Broken"
+  },
+  {
+   "name": "Total Lockdown",
+   "status": "Broken"
+  },
+  {
+   "name": "Left 4 Dead",
+   "status": "Running"
+  },
+  {
+   "name": "Dark Eden",
+   "status": "Broken"
+  },
+  {
+   "name": "GUNSTER",
+   "status": "Broken"
+  },
+  {
+   "name": "KOP",
+   "status": "Broken"
+  },
+  {
+   "name": "Mission\u82b1\u672d",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield 2142",
+   "status": "Broken"
+  },
+  {
+   "name": "FreeStyleFootball",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragon Nest",
+   "status": "Running"
+  },
+  {
+   "name": "Vegas Infinite by PokerStars",
+   "status": "Broken"
+  },
+  {
+   "name": "Beasts of Bermuda",
+   "status": "Broken"
+  },
+  {
+   "name": "Project Cumberland",
+   "status": "Broken"
+  },
+  {
+   "name": "Ascendant.com",
+   "status": "Running"
+  },
+  {
+   "name": "Ghost Online TH",
+   "status": "Broken"
+  },
+  {
+   "name": "Sabotaj TR",
+   "status": "Broken"
+  },
+  {
+   "name": "Quake 3 Arena (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "SOS",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: Online",
+   "status": "Broken"
+  },
+  {
+   "name": "SD Gundam Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Byte Breakers",
+   "status": "Running"
+  },
+  {
+   "name": "Vigor",
+   "status": "Running"
+  },
+  {
+   "name": "Magicka: Vietnam",
+   "status": "Running"
+  },
+  {
+   "name": "ATrix",
+   "status": "Broken"
+  },
+  {
+   "name": "zzanggu-springs",
+   "status": "Broken"
+  },
+  {
+   "name": "NewBaseBall",
+   "status": "Broken"
+  },
+  {
+   "name": "Uncharted Waters Online (JPN)",
+   "status": "Running"
+  },
+  {
+   "name": "Trickster",
+   "status": "Broken"
+  },
+  {
+   "name": "Battlefield Vietnam",
+   "status": "Broken"
+  },
+  {
+   "name": "S.K.I.L.L. - Special Force 2",
+   "status": "Broken"
+  },
+  {
+   "name": "MicroVolts Surge",
+   "status": "Broken"
+  },
+  {
+   "name": "Audition Next Level",
+   "status": "Broken"
+  },
+  {
+   "name": "Memories of Mars",
+   "status": "Running"
+  },
+  {
+   "name": "P53:MONARCH",
+   "status": "Broken"
+  },
+  {
+   "name": "Mobile Suit Gundam Battle Operation 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Onward",
+   "status": "Running"
+  },
+  {
+   "name": "Naraka: Bladepoint (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Islands of Nyne: Battle Royale",
+   "status": "Broken"
+  },
+  {
+   "name": "Hazard Ops",
+   "status": "Broken"
+  },
+  {
+   "name": "MapleStory 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Contenders: Arena",
+   "status": "Broken"
+  },
+  {
+   "name": "Squad 44",
+   "status": "Running"
+  },
+  {
+   "name": "Wickland",
+   "status": "Running"
+  },
+  {
+   "name": "iStorm",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragon Sky",
+   "status": "Broken"
+  },
+  {
+   "name": "Ernis&Fricky",
+   "status": "Broken"
+  },
+  {
+   "name": "Call of Duty: United Offensive",
+   "status": "Running"
+  },
+  {
+   "name": "Elsword (JPN)",
+   "status": "Broken"
+  },
+  {
+   "name": "CRSED: Cuisine Royale",
+   "status": "Denied"
+  },
+  {
+   "name": "Project Nebula",
+   "status": "Broken"
+  },
+  {
+   "name": "Reign of Kings",
+   "status": "Broken"
+  },
+  {
+   "name": "Special Force 2 - PlayPark PH",
+   "status": "Broken"
+  },
+  {
+   "name": "Mechabellum (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Mirror War",
+   "status": "Broken"
+  },
+  {
+   "name": "Killing Floor 3",
+   "status": "Running"
+  },
+  {
+   "name": "Sniper Elite 5",
+   "status": "Running"
+  },
+  {
+   "name": "Resident Evil 6",
+   "status": "Running"
+  },
+  {
+   "name": "Dark Eden Origin",
+   "status": "Broken"
+  },
+  {
+   "name": "Yaburi",
+   "status": "Broken"
+  },
+  {
+   "name": "\u65b0\u5929\u4e0a\u7891",
+   "status": "Broken"
+  },
+  {
+   "name": "Assassin's Creed: Brotherhood",
+   "status": "Running"
+  },
+  {
+   "name": "FreestyleFootball R",
+   "status": "Running"
+  },
+  {
+   "name": "Night of the Dead",
+   "status": "Running"
+  },
+  {
+   "name": "Dysterra",
+   "status": "Broken"
+  },
+  {
+   "name": "Heat",
+   "status": "Broken"
+  },
+  {
+   "name": "PUBG: Battlegrounds (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "The Cycle: Frontier",
+   "status": "Running"
+  },
+  {
+   "name": "Club Audition",
+   "status": "Broken"
+  },
+  {
+   "name": "Space Gears",
+   "status": "Broken"
+  },
+  {
+   "name": "Hero Siege",
+   "status": "Supported"
+  },
+  {
+   "name": "Moonbase Alpha",
+   "status": "Broken"
+  },
+  {
+   "name": "\u5927\u6d77\u6218 Navy Field IV",
+   "status": "Broken"
+  },
+  {
+   "name": "Onair Online",
+   "status": "Broken"
+  },
+  {
+   "name": "STYLIA",
+   "status": "Broken"
+  },
+  {
+   "name": "DOOM 3 Resurrection of Evil",
+   "status": "Running"
+  },
+  {
+   "name": "Karos",
+   "status": "Broken"
+  },
+  {
+   "name": "BlasterBeat",
+   "status": "Running"
+  },
+  {
+   "name": "Warcos",
+   "status": "Broken"
+  },
+  {
+   "name": "CODE2040",
+   "status": "Broken"
+  },
+  {
+   "name": "Forts (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragona",
+   "status": "Broken"
+  },
+  {
+   "name": "Raise Your Tribe",
+   "status": "Broken"
+  },
+  {
+   "name": "Tasty Shame in Silver Soul!",
+   "status": "Broken"
+  },
+  {
+   "name": "CityBattle | Virtual Earth (EU)",
+   "status": "Broken"
+  },
+  {
+   "name": "RF Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Crasher",
+   "status": "Broken"
+  },
+  {
+   "name": "RaiderZ",
+   "status": "Broken"
+  },
+  {
+   "name": "ROSE Online",
+   "status": "Running"
+  },
+  {
+   "name": "Fanta-Tennis",
+   "status": "Broken"
+  },
+  {
+   "name": "Far Cry",
+   "status": "Running"
+  },
+  {
+   "name": "Astellia",
+   "status": "Broken"
+  },
+  {
+   "name": "Blockade",
+   "status": "Broken"
+  },
+  {
+   "name": "Hearthstone (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Deathgarden: Bloodharvest",
+   "status": "Broken"
+  },
+  {
+   "name": "TwelveSky 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Island games",
+   "status": "Broken"
+  },
+  {
+   "name": "Robocraft 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Dystopia",
+   "status": "Supported"
+  },
+  {
+   "name": "Dark Blood Online",
+   "status": "Broken"
+  },
+  {
+   "name": "\u751f\u6b7b\u72d9\u51fb\uff1a\u6218\u706b\u91cd\u71c3\uff08\u56fd\u9645\u7248\uff09",
+   "status": "Broken"
+  },
+  {
+   "name": "Sangokushi Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Far Cry 2",
+   "status": "Running"
+  },
+  {
+   "name": "Tree of Life",
+   "status": "Broken"
+  },
+  {
+   "name": "Longvinter",
+   "status": "Broken"
+  },
+  {
+   "name": "New Gundam Breaker",
+   "status": "Running"
+  },
+  {
+   "name": "Reign Of Dwarf",
+   "status": "Broken"
+  },
+  {
+   "name": "The Finals (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Escape from Tarkov: Arena",
+   "status": "Broken"
+  },
+  {
+   "name": "Mixmaster",
+   "status": "Broken"
+  },
+  {
+   "name": "shaiya",
+   "status": "Broken"
+  },
+  {
+   "name": "MapleStory Worlds",
+   "status": "Broken"
+  },
+  {
+   "name": "Evolve Stage 2",
+   "status": "Running"
+  },
+  {
+   "name": "Trinium Wars",
+   "status": "Broken"
+  },
+  {
+   "name": "Extreme Soccer",
+   "status": "Broken"
+  },
+  {
+   "name": "R2Beat: \u97f3\u901f\u89c9\u9192",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six: Lockdown",
+   "status": "Broken"
+  },
+  {
+   "name": "SoulSaverOnline",
+   "status": "Broken"
+  },
+  {
+   "name": "Pax Dei",
+   "status": "Running"
+  },
+  {
+   "name": "Shaiya PH",
+   "status": "Broken"
+  },
+  {
+   "name": "SMITE 2 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Zula T\u00fcrkiye",
+   "status": "Broken"
+  },
+  {
+   "name": "KAL Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Tree of Savior (Korean Ver.)",
+   "status": "Broken"
+  },
+  {
+   "name": "Project ETHOS",
+   "status": "Broken"
+  },
+  {
+   "name": "Global Strike",
+   "status": "Running"
+  },
+  {
+   "name": "Dead Island",
+   "status": "Supported"
+  },
+  {
+   "name": "COMEONBABY",
+   "status": "Broken"
+  },
+  {
+   "name": "Assassin's Creed: Revelations",
+   "status": "Broken"
+  },
+  {
+   "name": "WolfTeam: Classic",
+   "status": "Broken"
+  },
+  {
+   "name": "Fractured Lands",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Light (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Luna Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Marathon",
+   "status": "Denied"
+  },
+  {
+   "name": "Phantasy Star Online 2 New Genesis",
+   "status": "Running"
+  },
+  {
+   "name": "Fortress Forever",
+   "status": "Broken"
+  },
+  {
+   "name": "Crazy Arcade",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six: Vegas",
+   "status": "Running"
+  },
+  {
+   "name": "EOS Ragnarok",
+   "status": "Broken"
+  },
+  {
+   "name": "War of the Vikings",
+   "status": "Broken"
+  },
+  {
+   "name": "iRacing (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Battalion 1944",
+   "status": "Broken"
+  },
+  {
+   "name": "Audition 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Sparkball",
+   "status": "Broken"
+  },
+  {
+   "name": "Jabroni Brawl: Episode 3",
+   "status": "Supported"
+  },
+  {
+   "name": "GRID 2",
+   "status": "Running"
+  },
+  {
+   "name": "CTRACER ONLINE",
+   "status": "Broken"
+  },
+  {
+   "name": "Space Nations - Battlearena",
+   "status": "Broken"
+  },
+  {
+   "name": "Moonbreaker (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Zula Europe",
+   "status": "Broken"
+  },
+  {
+   "name": "Audition 3 WIA",
+   "status": "Broken"
+  },
+  {
+   "name": "SAND",
+   "status": "Running"
+  },
+  {
+   "name": "Exoprimal",
+   "status": "Running"
+  },
+  {
+   "name": "War of the Roses",
+   "status": "Broken"
+  },
+  {
+   "name": "Bots",
+   "status": "Broken"
+  },
+  {
+   "name": "Need for Speed: Undercover",
+   "status": "Running"
+  },
+  {
+   "name": "WolfTeam: Reboot",
+   "status": "Broken"
+  },
+  {
+   "name": "Sabotaj",
+   "status": "Broken"
+  },
+  {
+   "name": "Warhammer Age of Sigmar: Realms of Ruin (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "\u6b7b\u5bc2\uff08Deathly Stillness\uff09",
+   "status": "Running"
+  },
+  {
+   "name": "RhythmNjoy",
+   "status": "Broken"
+  },
+  {
+   "name": "LawBreakers",
+   "status": "Broken"
+  },
+  {
+   "name": "ArmA 4",
+   "status": "Running"
+  },
+  {
+   "name": "New World: Aeternum",
+   "status": "Running"
+  },
+  {
+   "name": "Rising Storm",
+   "status": "Broken"
+  },
+  {
+   "name": "ETERNALCITY THE ACCELERATION",
+   "status": "Broken"
+  },
+  {
+   "name": "Crysis Wars",
+   "status": "Broken"
+  },
+  {
+   "name": "Project Xandata",
+   "status": "Running"
+  },
+  {
+   "name": "WarCraft III: Reforged (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Talesweaver",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike Nexon",
+   "status": "Broken"
+  },
+  {
+   "name": "Outpost: Infinity Siege",
+   "status": "Running"
+  },
+  {
+   "name": "V Rising",
+   "status": "Running"
+  },
+  {
+   "name": "Navy Field 2 : Conqueror of the Ocean",
+   "status": "Broken"
+  },
+  {
+   "name": "Quake III: Team Arena",
+   "status": "Running"
+  },
+  {
+   "name": "Scions of Fate",
+   "status": "Broken"
+  },
+  {
+   "name": "Intershelter",
+   "status": "Broken"
+  },
+  {
+   "name": "Fangs (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "MuMu Player",
+   "status": "Broken"
+  },
+  {
+   "name": "Killsquad",
+   "status": "Running"
+  },
+  {
+   "name": "EFootball 2025",
+   "status": "Running"
+  },
+  {
+   "name": "PUBG Lite",
+   "status": "Broken"
+  },
+  {
+   "name": "Legends of Runeterra",
+   "status": "Broken"
+  },
+  {
+   "name": "Phasmophobia",
+   "status": "Running"
+  },
+  {
+   "name": "Counter-Strike Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Undefeated Online",
+   "status": "Broken"
+  },
+  {
+   "name": "Aimlabs",
+   "status": "Running"
+  },
+  {
+   "name": "KoGaMa",
+   "status": "Broken"
+  },
+  {
+   "name": "Lunia Z Global",
+   "status": "Broken"
+  },
+  {
+   "name": "Warhammer 40,000: Darktide",
+   "status": "Running"
+  },
+  {
+   "name": "Senran Kagura Peach Beach Splash",
+   "status": "Running"
+  },
+  {
+   "name": "Phantasy Star Universe",
+   "status": "Broken"
+  },
+  {
+   "name": "World War II Combat: Road to Berlin",
+   "status": "Broken"
+  },
+  {
+   "name": "A.V.A. Alliance of Valiant Arms",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Region",
+   "status": "Broken"
+  },
+  {
+   "name": "Lifeless",
+   "status": "Broken"
+  },
+  {
+   "name": "Infinity Wars Classic (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Romance of the Three Kingdoms: The Legend of CaoCao",
+   "status": "Broken"
+  },
+  {
+   "name": "AIKA Online Global",
+   "status": "Broken"
+  },
+  {
+   "name": "Legacy: Steel & Sorcery",
+   "status": "Supported"
+  },
+  {
+   "name": "BLOODSTRIKE",
+   "status": "Running"
+  },
+  {
+   "name": "Counter-Strike",
+   "status": "Supported"
+  },
+  {
+   "name": "Vicious Circle",
+   "status": "Broken"
+  },
+  {
+   "name": "Kritika Global",
+   "status": "Broken"
+  },
+  {
+   "name": "StoneAge",
+   "status": "Broken"
+  },
+  {
+   "name": "Wolfenstein: Enemy Territory",
+   "status": "Running"
+  },
+  {
+   "name": "Unreal Tournament 2004 (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Woori Ongame",
+   "status": "Broken"
+  },
+  {
+   "name": "CabbageBall",
+   "status": "Broken"
+  },
+  {
+   "name": "Blankos: Block Party",
+   "status": "Broken"
+  },
+  {
+   "name": "R.U.S.E.\u2122",
+   "status": "Broken"
+  },
+  {
+   "name": "Offensive Combat: Redux!",
+   "status": "Broken"
+  },
+  {
+   "name": "Continent of the Ninth Golden",
+   "status": "Broken"
+  },
+  {
+   "name": "MechWarrior: Living Legends",
+   "status": "Broken"
+  },
+  {
+   "name": "HyperRelay",
+   "status": "Broken"
+  },
+  {
+   "name": "War Thunder (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Dizzel",
+   "status": "Broken"
+  },
+  {
+   "name": "MU Legend: EVO",
+   "status": "Broken"
+  },
+  {
+   "name": "INAZUMA ELEVEN: Victory Road",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike: Condition Zero",
+   "status": "Supported"
+  },
+  {
+   "name": "Out of Reach: Treasure Royale",
+   "status": "Running"
+  },
+  {
+   "name": "Eden Eternal",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Splinter Cell: Pandora Tomorrow",
+   "status": "Broken"
+  },
+  {
+   "name": "NEO STEAM",
+   "status": "Broken"
+  },
+  {
+   "name": "Counter-Strike (pDxPlay)",
+   "status": "Broken"
+  },
+  {
+   "name": "Velev",
+   "status": "Broken"
+  },
+  {
+   "name": "Divine Knockout (DKO)",
+   "status": "Running"
+  },
+  {
+   "name": "Clickr",
+   "status": "Broken"
+  },
+  {
+   "name": "Lost Saga",
+   "status": "Broken"
+  },
+  {
+   "name": "TERA",
+   "status": "Broken"
+  },
+  {
+   "name": "\u5927\u6d77\u62183 Navy Field III",
+   "status": "Broken"
+  },
+  {
+   "name": "Sudden Attack",
+   "status": "Broken"
+  },
+  {
+   "name": "ArcheAge Chronicles",
+   "status": "Broken"
+  },
+  {
+   "name": "Qanga",
+   "status": "Running"
+  },
+  {
+   "name": "Khan: Absolute Power",
+   "status": "Broken"
+  },
+  {
+   "name": "Flyff",
+   "status": "Broken"
+  },
+  {
+   "name": "Travia",
+   "status": "Broken"
+  },
+  {
+   "name": "Astellia Royal",
+   "status": "Broken"
+  },
+  {
+   "name": "World War II Combat: Iwo Jima",
+   "status": "Broken"
+  },
+  {
+   "name": "Operation7",
+   "status": "Broken"
+  },
+  {
+   "name": "WBTR - Welcome Back To Reality",
+   "status": "Broken"
+  },
+  {
+   "name": "Wolfenstein (2009)",
+   "status": "Broken"
+  },
+  {
+   "name": "Phantasy Star Universe: Ambition of the Illuminus",
+   "status": "Broken"
+  },
+  {
+   "name": "Radikal Fighters",
+   "status": "Broken"
+  },
+  {
+   "name": "F.E.A.R. Online",
+   "status": "Broken"
+  },
+  {
+   "name": "World of Warcraft (ChallengerMode)",
+   "status": "Broken"
+  },
+  {
+   "name": "Voids Adrift",
+   "status": "Broken"
+  },
+  {
+   "name": "Off The Grid",
+   "status": "Running"
+  },
+  {
+   "name": "Breach",
+   "status": "Broken"
+  },
+  {
+   "name": "Hyper Universe",
+   "status": "Broken"
+  },
+  {
+   "name": "Wonderking",
+   "status": "Broken"
+  },
+  {
+   "name": "P.A.S.",
+   "status": "Broken"
+  },
+  {
+   "name": "Stormdivers",
+   "status": "Broken"
+  },
+  {
+   "name": "Project CARS 2",
+   "status": "Running"
+  },
+  {
+   "name": "Might & Magic: Clash of Heroes",
+   "status": "Running"
+  },
+  {
+   "name": "Uncharted Waters Online: Age of Revolution",
+   "status": "Broken"
+  },
+  {
+   "name": "Fiesta Online NA",
+   "status": "Running"
+  },
+  {
+   "name": "Rumbleverse",
+   "status": "Broken"
+  },
+  {
+   "name": "Archon 24",
+   "status": "Broken"
+  },
+  {
+   "name": "Archon OG",
+   "status": "Broken"
+  },
+  {
+   "name": "Meet Your Maker",
+   "status": "Running"
+  },
+  {
+   "name": "Shattered Horizon",
+   "status": "Broken"
+  },
+  {
+   "name": "GRASEN",
+   "status": "Broken"
+  },
+  {
+   "name": "Solo Leveling: Arise OVERDRIVE",
+   "status": "Running"
+  },
+  {
+   "name": "Luna Online: Reborn",
+   "status": "Running"
+  },
+  {
+   "name": "Tree of Life 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Blindfire",
+   "status": "Supported"
+  },
+  {
+   "name": "H-Hour: World's Elite",
+   "status": "Running"
+  },
+  {
+   "name": "America's Army",
+   "status": "Broken"
+  },
+  {
+   "name": "Dragon Saga",
+   "status": "Broken"
+  },
+  {
+   "name": "ROHAN",
+   "status": "Broken"
+  },
+  {
+   "name": "RF ONLINE NEXT",
+   "status": "Broken"
+  },
+  {
+   "name": "Sword Art Online Last Recollection",
+   "status": "Running"
+  },
+  {
+   "name": "Gotham City Imposters",
+   "status": "Running"
+  },
+  {
+   "name": "Element Quest Online : 2D MMORPG",
+   "status": "Supported"
+  },
+  {
+   "name": "HeatProject",
+   "status": "Broken"
+  },
+  {
+   "name": "Warhaven",
+   "status": "Running"
+  },
+  {
+   "name": "WTF: Waifu Tactical Force",
+   "status": "Running"
+  },
+  {
+   "name": "DUST II | The Infinite Zero Point",
+   "status": "Broken"
+  },
+  {
+   "name": "GRID Autosport",
+   "status": "Supported"
+  },
+  {
+   "name": "Riders of Icarus: SEA",
+   "status": "Broken"
+  },
+  {
+   "name": "Infinity Nikki",
+   "status": "Broken"
+  },
+  {
+   "name": "REMATCH",
+   "status": "Running"
+  },
+  {
+   "name": "NBA 2K25",
+   "status": "Running"
+  },
+  {
+   "name": "Elden Ring: Nightreign",
+   "status": "Running"
+  },
+  {
+   "name": "Steel Hunters",
+   "status": "Running"
+  },
+  {
+   "name": "Reverse: 1999",
+   "status": "Running"
+  },
+  {
+   "name": "Ragnarok Origin: ROO",
+   "status": "Running"
+  },
+  {
+   "name": "FANTASY LIFE i: The Girl Who Steals Time",
+   "status": "Running"
+  },
+  {
+   "name": "La Tale - Evolved",
+   "status": "Running"
+  },
+  {
+   "name": "CarX Street",
+   "status": "Running"
+  },
+  {
+   "name": "Warcos 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Karos Classic",
+   "status": "Broken"
+  },
+  {
+   "name": "Dead Island Riptide",
+   "status": "Running"
+  },
+  {
+   "name": "Lineage",
+   "status": "Broken"
+  },
+  {
+   "name": "Day of Dragons",
+   "status": "Running"
+  },
+  {
+   "name": "Sonic Rumble",
+   "status": "Broken"
+  },
+  {
+   "name": "Black Stigma",
+   "status": "Broken"
+  },
+  {
+   "name": "Umamusume: Pretty Derby",
+   "status": "Running"
+  },
+  {
+   "name": "DiRT Rally",
+   "status": "Supported"
+  },
+  {
+   "name": "minifighter",
+   "status": "Broken"
+  },
+  {
+   "name": "Hide & Hold Out - H2o",
+   "status": "Running"
+  },
+  {
+   "name": "Battlefield 6",
+   "status": "Denied"
+  },
+  {
+   "name": "Ghost of Tsushima Director's Cut",
+   "status": "Denied"
+  },
+  {
+   "name": "Sword of Justice",
+   "status": "Broken"
+  },
+  {
+   "name": "Blade & Soul NEO",
+   "status": "Broken"
+  },
+  {
+   "name": "The Finals (CN)",
+   "status": "Broken"
+  },
+  {
+   "name": "Tom Clancy's Rainbow Six\u00ae Siege X",
+   "status": "Denied"
+  },
+  {
+   "name": "Dragonheir: Silent Gods",
+   "status": "Broken"
+  },
+  {
+   "name": "The Quinfall",
+   "status": "Running"
+  },
+  {
+   "name": "Redmatch 2",
+   "status": "Running"
+  },
+  {
+   "name": "Blade & Soul Heroes",
+   "status": "Broken"
+  },
+  {
+   "name": "Blue Archive",
+   "status": "Running"
+  },
+  {
+   "name": "Midnight Murder Club",
+   "status": "Broken"
+  },
+  {
+   "name": "Dungeon Done",
+   "status": "Broken"
+  },
+  {
+   "name": "Project Wraith",
+   "status": "Broken"
+  },
+  {
+   "name": "Freedom Wars Remastered",
+   "status": "Running"
+  },
+  {
+   "name": "Open Fortress",
+   "status": "Running"
+  },
+  {
+   "name": "No More Room In Hell 2",
+   "status": "Running"
+  },
+  {
+   "name": "Call of Duty: Black Ops 7",
+   "status": "Denied"
+  },
+  {
+   "name": "skate.",
+   "status": "Denied"
+  },
+  {
+   "name": "Wildgate",
+   "status": "Running"
+  },
+  {
+   "name": "Fellowship",
+   "status": "Running"
+  },
+  {
+   "name": "Dragon Ball Xenoverse",
+   "status": "Running"
+  },
+  {
+   "name": "King of Meat",
+   "status": "Running"
+  },
+  {
+   "name": "Last Flag",
+   "status": "Broken"
+  },
+  {
+   "name": "SkidRush",
+   "status": "Broken"
+  },
+  {
+   "name": "Nosgoth",
+   "status": "Running"
+  },
+  {
+   "name": "Counter-Strike Online 2",
+   "status": "Broken"
+  },
+  {
+   "name": "Game of Thrones: Kingsroad",
+   "status": "Running"
+  },
+  {
+   "name": "Vindictus: Defying Fate",
+   "status": "Broken"
+  },
+  {
+   "name": "Gears of War: Reloaded",
+   "status": "Running"
+  },
+  {
+   "name": "Swords & Soldiers",
+   "status": "Running"
+  },
+  {
+   "name": "SUPER PEOPLE (2025)",
+   "status": "Broken"
+  },
+  {
+   "name": "AFK Journey",
+   "status": "Running"
+  },
+  {
+   "name": "The Midnight Walkers",
+   "status": "Broken"
+  },
+  {
+   "name": "\u7570\u4e16\u754c\u221e\u7570\u4e16\u754c \uff5e\u6b21\u306f\u3069\u306e\u4f5c\u54c1\u3092\u3001\u96c6\u3081\u3088\u3046\uff5e",
+   "status": "Broken"
+  },
+  {
+   "name": "Chrono Odyssey",
+   "status": "Running"
+  },
+  {
+   "name": "Madoka Magica Magia Exedra",
+   "status": "Broken"
+  },
+  {
+   "name": "PUBG: Black Budget",
+   "status": "Broken"
+  },
+  {
+   "name": "Sniper Elite: Resistance",
+   "status": "Running"
+  },
+  {
+   "name": "Gigantic",
+   "status": "Broken"
+  },
+  {
+   "name": "Team Fortress 2 Classified",
+   "status": "Running"
+  },
+  {
+   "name": "Panzer Arena: Coop",
+   "status": "Broken"
+  },
+  {
+   "name": "Girls' Frontline",
+   "status": "Running"
+  },
+  {
+   "name": "Battlefield REDSEC",
+   "status": "Denied"
+  },
+  {
+   "name": "Evolve: Stage 2",
+   "status": "Running"
+  },
+  {
+   "name": "Aura Kingdom - Impact",
+   "status": "Running"
+  },
+  {
+   "name": "Risk Your Life",
+   "status": "Broken"
+  },
+  {
+   "name": "Forefront",
+   "status": "Denied"
+  }
+ ]
+}

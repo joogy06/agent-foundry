@@ -1,8 +1,9 @@
 ---
 name: integration-flow-testing
-version: 1.1.0
-description: Use during bob's Step 4.5 (after UNIT_TESTED) to generate per-component integration tests (from integration_points[]) and end-to-end flow tests (from declared flows[]) for every component in the frozen contract map. v1.1 adds wiring-evidence annotation when `.wiring/latest.json` is present and emits advisory `wiring-flow-suggestions.json` — never auto-generates tests from snapshot. Generates pytest + jest test FILES only — bob's trusted runner executes them (CB3). Requires a bob-issued claim token, heartbeats it, emits transition requests for INTEGRATED and later VERIFIED (after the audit). Never auto-traverses the call graph.
-disambiguation: bob Step 4.5 — generates integration and flow TESTS from the frozen contract map. The fixtures those tests consume are sample-data-scaffolding; characterization tests over legacy code are ever-test-gen; functional intent is intent-extract.
+description: "Integration and end-to-end flow test files (pytest, jest) generated from the frozen contract map's integration points and declared flows. Needs a bob-issued claim; bob's trusted runner executes them. Use during bob's Step 4.5, after UNIT_TESTED."
+metadata:
+  version: "1.1.0"
+  disambiguation: "bob Step 4.5 — generates integration and flow TESTS from the frozen contract map. The fixtures those tests consume are sample-data-scaffolding; characterization tests over legacy code are ever-test-gen; functional intent is intent-extract."
 ---
 
 # Integration & Flow Testing

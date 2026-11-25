@@ -6,6 +6,12 @@ disambiguation: PDFs as a FORMAT — extract, create, modify, secure, redact. Tu
 
 # PDF processing
 
+<!-- FRESHNESS:v1
+anchors:
+  - kind: date_review
+    subject: pdf-library-licences
+    review_by: "2027-01-31"
+-->
 <!-- REVIEW-BY: 2027-01-31 -->
 **Verified 2026-07-29.** Library positions and licences change; **re-check the licence before adopting
 any library named here** — §1 explains why that is not a formality.

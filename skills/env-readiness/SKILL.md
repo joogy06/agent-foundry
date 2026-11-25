@@ -36,7 +36,7 @@ python3 .../readiness.py --claude-home /custom/.claude                 # non-def
 | **Config** | `policy-limits.json` (mode 0600), `model-policy.yaml`, `publish-config.json` present + parse | file probes |
 | **Gates** | `_meta/gates.py` imports + loads in a child process | gates.py |
 | **Identity** | 3-tree (prod/shadow/agent-foundry) parity (advisory) | `identity_check.py` |
-| **Tooling** | env-adoption inventory + tools on PATH; knowledge-grounding mode | `probe.sh`, `discover.sh` |
+| **Tooling** | env-adoption inventory + tools on PATH; knowledge-grounding mode; agy `allowNonWorkspaceAccess` off (a warning otherwise, #366) | `probe.sh`, `discover.sh`, `~/.gemini/antigravity-cli/settings.json` |
 | **Project** | `.claude/settings.local.json` parses, project CLAUDE.md, stale `.forge`/`.bob`/`.ledger` artifacts | per-project walk |
 
 Verdict: **READY** (all PASS) / **READY-WITH-WARNINGS** (≥1 WARN, no FAIL) /

@@ -109,7 +109,7 @@ strictly (a `workflow()` call from inside a child workflow is REFUSED — so
 CLIs:** the historical stage hang was observed with `agy -p --sandbox` even with
 `< /dev/null` — since found (2026-07-02) to be a flag-order bug (`-p` swallows
 `--sandbox` as the prompt; sandbox off, real prompt discarded, agy free-runs/
-recurses). The corrected `agy --sandbox -p` is UNVERIFIED from workflow stages —
+recurses). The corrected `agy --sandbox --mode plan --model <slug> -p` (model pinned through seat_model) is UNVERIFIED from workflow stages —
 keep treating agy as UNREACHABLE from stages until re-probed (use pre-launched
 inline transcripts passed via args, design §4.4); `codex exec` from a stage is
 UNTESTED — attempt with the full guard set but implement the same inline fallback.

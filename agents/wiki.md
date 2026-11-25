@@ -1,6 +1,6 @@
 ---
 name: wiki
-description: "Knowledge base builder and maintainer. Use when ingesting sources into structured wiki pages, querying existing knowledge bases, creating new wikis, or maintaining wiki quality. Builds persistent interlinked markdown knowledge bases from raw sources (markdown, PDF, images, CSV, JSON). Examples: 'ingest this paper into my research wiki', 'create a wiki for project alpha', 'what does the trading wiki say about RSI', 'lint my wiki'."
+description: "Knowledge base builder and maintainer: ingests sources into persistent markdown wikis, queries them, creates new wikis and lints them. Examples: 'ingest this paper into my research wiki', 'what does the trading wiki say about RSI', 'lint my wiki'."
 model: opus
 ---
 

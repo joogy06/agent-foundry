@@ -2,6 +2,19 @@
 
 How to install a cross-tool skill so all four CLIs can find and load it.
 
+## Contents
+
+- Canonical location
+- Per-tool install
+- Symlink commands
+- Getting skills into `agy`
+- GitHub Copilot CLI bridge
+- Per-project overrides
+- Verify installation
+- Symlink gating — the .no-codex-symlink sentinel
+- Refresh cycle
+- Anti-patterns
+
 ## Canonical location
 
 All cross-tool skills live at:
@@ -100,7 +113,7 @@ For project-scoped skills (rare), use the project-local skill location of each t
 | Tool | Project-local skill location |
 |---|---|
 | Claude Code | `<project>/.claude/skills/<name>/` (loaded with `--add-dir`) |
-| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified project-local skill path; use `--add-dir <project>` to add the workspace |
+| Antigravity CLI (`agy`) | TODO(agy): verify equivalent — no verified project-local skill path; use `--add-dir <throwaway copy>` to add the workspace |
 | Codex CLI | `<project>/.codex/skills/<name>/` |
 | Copilot CLI | `<project>/AGENTS.md` reference |
 

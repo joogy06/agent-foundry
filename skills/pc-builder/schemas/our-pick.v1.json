@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pc-builder/our-pick.v1",
+  "title": "Our-pick recommended-build page (input to pc_check.py --publish-gate)",
+  "description": "The data behind one recommended-build page. Validated strictly (unknown fields rejected). Field presence and content are then checked by the publish_rules in data/rules.v1.json, which BLOCK publication (exit 2) rather than reject the input, so a missing price or field is reported by name. The embedded build is re-checked in --final mode; its findings are never trusted from the page.",
+  "type": "object",
+  "required": [
+    "schema",
+    "build"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "our-pick.v1"
+      ]
+    },
+    "use_case": {
+      "type": "string",
+      "description": "A use_cases id from rules.v1.json."
+    },
+    "band": {
+      "type": "string",
+      "description": "A band id from the bands file in force."
+    },
+    "workload": {
+      "type": "string",
+      "description": "Resolution or workload the pick was made for."
+    },
+    "headline": {
+      "type": "string"
+    },
+    "priced_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "GBP"
+      ]
+    },
+    "vat_inclusive": {
+      "type": "boolean"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "sku",
+          "source",
+          "unit_price_gbp_inc_vat",
+          "quantity"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "cpu",
+              "board",
+              "ram",
+              "gpu",
+              "psu",
+              "case",
+              "cooler",
+              "storage",
+              "other"
+            ]
+          },
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Must be 'db': the price was read from the caller's database at generation time."
+          },
+          "unit_price_gbp_inc_vat": {
+            "type": "number",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "mandatory_charges": {
+      "type": "array",
+      "description": "Every charge the buyer cannot avoid (build/test, delivery where no collection is offered, fees). Empty list when there are none; absent blocks publication.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "amount_gbp_inc_vat"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "amount_gbp_inc_vat": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "headline_total_gbp_inc_vat": {
+      "type": "number",
+      "minimum": 0
+    },
+    "performance_class": {
+      "type": "string"
+    },
+    "upgrade_path": {
+      "type": "string"
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "skip": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the buyer does not need to pay for."
+    },
+    "selection_criteria": {
+      "type": "object",
+      "required": [
+        "as_of",
+        "criteria"
+      ],
+      "properties": {
+        "as_of": {
+          "type": "string"
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "superlative_evidence": {
+      "type": "object",
+      "required": [
+        "as_of",
+        "source",
+        "summary"
+      ],
+      "properties": {
+        "as_of": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "disclosed_warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "WARN rule ids the page discloses. Never 'cannot check' findings."
+    },
+    "build": {
+      "type": "object",
+      "description": "build.v1, checked with --final."
+    },
+    "os_disclosures": {
+      "type": "object",
+      "description": "Required when build.os is linux or steamos (PUB_OS_DISCLOSURES).",
+      "properties": {
+        "anti_cheat": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Major Denied/Broken titles from the anti-cheat snapshot."
+        },
+        "game_pass_office": {
+          "type": "string"
+        },
+        "rgb_software": {
+          "type": "string"
+        },
+        "support_scope": {
+          "type": "string"
+        },
+        "return_path": {
+          "type": "string"
+        },
+        "os_description": {
+          "type": "string",
+          "description": "SteamOS: 'SteamOS preinstalled (community-supported install)' unless Valve has licensed its marks."
+        }
+      }
+    }
+  }
+}

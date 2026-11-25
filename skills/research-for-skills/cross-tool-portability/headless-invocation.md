@@ -2,15 +2,32 @@
 
 Side-by-side comparison of `-p` mode in Claude Code, Antigravity CLI (`agy`), and GitHub Copilot CLI. Use to translate scripts from one tool to another. `agy` is this host's second-opinion / research delegate — it replaces the retired Gemini CLI for orchestration. See the `antigravity-cli` skill for the full flag reference (verified against `agy --help`, v1.0.4).
 
+## Contents
+
+- The basic invocation
+- Output format
+- Permission / approval mode
+- Allowing/denying tools
+- Adding directories
+- Sessions
+- Model selection
+- Worktree mode
+- CI-safe minimal mode
+- Cost / budget cap
+- Structured output / schemas
+- Pinning a custom agent
+- Putting it together — equivalent invocations
+- Anti-patterns
+
 ## The basic invocation
 
 | Tool | Command |
 |---|---|
 | Claude Code | `claude -p "<prompt>"` |
-| Antigravity CLI (`agy`) | `agy -p "<prompt>"` |
+| Antigravity CLI (`agy`) | `(d="$(mktemp -d)" && cd "$d" && agy --sandbox --mode plan --model <slug> -p "<prompt>" < /dev/null)` |
 | Copilot CLI | `copilot -p "<prompt>" --allow-all-tools` |
 
-Note: Copilot REQUIRES `--allow-all-tools` for `-p` mode (otherwise it blocks on permission prompts). `agy -p` takes no model flag and no API-key env prefix — it authenticates via the Antigravity account.
+Note: Copilot REQUIRES `--allow-all-tools` for `-p` mode (otherwise it blocks on permission prompts). For `agy`, every flag goes BEFORE `-p` and the prompt LAST (`-p` is a string flag and swallows the next token), `--sandbox` is on every advisory call, stdin is closed (`< /dev/null`), and `--model` is always pinned — on this host resolved through `seat_model.py argv --role <role> --provider agy`, never hand-typed. No API-key env prefix — it authenticates via the Antigravity account.
 
 ## Output format
 
@@ -45,7 +62,7 @@ Patterns differ. Translate carefully.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--add-dir <dir>` (repeatable) |
-| Antigravity CLI (`agy`) | `--add-dir <dir>` (repeatable) |
+| Antigravity CLI (`agy`) | `--add-dir <dir>` (repeatable; a throwaway copy only, never a live repo, #366) |
 | Copilot CLI | `--add-dir <dir>` (repeatable) |
 
 ## Sessions
@@ -61,10 +78,10 @@ Patterns differ. Translate carefully.
 | Tool | Flag |
 |---|---|
 | Claude Code | `--model <name>` (e.g. `sonnet`, `opus`) |
-| Antigravity CLI (`agy`) | (no model flag — `agy` uses its Antigravity-account-configured model; `-m` is not defined) |
+| Antigravity CLI (`agy`) | `--model <slug>` (no `-m` short form; list choices with `agy models`; on this host always pinned through `seat_model.py argv --role <role> --provider agy`) |
 | Copilot CLI | `--model <name>` |
 
-Model names differ across tools. There's no shared naming. `agy` exposes one configured model with no per-call selector.
+Model names differ across tools. There's no shared naming. Omitting `--model` on `agy` rides the Antigravity-account default, which can lag the family the harness allows — so pin it.
 
 ## Worktree mode
 
@@ -129,13 +146,14 @@ ANTHROPIC_API_KEY=$KEY \
 ### Antigravity CLI (`agy`)
 
 ```bash
-agy -p "fix the bug" \
-  --add-dir . \
-  --dangerously-skip-permissions \
-  --sandbox
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+WORK="$(mktemp -d)" && git clone -q . "$WORK/copy" &&
+(cd "$WORK/copy" && timeout 600 agy --sandbox --dangerously-skip-permissions \
+  $AGY_MODEL \
+  -p "fix the bug" < /dev/null)
 ```
 
-`agy` takes no model flag and no API-key env prefix (it authenticates via the Antigravity account). Output is plain text on stdout — there is no verified JSON output mode (TODO(agy): verify equivalent). Raise `--print-timeout <dur>` for long runs.
+Every flag comes before `-p` and the prompt is last; `--sandbox` stays on, but shell and git still run and their write scope was not found to be limited, so a call that must change code runs in a throwaway copy and never in a live repo (#366); stdin is closed. An advisory call is `(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan …)`. `--model` is pinned through `seat_model`; there is no API-key env prefix (it authenticates via the Antigravity account). Output is plain text on stdout — there is no verified JSON output mode (TODO(agy): verify equivalent). Raise `--print-timeout <dur>` for long runs.
 
 ### Copilot CLI
 
@@ -161,8 +179,8 @@ These are roughly equivalent. The exact behaviour differs in subtle ways:
 |---|---|
 | Assume all three have `--bare` | Only Claude does. Use the closest equivalent for the other two. |
 | Translate JSON output 1:1 | Schemas differ. Re-implement parsing per tool. `agy` has no verified JSON mode — parse its plain-text stdout. |
-| Pass `-m <model>` to `agy` | `agy` has no model flag — `-m` is "not defined". Drop it. |
-| Pin the same model name across tools | Model namespaces are independent. `agy` has no per-call model selector. |
+| Pass `-m <model>` to `agy`, or omit the model | `agy` has no `-m` short form ("not defined"); use `--model <slug>`, resolved through `seat_model.py argv --role <role> --provider agy`. Omitting it rides the account default. |
+| Pin the same model name across tools | Model namespaces are independent. Each tool's pin is resolved for that tool. |
 | Forget `--allow-all-tools` for Copilot `-p` mode | Copilot blocks on permission prompts. |
 | Use `--yolo` / `--dangerously-skip-permissions` in production scripts | Disables safety. Use the minimum approval level the task needs. |
 | Add a `GOOGLE_CLOUD_PROJECT= GEMINI_API_KEY=` prefix to `agy` | That was a gemini-OAuth hack; `agy` authenticates via its own account. Drop it. |

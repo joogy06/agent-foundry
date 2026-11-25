@@ -64,7 +64,7 @@ grep -n "keyword" /path/to/file.csv | head -20  # line numbers of matches
 Before creating any working files, create a unique session directory:
 
 ```bash
-ANALYSIS_WORK=$(mktemp -d /tmp/analysis-XXXXXXXXXX)
+ANALYSIS_WORK=$(mktemp -d /tmp/analysis-XXXXXXXXXX) || exit 1
 # e.g., /tmp/analysis-a1b2c3d4e5
 ```
 
@@ -629,14 +629,35 @@ With severely limited context windows:
 
 ## Long-Context Second-Model Delegation
 
-For files that are very large but still need holistic analysis (not just grep-targeted), delegate to a second model with a large context window via the Antigravity CLI (stdin closed AND `--sandbox` — both mandatory for these read-only analysis calls, see `antigravity-cli` skill):
+For files that are very large but still need holistic analysis (not just grep-targeted), delegate to a second model with a large context window via the Antigravity CLI (stdin closed AND `--sandbox` — both mandatory for these read-only analysis calls — and the model pinned through `seat_model`; see `antigravity-cli` skill):
 
 ```bash
-timeout 600 agy --sandbox -p "Analyze this file for <patterns>: $(cat /path/to/chunk)" < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+C="$(cat /path/to/chunk)" && (d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "Analyze this file for <patterns>:
+$C" < /dev/null)
 ```
 
+A file over 100 KB goes one chunk per call: one argument cannot pass 128 KB, and piped stdin never reaches the model. Each chunk is read before the subshell, so the loop keeps working from an empty cwd:
+
+```bash
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+D="$(mktemp -d)" && split -C 100000 /path/to/file "$D/chunk." || exit 1
+FAILED=""
+for F in "$D"/chunk.*; do
+  # A failed read must not send partial content to agy: record the chunk and move on.
+  if ! C="$(cat "$F")"; then FAILED="$FAILED ${F##*.}"; continue; fi
+  # An agy no-show exits 0 with empty output, so an empty reply counts as a failed chunk.
+  OUT="$(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "Analyze this part of the file for <patterns>:
+$C" < /dev/null)" && [ -n "$OUT" ] && printf '%s\n' "$OUT" || FAILED="$FAILED ${F##*.}"
+done
+rm -rf "$D"
+if [ -n "$FAILED" ]; then echo "INCOMPLETE: no analysis of chunks:$FAILED" >&2; exit 1; fi
+```
+
+Tested for splitting and two chunks; the last chunk was not confirmed live. A failed chunk means the file was only partly analysed: report it, do not present the output as complete.
+
 Use it to:
-- Analyze chunks of 5,000-10,000 lines at once for pattern detection
+- Analyze chunks of up to 100 KB at once for pattern detection (one argument cannot pass 128 KB, and piped stdin never reaches the model)
 - Summarize entire large files when sequential chunking loses cross-section patterns
 - Cross-validate findings from Claude's chunked analysis against a single-pass second-model view
 

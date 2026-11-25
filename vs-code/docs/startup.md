@@ -56,6 +56,8 @@ behaves as expected on the target machine before relying on it.
 ## Layer 2 — always-on instructions (convention, but always present)
 
 `AGENTS.md`, `.github/copilot-instructions.md` and `CLAUDE.md` are collected into every request.
+For `CLAUDE.md` that means the user-home `~/.claude/CLAUDE.md` (the global rules, installed from
+`global/CLAUDE.md` since #318) as well as the workspace file, while `chat.useClaudeMdFile` is on.
 Putting the startup contract there means the model *sees* the obligation on every turn without
 anyone invoking anything.
 

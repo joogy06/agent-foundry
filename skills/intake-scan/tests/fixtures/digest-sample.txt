@@ -1,0 +1,3 @@
+[intake] overrides in force: 1 — l20261011T120500Z-1a1b1c1d on skills/sample-skill
+[intake] exceptions in force: 1 — H9 skills/sample-skill/references/keys.md
+[intake] unsigned cautions: 1 — skills/sample-skill

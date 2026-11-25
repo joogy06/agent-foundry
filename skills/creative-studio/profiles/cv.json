@@ -1,0 +1,85 @@
+{
+  "schema_version": "studio-profile.v1",
+  "name": "cv",
+  "artefact": "a CV",
+  "work_kind": "text",
+  "private": true,
+  "max_agents": 9,
+  "borrow_max": 3,
+  "brief": {
+    "required": [
+      "role",
+      "achievements",
+      "voice"
+    ],
+    "optional": [
+      "posting",
+      "length",
+      "notes"
+    ]
+  },
+  "constraints": {
+    "tier": "light",
+    "loads": [
+      "career-positioning"
+    ],
+    "asks": [
+      "What the role asks for: the requirements a reader of this CV screens on, in their words.",
+      "The proof the CV must carry: which of the verified achievements in the brief answer each requirement. Use only achievements the brief lists.",
+      "The one action: what the reader should do after reading, and what on the first page earns it.",
+      "The voice, as the brief decides it, restated as two or three rules both writers keep."
+    ]
+  },
+  "functions": [
+    {
+      "id": "cv",
+      "axis_set": "angle",
+      "output": "cv.md",
+      "seats": [
+        {
+          "id": "cv-a",
+          "loads": [
+            "career-application-writer"
+          ],
+          "angle": "impact-led",
+          "angle_brief": "Every entry leads with the result: what changed because of the work, with its measure, and then how it was done."
+        },
+        {
+          "id": "cv-b",
+          "loads": [
+            "career-application-writer"
+          ],
+          "angle": "scope-led",
+          "angle_brief": "Every entry leads with the remit: the size of what was owned (people, systems, budget, reach), and then what was delivered within it."
+        }
+      ]
+    }
+  ],
+  "evidence": {
+    "capture": false,
+    "text_check": {
+      "truth_pack": false,
+      "outline": false,
+      "length": false,
+      "first_screen": false
+    }
+  },
+  "critic": {
+    "reference": "creative-studio/references/text-critic.md",
+    "loads": [
+      "human-voice-writing"
+    ]
+  },
+  "finish": [],
+  "retries": {
+    "distance_redo": 0,
+    "remake_round": 1
+  },
+  "light": {
+    "drops": [
+      "second_read",
+      "winner_remake",
+      "remake_round"
+    ]
+  }
+}

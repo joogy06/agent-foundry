@@ -1,0 +1,53 @@
+{
+  "schema": "pc-budget-bands.v1",
+  "version": "1.0.0",
+  "as_of": "2026-09-27",
+  "review_by": "2026-12-27",
+  "stale_after_days": 90,
+  "block_after_days": 120,
+  "currency": "GBP",
+  "vat_inclusive": true,
+  "scope": "Full tower, excluding OS and monitor.",
+  "override_note": "DEFAULT data. The caller overrides these bands at runtime (pass --bands <file> to pc_check.py, or supply your own bands to the page generator). Band edges are budgets, not product prices: product prices always come from the caller's database.",
+  "context": "UK DDR5 cost about 4.95x its Sep 2025 level in July 2026 (peak 5.28x in March 2026), so the typical build inside a band moves with memory and GPU pricing. Allocate from runtime prices, never from fixed percentage splits.",
+  "context_source": {
+    "label": "V",
+    "url": "https://dropreference.com/en/blog/news/shortage-ddr5-ram-global-status-july-2026"
+  },
+  "source": {
+    "label": "I",
+    "url": "docs/research/2026-09-27-pc-builder-research.md#uk-bands"
+  },
+  "bands": [
+    {
+      "id": "under-500",
+      "min_gbp": 0,
+      "max_gbp": 500,
+      "typical": "APU, 16 GB"
+    },
+    {
+      "id": "500-800",
+      "min_gbp": 500,
+      "max_gbp": 800,
+      "typical": "APU with 32 GB, or a 6-core with an entry GPU"
+    },
+    {
+      "id": "800-1200",
+      "min_gbp": 800,
+      "max_gbp": 1200,
+      "typical": "6-core with a 9060 XT or 5060 Ti 16 GB"
+    },
+    {
+      "id": "1200-2000",
+      "min_gbp": 1200,
+      "max_gbp": 2000,
+      "typical": "9700X/9800X3D with a 9070-class GPU, or a creator build with 12-16 cores and 64 GB"
+    },
+    {
+      "id": "2000-plus",
+      "min_gbp": 2000,
+      "max_gbp": null,
+      "typical": "5080/5090, workstation, or 24 GB+ VRAM for AI"
+    }
+  ]
+}

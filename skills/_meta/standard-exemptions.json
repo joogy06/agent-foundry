@@ -1,0 +1,30 @@
+{
+  "schema": "standard-exemptions.v1",
+  "about": "A9 exemptions (#344): own-directory home paths that stay. Each entry is a file (relative to the skill), the EXACT line text and a one-line reason. skill_audit.py demotes a listed line to an N2 note; an own-directory home path on any other line fails A9. Legal reasons: (a) the line is a command run from a project working directory, not from the skill directory; (b) the line is a statement about the install location itself.",
+  "exemptions": {
+    "research-for-skills": [
+      {
+        "file": "SKILL.md",
+        "line": "bash ~/.claude/skills/research-for-skills/cross-tool-portability/scripts/verify-skill-portability.sh \\",
+        "reason": "(a) command run from the project being verified, not from the skill directory"
+      },
+      {
+        "file": "cross-tool-portability/verification-first-boot.md",
+        "line": "bash ~/.claude/skills/research-for-skills/cross-tool-portability/scripts/verify-skill-portability.sh \\",
+        "reason": "(a) command run from the project being verified, not from the skill directory"
+      }
+    ],
+    "avengers": [
+      {
+        "file": "references/trust-boundary.md",
+        "line": "- **Home-tier-only state.** All trusted instruction text (`~/.claude/skills/avengers/`)",
+        "reason": "(b) statement about the install location itself: trusted instruction text lives in the home tier"
+      },
+      {
+        "file": "references/memory-policy.md",
+        "line": "| Identity (role card) | `~/.claude/skills/avengers/roster/<seat-id>.yaml` | always | human-edited only |",
+        "reason": "(b) statement about the install location itself: a row of the tier table that says where each memory tier lives"
+      }
+    ]
+  }
+}

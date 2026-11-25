@@ -15,35 +15,78 @@ confidently wrong and would be trusted anyway, so it does not offer a score.
 
 What it does is remove the mechanical work so the human judgement has somewhere to start.
 
-Exit: 0 nothing blocking · 2 findings that need a decision · 3 bad input.
+Exit: 0 nothing blocking · 2 findings that need a decision (also: a custom key set twice
+with different values — the message is on stderr, no report) · 3 bad input.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Patterns that cause enterprise scanner blocks. Each carries the fix, because a finding
-# without a remedy just becomes an exemption request.
-SECURITY_PATTERNS = [
-    (r"\bcurl\b[^\n|]*\|\s*(ba)?sh", "curl piped into a shell",
-     "name the URL as a reference; let a human fetch and review it"),
-    (r"\b(curl|wget)\s+https?://(?!example\.|localhost)", "network fetch to a live host",
-     "move the fact into a version-stamped reference file with a REVIEW_BY date"),
-    (r"\beval\s*\(", "dynamic evaluation", "replace with an explicit dispatch"),
-    (r"\bbase64\s+-d\b|\bbase64\.b64decode", "base64 decode of embedded data",
-     "inline the content readably, or reference a file"),
-    (r"(?i)\b(api[_-]?key|secret|token|password)\s*[:=]\s*[\"'][A-Za-z0-9/+=_-]{16,}[\"']",
-     "credential-shaped literal", "use an obvious placeholder such as <API_KEY>"),
-    (r"/(home|Users)/[a-z][a-z0-9_-]{2,}/", "absolute path to a developer machine",
-     "use a relative path or an environment variable"),
-    (r"(?i)\b(disable|bypass|skip|turn off)\s+(the\s+)?(security|scanner|check|gate|verification)\b",
-     "instruction to disable a safety control", "remove it; a workaround here is a permanent hole"),
-    (r"(?i)\bchmod\s+777\b", "world-writable permissions", "use the narrowest mode that works"),
-]
+# The security rules are not kept here: they are the in-house rule set of the intake-scan
+# skill (`harness_rules`), the same rules `intake.py scan`, the commit hook and the installer
+# run. The file is looked for in the tree this script sits in (the repo when run from a
+# checkout), then in the installed library. Each caution rule carries its fix, because a
+# finding without a remedy just becomes an exemption request.
+HARNESS_RULES_GAP = "harness-rules-missing"
+_HARNESS_RULES_MODULE = "_skill_intake_harness_rules"
+_BLOCK_RULE_FIX = ("a block rule: adoption stops here; run intake.py scan on the whole skill, "
+                   "then fix it or record an exception with a reason")
+
+
+def _harness_rules_candidates() -> List[Path]:
+    rel = Path("intake-scan") / "scripts" / "harness_rules.py"
+    return [Path(__file__).resolve().parents[2] / rel, Path.home() / ".claude" / "skills" / rel]
+
+
+def load_harness_rules(candidates: Optional[List[Path]] = None) -> Any:
+    """The shared rule set, or None when no copy of it can be loaded."""
+    for path in (_harness_rules_candidates() if candidates is None else candidates):
+        if not path.is_file():
+            continue
+        # Loaded under a name of its own, so a copy another module already imported as
+        # `harness_rules` is neither reused from elsewhere nor replaced.
+        try:
+            spec = importlib.util.spec_from_file_location(_HARNESS_RULES_MODULE, str(path))
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[_HARNESS_RULES_MODULE] = module
+            spec.loader.exec_module(module)
+            return module
+        except Exception:  # noqa: BLE001 - an unloadable copy is the same gap as an absent one
+            sys.modules.pop(_HARNESS_RULES_MODULE, None)
+    return None
+
+
+def security_scan(text: str, name: str, rules: Any) -> List[Dict[str, Any]]:
+    """Security findings on one file from the shared rule set, in the shape this tool has
+    always printed: line, issue, match, fix. One finding per rule is enough to act on.
+
+    With no rule set there is nothing to report as clean: the list carries one entry that
+    names the gap, so `needs_decision` is set and nobody reads an empty list as a pass.
+    """
+    if rules is None:
+        return [{"line": 0, "issue": f"gap {HARNESS_RULES_GAP}: the security rules did not run",
+                 "match": "", "fix": "install the intake-scan skill, then run intake.py scan on the skill"}]
+    record = rules.FileRecord("f001", name, 0o644, text.encode("utf-8", "replace"))
+    lines = text.split("\n")
+    found, seen = [], set()
+    for finding in rules.scan([record]):
+        if finding.rule_id in seen:
+            continue
+        seen.add(finding.rule_id)
+        rule = rules.RULES[finding.rule_id]
+        shown = lines[finding.line - 1].strip() if 0 < finding.line <= len(lines) else ""
+        found.append({"line": finding.line, "issue": rule.description, "match": shown[:60],
+                      "fix": rule.fix or _BLOCK_RULE_FIX})
+    return found
+
 
 PORTABILITY_PATTERNS = [
     (r"(?i)\bmcp__[a-z0-9_]+", "harness-specific MCP tool name",
@@ -58,6 +101,31 @@ PORTABILITY_PATTERNS = [
 
 REQUIRED_FIELDS = ("name", "description")
 RECOMMENDED_FIELDS = ("disambiguation",)
+
+# Custom keys may sit at the top level or under `metadata:` (#344). The shared reader lives
+# beside this skill in `_meta`; run from a copy that has no `_meta`, only the top level is read.
+sys.path.append(str(Path(__file__).resolve().parents[2] / "_meta"))
+try:
+    import skill_frontmatter  # noqa: E402
+except ImportError:
+    skill_frontmatter = None
+
+
+def custom_value(text: str, fm: Dict[str, Any], key: str, path: Path) -> Optional[str]:
+    """A custom key's value from either layout; None when absent.
+
+    Raises skill_frontmatter.FrontmatterConflict when the two layouts disagree. A form the
+    reader will not guess at falls back to what the top level says.
+    """
+    if skill_frontmatter is None:
+        return fm.get(key)
+    fm_text = skill_frontmatter.frontmatter_of(text)
+    if fm_text is None:
+        return fm.get(key)
+    try:
+        return skill_frontmatter.value(fm_text, key, path=path)
+    except skill_frontmatter.FrontmatterUnsupported:
+        return fm.get(key)
 
 
 def parse_frontmatter(text: str) -> Dict[str, Any]:
@@ -116,7 +184,7 @@ def assess(path: Path, skills_root: Path) -> Dict[str, Any]:
         if not fm.get(f):
             structural.append({"issue": f"missing required frontmatter `{f}`", "severity": "blocking"})
     for f in RECOMMENDED_FIELDS:
-        if not fm.get(f):
+        if not custom_value(text, fm, f, path):
             structural.append({"issue": f"no `{f}` — needed once a near neighbour exists",
                                "severity": "advisory"})
     if fm.get("name") and fm["name"] != path.parent.name:
@@ -126,7 +194,7 @@ def assess(path: Path, skills_root: Path) -> Dict[str, Any]:
         structural.append({"issue": "unquoted colon in description — breaks stricter YAML parsers",
                            "severity": "blocking"})
 
-    security = scan(text, SECURITY_PATTERNS)
+    security = security_scan(text, path.name, load_harness_rules())
     portability = scan(text, PORTABILITY_PATTERNS)
     near = overlap_scan(fm.get("description", ""), skills_root) if skills_root.is_dir() else []
 
@@ -160,7 +228,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stderr.write(f"INTAKE_ENV_ERROR: no such file: {args.skill}\n")
         return 3
 
-    r = assess(args.skill, args.skills_root)
+    try:
+        r = assess(args.skill, args.skills_root)
+    except ValueError as exc:
+        # A custom key set at the top level AND under `metadata:` with different values
+        # (skill_frontmatter.FrontmatterConflict): a decision for a person, not a traceback.
+        if skill_frontmatter is None or not isinstance(exc, skill_frontmatter.FrontmatterConflict):
+            raise
+        sys.stderr.write(f"skill-intake assess: {exc}\n")
+        return 2
 
     if args.json:
         print(json.dumps(r, indent=2))

@@ -15,6 +15,11 @@ extensible, to be enhanced on the target machine.
 
 **VS Code also collects `CLAUDE.md`** as an always-on instruction file, alongside `AGENTS.md` and
 `.github/copilot-instructions.md`. So the harness's standing instructions port with zero translation.
+It reads the user-home `~/.claude/CLAUDE.md` as well as the workspace root, `.claude/CLAUDE.md` and
+`CLAUDE.local.md`, all behind the `chat.useClaudeMdFile` setting (VS Code custom-instructions docs,
+checked 2026-09-27). That matters since #318: the global rules live in `~/.claude/CLAUDE.md`
+(installed from `global/CLAUDE.md`), and the foundry-lab workspace `CLAUDE.md` is now a short
+project-only file. If `chat.useClaudeMdFile` is off, VS Code sees neither.
 
 That is why this folder is small. **It covers only what does NOT come across for free.**
 
@@ -23,7 +28,7 @@ That is why this folder is small. **It covers only what does NOT come across for
 | foundry-lab | VS Code / Copilot | Status |
 |---|---|---|
 | `skills/*/SKILL.md` | auto-discovered from `~/.claude/skills/` | **works as-is** |
-| `CLAUDE.md` | collected as always-on instructions | **works as-is** |
+| `~/.claude/CLAUDE.md` (global rules) + workspace `CLAUDE.md` | both collected as always-on instructions (`chat.useClaudeMdFile`) | **works as-is** |
 | MCP servers | `.vscode/mcp.json` | direct equivalent |
 | agents (`bob`, `alf`, `pa`) | `.agent.md` custom agents | **needs porting** — no auto-discovery |
 | slash commands | `.prompt.md` prompt files | **needs porting** |

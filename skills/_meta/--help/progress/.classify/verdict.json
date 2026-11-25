@@ -1,0 +1,21 @@
+{
+  "asserted": "(none)",
+  "classify_version": "1.0.0",
+  "decision_trace": {
+    "confirmed_positive_signals": [],
+    "has_n4": false,
+    "has_p1_confirmed": false,
+    "rule_fired": "band:ambiguous",
+    "score": 0
+  },
+  "design_doc": null,
+  "evidence": {
+    "confirmed_positives": [],
+    "negatives": [],
+    "prose_only": []
+  },
+  "file_profile": [],
+  "score": 0,
+  "signals": [],
+  "verdict": "ambiguous"
+}

@@ -1,0 +1,4 @@
+skills/design-critique/SKILL.md
+skills/design-critique/references/neutral-floor.md
+skills/design-critique/references/rubric.md
+skills/design-critique/references/critic-brief.md

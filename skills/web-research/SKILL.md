@@ -38,7 +38,8 @@ If the manifest does not exist, run `bash ~/.claude/skills/knowledge-grounding/s
 When available, the Antigravity CLI (`agy`) provides an additional research source from a different model family. Invoke it headless with stdin closed (mandatory — see the `antigravity-cli` skill):
 
 ```bash
-timeout 600 agy -p "Verify: <claim>. Cite sources." < /dev/null
+AGY_MODEL="$(python3 ~/.claude/skills/_meta/seat_model.py argv --role consultant_support --provider agy)" &&
+(d="$(mktemp -d)" && cd "$d" && timeout 600 agy --sandbox --mode plan $AGY_MODEL -p "Verify: <claim>. Cite sources." < /dev/null)
 ```
 
 Use it to:

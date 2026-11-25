@@ -16,6 +16,9 @@ design or generic SPA mechanics.
 - **Analytical charts / KPI tiles → `dataviz`** (cross-link, never duplicate — this skill
   contains **no chart-construction content**).
 - **Component mechanics, routing, generic auth/CSRF, forms → `modern-frontend`**.
+- **Generic operator-console patterns (work queues, approval cards, task boards, destructive-action
+  guards, freshness, keyboard-first layouts) → `operator-console-ux`**; this skill adds the
+  trading contracts on top and wins on conflict for trading surfaces.
 - **Signal mapping, alert classes, cardinality budgets → `observability`**.
 - **The state meanings it displays** come from `trading-automation-runtime` (the axes) and
   `market-data-engineering` (the feed-health facts); this skill **renders** them, it does

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -85,6 +86,15 @@ MAX_DIR_ENTRIES = 500            # ceiling on any directory enumeration
 MAX_REGISTRY_BYTES = 256 * 1024  # ceiling on the wiki-registry read
 MAX_DIGEST_BYTES = 4000          # ceiling on the whole digest
 MAX_NOTE_CHARS = 240             # ceiling on the one-line degradation note
+
+# Intake ledger lines (#350). The ledger is the project's; the helper that reads it is
+# only ever the INSTALLED one under the Claude home, never a file of the project, so
+# opening a session in a checkout cannot run that checkout's code.
+INTAKE_LEDGER_REL = ("skills", "_meta", "intake-ledger.json")
+INTAKE_HELPER_REL = ("skills", "intake-scan", "scripts", "intake_ledger.py")
+MAX_INTAKE_NAMED = 3             # names quoted per line; the rest is a count
+MAX_INTAKE_LINE_CHARS = 220      # ceiling on each intake line
+MAX_INTAKE_OUTPUT_BYTES = 16 * 1024  # ceiling on what is read back from the helper
 
 # CLAUDE.md's canonical session-start marker set. Ordering is the reading order
 # CLAUDE.md prescribes, not alphabetical.
@@ -469,6 +479,157 @@ def _grounding_line(home: Path, note: str | None) -> str:
     return f"[grounding] {mode} — {reach}{airgap}  (sources {age}){suffix}"
 
 
+# The child that reads the ledger. It prints ONE JSON object and nothing else: counts,
+# and at most `cap` names per kind. Every name is checked again in the parent.
+_INTAKE_CHILD = r"""
+import importlib.util, json, sys
+helper, root, cap = sys.argv[1], sys.argv[2], int(sys.argv[3])
+spec = importlib.util.spec_from_file_location("intake_ledger", helper)
+il = importlib.util.module_from_spec(spec)
+sys.modules["intake_ledger"] = il
+spec.loader.exec_module(il)
+try:
+    state = il.status(root)
+    adopted = {e["unit"] for e in il.load(root)["entries"]
+               if e.get("adopted") is True or e.get("origin") == "adopt"}
+except (il.LedgerError, OSError, ValueError):
+    print(json.dumps({"state": "unreadable"}))
+    sys.exit(0)
+def place(path):
+    # A file inside an ADOPTED unit is named by its unit: the source chose the file name.
+    unit = il.unit_for_path(path)
+    return unit if unit in adopted else path
+blocks = state.get("block_entries", [])
+print(json.dumps({
+    "state": "ok",
+    "overrides": {"count": len(state["overrides"]),
+                  "named": [[line["record_id"], line.get("unit") or ""] for line in state["overrides"][:cap]]},
+    "exceptions": {"count": len(state["exceptions"]), "stale": len(state["stale_exceptions"]),
+                   "named": [[exc["rule"], place(exc["path"])] for exc in state["exceptions"][:cap]]},
+    "unsigned": {"count": len(state["unsigned_cautions"]), "named": state["unsigned_cautions"][:cap]},
+    "blocks": {"count": len(blocks), "named": blocks[:cap]},
+}))
+"""
+
+_INTAKE_PLAIN = re.compile(r"^[A-Za-z0-9._/@+-]{1,120}$")
+_INTAKE_WITHHELD = "(name withheld)"
+
+
+def _run_capture(argv: list[str], deadline_at: float) -> tuple[str | None, str | None]:
+    """Run one helper and return (stdout, None), or (None, a short reason).
+
+    The one child whose stdout is read. stderr still goes to DEVNULL, the read is capped,
+    and the caller treats what comes back as data to be validated, never as text to print.
+    """
+    remaining = deadline_at - time.monotonic()
+    if remaining <= 0.25:
+        return None, "deadline exhausted"
+    budget = min(PER_PROBE_TIMEOUT_S, remaining)
+    kwargs: dict = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if hasattr(os, "setsid"):
+        kwargs["start_new_session"] = True  # own process group -> killable as a unit
+    try:
+        proc = subprocess.Popen(argv, **kwargs)
+    except OSError as exc:
+        return None, f"helper not runnable ({exc.__class__.__name__})"
+    try:
+        out, _ = proc.communicate(timeout=budget)
+    except subprocess.TimeoutExpired:
+        _kill_process_group(proc)
+        return None, f"helper timeout after {budget:.1f}s"
+    if proc.returncode != 0:
+        return None, f"helper exit {proc.returncode}"
+    return out[:MAX_INTAKE_OUTPUT_BYTES].decode("utf-8", errors="replace"), None
+
+
+def _intake_name(value: object) -> str:
+    """A ledger name as it may be shown. The ledger is a file of the project, so a name
+    that is not a plain path or id is withheld rather than quoted into the session."""
+    return value if isinstance(value, str) and _INTAKE_PLAIN.match(value) else _INTAKE_WITHHELD
+
+
+def _intake_count(block: object, key: str = "count") -> int:
+    value = block.get(key) if isinstance(block, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _intake_line(label: str, count: int, named: list[str], extra: str = "") -> str:
+    shown = named[:MAX_INTAKE_NAMED]
+    more = count - len(shown)
+    text = f"[intake] {label}: {count}"
+    if shown:
+        text += " — " + ", ".join(shown) + (f" (+{more} more)" if more > 0 else "")
+    return (text + extra)[:MAX_INTAKE_LINE_CHARS]
+
+
+def _intake_lines(root: Path, home: Path, deadline_at: float) -> list[str]:
+    """Overrides, exceptions, unsigned cautions and block-verdict entries of the project's
+    intake ledger (#350).
+
+    Nothing at all for a project with no ledger. One line per kind that has any; one line
+    in total when the ledger cannot be read or summarised. Never raises past the caller's
+    guard, and the cost is one bounded child process.
+    """
+    try:
+        if not root.joinpath(*INTAKE_LEDGER_REL).is_file():
+            return []
+    except OSError:
+        return []
+    helper = home.joinpath(*INTAKE_HELPER_REL)
+    if not helper.is_file():
+        return ["[intake] ledger present, but the intake-scan helper is not installed — "
+                "nothing listed; run `intake.py status` in the repo"]
+    out, why = _run_capture(
+        [sys.executable, "-I", "-c", _INTAKE_CHILD, str(helper), str(root), str(MAX_INTAKE_NAMED)],
+        deadline_at,
+    )
+    if out is None:
+        return [f"[intake] ledger not summarised ({why}) — run `intake.py status`"]
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if isinstance(data, dict) and data.get("state") == "unreadable":
+        return ["[intake] ledger unreadable — overrides, exceptions and unsigned cautions are "
+                "NOT listed; run `intake.py verify`"]
+    if not isinstance(data, dict) or data.get("state") != "ok":
+        return ["[intake] ledger not summarised (malformed helper output) — run `intake.py status`"]
+
+    def named(block: object) -> list:
+        rows = block.get("named") if isinstance(block, dict) else None
+        return rows if isinstance(rows, list) else []
+
+    lines: list[str] = []
+    overrides, exceptions, unsigned = data.get("overrides"), data.get("exceptions"), data.get("unsigned")
+    count = _intake_count(overrides)
+    if count:
+        rows = [r for r in named(overrides) if isinstance(r, list) and len(r) == 2]
+        lines.append(_intake_line("overrides in force", count, [
+            _intake_name(r[0]) + (" on " + _intake_name(r[1]) if r[1] else " (in the quarantine)")
+            for r in rows]))
+    count, stale = _intake_count(exceptions), _intake_count(exceptions, "stale")
+    if count or stale:
+        rows = [r for r in named(exceptions) if isinstance(r, list) and len(r) == 2]
+        lines.append(_intake_line(
+            "exceptions in force", count,
+            [_intake_name(r[0]) + " " + _intake_name(r[1]) for r in rows],
+            f"; {stale} no longer match their file" if stale else ""))
+    count = _intake_count(unsigned)
+    if count:
+        lines.append(_intake_line("unsigned cautions", count, [_intake_name(u) for u in named(unsigned)]))
+    blocks = data.get("blocks")
+    count = _intake_count(blocks)
+    if count:
+        lines.append(_intake_line("entered at a block verdict", count,
+                                  [_intake_name(u) for u in named(blocks)]))
+    return lines
+
+
 def _project_block(root: Path, root_how: str, cwd_how: str, home: Path) -> list[str]:
     lines = [
         f"[project] {root.name or str(root)}",
@@ -607,6 +768,10 @@ def _build_digest(payload: dict, home: Path, deadline_at: float) -> str:
     lines += _project_block(root, root_how, cwd_how, home)
     lines.append(_env_line(home, env_note))
     lines.append(_grounding_line(home, ground_note))
+    try:
+        lines += _intake_lines(root, home, deadline_at)
+    except Exception as exc:  # noqa: BLE001 — a ledger problem costs one line, not the digest
+        lines.append(f"[intake] ledger not summarised ({type(exc).__name__}) — run `intake.py status`")
     lines += [
         "",
         "-> The context files above were NOT read — only their size and line count were "

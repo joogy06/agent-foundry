@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "studio-profile.v1",
+  "title": "studio-profile.v1",
+  "description": "One artefact type of the creative studio, as data: its seats, what each seat loads, what is captured, who judges, and the caps. scripts/studio.py reads THIS file for the shape (through the validator of scripts/studio_verdict.py, so only the keywords that validator implements are used here) and adds the rules a schema cannot say; each is named in the description of the field it guards.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "artefact",
+    "work_kind",
+    "private",
+    "max_agents",
+    "borrow_max",
+    "brief",
+    "constraints",
+    "functions",
+    "evidence",
+    "critic",
+    "finish",
+    "retries",
+    "light"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "studio-profile.v1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,39}$"
+    },
+    "artefact": {
+      "description": "The piece in words, with its article, as it reads in a brief: `a website page`.",
+      "type": "string",
+      "minLength": 3
+    },
+    "work_kind": {
+      "description": "rendered: variants are captured in a browser and judged from tiles. text: variants are judged as text; there is no capture (capture_kind).",
+      "enum": [
+        "rendered",
+        "text"
+      ]
+    },
+    "private": {
+      "description": "true: the run directory is created with mode 0700.",
+      "type": "boolean"
+    },
+    "max_agents": {
+      "description": "The most agents the PLAN of a run may hold: its planned spawns and the spawns of its permitted retries. A compiled plan over it is refused (plan_over_cap). Repair rounds are not in this number: `plan` prints them on top of it, at most two agent turns each, and the last number of that line (cap with repairs) is the ceiling of the run. `--budget N` holds the whole ceiling inside N.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "borrow_max": {
+      "description": "The most borrow cards a critic may write.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "brief": {
+      "description": "The fields of the run's brief (a JSON object; each value a string or a list of strings).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required"
+      ],
+      "properties": {
+        "required": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          }
+        },
+        "optional": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          }
+        }
+      }
+    },
+    "constraints": {
+      "description": "The constraints round: ONE agent that loads the named skills and writes constraints.md, which every maker receives. It runs in light mode too.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "loads",
+        "asks"
+      ],
+      "properties": {
+        "tier": {
+          "description": "The execution tier the main loop spawns the seat at.",
+          "enum": [
+            "light",
+            "medium",
+            "complex"
+          ]
+        },
+        "loads": {
+          "description": "What a seat loads: `family:<name>` (every skill that declares that family; an empty family is refused) or a skill name. Each one must resolve against the skills root before the run directory exists.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(family:)?[a-z][a-z0-9-]{0,63}$"
+          }
+        },
+        "asks": {
+          "description": "What constraints.md must hold, one item per line of the list.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "functions": {
+      "description": "The functions rivalry happens within. Each has exactly two rival seats (rivals_not_two) whose family tokens share nothing (rivals_share_family). The FIRST function makes the piece: its seats are the variants. A further function names the first in `attached_to` (piece_function_first, attached_to_unknown): each of its seats is paired at random with one variant and writes its part into that variant's directory before the piece is built.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "axis_set",
+          "output",
+          "seats"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "axis_set": {
+            "description": "The named axis set of scripts/studio_axes.py that the direction contracts fill (axis_set_unknown).",
+            "type": "string",
+            "minLength": 1
+          },
+          "output": {
+            "description": "The file a maker writes in its variant directory. A seat of an attached function writes this file and `<function id>-contract.md` there.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+          },
+          "seats": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "$ref": "#/$defs/seat"
+            }
+          },
+          "attached_to": {
+            "description": "The id of the first function. This function's seats write a part (for example the words of a page) that the paired seat of the first function builds on.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          }
+        }
+      }
+    },
+    "baseline": {
+      "description": "When present: the first `first_runs` runs of this profile under a run root add a single-maker variant, the user ranks the variants blind before the verdict is shown, and the comparison is recorded as provisional.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first_runs"
+      ],
+      "properties": {
+        "first_runs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capture"
+      ],
+      "properties": {
+        "capture": {
+          "description": "true: every variant is captured by scripts/studio_capture.py before the critic reads.",
+          "type": "boolean"
+        },
+        "text_check": {
+          "description": "Text work only, and required for it (text_check_kind): what scripts/studio_claims.py checks in every draft before the critic reads. truth_pack: the brief carries a truth pack (its `truth-pack` field must be required: truth_pack_field) and every listed sentence is matched to it. outline: the heading outline of constraints.md is checked. length: the brief's `length` band is checked (length_field). first_screen: the critic fills a `first-screen` entry per variant, and a winner whose entry does not hold is refused. An unlabelled placeholder is always checked.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "truth_pack",
+            "outline",
+            "length",
+            "first_screen"
+          ],
+          "properties": {
+            "truth_pack": {
+              "type": "boolean"
+            },
+            "outline": {
+              "type": "boolean"
+            },
+            "length": {
+              "type": "boolean"
+            },
+            "first_screen": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "critic": {
+      "description": "Who judges: exactly one of `skill` (with the `references` of that skill to inline in the critic brief) or `reference` (one file, relative to the skills root) (critic_one_of, critic_references). The convergence rule file is inlined beside them.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "skill": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+          }
+        },
+        "reference": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "loads": {
+          "description": "Skills the critic loads by name before reading (each must resolve).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          }
+        }
+      }
+    },
+    "finish": {
+      "description": "The passes on the winner, in order. Their findings are merged; nothing is picked between them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "loads",
+          "asks"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "tier": {
+            "description": "The execution tier the main loop spawns the seat at.",
+            "enum": [
+              "light",
+              "medium",
+              "complex"
+            ]
+          },
+          "loads": {
+            "description": "What a seat loads: `family:<name>` (every skill that declares that family; an empty family is refused) or a skill name. Each one must resolve against the skills root before the run directory exists.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^(family:)?[a-z][a-z0-9-]{0,63}$"
+            }
+          },
+          "asks": {
+            "description": "The goal line of the pass's brief.",
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "retries": {
+      "description": "The retries a plan permits, each 0 or 1: one redo when the rival contracts are equal on every axis, one re-make round after no_award.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "distance_redo",
+        "remake_round"
+      ],
+      "properties": {
+        "distance_redo": {
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "remake_round": {
+          "enum": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "light": {
+      "description": "What light mode leaves out. The constraints round, the makers of the piece, one critic read and the baseline are never dropped. claim_seat: no claim-check seat. attached_seats: no seat of an attached function; the makers of the piece write that part themselves.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drops"
+      ],
+      "properties": {
+        "drops": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "second_read",
+              "winner_remake",
+              "finish",
+              "remake_round",
+              "distance_redo",
+              "claim_seat",
+              "attached_seats"
+            ]
+          }
+        }
+      }
+    },
+    "claim_check": {
+      "description": "The one light seat that rules on the statements the runner could not match by their literal figures, dates and names. Only with evidence.text_check.truth_pack (claim_seat_needs_truth_pack). Light mode may drop it (`claim_seat`): unmatched statements then stay unsupported and are listed for the user.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tier": {
+          "description": "The execution tier the main loop spawns the seat at.",
+          "enum": [
+            "light",
+            "medium",
+            "complex"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "seat": {
+      "description": "A maker seat. Its brief carries, whole, the entry file of every skill it loads, each one's `doctrine` file when named, and the school and format files when named (copy seats). No path may leave the skills root (path_leaves_root). Seat ids are unique in a profile and are not constraints, baseline, critic, winner or claim-check (seat_id_taken). Two seats that load the same skill differ by `angle` (angle_unknown, angles_equal).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "loads"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "tier": {
+          "description": "The execution tier the main loop spawns the seat at.",
+          "enum": [
+            "light",
+            "medium",
+            "complex"
+          ]
+        },
+        "loads": {
+          "description": "What a seat loads: `family:<name>` (every skill that declares that family; an empty family is refused) or a skill name. Each one must resolve against the skills root before the run directory exists.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(family:)?[a-z][a-z0-9-]{0,63}$"
+          }
+        },
+        "doctrine": {
+          "description": "A file inside EVERY skill the seat loads, relative to that skill: the doctrine with the house's axis table.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "school_file": {
+          "description": "Copy seats: the school file, relative to the skills root.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "format_file": {
+          "description": "Copy seats: the format file, relative to the skills root.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "angle": {
+          "description": "For rivals that share a skill: this seat's value on the `angle` axis of the function's axis set. The seat's direction contract must hold it.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "angle_brief": {
+          "description": "One or two sentences that say what the angle means for the piece; they go in the seat's brief.",
+          "type": "string",
+          "minLength": 3
+        }
+      }
+    }
+  }
+}
