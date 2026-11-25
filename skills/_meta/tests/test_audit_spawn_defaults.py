@@ -5375,14 +5375,15 @@ def test_d24_the_pool_join_cannot_fire_before_the_arms_own_cap(tmp_path: Path) -
 # codex_quota.classify_codex_failure). Review: docs/reviews/2026-09-22-S081-rev4-review.md.
 # ---------------------------------------------------------------------------
 
-#: The first 12 stderr lines of the D21 review's astra call (codex-cli 0.155.1), VERBATIM.
+#: The first 12 stderr lines of the D21 review's astra call (codex-cli 0.155.1), VERBATIM except the
+#: workdir path, anonymised for publication (the sha256 is of these bytes).
 #: The golden is progress/.golden-rev4/fix-round-1/codex-banner-0.155.1.stderr, which the
 #: ~/.claude tree does not carry, so the bytes are embedded and their sha256 asserted.
 _X5_BANNER_0155_1 = (
     "Reading additional input from stdin...\n"
     "OpenAI Codex v0.155.1\n"
     "--------\n"
-    "workdir: /tmp/claude-1000/-path-to-projects-foundry-lab/"
+    "workdir: /tmp/claude-1000/-path-to-project/"
     "148bbc98-4e5f-4060-8444-37a973666792/scratchpad/d21clone\n"
     "model: gpt-6-astra\n"
     "provider: openai\n"
@@ -5393,7 +5394,7 @@ _X5_BANNER_0155_1 = (
     "session id: 01a0cb17-355b-7f32-92f6-010c8f42b7d6\n"
     "--------\n"
 )
-_X5_BANNER_0155_1_SHA256 = "6165fabebe14c98eb19fbf6efb63094a71ffffc724851930f58b739b27d4505c"
+_X5_BANNER_0155_1_SHA256 = "7c0d297a7878e142859811f691f2f01fd8ee9335a58be0a6287d335aa0152f8f"
 _X5_BANNER_0155_1_ID = "01a0cb17-355b-7f32-92f6-010c8f42b7d6"
 
 

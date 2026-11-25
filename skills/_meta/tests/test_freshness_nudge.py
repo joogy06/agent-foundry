@@ -1102,8 +1102,8 @@ class TestAstraSegmentClasses(unittest.TestCase):
 
     def test_account_wide_every_project_store_counts(self):
         with tempfile.TemporaryDirectory() as td, _StateFixture(Path(td)) as sf:
-            sf.store("-path-to-projects-foundry-lab", [_sub_row("budget_spent")])
-            sf.store("-path-to-projects-trading02", [_admit_row(), _sub_row("quota_exhausted", use="challenger")])
+            sf.store("-path-to-project-a", [_sub_row("budget_spent")])
+            sf.store("-path-to-project-b", [_admit_row(), _sub_row("quota_exhausted", use="challenger")])
             self.assertEqual(_segment(_digest(), "astra:"),
                              "astra: 2 substitutions this week (budget_spent 1, quota_exhausted 1) "
                              "[uses: challenger 1, consult 1] · " + _REVIEW)
